@@ -19,6 +19,7 @@
  */
 
 import type { TrackerItem } from './missions/types';
+import type { FireFieldView } from './sim/FireSystem';
 
 export interface HudState {
   water: number;
@@ -57,6 +58,7 @@ export interface EndScreenHooks {
   onNext(): void; // ▶ Next sortie
   onMenu(): void; // ◂ Mission menu
   onRetry(): void; // ↻ Retry this mission
+  onLeaderboard?(): void; // 🏆 open the global leaderboard on this mission
 }
 
 /** Static world place-name labels for the radar (A5) — set once, world-fixed. */
@@ -117,6 +119,14 @@ export class HUD {
   private readonly labels: MapLabels; // A5: static place names drawn screen-upright on the radar
   private readonly dpr = Math.min(window.devicePixelRatio || 1, 2);
   private radarExpanded = false; // tap the radar to toggle local ↔ whole-world view
+  // C5 burn overlay: the live fire field + a small offscreen raster of it (burnt = ash scar,
+  // hot = warm front). Rebuilt every few frames (fire spreads slowly) and blitted under the blips
+  // with the SAME heading-up affine as the satellite map, so it stays registered with the terrain.
+  private burnField: FireFieldView | null = null;
+  private burnCanvas: HTMLCanvasElement | null = null;
+  private burnCtx: CanvasRenderingContext2D | null = null;
+  private burnImg: ImageData | null = null;
+  private burnAge = 999; // frames since the raster was last rebuilt (force a build on first draw)
   private readonly pilotName?: string; // callsign from onboarding — personalizes the end banner
   private readonly end?: EndScreenHooks; // campaign end-banner buttons (next / menu)
 
@@ -167,6 +177,34 @@ export class HUD {
       gap: '8px',
       alignItems: 'flex-start',
     });
+
+    // Menu button — bail back to the campaign mission-select at any time (reload-based,
+    // same path as the end-banner MENU). Sits at the top of the left column: clear of the
+    // bottom-corner touch controls and the right-hand radar, and away from the flight thumb.
+    // Only shown when a menu hook was supplied (campaign play).
+    if (this.end) {
+      const onMenu = this.end.onMenu;
+      const menuBtn = frosted({
+        padding: '8px 14px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        pointerEvents: 'auto',
+        cursor: 'pointer',
+        transition: 'border-color 0.15s ease',
+      });
+      menuBtn.appendChild(el('div', { fontSize: '15px', lineHeight: '1', color: UI.text }, '☰'));
+      menuBtn.appendChild(
+        el('div', { fontSize: '11px', fontWeight: '700', letterSpacing: '2px', color: UI.dim }, 'MENU'),
+      );
+      menuBtn.addEventListener('pointerenter', () => (menuBtn.style.borderColor = UI.accent));
+      menuBtn.addEventListener('pointerleave', () => (menuBtn.style.borderColor = UI.stroke));
+      menuBtn.addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+        onMenu();
+      });
+      leftCol.appendChild(menuBtn);
+    }
 
     // Water gauge
     const waterWrap = frosted({ padding: '8px 12px 10px' });
@@ -433,11 +471,16 @@ export class HUD {
     );
 
     if (this.end) {
-      const row = el('div', { display: 'flex', gap: '10px', justifyContent: 'center', marginTop: '20px' });
+      const row = el('div', { display: 'flex', gap: '10px', justifyContent: 'center', marginTop: '20px', flexWrap: 'wrap' });
       if (s.won && this.end.hasNext) row.appendChild(bannerButton('NEXT ▸', UI.accent, this.end.onNext));
       if (!s.won) row.appendChild(bannerButton('↻ RETRY', UI.fire, this.end.onRetry));
       row.appendChild(bannerButton('MENU', UI.dim, this.end.onMenu));
       this.banner.appendChild(row);
+      if (this.end.onLeaderboard) {
+        const lbRow = el('div', { display: 'flex', justifyContent: 'center', marginTop: '10px' });
+        lbRow.appendChild(bannerButton('🏆 LEADERBOARD', UI.accent, this.end.onLeaderboard));
+        this.banner.appendChild(lbRow);
+      }
     }
     this.root.appendChild(this.banner);
   }
@@ -622,6 +665,90 @@ export class HUD {
     ctx.fillText(`${Math.round(deg).toString().padStart(3, '0')}°`, cx, h - 22);
   }
 
+  /** C5: hand the radar the live fire field (FireSystem.fieldView). The arrays are stable, so we
+   *  keep the reference and re-raster it every few frames into a tiny offscreen canvas. */
+  setBurnField(view: FireFieldView): void {
+    this.burnField = view;
+    const c = document.createElement('canvas');
+    c.width = view.n;
+    c.height = view.n;
+    const cx = c.getContext('2d');
+    if (!cx) return;
+    this.burnCanvas = c;
+    this.burnCtx = cx;
+    this.burnImg = cx.createImageData(view.n, view.n);
+    this.burnAge = 999;
+  }
+
+  /** Rebuild the offscreen burn raster from the field: BURNT cells → a light ash scar (the user's
+   *  "light shaded region"), actively-BURNING cells → a warm front, both translucent so the
+   *  terrain reads through. Cheap (n² = 16k) and only run every few frames. */
+  private rasterizeBurn(view: FireFieldView): void {
+    if (!this.burnImg || !this.burnCtx) return;
+    const { n, heat, scorch } = view;
+    const d = this.burnImg.data;
+    for (let i = 0; i < n * n; i++) {
+      const o = i * 4;
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      let a = 0;
+      if (scorch[i] !== 0) {
+        // Burned-out ground: pale ash — a light shaded scar over the terrain.
+        r = 196;
+        g = 188;
+        b = 176;
+        a = 120;
+      }
+      const h = heat[i];
+      if (h > 0.06) {
+        // Actively burning: warm front, hotter = more opaque + more orange (over the ash).
+        const t = h > 1 ? 1 : h;
+        r = 255;
+        g = (110 + 70 * (1 - t)) | 0;
+        b = 40;
+        a = Math.max(a, (140 + 100 * t) | 0);
+      }
+      d[o] = r;
+      d[o + 1] = g;
+      d[o + 2] = b;
+      d[o + 3] = a;
+    }
+    this.burnCtx.putImageData(this.burnImg, 0, 0);
+  }
+
+  /** Blit the burn raster onto the radar using the SAME heading-up affine as the satellite map
+   *  (so it stays registered). `a,b,c,dd,tx,tz` are the map-blit basis from drawRadar. */
+  private drawBurnOverlay(
+    ctx: CanvasRenderingContext2D,
+    R: number,
+    a: number,
+    b: number,
+    c: number,
+    dd: number,
+    tx: number,
+    tz: number,
+  ): void {
+    const view = this.burnField;
+    if (!view || !this.burnCanvas) return;
+    if (this.burnAge++ >= 6) {
+      this.burnAge = 0;
+      this.rasterizeBurn(view);
+    }
+    const k = view.cellSize; // world units per burn-canvas pixel (one cell)
+    const A = a * k;
+    const B = c * k;
+    const C = b * k;
+    const D = dd * k;
+    const E = R + a * tx + b * tz;
+    const F = R + c * tx + dd * tz;
+    ctx.save();
+    ctx.setTransform(this.dpr * A, this.dpr * B, this.dpr * C, this.dpr * D, this.dpr * E, this.dpr * F);
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(this.burnCanvas, 0, 0);
+    ctx.restore();
+  }
+
   /** Ego-centric radar: the heli is fixed at center pointing UP and the world
    *  rotates around it (heading-up). Under the blips sits a baked SATELLITE terrain
    *  map, cropped + rotated to the heli; then range rings, a soft forward cone,
@@ -674,6 +801,9 @@ export class HUD {
     g.addColorStop(1, 'rgba(4,7,10,0.55)');
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, d, d);
+
+    // C5: burnt-area scar + live front, registered to the map by the same affine basis.
+    this.drawBurnOverlay(ctx, R, a, b, c, dd, tx, tz);
 
     // Forward field-of-view cone (points up).
     const cone = ctx.createRadialGradient(R, R, 2, R, R, reach);

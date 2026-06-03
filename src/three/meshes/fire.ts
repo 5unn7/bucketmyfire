@@ -45,7 +45,7 @@ interface Sheet {
 // can run far taller than the old cones without looking like a needle — a big blaze should
 // TOWER over the ~6–8u canopy (a wall of flame, the WRATH of a wildfire), while a small
 // spot stays a low flame.
-const FULL_HEIGHT = 11.0;
+const FULL_HEIGHT = 15.0;
 
 // Light sits a touch above the base so it pools warm light on the ground.
 const LIGHT_Y = 1.5;
@@ -174,7 +174,7 @@ const FRAG = /* glsl */ `
     // over (the danger reads from the smoke, not an orange haze). Reduced emissive on the
     // cooler body so additive overlap doesn't wash to a flat glow — bloom only grabs the seat.
     a *= smoothstep(1.0, 0.2, uv.y);
-    gl_FragColor = vec4(col * (0.62 + 0.55 * heat) * uIntensity, a);
+    gl_FragColor = vec4(col * (0.74 + 0.6 * heat) * uIntensity, a);
   }`;
 
 export function createFire(): FireMesh {
@@ -236,9 +236,9 @@ export function createFire(): FireMesh {
     // Footprint: a small spot is a tight cluster (±~4u); a full blaze fans its flame
     // sheets across a broad front (±~18u) so neighbouring fires' walls meet into one
     // continuous fire line as they spread.
-    const footprint = 3.5 + 15 * size;
-    const sw = 0.6 + 0.9 * size; // per-sheet width grows with size
-    const sh = 0.5 + 1.9 * size; // height climbs hard with size — a grown blaze towers
+    const footprint = 3.5 + 16 * size;
+    const sw = 0.6 + 0.95 * size; // per-sheet width grows with size
+    const sh = 0.62 + 1.85 * size; // height climbs hard with size — a grown blaze towers
     const hI = 0.45 + 0.55 * intensity;
     const wI = 0.8 + 0.2 * intensity;
     for (const s of sheets) {

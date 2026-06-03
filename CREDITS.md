@@ -18,6 +18,15 @@ that roam the map (the boar from the pack is unused). Loons are procedural.
 See the `ATTRIBUTION.txt` alongside each model under `public/models/` for the UH-1 and
 UH-60 credits.
 
+## Smoke sprite
+
+`public/textures/smoke-puff.png` — a soft grayscale smoke-puff sprite billboarded per particle by
+`src/three/vfx/SmokePlume.ts` to render the wildfire smoke as a dense, view-blocking volume. Sourced
+from **Lee Stemkoski's Three.js examples** (https://github.com/stemkoski/stemkoski.github.com,
+`Three.js/images/smokeparticle.png`), released for free public/educational use. The smoke's colour,
+density, motion, and height zoning are all generated in-shader at runtime — the sprite is only the
+soft alpha mask.
+
 ## Audio
 
 `public/.../helicopter-loop.mp3` — rotor loop (see its source for licensing).

@@ -2,15 +2,22 @@ import * as THREE from 'three';
 import { SMOKE } from '../config';
 
 /**
- * Per-fire smoke plumes (Track B4) — one pooled `THREE.Points` cloud shared by every
- * fire. A fixed ring buffer of `SMOKE.max` puffs is recycled on emit (no per-frame
- * allocation, no scene-graph churn), each a soft procedural disc in the fragment shader
- * (no texture, zero assets). Puffs rise from a fire's crown, EXPAND and fade over their
- * life, and BEND downwind — each frame their velocity is dragged toward the live wind
- * vector, so the whole column leans with the breeze exactly like the fire spread does.
+ * Per-fire smoke plumes (Track B4) as a VOLUME. One pooled `THREE.Points` cloud shared by every
+ * fire: a fixed ring buffer of `SMOKE.max` puffs recycled on emit (no per-frame allocation, no
+ * scene-graph churn). Each puff billboards a real soft smoke-puff SPRITE (`SMOKE.tex`, a downloaded
+ * asset — see CREDITS.md), rotated by a per-puff angle so the lumps never line up. Puffs rise from a
+ * fire's crown, EXPAND and fade over their life, and BEND downwind (velocity dragged toward the live
+ * wind vector). The emission is dense and the puffs near-opaque, so the column reads as a solid
+ * cloud you can't see through — the helicopter flies AROUND it.
  *
- * Engine-touching (it owns a Points mesh) so it lives outside `sim/`; the gameplay layer
- * calls `emit()` for each burning fire and `update(dt, windVx, windVz)` every frame.
+ * COLOR IS ZONED by how far a puff has climbed above the crown it left (`vRise`, world units):
+ *   - fire-lit ORANGE on the lowest puffs (the smoke base catches the flame's light),
+ *   - oily NEAR-BLACK billows low in the fresh, dense body,
+ *   - GREY for most of the column's height,
+ *   - dispersing to PALE grey at the anvil / oldest puffs.
+ *
+ * Engine-touching (it owns a Points mesh) so it lives outside `sim/`; the gameplay layer calls
+ * `emit()` for each burning fire and `update(dt, windVx, windVz)` every frame.
  */
 export class SmokePlume {
   readonly points: THREE.Points;
@@ -20,14 +27,16 @@ export class SmokePlume {
   private readonly life: Float32Array; // remaining seconds (≤0 = dead)
   private readonly maxLife: Float32Array; // this puff's own total lifetime (life scales with heat)
   private readonly aLife: Float32Array; // 1 fresh → 0 dead (size growth + alpha)
-  private readonly aSeed: Float32Array; // per-puff variation
-  private readonly aHeat: Float32Array; // per-puff fire heat 0..1 → bigger/darker/denser for hot fires
+  private readonly aSeed: Float32Array; // per-puff variation (sprite rotation + tone)
+  private readonly aHeat: Float32Array; // per-puff fire heat 0..1 → bigger/denser/darker for hot fires
+  private readonly baseY: Float32Array; // the crown Y the puff left (for height-zoned color)
   private cursor = 0;
 
   private readonly posAttr: THREE.BufferAttribute;
   private readonly lifeAttr: THREE.BufferAttribute;
   private readonly seedAttr: THREE.BufferAttribute;
   private readonly heatAttr: THREE.BufferAttribute;
+  private readonly baseAttr: THREE.BufferAttribute;
 
   constructor() {
     const n = SMOKE.max;
@@ -38,6 +47,7 @@ export class SmokePlume {
     this.aLife = new Float32Array(n);
     this.aSeed = new Float32Array(n);
     this.aHeat = new Float32Array(n);
+    this.baseY = new Float32Array(n);
     for (let i = 0; i < n; i++) this.positions[i * 3 + 1] = -9999; // park dead far below
 
     const geom = new THREE.BufferGeometry();
@@ -45,31 +55,52 @@ export class SmokePlume {
     this.lifeAttr = new THREE.BufferAttribute(this.aLife, 1).setUsage(THREE.DynamicDrawUsage);
     this.seedAttr = new THREE.BufferAttribute(this.aSeed, 1).setUsage(THREE.DynamicDrawUsage);
     this.heatAttr = new THREE.BufferAttribute(this.aHeat, 1).setUsage(THREE.DynamicDrawUsage);
+    this.baseAttr = new THREE.BufferAttribute(this.baseY, 1).setUsage(THREE.DynamicDrawUsage);
     geom.setAttribute('position', this.posAttr);
     geom.setAttribute('aLife', this.lifeAttr);
     geom.setAttribute('aSeed', this.seedAttr);
     geom.setAttribute('aHeat', this.heatAttr);
+    geom.setAttribute('aBaseY', this.baseAttr);
+
+    // Real soft smoke-puff sprite (downloaded asset). It's a mask, not colour, so keep it linear;
+    // mipmaps keep distant puffs from sparkling. The shader supplies all the colour (zoning).
+    const tex = new THREE.TextureLoader().load(import.meta.env.BASE_URL + SMOKE.tex);
+    tex.colorSpace = THREE.NoColorSpace;
+    tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.magFilter = THREE.LinearFilter;
 
     const material = new THREE.ShaderMaterial({
       uniforms: {
-        uColor: { value: new THREE.Color(SMOKE.color) },
+        uTex: { value: tex },
+        uBody: { value: new THREE.Color(SMOKE.bodyColor) },
+        uDark: { value: new THREE.Color(SMOKE.darkColor) },
+        uPale: { value: new THREE.Color(SMOKE.paleColor) },
         uWarm: { value: new THREE.Color(SMOKE.warmColor) },
         uOpacity: { value: SMOKE.opacity },
+        uHeatOpacity: { value: SMOKE.heatOpacity },
         uStartSize: { value: SMOKE.startSize },
         uEndSize: { value: SMOKE.endSize },
         uHeatSize: { value: SMOKE.heatSize },
-        uHeatOpacity: { value: SMOKE.heatOpacity },
-        uHeatDarken: { value: SMOKE.heatDarken },
+        uWarmRise: { value: SMOKE.warmRise },
+        uWarmStrength: { value: SMOKE.warmStrength },
+        uDarkLo: { value: SMOKE.darkLo },
+        uDarkHi: { value: SMOKE.darkHi },
+        uDarkStrength: { value: SMOKE.darkStrength },
+        uPaleRise: { value: SMOKE.paleRise },
       },
       transparent: true,
-      depthWrite: false, // smoke doesn't occlude the depth buffer; blends over the scene
+      depthWrite: false, // smoke doesn't occlude the depth buffer; blends (darkens) over the scene
+      blending: THREE.NormalBlending, // OVER, not additive — it must DARKEN/hide what's behind
       vertexShader: /* glsl */ `
         attribute float aLife;
         attribute float aSeed;
         attribute float aHeat;
+        attribute float aBaseY;
         varying float vLife;
         varying float vSeed;
         varying float vHeat;
+        varying float vRise;   // world units this puff has climbed above its crown
         uniform float uStartSize;
         uniform float uEndSize;
         uniform float uHeatSize;
@@ -77,57 +108,66 @@ export class SmokePlume {
           vLife = aLife;
           vSeed = aSeed;
           vHeat = aHeat;
+          vRise = position.y - aBaseY;
           float age = 1.0 - aLife;
           float size = mix(uStartSize, uEndSize, age); // billows out as it ages
           size *= 1.0 + uHeatSize * aHeat;              // a hot fire's puffs are much bigger
           vec4 mv = modelViewMatrix * vec4(position, 1.0);
-          gl_PointSize = size * (300.0 / max(-mv.z, 1.0));
+          // Clamp the on-screen size so a puff you fly INTO fills the view (occlusion) without
+          // tripping the driver's hard point-size ceiling.
+          gl_PointSize = clamp(size * (300.0 / max(-mv.z, 1.0)), 1.0, 1800.0);
           gl_Position = projectionMatrix * mv;
         }`,
       fragmentShader: /* glsl */ `
-        uniform vec3 uColor;
+        precision highp float;
+        uniform sampler2D uTex;
+        uniform vec3 uBody;
+        uniform vec3 uDark;
+        uniform vec3 uPale;
         uniform vec3 uWarm;
         uniform float uOpacity;
         uniform float uHeatOpacity;
-        uniform float uHeatDarken;
+        uniform float uWarmRise;
+        uniform float uWarmStrength;
+        uniform float uDarkLo;
+        uniform float uDarkHi;
+        uniform float uDarkStrength;
+        uniform float uPaleRise;
         varying float vLife;
         varying float vSeed;
         varying float vHeat;
-
-        // Cheap 2-octave value noise to break the perfect disc into a billowy puff.
-        float hash(vec2 p) { return fract(sin(dot(p, vec2(41.3, 289.1))) * 43758.5453); }
-        float vnoise(vec2 p) {
-          vec2 i = floor(p), f = fract(p);
-          vec2 u = f * f * (3.0 - 2.0 * f);
-          return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
-                     mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
-        }
+        varying float vRise;
 
         void main() {
+          // Rotate each puff's UV by a per-puff angle so the same sprite never reads as a tiled grid.
           vec2 pc = gl_PointCoord - vec2(0.5);
-          // Rotate each puff by a per-puff angle so the lumps don't all line up.
           float ang = vSeed * 6.2831;
           float c = cos(ang), s = sin(ang);
           pc = mat2(c, -s, s, c) * pc;
-          float r = length(pc);
-          if (r > 0.5) discard;
-          // Lumpy soft edge: erode the falloff radius with noise → cauliflower billow.
-          float n = vnoise(pc * 5.0 + vSeed * 17.0) * 0.5 + vnoise(pc * 11.0) * 0.25;
-          float soft = smoothstep(0.5, 0.06, r + (n - 0.35) * 0.22);
+          vec4 tex = texture2D(uTex, pc + vec2(0.5));
+          float cover = tex.a;        // soft puff coverage (the sprite's alpha)
+          if (cover < 0.01) discard;
+          float dens = tex.r;         // internal luminance → density variation (denser core = darker)
+
           float age = 1.0 - vLife;
-          float fadeIn = smoothstep(0.0, 0.16, age);   // ramp up just after birth
-          // Denser for a hot fire → the column reads thick and fully obscures the flames.
-          float alpha = uOpacity * (1.0 + uHeatOpacity * vHeat) * soft * fadeIn * vLife;
-          // Charcoal base with per-puff tone variation (kills banding). The column stays OILY
-          // DARK through the lower + mid pillar, greying/dispersing only way up high (old puffs).
-          vec3 col = uColor * (0.7 + 0.5 * vSeed);
-          col += vec3(0.06, 0.055, 0.05) * smoothstep(0.55, 1.0, age); // disperse/lighten near the anvil
-          // A roaring fire makes near-black, light-eating smoke; a smoulder stays charcoal-grey.
-          col *= 1.0 - uHeatDarken * vHeat;
-          // Ember KISS: an additive warm glow on only the freshest puffs at the seat of a hot
-          // fire (added AFTER the darken so it survives) — a smouldering underlight, not a tint.
-          float warmth = smoothstep(0.2, 0.0, age) * vHeat;
-          col += uWarm * warmth * 0.6;
+          float fadeIn = smoothstep(0.0, 0.16, age); // ramp up just after birth (no hard pop at the seat)
+          float rise = vRise;
+
+          // --- Height-zoned colour ------------------------------------------------------------
+          // Grey body for most of the column, with a per-puff tone wobble to kill banding.
+          vec3 col = uBody * (0.82 + 0.36 * vSeed);
+          // Oily near-black band low in the fresh, dense body (denser texel → blacker).
+          float dark = smoothstep(uDarkLo, uDarkLo + 10.0, rise) * (1.0 - smoothstep(uDarkHi, uDarkHi + 45.0, rise));
+          dark *= uDarkStrength * (0.45 + 0.55 * vHeat) * (0.55 + 0.45 * dens);
+          col = mix(col, uDark, clamp(dark, 0.0, 0.95));
+          // Disperse/lighten toward the anvil (high rise) and as the puff ages out.
+          float pale = smoothstep(uPaleRise, uPaleRise + 80.0, rise) + smoothstep(0.6, 1.0, age) * 0.4;
+          col = mix(col, uPale, clamp(pale, 0.0, 0.7));
+          // Fire-lit ORANGE on the lowest, freshest puffs (the base catches the flame light).
+          float warm = smoothstep(uWarmRise, 0.0, rise) * vHeat * smoothstep(0.45, 0.0, age);
+          col += uWarm * warm * uWarmStrength;
+
+          float alpha = cover * uOpacity * (1.0 + uHeatOpacity * vHeat) * fadeIn * vLife;
           gl_FragColor = vec4(col, clamp(alpha, 0.0, 1.0));
         }`,
     });
@@ -138,9 +178,10 @@ export class SmokePlume {
   }
 
   /**
-   * Emit one puff from a fire crown at (x, y, z). `heat` 0..1 (intensity × size) scales
-   * the rise speed, lifetime, jitter, and the per-puff `aHeat` the shader reads to make
-   * a hot fire's column taller, bigger, denser, and darker — so a big blaze obscures itself.
+   * Emit one puff from a fire crown at (x, y, z). `heat` 0..1 (intensity × size) scales the rise
+   * speed, lifetime, jitter, and the per-puff `aHeat` the shader reads to make a hot fire's column
+   * bigger and denser. The crown Y is stored so the shader can colour-zone the puff by how far it
+   * later rises above it.
    */
   emit(x: number, y: number, z: number, heat: number): void {
     const h = heat < 0 ? 0 : heat > 1 ? 1 : heat;
@@ -160,12 +201,13 @@ export class SmokePlume {
     this.aLife[i] = 1;
     this.aSeed[i] = Math.random();
     this.aHeat[i] = h;
+    this.baseY[i] = y; // the crown this puff left — height-zoned colour measures rise above it
   }
 
   /**
-   * Integrate every puff: cool the rise, drag the lateral velocity toward the wind
-   * drift (so the column bends downwind), age, and expire. `windVx/windVz` are the
-   * unit wind components (Wind.vx/vz); SMOKE.windInfluence scales them to a drift speed.
+   * Integrate every puff: cool the rise, drag the lateral velocity toward the wind drift (so the
+   * column bends downwind), age, and expire. `windVx/windVz` are the unit wind components
+   * (Wind.vx/vz); SMOKE.windInfluence scales them to a drift speed.
    */
   update(dt: number, windVx: number, windVz: number): void {
     if (!Number.isFinite(dt) || dt <= 0) return;
@@ -206,6 +248,7 @@ export class SmokePlume {
       this.lifeAttr.needsUpdate = true;
       this.seedAttr.needsUpdate = true;
       this.heatAttr.needsUpdate = true;
+      this.baseAttr.needsUpdate = true;
     }
     this.points.visible = anyAlive;
   }

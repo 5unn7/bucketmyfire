@@ -20,11 +20,28 @@ export interface Terrain {
   mesh: THREE.Mesh; // the ground, in the XZ plane, Y up
 }
 
+/**
+ * The live fire field (C5) the terrain samples to CHAR + GLOW: `tex` is the n×n RGBA DataTexture
+ * (R=heat, G=scorch) from `FireFieldTexture`; `min`/`size` map world XZ → texture uv. When present,
+ * the ground darkens to charcoal under the burn scar and glows orange (HDR → bloom) where it's
+ * actively burning — so the fire reads as one CONTINUOUS advancing region, not isolated dots.
+ */
+export interface TerrainBurn {
+  tex: THREE.Texture;
+  min: number; // worldMin (-size/2)
+  size: number; // world extent
+}
+
 // Default segments per side (fallback). Higher resolves the carved SHORELINES and
 // stream channels more smoothly; the caller passes a quality-tier value.
 const DEFAULT_SEGMENTS = 160;
 
-export function createTerrain(world: World, segments: number = DEFAULT_SEGMENTS, frame?: FrameContext): Terrain {
+export function createTerrain(
+  world: World,
+  segments: number = DEFAULT_SEGMENTS,
+  frame?: FrameContext,
+  burn?: TerrainBurn,
+): Terrain {
   // PlaneGeometry is built in the XY plane; we rotate it −90° about X so it lies
   // flat in XZ with +Y up. After the rotation, getX/getZ read true world X/Z.
   const geometry = new THREE.PlaneGeometry(world.size, world.size, segments, segments);
@@ -62,7 +79,7 @@ export function createTerrain(world: World, segments: number = DEFAULT_SEGMENTS,
     roughness: 0.96, // matte forest floor — minimal specular
     metalness: 0.0,
   });
-  addTerrainDetail(material, frame);
+  addTerrainDetail(material, frame, burn);
 
   const mesh = new THREE.Mesh(geometry, material);
   mesh.name = 'terrain';
@@ -165,7 +182,7 @@ function reliefShade(world: World, x: number, z: number): number {
  *    and cliffs read as rough rock while the flats stay soft grass/forest floor.
  *  - **Color mottle** on the flats breaks up the uniform per-biome fill.
  */
-function addTerrainDetail(material: THREE.MeshStandardMaterial, frame?: FrameContext): void {
+function addTerrainDetail(material: THREE.MeshStandardMaterial, frame?: FrameContext, burn?: TerrainBurn): void {
   const DETAIL_SCALE = 0.14; // fine grain frequency (world units → ~7u wavelength)
   const PATCH_SCALE = 0.018; // broad color-patch frequency
   const MOTTLE = 0.24; // albedo lighten/darken range on the flats
@@ -187,6 +204,14 @@ function addTerrainDetail(material: THREE.MeshStandardMaterial, frame?: FrameCon
       shader.uniforms.uCloudHi = { value: CLOUDS.coverageHi };
       shader.uniforms.uCloudDark = { value: CLOUDS.darken };
     }
+    // C5 continuous burn: the live fire field (R=heat, G=scorch) the ground chars + glows from.
+    // The texture is mutated in place each frame (FireFieldTexture.pack), so this is set once —
+    // no recompile. uBurnMin/uBurnSize map world XZ → the field's 0..1 uv.
+    if (burn) {
+      shader.uniforms.uBurnTex = { value: burn.tex };
+      shader.uniforms.uBurnMin = { value: burn.min };
+      shader.uniforms.uBurnSize = { value: burn.size };
+    }
 
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vTerrWorld;\nvarying vec3 vTerrN;')
@@ -205,6 +230,7 @@ function addTerrainDetail(material: THREE.MeshStandardMaterial, frame?: FrameCon
         varying vec3 vTerrWorld;
         varying vec3 vTerrN;
         ${frame ? 'uniform float uTime, uCloudScale, uCloudSpeed, uCloudLo, uCloudHi, uCloudDark; uniform vec2 uWind;' : ''}
+        ${burn ? 'uniform sampler2D uBurnTex; uniform float uBurnMin, uBurnSize;' : ''}
         float h21(vec2 p){ p = fract(p * vec2(123.34, 345.45)); p += dot(p, p + 34.345); return fract(p.x * p.y); }
         float vnoise(vec2 p){
           vec2 i = floor(p), f = fract(p);
@@ -261,8 +287,33 @@ function addTerrainDetail(material: THREE.MeshStandardMaterial, frame?: FrameCon
         }`
             : ''
         }
+        ${
+          burn
+            ? /* glsl */ `
+        {
+          // C5 CONTINUOUS BURN: sample the live fire field in world space. The whole burning AREA
+          // chars + glows here (not only under the ≤14 flame billboards), so the fire reads as one
+          // advancing region with a trailing burn scar instead of scattered dots.
+          vec2 bUv = (vTerrWorld.xz - uBurnMin) / uBurnSize;
+          if (bUv.x > 0.0 && bUv.x < 1.0 && bUv.y > 0.0 && bUv.y < 1.0) {
+            vec4 bf = texture2D(uBurnTex, bUv);
+            float heat = bf.r;     // actively burning 0..1
+            float scorch = bf.g;   // burned-out scar 0/1
+            // Char: burned-out ground AND the hot leading edge darken to charred earth. The blend
+            // stops short of pure black (lighter charcoal + 0.78 mix) so the hillshade relief still
+            // reads through — a burned ridge stays distinct from a burned valley.
+            float burnAmt = max(scorch, smoothstep(0.04, 0.45, heat));
+            diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.085, 0.072, 0.058), burnAmt * 0.78);
+            // Ember underglow on actively-burning ground (HDR > 1 → feeds bloom): a deep orange-red
+            // that brightens with heat, so the live front reads as a glowing continuous band.
+            totalEmissiveRadiance += vec3(2.6, 0.62, 0.10) * heat * heat * 1.35;
+          }
+        }`
+            : ''
+        }
         #include <lights_physical_fragment>`,
       );
   };
-  material.customProgramCacheKey = () => (frame ? 'bmf-terrain-detail-v4-cloud' : 'bmf-terrain-detail-v4');
+  material.customProgramCacheKey = () =>
+    `bmf-terrain-detail-v5${frame ? '-cloud' : ''}${burn ? '-burn' : ''}`;
 }

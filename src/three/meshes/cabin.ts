@@ -2,6 +2,22 @@ import * as THREE from 'three';
 import { STRUCTURES } from '../config';
 import type { StructureKind } from '../sim/Structures';
 
+/** Tiny seeded PRNG (mulberry32) so each cabin's variety is deterministic from its id. */
+function mkRng(seed: number): () => number {
+  let a = (seed | 0) + 0x6d2b79f5;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function pick<T>(arr: readonly T[], rng: () => number): T {
+  return arr[Math.floor(rng() * arr.length) % arr.length];
+}
+
 /**
  * Procedural buildings to defend (Track C3 — stakes). A log cabin (box body + gable
  * roof + stone chimney) or a larger lakeside depot (wide body + flat roof + a helipad
@@ -33,31 +49,72 @@ interface Part {
   base: THREE.Color; // pristine albedo, kept so setDamage can re-lerp from scratch
 }
 
-export function createStructure(kind: StructureKind): StructureMesh {
-  return kind === 'depot' ? buildDepot() : buildCabin();
+export function createStructure(kind: StructureKind, seed = 0): StructureMesh {
+  return kind === 'depot' ? buildDepot() : buildCabin(seed);
 }
 
 // --- Cabin ------------------------------------------------------------------
 
-function buildCabin(): StructureMesh {
+function buildCabin(seed: number): StructureMesh {
+  const rng = mkRng(seed);
   const s = STRUCTURES.cabinSize;
   const group = new THREE.Group();
   group.name = 'cabin';
   const parts: Part[] = [];
 
-  const wallH = s * 1.1;
-  const body = addBox(group, parts, 0x6b4a2f, s * 2, wallH, s * 1.5, 0, wallH / 2, 0);
+  // Per-cabin variety (deterministic): footprint/height jitter + a log + roof tint drawn
+  // from the boreal palette, so a hamlet reads as distinct dwellings rather than clones.
+  const j = STRUCTURES.sizeJitter;
+  const wf = 1 + (rng() - 0.5) * 2 * j; // body width factor
+  const df = 1 + (rng() - 0.5) * 2 * j; // body depth factor
+  const hf = 1 + (rng() - 0.5) * 2 * j; // wall height factor
+  const logTint = pick(STRUCTURES.logTints, rng);
+  const roofTint = pick(STRUCTURES.roofTints, rng);
+
+  const bw = s * 2 * wf;
+  const bd = s * 1.5 * df;
+  const wallH = s * 1.1 * hf;
+  const body = addBox(group, parts, logTint, bw, wallH, bd, 0, wallH / 2, 0);
   body.mesh.castShadow = true;
   body.mesh.receiveShadow = true;
 
-  // Gable roof: a prism made from a triangular extrude, spanning the body.
-  const roof = addRoof(group, parts, 0x4a2f1c, s * 2.2, s * 0.9, s * 1.7, wallH);
+  // Gable roof: a prism made from a triangular extrude, spanning the body (sized to the body).
+  addRoof(group, parts, roofTint, bw * 1.1, s * 0.9, bd * 1.14, wallH);
 
-  // Stone chimney up one side.
-  addBox(group, parts, 0x6f7176, s * 0.4, s * 1.4, s * 0.4, s * 0.7, wallH * 0.5 + s * 0.5, -s * 0.45);
+  // Stone chimney up one (randomly chosen) gable end.
+  const cside = rng() < 0.5 ? 1 : -1;
+  addBox(group, parts, 0x6f7176, s * 0.4, s * 1.4, s * 0.4, bw * 0.35, wallH * 0.5 + s * 0.5, cside * bd * 0.3);
 
-  void roof;
+  // Optional outbuildings beside the cabin (seeded), set off to +X so they clear the body.
+  if (rng() < STRUCTURES.woodpileChance) addWoodpile(group, parts, rng, bw * 0.5 + s * 0.5, -bd * 0.2, s);
+  if (rng() < STRUCTURES.shedChance) addShed(group, parts, logTint, roofTint, -bw * 0.5 - s * 0.7, bd * 0.15, s);
+
   return finalize(group, parts, 1.0);
+}
+
+/** A stacked-log woodpile: a few horizontal logs in two short rows beside the cabin. */
+function addWoodpile(group: THREE.Group, parts: Part[], rng: () => number, x: number, z: number, s: number): void {
+  const logR = s * 0.12;
+  const logL = s * 1.1;
+  const rows = 2;
+  const perRow = 3;
+  for (let r = 0; r < rows; r++) {
+    for (let i = 0; i < perRow; i++) {
+      const tint = 0x6a4a2c + Math.floor(rng() * 0x0a0a06);
+      addCylinder(group, parts, tint, logR, logL, x, logR + r * logR * 2.05, z + (i - 1) * logR * 2.1, 'x');
+    }
+  }
+}
+
+/** A small lean-to shed: a low box body with a single-slope roof slab. */
+function addShed(group: THREE.Group, parts: Part[], wallTint: number, roofTint: number, x: number, z: number, s: number): void {
+  const w = s * 1.1;
+  const h = s * 0.8;
+  const d = s * 0.9;
+  addBox(group, parts, wallTint, w, h, d, x, h / 2, z);
+  // Slanted roof slab (tilt about Z so it sheds toward +X).
+  const roof = addBox(group, parts, roofTint, w * 1.25, s * 0.12, d * 1.2, x, h + s * 0.1, z);
+  roof.mesh.rotation.z = 0.22;
 }
 
 // --- Depot ------------------------------------------------------------------
@@ -159,10 +216,14 @@ function addCylinder(
   x: number,
   y: number,
   z: number,
+  axis: 'y' | 'x' | 'z' = 'y',
 ): Part {
   const material = mat(color);
-  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 20), material);
+  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 14), material);
+  if (axis === 'x') mesh.rotation.z = Math.PI / 2; // lay the cylinder along X (a horizontal log)
+  else if (axis === 'z') mesh.rotation.x = Math.PI / 2;
   mesh.position.set(x, y, z);
+  mesh.castShadow = true;
   mesh.receiveShadow = true;
   group.add(mesh);
   const part: Part = { mesh, material, base: material.color.clone() };

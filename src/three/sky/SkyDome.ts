@@ -44,10 +44,12 @@ export function createSkyDome(frame: FrameContext, preset: SkyPreset): THREE.Mes
         // haze (depth) instead of meeting a hard fog wall. Pure gradient — load-once, no cost.
         float haze = pow(1.0 - h, 5.0);
         col = mix(col, uHorizon * 1.05 + vec3(0.015, 0.01, 0.0), haze * 0.3);
-        // Sun halo: a broad warm glow plus a tight core where you look at the sun. The broad
-        // term is widened a touch so the low golden sun washes warmth along the horizon.
+        // Sun halo: a broad warm glow plus a tight core where you look at the sun. Tightened
+        // (broad pow 5→8 @ 0.5→0.30, core pow 220→320 @ 0.7→0.5) so the low golden sun still
+        // warms the horizon and the core glows, but the halo no longer spreads a sky-wide HDR
+        // sheet that the bloom pass grabbed into an into-sun white-out (it stays under threshold).
         float d = max(dot(normalize(vDir), normalize(uSunDir)), 0.0);
-        float halo = pow(d, 5.0) * 0.5 + pow(d, 220.0) * 0.7;
+        float halo = pow(d, 8.0) * 0.30 + pow(d, 320.0) * 0.5;
         col += uSunHalo * halo;
         gl_FragColor = vec4(col, 1.0);
       }

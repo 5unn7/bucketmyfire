@@ -2,6 +2,18 @@ node_modules/
 dist/
 *.local
 .DS_Store
+
+# Local leaderboard secrets — never commit (.env.example is the checked-in template)
+.env
+.env.*
+!.env.example
+
+# Local tooling / scratch — not part of the game, kept off the repo
+.mcp.json
+.info.txt
+.claude/settings.local.json
+scripts/.verify-campaign.mjs
+
 .vite/
 *.log
 .playwright-mcp/

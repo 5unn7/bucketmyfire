@@ -58,6 +58,20 @@ export interface WindLike {
   vz: number;
 }
 
+/**
+ * Read-only view of the live cellular field for RENDERERS (terrain char + ember glow, minimap
+ * burn overlay). Numbers only — no Three — so the engine-agnostic sim boundary holds. The arrays
+ * are the sim's OWN buffers (no copy): treat them as read-only and valid only for the current
+ * frame; don't mutate them or stash references across a streaming swap.
+ */
+export interface FireFieldView {
+  readonly n: number; // cells per side (FIRE3D.fireCells)
+  readonly cellSize: number; // world units per cell
+  readonly half: number; // half the world extent — the grid spans [-half, half]² in world XZ
+  readonly heat: Float32Array; // live fire 0..1 per cell (the actively-burning region)
+  readonly scorch: Uint8Array; // 1 once a cell has burned out (the lasting burn scar)
+}
+
 export class FireSystem {
   // --- The field (fixed-size grids over [-size/2, size/2]²) -------------------
   private readonly n = FIRE3D.fireCells; // cells per side
@@ -83,6 +97,9 @@ export class FireSystem {
 
   private burnedOutCells = 0;
   private extinguishedCells = 0;
+
+  // Stable field view object (built once) handed to renderers each frame — no per-frame alloc.
+  private readonly fieldViewObj: FireFieldView;
 
   constructor(private readonly deps: FireDeps) {
     const N = this.n * this.n;
@@ -114,6 +131,24 @@ export class FireSystem {
     for (let i = 0; i < FIRE3D.maxActive; i++) {
       this.reps.push({ id: i, x: 0, z: 0, y: 0, intensity: 0, size: 0, fuel: 0, alive: true });
     }
+
+    this.fieldViewObj = {
+      n: this.n,
+      cellSize: this.cellSize,
+      half: this.half,
+      heat: this.heat,
+      scorch: this.scorch,
+    };
+  }
+
+  /**
+   * The live cellular field for renderers (terrain char + ember glow, minimap burn). Returns a
+   * STABLE object (no per-frame allocation) whose `heat`/`scorch` arrays are the sim's own live
+   * buffers — read-only, valid for the current frame. This is the continuous burn the user sees:
+   * `heat` is the advancing fire region, `scorch` the trailing burn scar.
+   */
+  fieldView(): FireFieldView {
+    return this.fieldViewObj;
   }
 
   /** Seed the opening fires in dry forest, off the player's spawn. */

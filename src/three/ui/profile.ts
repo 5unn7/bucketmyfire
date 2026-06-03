@@ -70,8 +70,9 @@ export const MAPS: CatalogItem[] = [
 ];
 
 // --- Helicopters ------------------------------------------------------------
-// The first entry is the live hero model; the rest are placeholders for the
-// planned roster. Spec bars are illustrative until per-heli tuning lands.
+// Each entry maps to a glTF model in meshes/heliModels.ts (HELI_MODELS) by id.
+// Spec bars are illustrative until per-heli flight tuning lands — all three
+// currently share the tuned flight model; selecting one swaps the airframe.
 export const HELIS: CatalogItem[] = [
   {
     id: 'bell-205a1',
@@ -88,31 +89,31 @@ export const HELIS: CatalogItem[] = [
     ],
   },
   {
-    id: 'aircrane-s64',
-    name: 'Aircrane S-64',
-    tagline: 'Heavy lifter',
-    blurb: 'A flying crane with an enormous tank. Slow and ponderous, but one pass smothers a blaze.',
-    available: false,
+    id: 'bell-212',
+    name: 'Bell 212',
+    tagline: 'Twin-engine medium',
+    blurb: 'The twin-pac sister of the Huey — more power on tap and a bigger belly. Steady in the gusts off the lakes.',
+    available: true,
     accent: '#d8a12a',
-    glyph: '🏗️',
+    glyph: '🚁',
     specs: [
-      { label: 'Speed', value: 0.35 },
-      { label: 'Agility', value: 0.3 },
-      { label: 'Bucket', value: 1.0 },
+      { label: 'Speed', value: 0.6 },
+      { label: 'Agility', value: 0.52 },
+      { label: 'Bucket', value: 0.72 },
     ],
   },
   {
-    id: 'scout-500',
-    name: 'Scout 500',
-    tagline: 'Light & nimble',
-    blurb: 'A featherweight observation ship. Whips between lakes, but the little bucket means many trips.',
-    available: false,
-    accent: '#3d8fb0',
-    glyph: '🛩️',
+    id: 'uh-60',
+    name: 'UH-60 Black Hawk',
+    tagline: 'Heavy & fast',
+    blurb: 'A big four-blade utility ship. Hauls a heavy load fast between distant fires — less nimble down low.',
+    available: true,
+    accent: '#5b6b50',
+    glyph: '🚁',
     specs: [
-      { label: 'Speed', value: 0.95 },
-      { label: 'Agility', value: 0.95 },
-      { label: 'Bucket', value: 0.28 },
+      { label: 'Speed', value: 0.82 },
+      { label: 'Agility', value: 0.48 },
+      { label: 'Bucket', value: 0.88 },
     ],
   },
 ];

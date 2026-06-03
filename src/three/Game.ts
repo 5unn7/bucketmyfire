@@ -4,6 +4,8 @@ import { createTreeField, TreeField } from './meshes/trees';
 import { deciduousSpecies, snagSpecies, speciesRng } from './meshes/treeSpecies';
 import { createRiverMesh } from './meshes/river';
 import { createRoadMesh } from './meshes/road';
+import { createYardPatch, createYardMaterial } from './meshes/clearing';
+import { createDock } from './meshes/dock';
 import { applyFoliageSway } from './meshes/foliageWind';
 import { createHelicopter, HelicopterMesh } from './meshes/helicopter';
 import { createBucket, BucketMesh } from './meshes/bucket';
@@ -24,6 +26,7 @@ import { Obstacles } from './Obstacles';
 import { Input, ControlState } from './Input';
 import { HUD } from './HUD';
 import { FrameContext } from './render/FrameContext';
+import { FireFieldTexture } from './render/FireFieldTexture';
 import { QualityTier } from './render/QualityTier';
 import { Ripples } from './water/Ripples';
 import { createWaterMaterial } from './water/WaterMaterial';
@@ -42,10 +45,11 @@ import { CrewTransport, CrewZone } from './sim/CrewTransport';
 import { FuelSim } from './sim/FuelSim';
 import { MissionRuntime } from './missions/MissionRuntime';
 import { recordWin } from './missions/progress';
+import { submitScore } from './leaderboard/client';
 import type { MissionDef, MissionSignals } from './missions/types';
 import type { EndScreenHooks } from './HUD';
 import { seedFires, structurePlan, crewZones } from './missions/scenario';
-import { WORLD3D, FLIGHT, BUCKET3D, FIRE3D, WATER, WASH, SPRAY, SMOKE, EMBERS, INSTRUMENTS, ROADS, MISSIONS } from './config';
+import { WORLD3D, FLIGHT, BUCKET3D, FIRE3D, WATER, WASH, SPRAY, SMOKE, EMBERS, INSTRUMENTS, ROADS, MISSIONS, COMMUNITIES } from './config';
 
 // Instrument calibration factors (world units → real-world HUD units). Derived from
 // the FLIGHT caps so the gauges stay consistent if those are retuned.
@@ -107,6 +111,10 @@ export class Game {
   // shader recompiles, honoring the mobile-60fps invariant).
   private readonly fireSystem: FireSystem;
   private readonly fireMeshes: FireMesh[] = [];
+  // C5 continuous burn: the live fire field packed into a DataTexture each frame, sampled by the
+  // terrain (char + ember glow) and rasterized onto the radar (burn scar) — so the fire reads as
+  // one advancing region, not ≤14 dots, and the ground it crosses chars + the minimap shades it.
+  private readonly fireField = new FireFieldTexture(FIRE3D.fireCells, WORLD3D.size);
   private readonly heroFire = new HeroFireLights(this.scene); // B3: fixed pool of fire lights
   // C3 stakes: structures to defend (engine-agnostic state) + a fixed pool of meshes
   // synced to them each frame. Lose when every structure burns down.
@@ -178,6 +186,20 @@ export class Game {
       return base ? { x: base.x, z: base.z } : null;
     })();
 
+    // Resolve the mission's building plan UP FRONT so the cleared yards — AND the radar place-
+    // name labels — line up with where buildings actually stand (the depot's base + each defended
+    // hamlet), not every named-but-unbuilt community site. Unbuilt sites would otherwise grow
+    // phantom clearings in the bush and float a town name over empty forest. The forest scatter
+    // (below) reads these via World.clearingFactor, so resolving them here, in order, matters.
+    const structPlan = structurePlan(this.world, this.mission);
+    const builtSites: { name: string; x: number; z: number }[] = [];
+    if (structPlan.depot) {
+      const b = this.world.getCommunity('base');
+      if (b) builtSites.push({ name: b.name, x: b.x, z: b.z });
+    }
+    for (const g of structPlan.groups) builtSites.push({ name: g.community.name, x: g.community.x, z: g.community.z });
+    this.world.setClearings(builtSites);
+
     // Atmosphere (B2): a gradient sky dome + aerial-perspective fog + sun/hemisphere
     // light, all configured from one time-of-day preset so they stay coherent (fog
     // fades distant hills into the sky's horizon band; the sun glows in the dome).
@@ -202,7 +224,11 @@ export class Game {
 
     // Terrain (vertices displaced from the World heightfield, basins carved in) +
     // lake discs (each sits at the World's flat water level, inside its bowl) + forest.
-    const terrain = createTerrain(this.world, tier.current.terrainSegments, this.frame);
+    const terrain = createTerrain(this.world, tier.current.terrainSegments, this.frame, {
+      tex: this.fireField.texture,
+      min: this.fireField.worldMin,
+      size: this.fireField.worldSize,
+    });
     this.scene.add(terrain.mesh);
 
     // One shared animated water material across every lake (B1), wired to the shared
@@ -229,6 +255,14 @@ export class Game {
     // material as the lakes. You can scoop from them too (World.waterLevelAt generalizes).
     for (const r of this.world.rivers) {
       this.scene.add(createRiverMesh(r, (x, z) => this.world.groundHeightAt(x, z), waterMat));
+    }
+
+    // Cleared yards (A5 polish): a packed-dirt clearing draped under each settlement, sharing
+    // one transparent vertex-coloured material. Drawn before the roads/buildings (renderOrder
+    // -1) so those layer cleanly on top; the forest already thinned here via clearingFactor.
+    const yardMat = createYardMaterial();
+    for (const c of builtSites) {
+      this.scene.add(createYardPatch(c.x, c.z, (x, z) => this.world.groundHeightAt(x, z), yardMat));
     }
 
     // Highways (A5): draped GRAVEL ribbons linking the communities. The deck DRAPES on the
@@ -258,7 +292,10 @@ export class Game {
       candidates: Math.round(5200 * (WORLD3D.size / 600) ** 2),
       size: WORLD3D.size,
       heightAt: (x, z) => this.world.groundHeightAt(x, z),
-      sample: (x, z) => this.world.biomes.sample(x, z),
+      sample: (x, z) => {
+        const s = this.world.biomes.sample(x, z);
+        return { treeDensity: s.treeDensity * this.world.clearingFactor(x, z), treeTint: s.treeTint };
+      },
       rng: this.world.rng,
       burnable: true, // C5: conifers ignite + char + collapse when the fire field reaches them
     });
@@ -279,7 +316,7 @@ export class Game {
       candidates: Math.round(2200 * (WORLD3D.size / 600) ** 2),
       size: WORLD3D.size,
       heightAt: (x, z) => this.world.groundHeightAt(x, z),
-      sample: (x, z) => ({ treeDensity: this.world.biomes.sample(x, z).treeDensity * 0.38, treeTint: [0.62, 0.66, 0.33] }),
+      sample: (x, z) => ({ treeDensity: this.world.biomes.sample(x, z).treeDensity * 0.38 * this.world.clearingFactor(x, z), treeTint: [0.62, 0.66, 0.33] }),
       rng: speciesRng(WORLD3D.seed ^ 0x2bd1e995),
       species: deciduousSpecies(),
       burnable: true, // C5: birch/aspen groves burn too
@@ -292,7 +329,7 @@ export class Game {
       candidates: Math.round(700 * (WORLD3D.size / 600) ** 2),
       size: WORLD3D.size,
       heightAt: (x, z) => this.world.groundHeightAt(x, z),
-      sample: (x, z) => ({ treeDensity: this.world.biomes.sample(x, z).treeDensity * 0.07, treeTint: [0.3, 0.28, 0.25] }),
+      sample: (x, z) => ({ treeDensity: this.world.biomes.sample(x, z).treeDensity * 0.07 * this.world.clearingFactor(x, z), treeTint: [0.3, 0.28, 0.25] }),
       rng: speciesRng(WORLD3D.seed ^ 0x7f4a7c13),
       species: snagSpecies(),
     });
@@ -331,18 +368,24 @@ export class Game {
       lakes: this.world.lakes.map((l) => ({ x: l.x, z: l.z, r: l.r })),
       rng: this.world.rng,
       communities: this.world.communities,
-      plan: structurePlan(this.world, this.mission),
+      plan: structPlan,
     });
     this.structures.list.forEach((s, i) => {
-      const m = createStructure(s.kind);
+      const m = createStructure(s.kind, s.id + 1); // +1 so id 0 still seeds varied geometry
       m.group.position.set(s.x, s.y, s.z);
       m.group.rotation.y = i * 1.3; // deterministic per-index yaw for variety
       this.scene.add(m.group);
       this.structureMeshes.push(m);
     });
 
-    // Helicopter + the bucket slung beneath it on a rope.
-    this.heli = createHelicopter();
+    // Dock (A5 polish): a jetty off the lakeside base, reaching out over its lake — sells the
+    // depot as a real waterfront base. Built once: find the base's nearest lake, march from the
+    // base to the shoreline, then lay the deck (local +X) out over the water at the lake level.
+    this.addBaseDock();
+
+    // Helicopter + the bucket slung beneath it on a rope. The selected model (if any)
+    // swaps in behind the procedural hero; unknown ids fall back to the Bell 205A-1.
+    this.heli = createHelicopter(this.heliId);
     this.scene.add(this.heli.group);
     const p = this.heliSim.position;
     this.bucketSim = new BucketSim(p.x, p.y, p.z);
@@ -401,13 +444,18 @@ export class Game {
       container,
       buildMinimap(this.world, WORLD3D.size, 320),
       {
-        communities: this.world.communities.map((c) => ({ name: c.name, x: c.x, z: c.z })),
+        // Only label communities that were actually BUILT (the depot base + defended hamlets),
+        // so a radar place-name always has a real settlement under it — no town names floating
+        // over empty bush. `builtSites` is the same set that gets cleared yards + buildings.
+        communities: builtSites.map((c) => ({ name: c.name, x: c.x, z: c.z })),
         // Only label the larger lakes (smaller ponds would clutter the radar).
         lakes: this.world.lakes.filter((l) => l.r >= 30).map((l) => ({ name: l.name, x: l.x, z: l.z })),
       },
       this.pilotName,
       this.end,
     );
+    // C5: hand the radar the live fire field so it shades the burnt area (and the live front).
+    this.hud.setBurnField(this.fireSystem.fieldView());
   }
 
   get camera(): THREE.PerspectiveCamera {
@@ -640,6 +688,10 @@ export class Game {
       this.runtime.update(this.missionSignals());
       if (this.runtime.state !== 'active') this.latchOutcome();
     }
+    // C5: repack the live fire field into the shared DataTexture the terrain chars/glows from —
+    // the continuous burn the player sees. O(cells) memcpy after the sim steps; skipped while
+    // frozen (won/lost) since the field can't change then — no wasted per-frame work.
+    if (!frozen) this.fireField.pack(this.fireSystem.fieldView());
     // Sync the fixed fire-mesh pool to the sim's active fires (burned-out + put-out vanish).
     // C4: a fire within the wash radius of a low heli gets fanned (cosmetic flame whip).
     const activeFires = this.fireSystem.active();
@@ -700,7 +752,9 @@ export class Game {
         const heat = fireHeat(f);
         if (heat <= SMOKE.minIntensity) continue;
         const crown = f.y + SMOKE.crownBase + SMOKE.crownPerSize * f.size;
-        const puffs = 1 + Math.round(heat * (SMOKE.maxPuffsPerBurst - 1));
+        // Floor of 2 so even a small spot fire throws a readable column, scaling up to a dense
+        // wall of puffs for a big blaze (which then obscures its own seat).
+        const puffs = 2 + Math.round(heat * (SMOKE.maxPuffsPerBurst - 2));
         for (let k = 0; k < puffs; k++) this.smoke.emit(f.x, crown, f.z, heat);
       }
     }
@@ -882,7 +936,17 @@ export class Game {
     this.won = this.runtime.state === 'won';
     this.lost = this.runtime.state === 'lost';
     this.finalScore = this.runtime.score;
-    if (this.won) recordWin(this.mission.id, this.finalScore, this.runtime.completion());
+    if (this.won) {
+      recordWin(this.mission.id, this.finalScore, this.runtime.completion());
+      // Global leaderboard (optional): fire-and-forget — submitScore never throws and no-ops
+      // when Supabase isn't configured, so the win flow is unaffected if the network/board is down.
+      void submitScore({
+        pilot: this.pilotName ?? 'Pilot',
+        missionId: this.mission.id,
+        score: this.finalScore,
+        timeS: this.missionElapsed,
+      });
+    }
   }
 
   /** Fuel missions: grounded + slow within the depot radius → refuelling this frame. */
@@ -896,6 +960,52 @@ export class Game {
   private surfaceAt(x: number, z: number): number {
     const wl = this.world.waterLevelAt(x, z);
     return wl !== null ? wl : this.world.groundHeightAt(x, z);
+  }
+
+  /**
+   * Lay the base's jetty out over its lake. Finds the base community's nearest lake, marches
+   * from the base toward that lake's centre to the shoreline, and places the dock there yawed
+   * so its deck (local +X) runs out over the water at the lake's flat surface. No-op if the
+   * map didn't grow a base or any lake (the dock is pure decoration — never gated by it).
+   */
+  private addBaseDock(): void {
+    const base = this.world.getCommunity('base');
+    if (!base || this.world.lakes.length === 0) return;
+    // Nearest lake to the base (it was sited on the largest lake's shore, so this is it).
+    let lake = this.world.lakes[0];
+    let bestD = Infinity;
+    for (const l of this.world.lakes) {
+      const d = Math.hypot(l.x - base.x, l.z - base.z);
+      if (d < bestD) {
+        bestD = d;
+        lake = l;
+      }
+    }
+    const dx = lake.x - base.x;
+    const dz = lake.z - base.z;
+    const len = Math.hypot(dx, dz) || 1;
+    const ux = dx / len;
+    const uz = dz / len;
+    // March from the base toward the lake centre to the first point over water (the shoreline).
+    let shoreX = base.x;
+    let shoreZ = base.z;
+    let found = false;
+    for (let m = 0; m <= len; m += 1) {
+      const x = base.x + ux * m;
+      const z = base.z + uz * m;
+      if (this.world.isOverWater(x, z)) {
+        shoreX = x;
+        shoreZ = z;
+        found = true;
+        break;
+      }
+    }
+    if (!found) return;
+    const dock = createDock(COMMUNITIES.dockLength);
+    dock.position.set(shoreX, lake.waterLevel, shoreZ);
+    // Local +X maps to world (cos y, 0, -sin y); aim it at the lake → y = atan2(-uz, ux).
+    dock.rotation.y = Math.atan2(-uz, ux);
+    this.scene.add(dock);
   }
 
   /** Status line: guide the player to dip, or show the fill in progress. */

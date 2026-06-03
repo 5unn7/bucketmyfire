@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { swapInHueyModel } from './hueyModel';
+import { swapInModel } from './heliModels';
 
 /**
  * Procedural HIGH-POLY Bell 205A-1 — the civilian single-engine derivative of the
@@ -45,7 +45,7 @@ export interface HelicopterMesh {
   tailRotor: THREE.Object3D; // tail rotor — caller spins this about its local X each frame
 }
 
-export function createHelicopter(): HelicopterMesh {
+export function createHelicopter(heliId?: string): HelicopterMesh {
   const group = new THREE.Group();
   group.name = 'helicopter';
 
@@ -358,9 +358,10 @@ export function createHelicopter(): HelicopterMesh {
   group.add(navGreen);
 
   const heli: HelicopterMesh = { group, rotor, tailRotor };
-  // Try to swap in the downloaded glTF Huey behind this same contract; the procedural
-  // model above stays visible as the instant fallback if the load fails.
-  swapInHueyModel(heli);
+  // Try to swap in the selected downloaded glTF behind this same contract; the
+  // procedural model above stays visible as the instant fallback if the load fails
+  // (or if the chosen heli has no model — it falls back to the hero Bell 205A-1).
+  swapInModel(heli, heliId);
   return heli;
 }
 

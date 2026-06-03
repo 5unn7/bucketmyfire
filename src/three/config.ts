@@ -433,6 +433,14 @@ export const STRUCTURES = {
   // cabin roof-peak ≈ cabinSize × 2, depot ≈ depotSize × 1.1, so keep these well under ~3.
   cabinSize: 1.8, // cabin half-extent (units) → ~3.6u to the ridge, below the treetops
   depotSize: 3.6, // depot half-extent (units) → a wide, low lakeside base (~4u tall)
+  // Per-cabin variety (deterministic from each structure's id) so a hamlet reads as
+  // distinct dwellings, not stamped clones. Footprint/height jitter + a small palette of
+  // boreal log/roof tints, and a chance each cabin gets a woodpile or a lean-to shed.
+  sizeJitter: 0.18, // ± fraction applied to cabin body width/depth/height
+  logTints: [0x6b4a2f, 0x7a5636, 0x5f4129, 0x715030, 0x4f3622], // weathered log walls
+  roofTints: [0x4a2f1c, 0x3c3a33, 0x55402a, 0x32302b], // shingle / tin / tar-paper roofs
+  woodpileChance: 0.5, // chance a cabin gets a stacked-log woodpile beside it
+  shedChance: 0.4, // chance a cabin gets a small lean-to shed
 } as const;
 
 // Settlements (Track A5 — populated map). Beyond lone cabins, the world seeds a handful
@@ -450,6 +458,14 @@ export const COMMUNITIES = {
   cabinsMax: 6, // most cabins in a hamlet
   remoteCabins: 3, // lone trapper cabins out in the bush (spread bait), beyond the towns
   baseShoreSearch: 48, // how far past a lake's edge to ray-march for the base's dry shore
+  // Cleared yard around each settlement: trees thin out and the ground reads as a trampled
+  // dirt clearing, so a hamlet looks lived-in (not boxes buried in forest). The same radius
+  // suppresses the forest scatter and sizes the dirt decal under the buildings.
+  yardRadius: 34, // radius of the cleared/dirt yard around a community centre (units)
+  yardInner: 0.5, // fraction of yardRadius fully cleared of trees before the rim feathers in
+  yardColor: 0x6e5e45, // trampled dirt / packed-earth yard tint
+  yardSpeckle: 0.14, // per-vertex brightness wobble on the yard (worn ground, not a flat slab)
+  dockLength: 16, // how far the base's jetty reaches out over the water (units)
 } as const;
 
 // Highways (Track A5). A road network linking the communities — drawn as draped 3D
@@ -564,8 +580,9 @@ export const POSTFX = {
   // Only HDR pixels bloom: the emissive flames (emissiveIntensity up to 2.6) and the sun
   // core clear this, but the LDR sky/fog (luminance ~0.8) stays crisp — so the fires glow
   // without the horizon washing out. (EffectComposer keeps HDR in a half-float target.)
-  bloomThreshold: 0.95, // raised: only the genuine white-hot core (HDR >1) blooms — the deep-orange
-  // flame body and warm sky stay crisp, so the fire reads as defined flame, not a glowing haze
+  bloomThreshold: 1.05, // raised again (0.95→1.05): only genuine HDR >1 pixels bloom — the fire
+  // white-hot core + tight sun core still glow, but the broad amber sky/horizon halo (which crept
+  // just over the old 0.95 when you faced the low sun) now stays crisp instead of blooming flat white
 } as const;
 
 // Volumetric god-rays / crepuscular shafts (Track B — golden-hour). A screen-space radial
@@ -582,8 +599,12 @@ export const GODRAYS = {
   density: 0.9, // how far along the screen-vector to the sun each march reaches (0..1)
   decay: 0.95, // per-step brightness falloff → shafts fade out with distance from the sun
   weight: 0.5, // per-sample contribution to the accumulated shaft
-  exposure: 0.45, // overall shaft brightness added back onto the frame
-  threshold: 0.5, // luma a sampled pixel must exceed to seed rays (dark geometry → no shaft)
+  exposure: 0.28, // overall shaft brightness added back onto the frame. Lowered from 0.45: the
+  // shafts were stacking with the sky halo + bloom into a blinding into-sun white-out that hid the
+  // whole scene; 0.28 keeps readable raking shafts without washing the frame when you face the sun.
+  threshold: 0.62, // luma a sampled pixel must exceed to seed rays (dark geometry → no shaft).
+  // Raised from 0.5 so only the genuine bright sky near the sun streams — the warm-but-mid amber
+  // haze band no longer seeds full-frame shafts (a second contributor to the into-sun wash).
   belowHorizonFade: 0.06, // sun-dir Y below which the rays fade out (sun set / behind a hill)
 } as const;
 
@@ -700,37 +721,48 @@ export const SPRAY = {
   color: 0xeaf7ff, // bright water-white
 } as const;
 
-// Smoke plumes (Track B4) — per-fire wildfire smoke. A single pooled GPU Points
-// cloud (fixed ring buffer, one scene object, soft procedural puffs → zero textures):
-// each active fire puffs particles from its crown that RISE, EXPAND, fade, and BEND
-// downwind (accelerated toward the live wind vector), scaling with fire intensity.
-// Restores the 2D smoke and reads great against the bloom + atmosphere.
+// Smoke plumes (Track B4) — per-fire wildfire smoke as a VOLUME. A single pooled GPU Points
+// cloud (fixed ring buffer, one scene object) where each puff billboards a real soft smoke-puff
+// SPRITE (a downloaded asset, see `tex`), rotated per puff. Puffs rise from a fire's crown,
+// EXPAND and fade over their life, and BEND downwind (velocity dragged toward the live wind
+// vector). The column is dense + near-opaque so the helicopter can't see through it — you fly
+// AROUND it. Color is ZONED by how far a puff has risen above its crown: fire-lit ORANGE at the
+// base, oily NEAR-BLACK billows low in the fresh body, GREY for most of the height, dispersing
+// to PALE grey at the anvil.
 export const SMOKE = {
-  max: 1800, // pooled particle cap (ring buffer — recycles oldest, never grows). Raised so the
-  // denser emission below sustains a TALLER, fuller column without recycling the base out from under it.
-  emitInterval: 0.09, // seconds between puff bursts (shorter → a denser, more continuous column)
-  rise: 16, // initial upward speed (units/s) — the column SHOOTS up
-  riseDamp: 0.1, // per-second cooling that bleeds the rise (very low → it keeps climbing, towers ~200u)
+  tex: 'textures/smoke-puff.png', // soft smoke-puff sprite billboarded per particle (real asset, see CREDITS.md)
+  max: 2400, // pooled particle cap (ring buffer — recycles oldest, never grows). High so the dense,
+  // near-opaque column sustains its full height without recycling the base out from under it.
+  emitInterval: 0.07, // seconds between puff bursts (shorter → a denser, more continuous, occluding column)
+  rise: 17, // initial upward speed (units/s) — the column SHOOTS up into a tall pillar
+  riseDamp: 0.1, // per-second cooling that bleeds the rise (very low → it keeps climbing, towers)
   spread: 2.2, // initial random lateral speed (units/s)
   windInfluence: 9, // downwind drift the plume accelerates toward (units/s at full wind)
-  windCatch: 0.55, // how fast a puff is dragged to wind speed (lower → a tall pillar that leans late, not a low smear)
-  life: 18, // particle lifetime (seconds) — raised so the pillar towers higher (pyrocumulus reach)
-  startSize: 9, // point size when fresh (a fat, dense base, not a thread)
-  endSize: 90, // point size when fully aged — huge billows up high (pyrocumulus anvil)
-  color: 0x26221e, // near-black charcoal — a DANGEROUS wildfire throws thick, oily black smoke
-  // (the brown-grey before read as harmless campfire smoke). It greys/lightens only way up high.
-  warmColor: 0xff5a14, // ember underglow: ONLY the freshest puffs at the seat are lit warm
-  opacity: 0.72, // peak alpha (per puff, before soft-edge falloff) — thick, fully obscuring column
+  windCatch: 0.55, // how fast a puff is dragged to wind speed (lower → a tall pillar that leans late)
+  life: 18, // particle lifetime (seconds) — long so the pillar towers (pyrocumulus reach)
+  startSize: 20, // point size when fresh (a fat, dense textured puff)
+  endSize: 150, // point size when fully aged — huge billows up high (pyrocumulus anvil)
+  opacity: 0.92, // peak alpha (per puff, before sprite + soft falloff) — thick, view-blocking column
   minIntensity: 0.1, // fires dimmer than this don't smoke
-  // Heat reactivity (C3.1): heat = fire intensity × size. A big, hot fire throws a taller,
-  // bigger, DENSER, DARKER column that obscures the seat of the fire (so it's hard to
-  // bomb accurately — read the wind, run in upwind). All scale per-puff off the puff's heat.
-  maxPuffsPerBurst: 8, // a Class-A spot emits 1 puff/burst; a full blaze up to this many (denser — raised from 6)
+  // Heat reactivity (C3.1): heat = fire intensity × size. A big, hot fire throws a taller, bigger,
+  // DENSER column that obscures the seat of the fire (read the wind, run in upwind). Scales per puff.
+  maxPuffsPerBurst: 10, // a Class-A spot emits 1 puff/burst; a full blaze up to this many
   crownBase: 3, // smoke leaves the flame crown this low (units) at size 0 — boils right off the seat…
   crownPerSize: 15, // …plus this × size — a big fire's column starts high up the flame wall
   heatSize: 2.1, // extra puff size at full heat (×) — fat, billowing pyrocumulus over a big fire
-  heatOpacity: 0.95, // extra alpha at full heat (×) — a big front's column reads thick/opaque
-  heatDarken: 0.82, // darkens the puff toward black at full heat (0..1) — an oily, light-eating pillar
+  heatOpacity: 0.7, // extra alpha at full heat (×) — a big front's column reads thick/opaque
+  // --- Volume color ZONING (orange base → black billows → grey body → pale anvil) ----------
+  // Driven by `rise` = how far (world units) a puff has climbed above the crown it left.
+  bodyColor: 0x5b574f, // the dark ASH-GREY that makes up most of the column (reads against bright sky)
+  darkColor: 0x100e0c, // near-black OILY pockets low in the fresh, dense body
+  paleColor: 0xb4afa6, // dispersing PALE grey at the anvil / oldest puffs
+  warmColor: 0xff6a1e, // fire-lit ORANGE glow on the lowest puffs (the smoke base catches the flame light)
+  warmRise: 22, // base orange glow fades out by this many units above the crown
+  warmStrength: 1.5, // intensity of that base glow (×)
+  darkLo: 2, // the black band starts this far above the crown…
+  darkHi: 64, // …and fades back to grey by here (so the black sits in the lower-mid body)
+  darkStrength: 0.95, // how black the oily pockets get (0..1 mix toward darkColor)
+  paleRise: 120, // grey disperses toward pale above this rise (the dissipating top)
 } as const;
 
 // Heat haze / refraction (Track B4). The classic "this is HOT" shimmer: a subtle screen-space

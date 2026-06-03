@@ -680,6 +680,39 @@ export class World {
     const dz = (this.groundHeightAt(x, z + e) - this.groundHeightAt(x, z - e)) / (2 * e);
     return Math.hypot(dx, dz);
   }
+
+  /**
+   * Register the centres that get a cleared yard (where buildings actually stand). Set by
+   * `Game` from the resolved structure plan, so empty named-but-unbuilt community sites don't
+   * grow phantom clearings in the forest. Falls back to all communities until set.
+   */
+  setClearings(centers: readonly { x: number; z: number }[]): void {
+    this.clearingCenters = centers.slice();
+  }
+  private clearingCenters: readonly { x: number; z: number }[] | null = null;
+
+  /**
+   * Forest-clearing weight in 0..1: 1 out in the open bush, falling to 0 inside a
+   * settlement's cleared yard so trees thin out where people live (a hamlet shouldn't be
+   * boxes buried in forest). Fully cleared within `yardRadius * yardInner`, then feathered
+   * up to 1 at the yard rim for a natural edge. Returns the MIN over the registered yard
+   * centres (any yard clears). The yard decal in `meshes/clearing.ts` uses the same radii so
+   * the dirt and the cleared trees line up.
+   */
+  clearingFactor(x: number, z: number): number {
+    let k = 1;
+    const r = COMMUNITIES.yardRadius;
+    const inner = r * COMMUNITIES.yardInner;
+    const centers = this.clearingCenters ?? this.communities;
+    for (const c of centers) {
+      const d = Math.hypot(c.x - x, c.z - z);
+      if (d >= r) continue;
+      const t = d <= inner ? 0 : (d - inner) / (r - inner);
+      const w = t * t * (3 - 2 * t); // smoothstep rim
+      if (w < k) k = w;
+    }
+    return k;
+  }
 }
 
 // --- Basin shaping (module-pure helpers) ---------------------------------------

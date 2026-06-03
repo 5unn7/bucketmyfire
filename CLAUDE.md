@@ -9,6 +9,13 @@ northern Saskatchewan, scoop water into a slung Bambi bucket from lakes, and dro
 on forest fires before they spread. It runs entirely client-side — no backend, no
 binary art assets (all geometry/textures are procedural).
 
+> **One optional exception to "no backend":** the global leaderboard
+> (`src/three/leaderboard/`) talks to Supabase via plain `fetch` (no SDK) when
+> `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` are set at build time (see
+> `.env.example` + `supabase/schema.sql`). It is **fully env-gated and degrades to an
+> "offline" board** when unconfigured — the game itself stays 100% client-side, and the
+> local best-score store (`missions/progress.ts`) remains authoritative for unlocks.
+
 Design intent: a **real-3D** game with a Forza/GTA chase-cam sensibility, great
 generative visuals, and flight/payload physics that *feel real* (momentum, inertia,
 a bucket that swings and lags) — all holding 60fps on mobile browsers.

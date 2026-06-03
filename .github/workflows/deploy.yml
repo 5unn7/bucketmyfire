@@ -1,0 +1,60 @@
+name: deploy
+
+# Auto-deploy the game to GitHub Pages on every push to main.
+#
+# Builds the static site (tsc gate + vite build) and publishes dist/ to the `gh-pages`
+# branch, which GitHub Pages serves (Settings → Pages → Deploy from a branch: gh-pages /).
+# The Supabase leaderboard keys are injected from repo secrets at build time so the live
+# board stays online (the anon key is public/RLS-gated — safe to ship in the bundle).
+#
+# If a build ever fails, gh-pages is left untouched and the current site keeps serving.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+# Let the build push the gh-pages branch with the default token.
+permissions:
+  contents: write
+
+# Never run two deploys at once; newest push wins.
+concurrency:
+  group: deploy-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Build (tsc gate + vite build)
+        run: npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+
+      - name: Publish dist/ to gh-pages
+        env:
+          DEPLOY_TOKEN: ${{ github.token }}
+        run: |
+          touch dist/.nojekyll
+          cd dist
+          git init -q
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -qm "deploy: ${GITHUB_SHA}"
+          git branch -M gh-pages
+          git push -f "https://x-access-token:${DEPLOY_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
