@@ -81,21 +81,10 @@
     <div id="game"></div>
     <script type="module" src="/src/three/main.ts"></script>
 
-    <!-- ─────────────────────────────────────────────────────────────────────────
-         Cloudflare Web Analytics — privacy-first visitor tracking (no cookies, no
-         consent banner). Free + unlimited. Reports pageviews, referrers, country,
-         device and top pages.
-
-         ⚠️ ONE-TIME SETUP — paste your token below:
-           1. Go to https://dash.cloudflare.com → Analytics → Web Analytics → "Add a site"
-           2. Enter  bucketmyfire.com  (no need to proxy DNS — the beacon works standalone)
-           3. Copy the token Cloudflare gives you and replace REPLACE_WITH_CF_TOKEN
-         Until the token is replaced the beacon loads but records nothing.
-         The token is NOT a secret — it is meant to live in client HTML. ───────── -->
-    <script
-      defer
-      src="https://static.cloudflareinsights.com/beacon.min.js"
-      data-cf-beacon='{"token": "REPLACE_WITH_CF_TOKEN"}'
-    ></script>
+    <!-- Visitor analytics: NONE here on purpose. The domain is proxied through Cloudflare
+         (orange-cloud) with Web Analytics enabled, so Cloudflare AUTO-INJECTS the privacy-first
+         beacon at the edge — no cookies, no consent banner, no token in this file. Adding a manual
+         <script> beacon here would double-count every pageview. If the site is ever moved off the
+         Cloudflare proxy, re-add the manual beacon (dash.cloudflare.com → Web Analytics → token). -->
   </body>
 </html>
