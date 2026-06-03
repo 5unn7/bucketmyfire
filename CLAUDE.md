@@ -198,22 +198,26 @@ score more than natural burn-outs). All of this is `FIRE3D`/`STRUCTURES` in `con
 
 ### Rendering performance system
 
-- `render/QualityTier.ts` — auto-detects a low/med/high preset, then runs an **adaptive
-  frame-time watchdog** that steps DOWN a tier under sustained load. Only the cheap,
-  **recompile-free** knobs move at runtime (DPR, shadows on/off); load-time fields
-  (shadow-map size, water tessellation) are read once at construction.
+- `render/QualityTier.ts` — auto-detects a low/med/high preset that fixes **scene complexity**
+  at load (shadows, tessellation, post-fx). Render **resolution (DPR)** is a separate,
+  **recompile-free** lever: an **adaptive frame-time watchdog** scales DPR DOWN under sustained
+  load and back UP under headroom (within `[QUALITY.dpr.floor .. dprCap]`), so a transient stall
+  can't strand the device at a permanently blurry resolution. `main.ts` re-applies each DPR change
+  to the renderer + composer; load-time fields (shadow-map size, water tessellation) are read once
+  at construction.
 - `render/FrameContext.ts` — a shared uniform bus (`uTime`, `uWind`, `uSunDir`, `uWash`). Every
   animated material grabs the **same `{ value }` references** in its `onBeforeCompile`,
   so one `update()` per frame propagates to all of them with no per-material plumbing.
 - `postfx/Composer.ts` — the main loop renders **through** an EffectComposer (bloom → god-rays →
-  heat-haze → tonemap/color-grade), tier-gated (off on low, half-res on med, full on high; chosen
-  once at load). `lighting/HeroFireLights.ts` is a **fixed pool** of point-lights repositioned onto
-  the hottest fires each frame (never added/removed → no recompiles).
+  heat-haze → tonemap/color-grade), tier-gated (off on low → bare renderer; on for med/high at the
+  renderer's full DPR, with MSAA on high; chosen once at load — the scene is **not** rendered
+  half-res). `lighting/HeroFireLights.ts` is a **fixed pool** of point-lights repositioned onto the
+  hottest fires each frame (never added/removed → no recompiles).
 
 **Mobile-60fps invariants** (from the roadmap, enforce them): heavy generation is
 one-time at load; per-frame work is O(1); **no shader recompiles after load** (fixed
-light pools, fixed-size uniform arrays — e.g. `RIPPLE_SLOTS`, `SPRAY.max`); DPR capped;
-quality tiers scale everything.
+light pools, fixed-size uniform arrays — e.g. `RIPPLE_SLOTS`, `SPRAY.max`); DPR is the one
+adaptive runtime lever (capped at 2, recoverable); quality tiers scale everything else.
 
 ### Water shader gotcha (logged, will bite you again)
 

@@ -99,9 +99,11 @@ browser cache). 1M cold loads ≈ 2.2 TB egress → ~$0 on Cloudflare, ~$110–1
 
 - **P2.1** — Debug hook always on in prod: gate `window.__game` (`src/three/main.ts:32`)
   behind `import.meta.env.DEV`.
-- **P2.2** — `antialias: true` is fixed at construction (`src/three/main.ts:14`);
-  `QualityTier` adapts DPR/shadows but not MSAA. Consider tying AA to the tier so the
-  lowest-end devices don't eat AA cost.
+- **P2.2** — ✅ RESOLVED (2026-06-03). Render DPR is now an adaptive, recoverable lever in
+  `QualityTier` (scales within `[QUALITY.dpr.floor .. 2]`, down under load / up under headroom),
+  and MSAA is tied to the tier — the composer target carries `samples` on high
+  (`QUALITY.presets.high.msaa`), while low (no composer) AAs via the renderer's own `antialias`.
+  Lowest-end devices no longer eat MSAA cost.
 - **P2.3** — Legacy Phaser is dead weight but **NOT bundled** (unreachable from the Three
   entry; the 753 kB bundle is pure-Three-sized — confirmed). Plus a stray
   `@dimforge/rapier3d-compat` in the lockfile, imported nowhere. Optional `node_modules`/

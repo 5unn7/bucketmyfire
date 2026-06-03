@@ -90,19 +90,42 @@ function showFatalMessage(host: HTMLElement, title: string, body: string): void 
   host.appendChild(wrap);
 }
 
-/** End-banner buttons: advance / retry / back to menu, all via localStorage + reload. */
+/**
+ * Navigate the campaign by URL, making the `m` deep-link param AUTHORITATIVE while preserving
+ * incidental params (e.g. `qa`). Pass a mission id to boot it, or `null` to return to the menu.
+ *
+ * Why not a bare `location.reload()`: `routeMission()` reads `?m=<id>` with precedence over the
+ * localStorage handoff, and a reload keeps the current URL — so when the game was opened via a
+ * `?m=` deep link, the in-game MENU button (and NEXT) just re-booted the SAME mission and never
+ * reached the menu / advanced. Rewriting the URL here fixes both. (`autostart` is also dropped on
+ * the way to the menu so "menu" actually lands on the menu rather than auto-booting mission 0.)
+ */
+function gotoCampaign(missionId: string | null): void {
+  const url = new URL(location.href);
+  if (missionId) {
+    url.searchParams.set('m', missionId);
+  } else {
+    url.searchParams.delete('m');
+    url.searchParams.delete('autostart');
+  }
+  location.assign(url.toString());
+}
+
+/** End-banner + in-game buttons: advance / retry / back to menu. */
 function endHooks(mission: MissionDef): EndScreenHooks {
   const next = CAMPAIGN.find((m) => m.index === mission.index + 1);
   return {
     hasNext: !!next,
     onNext: () => {
-      if (next) setSelectedId(next.id);
-      location.reload();
+      if (next) {
+        setSelectedId(next.id);
+        gotoCampaign(next.id); // explicit URL so a stale ?m= doesn't override the advance
+      }
     },
-    onRetry: () => location.reload(),
+    onRetry: () => location.reload(), // same mission — a plain reload keeps the right target
     onMenu: () => {
       clearSelectedId();
-      location.reload();
+      gotoCampaign(null); // drop ?m= (+ autostart) so the router lands on the menu
     },
     onLeaderboard: () => openLeaderboard(CAMPAIGN, mission.id),
   };
@@ -137,12 +160,12 @@ function bootMission(mission: MissionDef): void {
     false,
   );
 
-  // Quality tier: apply DPR + shadow on/off at load; adaptive downgrade only touches the
-  // cheap, recompile-free lever (DPR), so shadows stay fixed after load.
+  // Quality tier: scene complexity (shadows / tessellation / post-fx) is fixed at load;
+  // render resolution (DPR) is the one runtime-adaptive lever. Set the renderer's DPR
+  // before the composer is built below (it reads getPixelRatio() at construction).
   const tier = new QualityTier();
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, tier.current.dprCap));
+  renderer.setPixelRatio(tier.dpr);
   renderer.shadowMap.enabled = tier.current.shadows;
-  tier.onChange((s) => renderer.setPixelRatio(Math.min(window.devicePixelRatio, s.dprCap)));
 
   // Headless QA (?qa drives __game; ?autostart boots straight into a mission) skips the cold-start
   // ritual — the autopilot/teleport/screenshot flows expect a running, airborne aircraft.
@@ -151,6 +174,14 @@ function bootMission(mission: MissionDef): void {
 
   // Bloom post-process (B3) — fire/sun glow, render path chosen by tier at load.
   const composer = new Composer(renderer, game.scene, game.camera, tier);
+
+  // Adaptive resolution: the watchdog scales DPR up/down within the device range under
+  // sustained load / headroom. Re-apply it to the renderer AND the composer (which draws
+  // the on-screen image) in lockstep — recompile-free, just a render-target resize.
+  tier.onDpr((dpr) => {
+    renderer.setPixelRatio(dpr);
+    composer.setPixelRatio(dpr);
+  });
 
   // Debug/QA hook: lets a test harness read flight/game/mission state. On in dev always; in a prod
   // build only when `?qa` is present — so normal players don't get a global handle, but the headless
@@ -167,6 +198,9 @@ function bootMission(mission: MissionDef): void {
     game.resize(w / h);
   }
   window.addEventListener('resize', resize);
+  // A phone rotate fires 'orientationchange' (and sometimes only that), so re-run the Hor+ FOV /
+  // portrait framing immediately on rotate, not just on a width 'resize'.
+  window.addEventListener('orientationchange', resize);
 
   // dt is derived from the rAF timestamp Three hands the loop. The first frame only seeds the
   // clock and bails: dt must be > 0 or the sim's acceleration term (Δvel / dt) divides by zero.
@@ -178,7 +212,7 @@ function bootMission(mission: MissionDef): void {
     }
     const dt = Math.min((time - prevTime) / 1000, 1 / 20); // clamp big stalls so physics stays sane
     prevTime = time;
-    tier.sample(dt); // adaptive frame-time watchdog (may step DPR down under load)
+    tier.sample(dt); // adaptive frame-time watchdog (scales DPR down under load, up under headroom)
     game.update(dt);
     composer.render(renderer, game.scene, game.camera, game.sunDir, game.hazeSources);
   });

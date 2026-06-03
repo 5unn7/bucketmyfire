@@ -24,10 +24,21 @@ import { MissionDirector } from '../src/three/missions/MissionDirector';
 import { CAMPAIGN } from '../src/three/missions/catalog';
 import { seedFires, structurePlan, crewZones, igniteFromPlacement } from '../src/three/missions/scenario';
 import type { MissionDef, MissionSignals } from '../src/three/missions/types';
-import { WORLD3D } from '../src/three/config';
+import { WORLD3D, BUCKET3D, DROP_PHYSICS } from '../src/three/config';
 
 const DT = 0.1;
 const MAX_SEC = 400; // playthrough cap (survive missions need ~180s; blazes converge well under this)
+
+// --- "Competent pilot" water model — the REAL completability test ------------------------------
+// Replaces the old infinite-water hammer (`douse(f.x,f.z,30,6000)` every step), which was blind to
+// the height/edge/wind nerf. Models DISCRETE bucket passes: every PASS_INTERVAL steps the pilot dumps
+// a full bucket on each active front (in-band, aimed upwind) — a concentrated hit that fully douses a
+// patch, which now CHARS + locks (fires don't self-extinguish, so progress must be locked by water).
+// The interval is the scoop-fly-drop loop time. If a mission goes red, that's the gate working —
+// re-tune THESE knobs or the fire's spread (FIRE3D / mission spreadScale), never the asserts.
+const DROP_AGL = 45; // in-band release height → densityMul≈1, radius≈dropRadius
+const PASS_INTERVAL = 18; // steps between bucket passes (~1.8s scoop-drop loop on a lake-side fire)
+const DROP_LITRES = 160; // a full bucket delivered per pass (concentrated, scorches a patch)
 
 interface Rig {
   world: World;
@@ -118,9 +129,24 @@ function run(mission: MissionDef, mode: Mode): { r: Rig; elapsed: number } {
       if (isCrew && r.crew) {
         const z = r.crew.views.find((v) => v.active);
         if (z) r.crew.update(DT, z.x, z.z, 4, 1);
-      } else {
-        // Realistic-ish accurate drops on every active cluster (a tankload-sized douse each).
-        for (const f of r.fire.active()) r.fire.douse(f.x, f.z, 30, 6000);
+      } else if (step % PASS_INTERVAL === 0) {
+        // A competent pilot's bucket pass: aim at the HOTTEST flames (not a cluster centroid — that can
+        // be a doused-out hole), in-band, aimed UPWIND so the drifted load lands on the cell. One drop
+        // per active front, re-querying the hottest point after each (so a multi-front map gets cycled,
+        // and a single big blaze gets walked ring-by-ring). Periodic EDGE-clip proves an edge hit progresses.
+        const v0 = DROP_PHYSICS.v0Down;
+        const g = DROP_PHYSICS.fallG;
+        const tFall = (Math.sqrt(v0 * v0 + 2 * g * DROP_AGL) - v0) / g;
+        const gain = DROP_PHYSICS.windDriftGain;
+        const dx = r.wind.vx * gain * tFall; // live drift to cancel by aiming upwind
+        const dz = r.wind.vz * gain * tFall;
+        const nDrops = Math.max(1, r.fire.activeCount); // one bucket per active front
+        const edgeBias = step % (PASS_INTERVAL * 7) === 0 ? BUCKET3D.dropRadius * 0.6 : 0; // deliberate edge clip
+        for (let d = 0; d < nDrops; d++) {
+          const hp = r.fire.hottestPoint();
+          if (!hp) break;
+          r.fire.douse(hp.x - dx + edgeBias, hp.z - dz, BUCKET3D.dropRadius, DROP_LITRES, 1);
+        }
       }
       // Keep the tank topped when it dips (a competent pilot returns to refuel).
       if (r.fuel) r.fuel.update(DT, { throttle01: 0.4, climbUp: 0, payloadRatio: 0, refueling: r.fuel.fuel < 0.5 });
@@ -173,6 +199,42 @@ function trippingSignals(elapsed: number): MissionSignals {
     threat: 1,
     windAngle: 0,
   };
+}
+
+// --- Suppression-math guards: prove EDGE falloff + hot-resist are LIVE on a synthetic max-heat cell
+// (flat, fully-fuelled ground). Locks the new douse model against a silent regression to flat-knock. ---
+{
+  const mk = () =>
+    new FireSystem({
+      rng: () => 0.5,
+      groundHeightAt: () => 0,
+      isOverWater: () => false,
+      fuelAt: () => 1,
+      pickSite: () => null,
+    });
+  const litres = 100; // a full tank, dead-center
+  // (a) a dead-on pass on a h=1.0 cell must NOT zero it (resist holds → a re-flare residual remains).
+  const a = mk();
+  a.igniteAt(0, 0, 2, 1.0);
+  const before = a.heatAt(0, 0);
+  a.douse(0, 0, BUCKET3D.dropRadius, litres, 1);
+  const centerResidual = a.heatAt(0, 0);
+  ok(
+    'suppression: dead-on hot cell is not zeroed in one pass (resist live)',
+    before > 0.9 && centerResidual > 0.25 && centerResidual < before,
+    `before=${before.toFixed(2)} after=${centerResidual.toFixed(2)}`,
+  );
+  // (b) the SAME tank offset so the sampled cell sits near the RIM must leave MORE residual there than
+  // a dead-on hit (proves the radial falloff is live — a rim clip barely cools the cell).
+  const b = mk();
+  b.igniteAt(0, 0, 2, 1.0);
+  b.douse(BUCKET3D.dropRadius * 0.8, 0, BUCKET3D.dropRadius, litres, 1);
+  const edgeResidual = b.heatAt(0, 0);
+  ok(
+    'suppression: an edge-clipped drop leaves more heat than dead-center (falloff live)',
+    edgeResidual > centerResidual + 0.08,
+    `edge=${edgeResidual.toFixed(2)} center=${centerResidual.toFixed(2)}`,
+  );
 }
 
 console.log('Campaign playthrough verification\n');

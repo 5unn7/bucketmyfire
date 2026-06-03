@@ -33,18 +33,43 @@ export class ChaseCamera {
   private curYaw = 0;
   private curPitch = 0;
   private wasLooking = false;
+  private aspect = 1; // viewport aspect (w/h); drives the portrait Hor+ FOV compensation
+  private engage = 0; // 0..1 eased "bombing-run" look-down factor (lifts + tilts the cam over a drop)
 
   constructor(aspect: number, private readonly world: World) {
     this.camera = new THREE.PerspectiveCamera(CAMERA.fov, aspect, 0.1, 2000);
+    this.setAspect(aspect);
   }
 
+  /**
+   * Set the viewport aspect AND derive the vertical FOV. `fov` is VERTICAL, so a tall PORTRAIT viewport
+   * crops the horizontal world away — the ground under the bucket vanishes (concern 6). Hor+ widens the
+   * vertical fov in portrait to preserve a target HORIZONTAL fov, smoothstepped across a blend band so
+   * there's no pop near aspect≈1. Landscape (aspect ≥ portraitFovBlendStart) stays EXACTLY CAMERA.fov.
+   */
   setAspect(aspect: number): void {
+    this.aspect = aspect;
+    let vfov = CAMERA.fov;
+    if (aspect < CAMERA.portraitFovBlendStart) {
+      const targetH = (CAMERA.portraitHorizFovRef * Math.PI) / 180; // horizontal fov to preserve (rad)
+      const hor = (2 * Math.atan(Math.tan(targetH / 2) / aspect) * 180) / Math.PI; // vfov that yields it (deg)
+      const cap = Math.min(CAMERA.portraitVfovMax, hor); // clamp so extreme-narrow doesn't fisheye
+      const u = (CAMERA.portraitFovBlendStart - aspect) / (CAMERA.portraitFovBlendStart - CAMERA.portraitFovBlendEnd);
+      const s = Math.min(1, Math.max(0, u));
+      const w = s * s * (3 - 2 * s); // smoothstep
+      vfov = CAMERA.fov + (cap - CAMERA.fov) * w;
+    }
+    this.camera.fov = vfov;
     this.camera.aspect = aspect;
     this.camera.updateProjectionMatrix();
   }
 
-  /** Re-aim behind `pos` for heading `yaw`. Call every frame after the sim. */
-  update(dt: number, pos: THREE.Vector3, yaw: number, look?: LookOffset): void {
+  /**
+   * Re-aim behind `pos` for heading `yaw`. Call every frame after the sim. `arm` (0..1) requests the
+   * gentle "bombing-run" look-down (Game arms it when low + slow + carrying water near a fire); it's
+   * ignored while free-looking and — when `bombingPortraitOnly` — in landscape, and always eases in/out.
+   */
+  update(dt: number, pos: THREE.Vector3, yaw: number, look?: LookOffset, arm = 0): void {
     // Free-look: while active, INTEGRATE the drag rate so a held stick spins the
     // camera continuously (a full 360° and beyond — yaw is unbounded, trig wraps it).
     // On release, fold any accumulated spins into (-π, π] so the ease takes the SHORT
@@ -60,19 +85,32 @@ export class ChaseCamera {
     }
     this.wasLooking = !!look?.active;
 
+    // Bombing-run assist: ease `engage` toward the armed target — but never while the player is
+    // free-looking (don't fight the orbit), and only in portrait when bombingPortraitOnly is set.
+    const armTarget = look?.active
+      ? 0
+      : !CAMERA.bombingRun
+        ? 0
+        : CAMERA.bombingPortraitOnly && this.aspect >= 1
+          ? 0
+          : arm;
+    this.engage += (armTarget - this.engage) * (1 - Math.pow(1 - CAMERA.bombingEngageLerp, dt * 60));
+    // The effective pitch lifts + tilts the cam down by the engage factor (on top of any free-look pitch).
+    const pitch = clampN(this.curPitch + CAMERA.bombingExtraPitch * this.engage, CAMERA.lookPitchMin, CAMERA.lookPitchMax);
+
     // World-forward for this heading (matches the sim's convention).
     const fx = Math.cos(yaw);
     const fz = -Math.sin(yaw);
 
     // Default trail sits at angle `atan2(-fz,-fx)` behind the heli; free-look adds
-    // `curYaw` around it and `curPitch` lifts the cam, shrinking the horizontal reach
-    // so it orbits over the top rather than just drifting outward. With both offsets
+    // `curYaw` around it and `pitch` lifts the cam, shrinking the horizontal reach
+    // so it orbits over the top rather than just drifting outward. With every offset
     // at 0 this reproduces the plain `pos - forward*distance` trail exactly.
     const ang = Math.atan2(-fz, -fx) + this.curYaw;
-    const horiz = Math.cos(this.curPitch);
+    const horiz = Math.cos(pitch);
     this.desiredPos.set(
       pos.x + Math.cos(ang) * CAMERA.distance * horiz,
-      pos.y + CAMERA.height + Math.sin(this.curPitch) * CAMERA.distance,
+      pos.y + CAMERA.height + CAMERA.bombingExtraHeight * this.engage + Math.sin(pitch) * CAMERA.distance,
       pos.z + Math.sin(ang) * CAMERA.distance * horiz,
     );
     // Ground-clearance guard: never let the cam sink below the terrain at its own
@@ -82,7 +120,9 @@ export class ChaseCamera {
     if (this.desiredPos.y < groundMin) this.desiredPos.y = groundMin;
     // Aim ahead of the nose normally; as the orbit swings round the side/front, fade
     // the lead to 0 so the camera keeps looking right at the heli instead of past it.
-    const ahead = CAMERA.lookAhead * Math.max(0, 1 - Math.abs(this.curYaw) / (Math.PI * 0.5));
+    const ahead =
+      (CAMERA.lookAhead + CAMERA.bombingExtraLookAhead * this.engage) *
+      Math.max(0, 1 - Math.abs(this.curYaw) / (Math.PI * 0.5));
     this.desiredLook.set(pos.x + fx * ahead, pos.y, pos.z + fz * ahead);
 
     if (!this.initialized) {

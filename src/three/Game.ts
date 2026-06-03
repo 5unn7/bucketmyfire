@@ -6,6 +6,7 @@ import { createRiverMesh } from './meshes/river';
 import { createRoadMesh } from './meshes/road';
 import { createYardPatch, createYardMaterial } from './meshes/clearing';
 import { createDock } from './meshes/dock';
+import { createHelipad } from './meshes/helipad';
 import { applyFoliageSway } from './meshes/foliageWind';
 import { createHelicopter, HelicopterMesh } from './meshes/helicopter';
 import { createBucket, BucketMesh } from './meshes/bucket';
@@ -31,6 +32,7 @@ import { QualityTier } from './render/QualityTier';
 import { Ripples } from './water/Ripples';
 import { createWaterMaterial } from './water/WaterMaterial';
 import { WaterSpray } from './vfx/WaterSpray';
+import { DropMarker } from './vfx/DropMarker';
 import { SmokePlume } from './vfx/SmokePlume';
 import { Embers } from './vfx/Embers';
 import { AmbientEmbers } from './vfx/AmbientEmbers';
@@ -53,7 +55,7 @@ import { cloudAutoSave } from './leaderboard/cloudSave';
 import type { MissionDef, MissionSignals, MissionAction } from './missions/types';
 import type { EndScreenHooks } from './HUD';
 import { seedFires, structurePlan, crewZones, igniteFromPlacement } from './missions/scenario';
-import { WORLD3D, FLIGHT, STARTUP, BUCKET3D, FIRE3D, WATER, WASH, SPRAY, SMOKE, EMBERS, INSTRUMENTS, ROADS, MISSIONS, COMMUNITIES, HEALTH, resolveHeliClass } from './config';
+import { WORLD3D, FLIGHT, STARTUP, BUCKET3D, DROP_PHYSICS, DROP_FX, CAMERA, FIRE3D, WATER, WASH, SPRAY, SMOKE, EMBERS, INSTRUMENTS, ROADS, MISSIONS, COMMUNITIES, HEALTH, resolveHeliClass } from './config';
 
 // Instrument calibration factors (world units → real-world HUD units). Derived from
 // the FLIGHT caps so the gauges stay consistent if those are retuned.
@@ -129,6 +131,15 @@ export class Game {
 
   private water = 0;
   private dumping = false; // 'bambi' bucket: a one-tap dump is in progress (drains to empty)
+  // --- Water-drop physical model (height → footprint, wind drift) ----------------------------------
+  private readonly dropMarker: DropMarker; // predicted-impact ring (built in the ctor once scene exists)
+  private bucketObstacleY = 0; // cached collision surface under the bucket (set in update) → drop AGL
+  // Reused scratch for the resolved drop geometry (alloc-free): impact center, footprint, density, AGL.
+  private readonly _drop = { cx: 0, cz: 0, radius: BUCKET3D.dropRadius, densityMul: 1, agl: 0, inBand: true };
+  private dropActive = false; // a drop is currently pouring (drives the one-shot readout on release)
+  // Per-drop tally (reused) → the post-drop Dispatch readout: cumulative heat removed, peak heat present,
+  // and density-weighted litres so we can classify "Direct hit" / "Edge only" / "Too high" / "Missed".
+  private readonly dropTally = { heatRemoved: 0, peakHeatPresent: 0, effSum: 0, litreSum: 0 };
   // Cold engine start: every mission begins shut down on the deck at base. The pilot HOLDS the START
   // dial to spool the rotor from rest to full; flight + the mission clock stay frozen until then.
   // `rotorRpm` scales the rotor visuals + the audio drone; `engineStarted` latches at full RPM.
@@ -179,6 +190,7 @@ export class Game {
   private readonly slung: THREE.Group; // the mesh hanging on the longline (bucket or crew basket)
   private readonly slungAnchorY: number; // its swivel-head local Y (rope attach point)
   private readonly depotXZ: { x: number; z: number } | null; // base/depot site (refuel + crew base)
+  private readonly helipadXZ: { x: number; z: number; yaw: number } | null; // cold-start landing pad (off the depot)
   private firesInitial = 0; // active fire count captured once the scenario is seeded
   private missionElapsed = 0; // seconds the mission has been active (stops on win/lose)
   private readonly end?: EndScreenHooks;
@@ -224,11 +236,22 @@ export class Game {
       return base ? { x: base.x, z: base.z } : null;
     })();
 
-    // Cold start: park the airframe shut-down ON THE DECK at the base (the depot pad) so the pilot
-    // spools the rotors and lifts off from home. (QA's skip leaves it airborne at origin as before.)
-    if (!this.engineStarted) {
-      const p = this.depotXZ ?? { x: 0, z: 0 };
-      this.heliSim.land(p.x, p.z, this.world.flightFloorAt(p.x, p.z));
+    // Base helipad: a flat pad on cleared ground just off the depot building (which sits AT the base
+    // XZ). Built for every mission. `landingFloorAt` eases the flight floor down to the deck around it,
+    // so a cold start sits the heli skids-down on the pad and lets it lift off without snapping up to
+    // canopy height. (For a QA skip the heli stays running/airborne at origin; the pad is just scenery.)
+    this.helipadXZ = this.depotXZ ? this.findHelipadSpot(this.depotXZ) : null;
+    if (this.helipadXZ) {
+      const pad = createHelipad();
+      pad.position.set(this.helipadXZ.x, this.world.groundHeightAt(this.helipadXZ.x, this.helipadXZ.z), this.helipadXZ.z);
+      this.scene.add(pad);
+    }
+    // Cold start: park the airframe shut-down ON the pad so the pilot spools the rotors and lifts off
+    // from home, nose pointed out to open ground.
+    if (!this.engineStarted && this.helipadXZ) {
+      const p = this.helipadXZ;
+      this.heliSim.land(p.x, p.z, this.landingFloorAt(p.x, p.z));
+      this.heliSim.yaw = p.yaw;
     }
 
     // Resolve the mission's building plan UP FRONT so the cleared yards — AND the radar place-
@@ -464,6 +487,7 @@ export class Game {
     // gets frustum-culled and vanishes. It's only two points — skip culling.
     this.rope.frustumCulled = false;
     this.scene.add(this.rope);
+    this.dropMarker = new DropMarker(this.scene); // predicted-impact ring (adds itself to the scene)
     this.scene.add(this.spray.points); // pooled drop-spray particle cloud
     this.scene.add(this.smoke.points); // pooled per-fire smoke plumes
     this.scene.add(this.embers.points); // pooled per-fire sparks/embers
@@ -625,7 +649,7 @@ export class Game {
       this.wind.update(dtMs);
       // AGL flight: the altitude band rides the World floor under the heli, and a
       // full bucket flies heavy (weight coupling).
-      const floorY = this.world.flightFloorAt(this.heliSim.position.x, this.heliSim.position.z);
+      const floorY = this.landingFloorAt(this.heliSim.position.x, this.heliSim.position.z);
       const payloadRatio = this.water / this.capacity;
       // Wind drift in world units/s — pushes the heli over the ground (headwind hurts).
       const windX = this.wind.vx * FLIGHT.windSpeed;
@@ -670,38 +694,51 @@ export class Game {
     // last frame's position — one-frame lag is imperceptible), and is consistent
     // with the flight floor and every other height query.
     const fillRatio = this.water / this.capacity;
-    const wl = this.world.waterLevelAt(this.bucketSim.position.x, this.bucketSim.position.z);
-    const dipping = wl !== null && this.bucketSim.position.y <= wl + BUCKET3D.dipThreshold;
-    // Collision surface under the bucket (terrain raised to any treetop it'd catch on).
-    const obstacleY = this.obstacles.heightAt(this.bucketSim.position.x, this.bucketSim.position.z);
-    this.bucketSim.update(
-      dtMs,
-      this.heliSim.position,
-      this.heliSim.velX,
-      this.heliSim.velZ,
-      fillRatio,
-      dipping,
-      obstacleY,
-    );
+    // When the heli is on the deck the slung load isn't dangling under the belly — a ground crew lays
+    // it out on the pad just ahead of the nose, line slack. While AGL is below `parkAgl` we PARK the
+    // bucket there (upright, motion zeroed) and hand back to the pendulum once it lifts off.
+    const onGround = this.heliSim.agl < BUCKET3D.parkAgl;
+    let dipping = false;
+    if (onGround) {
+      const fx = Math.cos(this.heliSim.yaw);
+      const fz = -Math.sin(this.heliSim.yaw); // world-forward for this heading (nose = +X)
+      const px = this.heliSim.position.x + fx * BUCKET3D.parkAhead;
+      const pz = this.heliSim.position.z + fz * BUCKET3D.parkAhead;
+      const py = this.obstacles.heightAt(px, pz) + BUCKET3D.bottomOffset; // rest on the ground
+      this.bucketSim.parkAt(px, py, pz);
+    } else {
+      // "Submerged" is read from the World water plane under the bucket's XZ (last frame's position —
+      // one-frame lag is imperceptible), consistent with the flight floor and every other height query.
+      const wl = this.world.waterLevelAt(this.bucketSim.position.x, this.bucketSim.position.z);
+      dipping = wl !== null && this.bucketSim.position.y <= wl + BUCKET3D.dipThreshold;
+      // Collision surface under the bucket (terrain raised to any treetop it'd catch on).
+      const obstacleY = this.obstacles.heightAt(this.bucketSim.position.x, this.bucketSim.position.z);
+      this.bucketObstacleY = obstacleY; // cache the raw surface under the bucket for the drop-AGL term
+      this.bucketSim.update(dtMs, this.heliSim.position, this.heliSim.velX, this.heliSim.velZ, fillRatio, dipping, obstacleY);
+    }
     const bp = this.bucketSim.position;
     this.slung.position.copy(bp); // bucket (water) or crew basket (crew) on the same line
     if (this.payloadMode === 'water') this.bucket.setFill(fillRatio);
     const tip = this.bucketSim.tip;
-    // --- Pendulum swing: the bucket HANGS ALONG the longline instead of staying bolt-
-    // upright, so the lateral lag the sim already produces also reads as the body
-    // swinging out. Align its local up-axis toward the heli (the rope direction),
-    // partially by swingTilt so it leans into the swing rather than dragging sideways,
-    // then layer the scoop tip on as an extra forward pitch about local X. ---
-    _ropeDir
-      .set(
-        this.heliSim.position.x - bp.x,
-        this.heliSim.position.y - bp.y,
-        this.heliSim.position.z - bp.z,
-      )
-      .normalize();
-    _swingQuat.setFromUnitVectors(_UP, _ropeDir); // full hang-along-the-rope tilt
-    _bucketQuat.identity().slerp(_swingQuat, BUCKET3D.swingTilt); // partial lean
-    _bucketQuat.multiply(_tipQuat.setFromAxisAngle(_X, tip)); // + scoop tip (local X)
+    // --- Pendulum swing: in the air the bucket HANGS ALONG the longline instead of staying bolt-
+    // upright, so the lateral lag the sim already produces also reads as the body swinging out. Align
+    // its local up-axis toward the heli (the rope direction), partially by swingTilt so it leans into
+    // the swing, then layer the scoop tip on as an extra forward pitch about local X. Parked on the
+    // deck it just sits upright. ---
+    if (onGround) {
+      _bucketQuat.identity(); // sits upright on the pad
+    } else {
+      _ropeDir
+        .set(
+          this.heliSim.position.x - bp.x,
+          this.heliSim.position.y - bp.y,
+          this.heliSim.position.z - bp.z,
+        )
+        .normalize();
+      _swingQuat.setFromUnitVectors(_UP, _ropeDir); // full hang-along-the-rope tilt
+      _bucketQuat.identity().slerp(_swingQuat, BUCKET3D.swingTilt); // partial lean
+      _bucketQuat.multiply(_tipQuat.setFromAxisAngle(_X, tip)); // + scoop tip (local X)
+    }
     this.slung.quaternion.copy(_bucketQuat);
 
     // Attach the longline to the bucket's SWIVEL HEAD — but the swivel now rides wherever
@@ -898,7 +935,19 @@ export class Game {
     // pass reads this direction (via frame.uSunDir) so the shafts emanate from the low sun.
     this.sun.position.set(hp.x + 150, hp.y + 58, hp.z + 95);
     this.sun.target.position.set(hp.x, hp.y, hp.z);
-    this.chase.update(dt, this.heliSim.position, this.heliSim.yaw, this.input.look);
+    // Bombing-run assist (portrait readability, concern 6): when lining up a drop — low, slow, carrying
+    // water near a fire — arm the camera's gentle look-down so the impact zone shows. ChaseCamera eases
+    // it in/out and ignores it in landscape / while free-looking.
+    const armBombing =
+      CAMERA.bombingRun &&
+      this.payloadMode === 'water' &&
+      this.water >= CAMERA.bombingArmWater &&
+      this.heliSim.agl < CAMERA.bombingArmAgl &&
+      this.heliSim.speed < CAMERA.bombingArmSpeed &&
+      this.nearestFireDist(hp.x, hp.z, activeFires) < CAMERA.bombingArmFireDist
+        ? 1
+        : 0;
+    this.chase.update(dt, this.heliSim.position, this.heliSim.yaw, this.input.look, armBombing);
     this.skyDome.position.copy(this.chase.camera.position); // keep the sky centered on the eye
     // Ambient amber motes drift in the air around the eye and thicken near a blaze (atmosphere).
     const cam = this.chase.camera.position;
@@ -939,7 +988,9 @@ export class Game {
     this.rippleTimer -= dt;
     if (this.rippleTimer <= 0) {
       if (dropping) {
-        this.ripples.spawn(bp.x, bp.z, WATER.dropStrength);
+        // Rings appear where the water LANDS — the wind-drifted impact center (resolveDrop set _drop
+        // this frame), not under the bucket — so the splash agrees with the doused cells + the spray.
+        this.ripples.spawn(this._drop.cx, this._drop.cz, WATER.dropStrength);
         this.rippleTimer = 0.1;
       } else if (scooping) {
         this.ripples.spawn(bp.x, bp.z, WATER.dipStrength);
@@ -964,11 +1015,49 @@ export class Game {
     const leaking = dropping || (scraping && this.water > 0); // dump OR slop-from-scrape
     if (leaking && this.sprayAccum >= SPRAY.emitInterval) {
       this.sprayAccum = 0;
-      this.spray.emit(bp.x, bp.y, bp.z, this.heliSim.velX, this.heliSim.velZ);
+      // Launch the sheet from the bucket mouth, but carry the WIND as a constant velocity so a droplet
+      // that lives ~its life drifts the same offset resolveDrop applied to the douse center — the
+      // visible curtain blows downwind exactly as far as the water actually lands.
+      this.spray.emit(
+        bp.x,
+        bp.y,
+        bp.z,
+        this.heliSim.velX + this.wind.vx * DROP_PHYSICS.windDriftGain,
+        this.heliSim.velZ + this.wind.vz * DROP_PHYSICS.windDriftGain,
+      );
     }
     this.spray.update(dt, (x, z) => this.surfaceAt(x, z), (x, z) => {
       if (this.world.isOverWater(x, z) && Math.random() < 0.15) this.ripples.spawn(x, z, WATER.dipStrength);
     });
+
+    // --- Predicted-impact ring (concern 1 + 6): while carrying water low, draw a ground ring at the
+    // SAME wind-drifted center + footprint the douse would use, colored by quality — green (will bite) /
+    // amber (too high, dispersed) / red (no fire under it, you'll miss). Hidden when cruising high or
+    // with no fire in reach. It's literally a visualization of resolveDrop, so what you aim is what hits. ---
+    if (this.payloadMode === 'water' && this.water > 0 && !this.won && !this.lost) {
+      const pm = this.resolveDrop(bp.x, bp.z, this.bucketSim.position.y);
+      const nearFire = this.nearestFireDist(pm.cx, pm.cz, activeFires);
+      if (pm.agl >= DROP_FX.markerShowAGL || nearFire > DROP_FX.markerHideDist) {
+        this.dropMarker.hide();
+      } else {
+        let color: number;
+        let opacity: number;
+        if (nearFire > DROP_FX.markerWideDist) {
+          color = DROP_FX.markerColorWide; // a fire's in reach but your predicted center misses it
+          opacity = DROP_FX.markerMinOpacity + 0.18;
+        } else if (!pm.inBand) {
+          color = DROP_FX.markerColorTooHigh; // over the fire but too high → fades toward min as you climb
+          const k = Math.min(1, Math.max(0, (pm.agl - DROP_PHYSICS.bandHi) / (DROP_FX.markerShowAGL - DROP_PHYSICS.bandHi)));
+          opacity = DROP_FX.markerMaxOpacity + (DROP_FX.markerMinOpacity - DROP_FX.markerMaxOpacity) * k;
+        } else {
+          color = DROP_FX.markerColorInBand; // dead on — this drop bites
+          opacity = DROP_FX.markerMaxOpacity;
+        }
+        this.dropMarker.show(pm.cx, pm.cz, pm.radius, color, opacity, this.world.groundHeightAt(pm.cx, pm.cz));
+      }
+    } else {
+      this.dropMarker.hide();
+    }
 
     this.frame.update(dt, this.wind.vx, this.wind.vz, this.sun.position, this.sun.target.position);
 
@@ -1133,6 +1222,49 @@ export class Game {
   }
 
   /**
+   * Pick a flat, on-land spot for the helipad a short way off the depot building (which sits AT the
+   * base XZ, so the pad can't share it). Samples a ring inside the cleared yard and takes the
+   * flattest dry candidate (tie-break toward the open interior). The heli faces AWAY from the depot
+   * so the parked bucket lays out over open deck and the chase camera frames the base behind it.
+   */
+  private findHelipadSpot(depot: { x: number; z: number }): { x: number; z: number; yaw: number } {
+    const R = 16; // offset from the depot, well inside the 34u cleared yard (fully clear to ~17u)
+    let best: { x: number; z: number; yaw: number } | null = null;
+    let bestScore = -Infinity;
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      const x = depot.x + Math.cos(a) * R;
+      const z = depot.z + Math.sin(a) * R;
+      if (this.world.isOverWater(x, z)) continue; // a pad in the lake is no good
+      const score = -this.world.slopeAt(x, z) * 40 - Math.hypot(x, z) * 0.04; // flat + toward interior
+      if (score > bestScore) {
+        bestScore = score;
+        // world-forward (cos yaw, -sin yaw) should point from the depot OUT to this spot (and beyond).
+        best = { x, z, yaw: Math.atan2(-(z - depot.z), x - depot.x) };
+      }
+    }
+    return best ?? { x: depot.x, z: depot.z, yaw: 0 };
+  }
+
+  /**
+   * The altitude floor the flight model rests on — `World.flightFloorAt`, but eased DOWN to the
+   * landing-pad clearance within `padBlendRadius` of the base helipad so a cold start sits the heli
+   * skids-down on the deck and lifts off cleanly (no snap up to canopy height). `Math.min` keeps it
+   * from ever raising the floor (so a low scoop over water near the base still bottoms out normally).
+   */
+  private landingFloorAt(x: number, z: number): number {
+    const real = this.world.flightFloorAt(x, z);
+    const pad = this.helipadXZ;
+    if (!pad) return real;
+    const d = Math.hypot(x - pad.x, z - pad.z);
+    if (d >= FLIGHT.padBlendRadius) return real;
+    const padFloor = this.world.groundHeightAt(pad.x, pad.z) + FLIGHT.landClearance;
+    const t = d / FLIGHT.padBlendRadius;
+    const s = t * t * (3 - 2 * t); // smoothstep: pad floor at the deck → the real floor at the rim
+    return Math.min(real, padFloor + (real - padFloor) * s);
+  }
+
+  /**
    * Lay the base's jetty out over its lake. Finds the base community's nearest lake, marches
    * from the base toward that lake's centre to the shoreline, and places the dock there yawed
    * so its deck (local +X) runs out over the water at the lake's flat surface. No-op if the
@@ -1198,6 +1330,7 @@ export class Game {
    */
   private updateDrop(c: ControlState, dtMs: number): boolean {
     if (this.won || this.lost || this.water <= 0) {
+      if (this.dropActive) this.finishDrop(); // pour ended (tank empty / mission over) → one readout
       this.dumping = false;
       return false;
     }
@@ -1207,10 +1340,16 @@ export class Game {
     let rate: number;
     if (this.bucketType === 'bambi') {
       if (c.dropPressed) this.dumping = true; // one tap → commit to a full dump
-      if (!this.dumping) return false;
+      if (!this.dumping) {
+        if (this.dropActive) this.finishDrop();
+        return false;
+      }
       rate = BUCKET3D.dumpRate;
     } else {
-      if (!c.drop) return false; // valve: hold to pour, release to pause
+      if (!c.drop) {
+        if (this.dropActive) this.finishDrop(); // valve released → close out this pour
+        return false;
+      }
       rate = BUCKET3D.dropRate;
     }
 
@@ -1221,14 +1360,119 @@ export class Game {
       this.dumping = false;
     }
 
-    // Water leaves the BUCKET's world position, not the heli's — a swung bucket
-    // misses. Douse is by volume delivered, so a fast dump and a slow pour knock a
-    // fire down by the same amount per litre landing in radius. The same drop also
-    // soaks the ground into a wet firebreak (C3 — handled inside FireSystem.douse).
-    const bx = this.bucketSim.position.x;
-    const bz = this.bucketSim.position.z;
-    this.fireSystem.douse(bx, bz, BUCKET3D.dropRadius, released);
+    // Water leaves the BUCKET's world position, not the heli's — a swung bucket misses. The shared
+    // resolveDrop() then drifts the impact center downwind (more the higher you drop), widens the
+    // footprint + thins the density with height, and the douse applies edge falloff + hot-resist
+    // inside FireSystem. Same resolved geometry feeds the spray, ripples and aim ring, so what the
+    // player saw predicted is what lands.
+    if (!this.dropActive) {
+      this.beginDropTally();
+      this.dropActive = true;
+    }
+    const p = this.resolveDrop(this.bucketSim.position.x, this.bucketSim.position.z, this.bucketSim.position.y);
+    const res = this.fireSystem.douse(p.cx, p.cz, p.radius, released, p.densityMul);
+    const t = this.dropTally;
+    t.heatRemoved += res.heatRemoved; // cumulative across the pour
+    if (res.heatPresent > t.peakHeatPresent) t.peakHeatPresent = res.heatPresent; // peak (don't double-count cells)
+    t.effSum += p.densityMul * released;
+    t.litreSum += released;
     return released > 0;
+  }
+
+  /**
+   * Resolve a drop's physical geometry from the bucket's release state — the ONE source of truth so
+   * the doused cells, the spray sheet, the ripples and the predicted-impact ring all agree. Reads the
+   * bucket's AGL (over the cached collision surface), the live wind, and DROP_PHYSICS. Numbers in →
+   * a reused scratch out (alloc-free). Stays Game-side because it reads World/obstacle height.
+   */
+  private resolveDrop(bx: number, bz: number, by: number) {
+    const D = DROP_PHYSICS;
+    const base = BUCKET3D.dropRadius;
+    const d = this._drop;
+    const agl = Math.max(0, by - this.bucketObstacleY);
+    // Fall time with the droplet's initial downward speed, capped at its life so the douse offset can't
+    // out-drift a droplet that dies before landing (keeps the spray sheet & the impact center in lockstep).
+    let tFall = 0;
+    if (agl > D.minDriftAgl) {
+      tFall = Math.min(SPRAY.life, (Math.sqrt(D.v0Down * D.v0Down + 2 * D.fallG * agl) - D.v0Down) / D.fallG);
+    }
+    // Wind carries the falling water downwind (clamped so a centered drop still partially connects).
+    let dx = this.wind.vx * D.windDriftGain * tFall;
+    let dz = this.wind.vz * D.windDriftGain * tFall;
+    const dm = Math.hypot(dx, dz);
+    if (dm > D.windDriftMax) {
+      const s = D.windDriftMax / dm;
+      dx *= s;
+      dz *= s;
+    }
+    // Height → footprint + density. One-sided band: full strength at/below bandHi, thinning above.
+    const k = Math.min(1, Math.max(0, (agl - D.bandHi) / (D.ceilAGL - D.bandHi))); // 0 in-band .. 1 mist
+    const tR = Math.min(1, Math.max(0, agl / D.ceilAGL)); // footprint grows with height from the deck up
+    d.radius = base * (D.tightRadiusMul + (D.wideRadiusMul - D.tightRadiusMul) * tR);
+    d.densityMul = agl <= D.bandHi ? 1 : 1 + (D.minDensityMul - 1) * k;
+    d.cx = bx + dx;
+    d.cz = bz + dz;
+    d.agl = agl;
+    d.inBand = agl <= D.bandHi;
+    return d;
+  }
+
+  /** Distance (world units) to the nearest active fire from (x,z) — Infinity if nothing burns. */
+  private nearestFireDist(x: number, z: number, fires: ReadonlyArray<{ x: number; z: number }>): number {
+    let best = Infinity;
+    for (let i = 0; i < fires.length; i++) {
+      const d = Math.hypot(fires[i].x - x, fires[i].z - z);
+      if (d < best) best = d;
+    }
+    return best;
+  }
+
+  /** Reset the per-drop tally at the first frame water starts pouring. */
+  private beginDropTally(): void {
+    const t = this.dropTally;
+    t.heatRemoved = 0;
+    t.peakHeatPresent = 0;
+    t.effSum = 0;
+    t.litreSum = 0;
+  }
+
+  /**
+   * Fired once when a pour ENDS (bambi tank empty / valve released): classify what the drop achieved
+   * and radio a Dispatch readout + flash the water gauge, so the player KNOWS whether they hit the spot
+   * (concern 1). Presentation only — never feeds the sim.
+   */
+  private finishDrop(): void {
+    this.dropActive = false;
+    const t = this.dropTally;
+    if (t.litreSum <= 0) return; // nothing actually poured
+    const effAvg = t.effSum / t.litreSum; // ~average density (1 in-band → 0.12 mist)
+    const frac = t.heatRemoved / Math.max(1e-3, t.peakHeatPresent); // share of the fire knocked down
+    let text: string;
+    let urgency: 'info' | 'warn';
+    let color: number;
+    if (t.peakHeatPresent < 1e-2) {
+      text = 'Missed — bucket swung wide';
+      urgency = 'warn';
+      color = DROP_FX.markerColorWide;
+    } else if (effAvg < DROP_FX.resultTooHighEff) {
+      text = 'Too high — water dispersed';
+      urgency = 'warn';
+      color = DROP_FX.markerColorTooHigh;
+    } else if (frac >= DROP_FX.resultDirectFrac) {
+      text = `Direct hit — ${Math.round(Math.min(1, frac) * 100)}% knocked down`;
+      urgency = 'info';
+      color = DROP_FX.markerColorInBand;
+    } else if (frac >= DROP_FX.resultEdgeFrac) {
+      text = 'Edge only — reposition';
+      urgency = 'info';
+      color = DROP_FX.markerColorTooHigh;
+    } else {
+      text = 'Light dampening';
+      urgency = 'info';
+      color = DROP_FX.markerColorInBand;
+    }
+    this.hud.pushComms('dispatch', text, urgency);
+    this.hud.flashGauge(cssHex(color), DROP_FX.resultGaugeTintMs);
   }
 }
 
@@ -1239,4 +1483,9 @@ export class Game {
  */
 function fireHeat(f: { intensity: number; size: number }): number {
   return (f.intensity / FIRE3D.maxIntensity) * (0.35 + 0.65 * f.size);
+}
+
+/** A 0xRRGGBB color number → a `#rrggbb` CSS string (for tinting the HUD water gauge on a drop result). */
+function cssHex(n: number): string {
+  return '#' + (n & 0xffffff).toString(16).padStart(6, '0');
 }

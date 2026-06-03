@@ -29,8 +29,8 @@ followed by **three parallel tracks** (World, Visuals, Physics).
 - **Determinism via one seed.** A `WORLD3D.seed` threads through noise, hydrology, biomes,
   placement, wind, and fire RNG. Same seed → same world + same fire run.
 - **Mobile 60fps throughline.** Heavy generation is one-time at load; per-frame work stays
-  O(1). No shader recompiles after load (fixed light pools, fixed uniform arrays). DPR
-  capped. Quality tiers scale everything.
+  O(1). No shader recompiles after load (fixed light pools, fixed uniform arrays). DPR is
+  the one adaptive runtime lever (capped at 2, recoverable). Quality tiers scale everything else.
 - **Zero binary assets.** Procedural geometry + GLSL (ShaderMaterial / onBeforeCompile) +
   runtime canvas/data textures only.
 - **Additive / reversible** (not a git repo): new files over rewrites; nothing deleted
@@ -144,11 +144,13 @@ value the design doesn't use. Streaming stays possible later behind the same `Wo
 
 ## TRACK B — Great visuals (ordered by impact-per-cost)
 
-- **B0 · Quality tiers + FrameContext.** ✅ DONE (2026-06-02). `render/QualityTier.ts`
-  (auto-detect low/med/high + **adaptive frame-time downgrade** — DPR only at runtime, no
-  recompiles) and `render/FrameContext.ts` (shared time/wind/sun uniform bus, reusing `Wind.ts`
-  + the heli-follow sun). Wired through `main.ts` (DPR/shadows) + `Game.ts` (shadow-map/water
-  tessellation read at load). Every later phase reads the tier.
+- **B0 · Quality tiers + FrameContext.** ✅ DONE (2026-06-02; DPR made adaptive/recoverable
+  2026-06-03). `render/QualityTier.ts` (auto-detect low/med/high fixes scene complexity at load;
+  an **adaptive frame-time watchdog** scales **render DPR** down under load and back up under
+  headroom within `[dpr.floor .. dprCap]` — the one recompile-free runtime lever) and
+  `render/FrameContext.ts` (shared time/wind/sun uniform bus, reusing `Wind.ts` + the heli-follow
+  sun). Wired through `main.ts` (applies DPR to the renderer + composer; shadows set once at load)
+  + `Game.ts` (shadow-map/water tessellation read at load). Every later phase reads the tier.
 - **B1 · Water** ✅ DONE (2026-06-02) (top win — you stare at it every scoop). `water/WaterMaterial.ts`
   (onBeforeCompile over Standard: animated normals, **real depth-fade** from a per-vertex water
   depth baked off `World.groundHeightAt`, fresnel sky tint, shoreline foam) + `water/Ripples.ts`
@@ -163,8 +165,8 @@ value the design doesn't use. Streaming stays possible later behind the same `Wo
   Wired in `Game` (one preset replaces the flat background + lights; dome follows the eye each frame).
   Verified live: gradient sky, sun glow, hills fading into haze. (God-rays still deferred, high-only.)
 - **B3 · Fire glow.** ✅ DONE (2026-06-03). `postfx/Composer.ts` (EffectComposer: RenderPass →
-  UnrealBloomPass → OutputPass, tier-scaled — full-res on high, half-res on med, OFF on low; chosen
-  once at load) wired in `main.ts` (renders through the composer). The bloom **threshold (0.95)** is
+  UnrealBloomPass → OutputPass, tier-gated — on for med/high at the renderer's full DPR (MSAA on
+  high), OFF on low; chosen once at load) wired in `main.ts` (renders through the composer). The bloom **threshold (0.95)** is
   tuned to the HDR emissive flames (emissiveIntensity up to 2.6, kept HDR in the composer's half-float
   target) so the fires + sun core glow while the LDR sky stays crisp — no horizon wash-out. Plus
   `lighting/HeroFireLights.ts` — a **fixed pool** of 2 point-lights (added once, never removed → no

@@ -686,25 +686,26 @@ export class World {
    * `Game` from the resolved structure plan, so empty named-but-unbuilt community sites don't
    * grow phantom clearings in the forest. Falls back to all communities until set.
    */
-  setClearings(centers: readonly { x: number; z: number }[]): void {
+  setClearings(centers: readonly { x: number; z: number; radius?: number }[]): void {
     this.clearingCenters = centers.slice();
   }
-  private clearingCenters: readonly { x: number; z: number }[] | null = null;
+  private clearingCenters: readonly { x: number; z: number; radius?: number }[] | null = null;
 
   /**
-   * Forest-clearing weight in 0..1: 1 out in the open bush, falling to 0 inside a
-   * settlement's cleared yard so trees thin out where people live (a hamlet shouldn't be
-   * boxes buried in forest). Fully cleared within `yardRadius * yardInner`, then feathered
-   * up to 1 at the yard rim for a natural edge. Returns the MIN over the registered yard
-   * centres (any yard clears). The yard decal in `meshes/clearing.ts` uses the same radii so
-   * the dirt and the cleared trees line up.
+   * Forest-clearing weight in 0..1: 1 out in the open bush, falling to 0 inside a registered
+   * cleared patch so trees thin out where people live (a hamlet shouldn't be boxes buried in
+   * forest) AND where the heli must touch down (a crew LZ — a NARROW patch via a per-centre
+   * `radius`). Each centre clears fully within `radius * yardInner`, then feathers up to 1 at
+   * its rim for a natural edge; a centre with no `radius` falls back to the hamlet `yardRadius`.
+   * Returns the MIN over all centres (any patch clears). The yard decal in `meshes/clearing.ts`
+   * uses the same radii so the dirt and the cleared trees line up.
    */
   clearingFactor(x: number, z: number): number {
     let k = 1;
-    const r = COMMUNITIES.yardRadius;
-    const inner = r * COMMUNITIES.yardInner;
     const centers = this.clearingCenters ?? this.communities;
     for (const c of centers) {
+      const r = c.radius ?? COMMUNITIES.yardRadius; // per-centre radius — small for a crew LZ
+      const inner = r * COMMUNITIES.yardInner;
       const d = Math.hypot(c.x - x, c.z - z);
       if (d >= r) continue;
       const t = d <= inner ? 0 : (d - inner) / (r - inner);

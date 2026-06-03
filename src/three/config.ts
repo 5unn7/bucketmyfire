@@ -182,6 +182,12 @@ export const FLIGHT = {
   // tall band you can climb into; normal flying stays low near the floor)
   canopyClearance: 8, // land floor = ground + this — keeps the rotor disc above the canopy
   scoopClearance: 2, // water floor = waterLevel + this — low enough that the slung bucket dips under
+  // Landing pad (cold start): right around the base helipad the flight floor eases DOWN from the full
+  // canopy clearance to this, so the heli rests ON the pad (skids down) and lifts off without snapping
+  // up to canopy height. Blended over `padBlendRadius` units around the pad; beyond that the floor is
+  // the usual canopy/scoop clearance — so this only affects the cleared base, not the bush.
+  landClearance: 0.35, // floor clearance on the pad → the skids rest on the deck
+  padBlendRadius: 26, // units over which the floor eases from the pad up to the normal flight floor
 
   // --- Weight coupling: a full bucket flies heavy and sluggish, recovers on drop ---
   // Each penalty is the fraction shaved off the parameter at a full (ratio = 1) bucket.
@@ -306,11 +312,66 @@ export const BUCKET3D = {
   // the dirt and snags it in the canopy (deeper contact = grabbier). Carrying water
   // while scraping slops some of it out.
   bottomOffset: 0.72, // bucket underside below its origin (scaled body half-height, 1.2 × 0.6) — the contact point
+  // --- Parked-on-the-ground pose (cold start / landed) ---
+  // When the heli is sitting on the pad the slung bucket isn't dangling under the belly — a ground
+  // crew lays it out on the deck just ahead of the nose, line slack. While the heli's AGL is below
+  // `parkAgl`, Game parks the bucket `parkAhead` units in front of the nose (upright, no swing) and
+  // hands back to the pendulum once it lifts off.
+  parkAhead: 6.5, // units ahead of the nose the bucket rests while landed
+  parkAgl: 1.6, // park the slung load while the heli is within this AGL of the pad (i.e. on the ground)
   groundDrag: 7, // horizontal velocity bled/sec while in contact (the scrape) — higher = grabbier
   grabDepth: 4, // penetration (units) at which contact drag DOUBLES — a tall canopy grabs hard
   spillDragMin: 4, // drag speed (units/s) below which a scrape is gentle enough not to slop water
   spillPerDrag: 0.5, // litres slopped per (unit/s) of drag speed, per second, while scraping with water
 };
+
+// --- Water-drop physical model (height → footprint, wind drift) ----------------------------------
+// A drop's effect now depends on HOW HIGH and into WHAT WIND it was released. Read by the shared
+// resolveDrop() helper in Game (which has World access for the bucket's AGL); the resolved center +
+// radius + density feed FireSystem.douse, the spray sheet, the ripples, and the predicted-impact
+// ring — ONE source of truth so what the player sees is what actually hits.
+export const DROP_PHYSICS = {
+  // Height band (bucket AGL, units). One-sided: full strength at/below bandHi (a deck dump is never
+  // wrongly nerfed); only ABOVE the band does the load spread thin + weak.
+  bandHi: 70, // top of the sweet spot — at/below: density=1, radius≈dropRadius // a low water-bomber run
+  ceilAGL: 200, // at/above here the load is mist: min density, max spread // ~900ft — you SEE it drift, it does ~nothing
+  // Footprint growth with height (multipliers on BUCKET3D.dropRadius).
+  tightRadiusMul: 0.85, // radius mult on the deck — still a USABLE footprint (0.85·26≈22u ≈ today), not a pinhole
+  wideRadiusMul: 2.2, // radius mult at/above ceilAGL — a wide thin veil (2.2·26≈57u) // spread thin
+  // Effectiveness (per-litre density) above the band.
+  minDensityMul: 0.12, // density at ceilAGL — mist does ~12% per-litre work // the "too high = useless" cap
+  areaFalloff: 1.0, // 0 = density-only high penalty, 1 = full 1/areaRatio per-cell dilution as the disc widens
+  // Radial coverage within the disc (EDGE falloff): water peaks at center, tapers to the rim.
+  edgeFloor: 0.12, // min coverage at the very rim (0..1) — a rim splash still wets/feeds back, ~8× weaker than center
+  coverWetFloor: 0.6, // FLOOR on the wet-firebreak coverage — keep the HOLDING LINE broad even on edge hits
+  // (decouples "edge doesn't extinguish" — good — from "edge doesn't hold a line" — a separate, riskier nerf)
+  // Intensity resistance (DEAD-ON-HOT): a hotter cell absorbs less knock per litre → multiple passes.
+  hotResist: 0.55, // diminishing-returns strength (0=flat/old, 1=max). 0.55 → a max-heat cell needs ~2-3 passes
+  hotResistFloor: 0.3, // least a fully-hot cell is knocked vs flat — hot cells still take real damage, just resist
+  // Wind drift of the impact point (falling water is carried downwind; more the higher you drop).
+  fallG: 42, // gravity (u/s²) for fall-TIME only. = SPRAY.gravity so the douse offset & the visible spray fall in lockstep
+  v0Down: 16, // initial downward droplet speed (= SPRAY.speedDown) for the exact fall-time form
+  windDriftGain: 6.0, // world u/s of horizontal drift per 1.0 wind.strength. Mirrors FLIGHT.windSpeed=6 → "same wind"
+  windDriftMax: 22.0, // hard clamp on total drift (≈0.85·dropRadius) so a centered drop can still partially connect
+  minDriftAgl: 2.0, // below this AGL fall-time≈0 → no drift (avoids sqrt noise when the bucket scrapes the canopy)
+} as const;
+
+// --- Drop feedback (predicted-impact ring + post-drop readout) — VISUAL/UX only, never feeds the sim.
+export const DROP_FX = {
+  markerShowAGL: 90, // show the predicted ring only below this bucket AGL // above = cruising, no clutter
+  markerColorInBand: 0x49e0a0, // green-cyan: this drop will bite
+  markerColorTooHigh: 0xffb24a, // amber: weak/dispersed (matches the existing crew-toast amber)
+  markerColorWide: 0xff5a5a, // red: predicted center far from any live fire — you'll miss
+  markerWideDist: 30, // units from the nearest live fire beyond which the ring reads as a MISS (red)
+  markerHideDist: 180, // no active fire within this of the predicted center → hide the ring (not on a run)
+  markerMinOpacity: 0.18, // floor opacity (too-high fades toward this)
+  markerMaxOpacity: 0.75, // in-band opacity — bright = confident
+  markerLift: 0.4, // raise the decal above terrain to avoid z-fight
+  resultDirectFrac: 0.45, // heatRemoved/heatPresent at/above which a drop is a "Direct hit"
+  resultEdgeFrac: 0.12, // below direct, above this = "Edge only"
+  resultTooHighEff: 0.5, // average density below which the readout calls it "Too high — dispersed"
+  resultGaugeTintMs: 1100, // ms the water gauge flashes its result color
+} as const;
 
 // --- Per-helicopter classes (the "feel" + payload + durability of each airframe) ----------
 // All three playable helis used to SHARE the FLIGHT/BUCKET3D tuning — selecting one only swapped
@@ -457,10 +518,12 @@ export const FIRE3D = {
   seedRadius: 1, // radius (cells) of the disc lit when a fire is seeded/spotted — start as a SPOT
   cellRegrow: 0.16, // heat/sec a burning cell climbs toward its fuel ceiling (lowered again: a fire
   // builds more gradually + a knockdown buys longer relief before it climbs back; pairs with wetRegrowSuppress below)
-  cellBurnRate: 0.016, // fuel/sec a cell consumes at full heat → a forest cell now burns out in
-  // ~60–70s (was 0.05 ≈ 20s). The single biggest lever against "fires burn out 10× too fast": a
-  // neglected front lives for MINUTES and grows into a real threat instead of fizzling.
-  cellSmolderFloor: 0.3, // min fraction of burn it consumes when barely lit (guarantees burn-out)
+  cellBurnRate: 0, // fuel/sec a cell consumes at full heat. 0 = fires NEVER self-extinguish: a fire
+  // burns until the PLAYER waters it out (you can't win by waiting). Kept as a lever — raise it to let
+  // neglected fronts slowly starve again, but the design intent now is a persistent, player-fought blaze.
+  cellSmolderFloor: 0.3, // min fraction of burn consumed when barely lit (only matters if cellBurnRate>0)
+  charHeat: 0.5, // a cell must burn at least this hot to start charring its ground (the scar)
+  charTime: 22, // seconds of hot burning before the ground blackens → `scorch` (visual scar; trails the front)
   // A doused-but-still-lit cell's regrow is suppressed while its ground is WET (set by a drop):
   // the knockdown HOLDS for ~the firebreak cooldown, then re-flares as it dries — so water is a
   // tactical holding action on a big blaze (knock the head, re-hit or cut a line), not a delete
@@ -594,14 +657,17 @@ export const SCORE = {
 // `MissionDef`, never here. Engine-agnostic sims (`sim/CrewTransport.ts`, `sim/FuelSim.ts`)
 // read these exactly as `HelicopterSim`/`FireSystem` read FLIGHT/FIRE3D.
 export const MISSIONS = {
-  // --- Crew / cargo sling transport (landing-zone delivery + evacuation) ---
-  // A crew is "loaded"/"delivered" by holding a LOW + SLOW hover within a zone's radius
-  // for the dwell time — the same low-and-slow skill scoop uses, no extra button.
-  lzRadius: 24, // horizontal distance (units) within which a hover counts as "on the zone"
-  hoverAgl: 16, // radar altitude (units) below which the heli is "low" enough to work a zone
-  hoverSpeed: 7, // airspeed (units/s) below which the heli is "slow" enough to work a zone
-  pickupSec: 2.2, // low+slow dwell to LOAD a crew at a pickup/base zone
-  dropSec: 2.2, // low+slow dwell to DELIVER a crew at a dropoff zone
+  // --- Crew transport (land-and-board delivery + evacuation) ---
+  // A crew move is a REAL ferry: SET DOWN on the zone's cleared pad (the flight floor eases to
+  // skids height there, like the base helipad), bring the aircraft to a stop, and hold the
+  // touchdown for the dwell while the crew board / disembark the cabin — then on to the next.
+  // One crew at a time; no slung basket, no extra button — just fly it down and stop.
+  lzRadius: 14, // horizontal distance (units) within which a touchdown counts as "on the zone" (narrow pad)
+  lzClearRadius: 20, // forest cleared within this of an LZ so the skids reach the ground (inner core fully clear)
+  landAgl: 1.2, // height above the eased pad floor (units) below which the heli counts as LANDED (skids down)
+  landSpeed: 2.0, // airspeed (units/s) below which the heli counts as stopped (no boarding on the roll)
+  pickupSec: 2.2, // landed dwell to BOARD a crew at a pickup/base zone
+  dropSec: 2.2, // landed dwell to set a crew DOWN at a dropoff zone
   zoneSmoke: 0x39d0ff, // marker-smoke / ring tint for an ACTIVE (next) zone (cyan)
   zoneSmokeDone: 0x5a6b72, // tint once a zone is satisfied (greyed out)
 
@@ -640,21 +706,35 @@ export const FAUNA = {
 
 // --- Track B (visuals) ------------------------------------------------------
 
-// Quality tiers (B0). One auto-detected preset scales every later visual phase;
-// an adaptive frame-time watchdog can step DOWN a tier (cheap: DPR + shadows) if
-// the device can't hold frame rate. Load-time-only fields (shadowMapSize,
-// waterSegments) are read once at construction — changing them would recompile.
+// Quality tiers (B0). One auto-detected preset picks SCENE COMPLEXITY at load
+// (shadows, tessellation, post-fx). Render RESOLUTION is a SEPARATE, recompile-free
+// lever: a frame-time watchdog scales DPR within [dpr.floor .. dprCap] and — unlike
+// the old one-way tier ratchet — steps it back UP when there's headroom, so a brief
+// stall can't strand the device at a permanently blurry resolution. dprCap is a
+// uniform ceiling of 2 across tiers (a cheap scene at DPR 2 is sharp AND affordable;
+// resolution and scene cost are decoupled). Load-time-only fields (shadowMapSize,
+// waterSegments, terrainSegments) are read once at construction — changing them
+// would recompile, so the watchdog never touches them.
 export const QUALITY = {
   presets: {
     // terrainSegments = grid resolution per side; higher = smoother carved SHORELINES
     // (the waterline reads jagged at low res). Water-disc edges (waterSegments) too.
-    // bloom = post-process glow render scale: 0 off, 0.5 half-res (cheaper), 1 full-res.
-    low: { name: 'low', dprCap: 1, shadows: false, shadowMapSize: 512, waterSegments: 96, terrainSegments: 140, bloom: 0 },
-    med: { name: 'med', dprCap: 1.5, shadows: true, shadowMapSize: 1024, waterSegments: 160, terrainSegments: 190, bloom: 0.5 },
-    high: { name: 'high', dprCap: 2, shadows: true, shadowMapSize: 2048, waterSegments: 224, terrainSegments: 248, bloom: 1 },
+    // bloom > 0 enables the post-fx composer (low skips it entirely → cheapest path).
+    // msaa = composer multisample count (0 = none; the no-composer low path AAs via the
+    // renderer's own antialias). dprCap = per-tier render-resolution ceiling.
+    low: { name: 'low', dprCap: 2, shadows: false, shadowMapSize: 512, waterSegments: 96, terrainSegments: 140, bloom: 0, msaa: 0 },
+    med: { name: 'med', dprCap: 2, shadows: true, shadowMapSize: 1024, waterSegments: 160, terrainSegments: 190, bloom: 1, msaa: 0 },
+    high: { name: 'high', dprCap: 2, shadows: true, shadowMapSize: 2048, waterSegments: 224, terrainSegments: 248, bloom: 1, msaa: 4 },
   },
-  downgradeMs: 22, // EMA frame-time (≈45fps) above which we're "over budget"
-  downgradeWindowSec: 2.5, // sustained over-budget time before stepping a tier down
+  // Adaptive render-resolution watchdog (the only runtime lever — recompile-free).
+  dpr: {
+    floor: 1.0, // never render below this DPR (the pixelation guard); also capped by the device DPR
+    step: 0.25, // DPR nudge per adjustment — [1.0 .. 2.0] resolves in 4 steps
+    upWindowSec: 4, // sustained headroom (EMA < upgradeMs) before stepping DPR back UP
+  },
+  downgradeMs: 22, // EMA frame-time (≈45fps) above which we're "over budget" → step DPR down
+  upgradeMs: 15, // EMA frame-time (≈66fps) below which there's headroom → step DPR up
+  downgradeWindowSec: 2.5, // sustained over-budget time before stepping DPR down
   emaAlpha: 0.08, // smoothing on the frame-time average
 } as const;
 
@@ -972,4 +1052,24 @@ export const CAMERA = {
   lookPitchMax: 1.15, // highest the cam tilts (overhead, looking down) — radians
   lookPadRadius: 46, // px of drag from the eye button that maps to full orbit speed
   lookReturnLerp: 0.1, // how fast the view eases back to default on release (per 60fps frame)
+  // --- Mobile-portrait readability (concern 6). `fov` is VERTICAL; a tall narrow viewport CROPS the
+  // horizontal world, so the ground under the bucket vanishes. Hor+ derives a wider vertical fov in
+  // portrait so a portrait player sees the same horizontal span a landscape player does. ALL no-ops in
+  // landscape (aspect ≥ portraitFovBlendStart) → desktop framing is byte-identical. ---
+  portraitHorizFovRef: 88, // deg HORIZONTAL fov to preserve in portrait (≈ what a 1.78 landscape player sees)
+  portraitVfovMax: 95, // deg clamp on the derived vertical fov so an extreme-narrow phone doesn't fisheye
+  portraitFovBlendStart: 1.05, // aspect at/above which fov = CAMERA.fov exactly (landscape untouched)
+  portraitFovBlendEnd: 0.72, // aspect at/below which full Hor+ applies; smoothstep across the band (no pop at aspect≈1)
+  // --- Gentle "bombing-run" look-down assist: when low + slow + carrying water near a fire, lift the cam
+  // and tilt it down so the impact zone shows. Additive on free-look, portrait-only, eases in/out. ---
+  bombingRun: true, // master enable
+  bombingPortraitOnly: true, // engage only in portrait (aspect<1); landscape chase framing never changes
+  bombingExtraHeight: 10, // extra cam height at full engage (on top of `height`)
+  bombingExtraPitch: 0.32, // extra look-down (rad ≈18°) ADDED to free-look curPitch, clamped to lookPitchMax
+  bombingExtraLookAhead: 14, // extra lookAhead at full engage — frame the impact zone, not the nose
+  bombingArmAgl: 130, // engage only when heliSim.agl < this (a low pass)
+  bombingArmSpeed: 26, // engage only when heliSim.speed < this (lining up, not transiting)
+  bombingArmWater: 1, // engage only when carrying ≥ this many litres
+  bombingArmFireDist: 180, // engage only when the nearest active fire is within this (units)
+  bombingEngageLerp: 0.05, // per-60fps ease of the 0..1 engage factor IN and OUT — glides, never snaps
 };

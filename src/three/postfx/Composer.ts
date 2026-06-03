@@ -115,9 +115,19 @@ export class Composer {
     }
 
     const size = renderer.getSize(new THREE.Vector2());
-    this.composer = new EffectComposer(renderer);
-    // Half-res bloom on med: render the composer chain at a reduced pixel ratio.
-    this.composer.setPixelRatio(renderer.getPixelRatio() * bloom);
+    // Optional MSAA (WebGL2) on the composer target. Keep HalfFloat so the bloom
+    // threshold still sees HDR (>1) pixels; setSize below scales it to the framebuffer.
+    const samples = tier.current.msaa;
+    const target =
+      samples > 0
+        ? new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples })
+        : undefined;
+    this.composer = new EffectComposer(renderer, target);
+    // Render the WHOLE chain at the renderer's DPR so the scene stays sharp. (The old
+    // `getPixelRatio() * bloom` scaled the entire composited image — not just the bloom
+    // blur — so med rendered the frame BELOW 1 DPR and looked soft. Render resolution is
+    // now the QualityTier's adaptive lever, re-applied via `setPixelRatio` below.)
+    this.composer.setPixelRatio(renderer.getPixelRatio());
     this.composer.setSize(size.x, size.y);
     this.composer.addPass(new RenderPass(scene, camera));
 
@@ -156,6 +166,12 @@ export class Composer {
     this.grade?.uniforms.uResolution.value.set(width, height);
     this.aspect = height > 0 ? width / height : 1;
     if (this.haze) this.haze.uniforms.uAspect.value = this.aspect;
+  }
+
+  /** Re-apply the live render DPR from the QualityTier watchdog. Resizes the whole chain
+   *  (recompile-free); no-op when the composer is off (low tier renders bare). */
+  setPixelRatio(dpr: number): void {
+    this.composer?.setPixelRatio(dpr);
   }
 
   /**

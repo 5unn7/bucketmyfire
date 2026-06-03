@@ -102,6 +102,8 @@ export class HUD {
   // transparent — only the capsule carries glass, so it's a single backdrop-blur layer.
   private readonly spine: HTMLDivElement;
   private readonly waterPod: Pod;
+  private waterPodBg = ''; // baseline water-gauge fill (captured at build), restored after a drop-result flash
+  private gaugeFlashTimer = 0; // setTimeout id: restore the water gauge after a result tint
   private readonly hullPod: Pod;
   private readonly fuelPod: Pod;
   private readonly firesPod: Pod;
@@ -239,6 +241,7 @@ export class HUD {
     this.spine = frosted({ display: 'flex', flexDirection: 'column', padding: '0', overflow: 'hidden' });
     this.waterPod = makePod(WATER_SVG, `linear-gradient(90deg, ${UI.water}, ${UI.accent})`, false);
     this.waterPod.fill.style.boxShadow = UI.glow; // keep the water glow
+    this.waterPodBg = this.waterPod.fill.style.background; // baseline fill, restored after a drop-result flash
     this.hullPod = makePod(HEALTH_SVG, `linear-gradient(90deg, #ff5d4d, #ffb24a, #5fd17a)`, false);
     this.fuelPod = makePod(FUEL_SVG, `linear-gradient(90deg, #ff5d4d, #ffb24a, ${UI.accent})`, false);
     this.firesPod = makePod(FIRES_SVG, '', true); // a COUNT, not a bar
@@ -625,6 +628,20 @@ export class HUD {
     this.root.appendChild(this.banner);
   }
 
+  /**
+   * Flash the WATER gauge fill a result color for `ms`, then restore its baseline gradient — the
+   * quick visual confirmation of a drop's result (green direct / amber too-high / red miss), paired
+   * with the Dispatch readout. Event-driven (called once per committed drop), so no per-frame cost.
+   */
+  flashGauge(color: string, ms: number): void {
+    if (this.gaugeFlashTimer) window.clearTimeout(this.gaugeFlashTimer); // re-flash: restart cleanly
+    this.waterPod.fill.style.background = color;
+    this.gaugeFlashTimer = window.setTimeout(() => {
+      this.waterPod.fill.style.background = this.waterPodBg;
+      this.gaugeFlashTimer = 0;
+    }, ms);
+  }
+
   // --- Radio comms + pre-flight briefing (the mission "experience" layer) ----
 
   /**
@@ -729,23 +746,24 @@ export class HUD {
   showEngineStart(): void {
     if (this.engineStartEl) return;
 
-    // Click-through wrapper centred a little above mid-screen (clear of the grounded heli below);
-    // only the dial itself is interactive.
+    // Click-through wrapper tucked against the RIGHT edge, mid-height — small and out of the way so it
+    // never blocks the view of the helicopter (and clears the centred CONTROLS panel). Only the dial
+    // itself is interactive.
     const wrap = el('div', {
       position: 'fixed',
-      left: '50%',
-      top: '44%',
-      transform: 'translate(-50%, -50%)',
+      right: 'calc(var(--bmf-safe-r) + var(--bmf-edge))',
+      top: '38%',
+      transform: 'translateY(-50%)',
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
-      gap: '14px',
+      gap: '7px',
       zIndex: '25',
       pointerEvents: 'none',
       transition: 'opacity 0.3s ease, transform 0.3s ease',
     });
 
-    const size = 134;
+    const size = 80;
     const dial = el('div', {
       position: 'relative',
       width: `${size}px`,
@@ -765,7 +783,7 @@ export class HUD {
     setBlur(dial);
 
     // Progress ring: a conic-gradient sweep masked down to a thin annulus around the dial.
-    const ringPx = 7;
+    const ringPx = 5;
     const ring = el('div', {
       position: 'absolute',
       inset: `-${ringPx + 1}px`,
@@ -784,15 +802,15 @@ export class HUD {
       gap: '2px',
       pointerEvents: 'none',
     });
-    const label = el('div', { fontSize: '18px', fontWeight: '800', letterSpacing: '2.5px', color: UI.text }, 'START');
-    const sub = el('div', { fontSize: '11px', fontWeight: '700', letterSpacing: '1.5px', color: UI.dim }, '0%');
+    const label = el('div', { fontSize: '13px', fontWeight: '800', letterSpacing: '1.5px', color: UI.text }, 'START');
+    const sub = el('div', { fontSize: '10px', fontWeight: '700', letterSpacing: '1px', color: UI.dim }, '0%');
     inner.append(label, sub);
     dial.append(ring, inner);
 
     const caption = el(
       'div',
-      { fontSize: '12px', fontWeight: '700', letterSpacing: '2.5px', color: UI.accent, textShadow: '0 1px 8px rgba(0,0,0,0.7)' },
-      'HOLD TO START ENGINE',
+      { fontSize: '9px', fontWeight: '700', letterSpacing: '1.2px', color: UI.accent, textShadow: '0 1px 8px rgba(0,0,0,0.7)', whiteSpace: 'nowrap' },
+      'HOLD TO START',
     );
     wrap.append(dial, caption);
 

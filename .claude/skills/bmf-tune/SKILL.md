@@ -44,7 +44,7 @@ are detailed and authoritative. Map:
 | **Scoring** | `SCORE` | `perFireDoused`, `perStructureSaved`, `winBonus`, `perCrewDelivered` |
 | **Mission mechanics** (LZ, crew dwell, **fuel/range**) | `MISSIONS` | `lzRadius`, `pickupSec`, `idleBurn`, `thrustBurn`, `refuelPerSec`, `lowWarn` |
 | Wildlife | `FAUNA` | `ungulatePer1000`, `loonsPerLake`, `cullDist` |
-| Quality presets / adaptive downgrade | `QUALITY` | `presets.{low,med,high}`, `downgradeMs` |
+| Quality presets / adaptive DPR | `QUALITY` | `presets.{low,med,high}`, `dpr.{floor,step,upWindowSec}`, `downgradeMs`, `upgradeMs` |
 | Bloom / fire glow | `POSTFX`, `FIRELIGHT` | `bloomStrength`, `bloomThreshold` / `count`, `intensity` |
 | God-rays, color grade | `GODRAYS`, `GRADE` | `exposure`, `density` / `warmHighlights`, `vignette`, `grain` |
 | Embers / sparks | `EMBERS` | `max`, `rise`, `windInfluence`, `colorHot` |

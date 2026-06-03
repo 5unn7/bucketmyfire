@@ -24,6 +24,19 @@ export class BucketSim {
   }
 
   /**
+   * Snap the bucket to a fixed resting spot with all motion zeroed — used to park it on the pad
+   * ahead of the nose while the heli is landed (cold start). Zeroing the velocity means it doesn't
+   * swing while parked AND doesn't fling outward when the pendulum (`update`) resumes on lift-off.
+   */
+  parkAt(x: number, y: number, z: number): void {
+    this.position.set(x, y, z);
+    this.vel.set(0, 0, 0);
+    this.tip = 0;
+    this.contact = false;
+    this.dragSpeed = 0;
+  }
+
+  /**
    * Step the pendulum. `anchor` = heli position, `velX/velZ` = heli horizontal
    * velocity (adds turn-trail sway), `fillRatio` 0..1 controls mass + sag,
    * `submerged` = the bucket is dipped in a lake (drives the physical scoop tip:

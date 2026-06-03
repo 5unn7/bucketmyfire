@@ -1,4 +1,4 @@
-import { FIRE3D, WORLD3D } from '../config';
+import { BUCKET3D, DROP_PHYSICS, FIRE3D, WORLD3D } from '../config';
 
 /**
  * Engine-agnostic forest-fire simulation as a CELLULAR FIELD (Track C5). Fire is modelled
@@ -39,6 +39,19 @@ export interface FireState {
   size: number; // 0..1 — footprint / NWCG size-class analog (how many cells are alight)
   fuel: number; // 0..1 — average remaining fuel in the cluster
   alive: boolean;
+}
+
+/**
+ * What a single `douse()` actually accomplished — numbers only, so the Game/HUD can give honest
+ * feedback ("Direct hit — 70% knocked down" vs "Edge only") without the sim touching the DOM. It's a
+ * REUSED struct on the FireSystem instance (returned by reference) so a per-frame drop allocates nothing.
+ */
+export interface DouseResult {
+  heatRemoved: number; // total heat (0..1 per cell, summed) this drop knocked down
+  heatPresent: number; // total live heat that was in the disc when the water arrived
+  cellsHit: number; // burning cells the disc covered
+  cellsExtinguished: number; // cells this drop took to zero
+  peakHeatHit: number; // hottest single cell the disc covered (0..1)
 }
 
 /** World fields the fire sim needs, injected so it stays decoupled from `World`. */
@@ -89,7 +102,8 @@ export class FireSystem {
   private readonly heat: Float32Array; // live fire per cell (0..1)
   private readonly preheat: Float32Array; // accumulating ignition energy per cell
   private readonly wet: Float32Array; // doused firebreak suppression (0..1), decays
-  private readonly scorch: Uint8Array; // 1 once a cell has burned out (fuel gone, can't reburn)
+  private readonly charTime: Float32Array; // seconds a cell has burned hot (drives the char SCAR, not burn-out)
+  private readonly scorch: Uint8Array; // 1 once a cell's ground has charred (visual scar; a doused charred cell stays out)
   private readonly cellY: Float32Array; // ground height per cell (for spread slope + mesh Y)
 
   private readonly half = WORLD3D.size / 2;
@@ -108,6 +122,15 @@ export class FireSystem {
   private burnedOutCells = 0;
   private extinguishedCells = 0;
 
+  // Reused result for douse() — returned by reference so a per-frame drop never allocates.
+  private readonly _douseResult: DouseResult = {
+    heatRemoved: 0,
+    heatPresent: 0,
+    cellsHit: 0,
+    cellsExtinguished: 0,
+    peakHeatHit: 0,
+  };
+
   // Stable field view object (built once) handed to renderers each frame — no per-frame alloc.
   private readonly fieldViewObj: FireFieldView;
 
@@ -121,6 +144,7 @@ export class FireSystem {
     this.heat = new Float32Array(N);
     this.preheat = new Float32Array(N);
     this.wet = new Float32Array(N);
+    this.charTime = new Float32Array(N);
     this.scorch = new Uint8Array(N);
     this.cellY = new Float32Array(N);
 
@@ -238,27 +262,37 @@ export class FireSystem {
       const h = this.heat[i];
       if (h <= 0) continue;
 
-      // Consume fuel (a smolder floor guarantees it reaches 0 in finite time → burn-out).
-      const burn = FIRE3D.cellBurnRate * (FIRE3D.cellSmolderFloor + (1 - FIRE3D.cellSmolderFloor) * h) * dt;
-      let f = this.fuel[i] - burn;
-      if (f <= 0) {
-        f = 0;
-        if (this.scorch[i] === 0) {
-          this.scorch[i] = 1;
-          this.burnedOutCells++;
-        }
+      // NO SELF-EXTINGUISHING (design): fuel does NOT deplete by default, so a fire never burns
+      // itself out — it persists until the PLAYER waters it out. The win can only come from water,
+      // not from waiting. `cellBurnRate` is kept as a tuning lever (0 = never burns out); if it's
+      // ever raised, a depleted cell simply caps its heat ceiling lower (it still won't auto-scorch).
+      if (FIRE3D.cellBurnRate > 0) {
+        const burn = FIRE3D.cellBurnRate * (FIRE3D.cellSmolderFloor + (1 - FIRE3D.cellSmolderFloor) * h) * dt;
+        const nf = this.fuel[i] - burn;
+        this.fuel[i] = nf > 0 ? nf : 0;
       }
-      this.fuel[i] = f;
+      const f = this.fuel[i];
 
-      // Heat climbs toward a ceiling = remaining fuel; as fuel drains the flame dies with it.
-      // A WET cell (just doused) regrows far more slowly, so a knockdown HOLDS while the firebreak
-      // is fresh and only re-flares as it dries — water becomes a tactical holding action, not a
-      // delete button (the smolder/re-flare loop). cellSmolderFloor keeps a tiny climb so a barely-
-      // wet cell still creeps back; a fully-wet cell is nearly frozen.
+      // Heat climbs toward a ceiling = remaining fuel. A WET cell (just doused) regrows far more
+      // slowly, so a knockdown HOLDS while the firebreak is fresh and only re-flares as it dries —
+      // water is a tactical holding action, not a delete button (the smolder/re-flare loop).
       const regrow = FIRE3D.cellRegrow * (1 - FIRE3D.wetRegrowSuppress * this.wet[i]);
       let nh = h < f ? Math.min(f, h + regrow * dt) : f;
       if (nh < 0) nh = 0;
       this.heat[i] = nh;
+
+      // CHAR SCAR (visual only — NEVER lowers heat/fuel). Ground under a sustained hot burn blackens:
+      // after `charTime` seconds above `charHeat`, mark `scorch` so the terrain chars + the radar scar
+      // fills. `scorch` here also means "once you water this charred cell OUT, it stays out" (a doused
+      // charred cell can't be re-lit by a neighbour) — but on its own it keeps burning until you douse it.
+      if (this.scorch[i] === 0 && nh >= FIRE3D.charHeat) {
+        const ct = this.charTime[i] + dt;
+        this.charTime[i] = ct;
+        if (ct >= FIRE3D.charTime) {
+          this.scorch[i] = 1;
+          this.burnedOutCells++; // counts charred ground (the lasting scar), not a self-extinguish
+        }
+      }
       if (nh <= 0.04) continue; // too weak to spread
 
       // Pre-heat the 8 neighbours, weighted by wind alignment + slope + their fuel.
@@ -334,13 +368,31 @@ export class FireSystem {
   }
 
   /**
-   * Apply a water drop centered at (x,z): zero heat within `radius` by volume (fast dump and
-   * slow valve pour knock down the same per litre), kill pending ignition, and stamp a WET
-   * firebreak that resists reignition until it dries — so you can cut a line ahead of a front.
+   * Apply a water drop centered at (x,z). No longer a flat disc: water density PEAKS at the impact
+   * center and tapers to the rim (smoothstep falloff), so an edge clip only partially knocks a cell
+   * down; a HOTTER cell resists the knock (diminishing returns), so a single dead-on pass on a crown
+   * fire leaves a re-flare residual and needs several passes; and a drop spread over a wider disc
+   * (a high release — Game widens `radius`) is DILUTED per cell. `effMul` (1 in-band, →0.12 mist) is
+   * the height density Game passes in. The wet FIREBREAK is kept broad (floored) so an edge hit still
+   * lays a holding line — "edge doesn't extinguish" is decoupled from "edge doesn't hold a line".
+   *
+   * Returns a REUSED `DouseResult` (no allocation) so the caller can give honest hit feedback. Stays
+   * numbers-only — the engine-agnostic sim boundary holds.
    */
-  douse(x: number, z: number, radius: number, litres: number): void {
-    const knock = litres / FIRE3D.litresToClear; // heat (0..1) removed per cell
+  douse(x: number, z: number, radius: number, litres: number, effMul = 1): DouseResult {
+    const res = this._douseResult;
+    res.heatRemoved = 0;
+    res.heatPresent = 0;
+    res.cellsHit = 0;
+    res.cellsExtinguished = 0;
+    res.peakHeatHit = 0;
+    if (radius <= 0) return res; // degenerate footprint — nothing lands
+
+    const knockRef = litres / FIRE3D.litresToClear; // reference heat (0..1) a flat drop would remove
     const r2 = radius * radius;
+    // A wider disc (high release) spreads the SAME litres over more cells → each gets less.
+    const refArea = BUCKET3D.dropRadius * BUCKET3D.dropRadius;
+    const dilute = 1 + DROP_PHYSICS.areaFalloff * (r2 / refArea - 1); // >1 wide, <1 tight
     const n = this.n;
     const minCx = clampInt(Math.floor((x - radius + this.half) / this.cellSize), 0, n - 1);
     const maxCx = clampInt(Math.floor((x + radius + this.half) / this.cellSize), 0, n - 1);
@@ -350,18 +402,44 @@ export class FireSystem {
       const wz = -this.half + (cz + 0.5) * this.cellSize;
       for (let cx = minCx; cx <= maxCx; cx++) {
         const wx = -this.half + (cx + 0.5) * this.cellSize;
-        if ((wx - x) * (wx - x) + (wz - z) * (wz - z) > r2) continue;
+        const d2 = (wx - x) * (wx - x) + (wz - z) * (wz - z);
+        if (d2 > r2) continue;
+        // RADIAL COVERAGE: smoothstep falloff, 1 at center → edgeFloor at the rim. (s*s avoids pow.)
+        const t = Math.sqrt(d2) / radius; // 0 center .. 1 rim
+        const s = 1 - t * t * (3 - 2 * t); // smoothstep reversed: 1@center, 0@rim
+        const cover = DROP_PHYSICS.edgeFloor + (1 - DROP_PHYSICS.edgeFloor) * s * s;
         const i = cz * n + cx;
-        if (this.heat[i] > 0) {
-          const after = Math.max(0, this.heat[i] - knock);
-          if (after <= 0) this.extinguishedCells++;
+        const h = this.heat[i];
+        if (h > 0) {
+          // INTENSITY RESISTANCE: a hotter cell absorbs less per litre → needs more passes.
+          const resist = 1 - DROP_PHYSICS.hotResist * (1 - DROP_PHYSICS.hotResistFloor) * h;
+          let knock = (knockRef * cover * resist * effMul) / dilute;
+          if (knock > knockRef) knock = knockRef; // a tight drop can never beat the flat reference
+          const after = Math.max(0, h - knock);
+          res.heatPresent += h;
+          res.heatRemoved += h - after;
+          res.cellsHit++;
+          if (h > res.peakHeatHit) res.peakHeatHit = h;
+          if (after <= 0) {
+            this.extinguishedCells++;
+            res.cellsExtinguished++;
+            // Water that drives a cell fully OUT chars + locks it: a watered-out cell can't re-ignite
+            // (scorch blocks Pass-B reignition). Since fires don't self-extinguish, this is what makes
+            // a fire monotonically SHRINKABLE — every cell you fully douse stays out. A cell only KNOCKED
+            // DOWN (a hot or edge cell that doesn't reach 0) is NOT scorched, so it re-flares and needs
+            // another pass (concerns 2 & 3 intact).
+            this.scorch[i] = 1;
+          }
           this.heat[i] = after;
         }
-        this.preheat[i] = 0; // water kills pending ignition
-        if (this.wet[i] < FIRE3D.firebreakStrength) this.wet[i] = FIRE3D.firebreakStrength;
+        this.preheat[i] = 0; // water kills pending ignition across the whole disc (hard zero)
+        // WET firebreak stays BROAD: floored so even a rim cell lays a usable holding line.
+        const wetTarget = FIRE3D.firebreakStrength * Math.max(DROP_PHYSICS.coverWetFloor, cover);
+        if (this.wet[i] < wetTarget) this.wet[i] = wetTarget;
       }
     }
     this.rebuildReps();
+    return res;
   }
 
   // --- Accessors (read by Game.ts each frame) --------------------------------
@@ -399,6 +477,27 @@ export class FireSystem {
   heatAt(x: number, z: number): number {
     const i = this.cellIndex(x, z);
     return i < 0 ? 0 : this.heat[i];
+  }
+
+  /**
+   * World XZ of the single HOTTEST burning cell — where a competent pilot aims (you fight the worst
+   * flames, not a cluster's geometric centre, which may be a doused-out hole). Returns null if nothing
+   * burns. O(cells); used by the campaign verifier's perfect-player and available to assists.
+   */
+  hottestPoint(): { x: number; z: number } | null {
+    let best = 0;
+    let bi = -1;
+    const N = this.n * this.n;
+    for (let i = 0; i < N; i++) {
+      if (this.heat[i] > best) {
+        best = this.heat[i];
+        bi = i;
+      }
+    }
+    if (bi < 0) return null;
+    const cx = bi % this.n;
+    const cz = (bi / this.n) | 0;
+    return { x: -this.half + (cx + 0.5) * this.cellSize, z: -this.half + (cz + 0.5) * this.cellSize };
   }
 
   /** True once a cell has burned out (fuel consumed) — a tree there should be a charred snag. */

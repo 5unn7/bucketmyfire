@@ -186,12 +186,13 @@ export class HelicopterSim {
     // half of the pitch coupling whose horizontal half is the thrust boost above.
     const diveExcess = Math.max(0, -(this.pitch - cruise));
     targetAltVel -= FLIGHT.pitchDive * diveExcess;
-    // Ground effect (C4): close to the surface the rotor rides its own downwash cushion,
-    // a buoyant assist that floats a low hover (and helps counter the payload sink). It's
-    // GATED by collective — at full DOWN it vanishes, so descending to scoop still bottoms
-    // out on the floor; it only lifts when you ease off or pull up near the deck.
+    // Ground effect (C4): close to the surface the rotor rides its own downwash cushion — a buoyant
+    // assist that makes a low climb leap off the deck and helps haul a heavy bucket up. It's gated by
+    // the COMMANDED collective (Math.max(0, lift)): it only adds when you're actually pulling UP, so a
+    // landed or neutral-collective aircraft sits put instead of floating up on its own downwash, and a
+    // full-DOWN descent to scoop still bottoms out on the floor.
     const ge = Number.isFinite(groundEffect) ? THREE.MathUtils.clamp(groundEffect, 0, 1) : 0;
-    targetAltVel += WASH.groundLift * ge * Math.max(0, 1 + lift);
+    targetAltVel += WASH.groundLift * ge * Math.max(0, lift);
     const resp = FLIGHT.collectiveResponse * cls.collectiveMul * (1 - FLIGHT.payloadResponsePenalty * load);
     const altA = 1 - Math.pow(1 - resp, dt * 60); // per-60fps factor → framerate-independent ease
     this.altVel += (targetAltVel - this.altVel) * altA;
