@@ -1,0 +1,6 @@
+"ULTIMATE 3D ANIMAL PACK (Free Download)" by WildMesh 3D — https://sketchfab.com/WildMesh_3D
+Source: https://sketchfab.com/3d-models/ultimate-3d-animal-pack-free-download-741b52992790405185b4ede33b112080
+License: CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Commercial use allowed WITH credit.
+Shipped as animals-opt.glb (gltf-transform: resize 1024 + webp; 59 MB → 4.4 MB; node names preserved).
+Used for moose, deer, bear, fox, wolf, rabbit (boar unused; loons are procedural).
+Credit must appear in the game's credits/about screen.
