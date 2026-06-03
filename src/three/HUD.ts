@@ -89,25 +89,26 @@ export interface MapLabels {
 const TAPE_W = 78; // jet tape canvas width
 const TAPE_H = 188; // jet tape canvas height (the scrolling window)
 const LOW_AGL_FT = 250; // altimeter reads LOW (red) below this AGL in feet
-const HEAD_W = 256; // heading-tape logical/backing width; display width scales down per breakpoint
-const HEAD_H = 34;
 const RANGE_NEAR = 160; // world units to the radar edge when collapsed (zoomed-in local map)
 const HINT_VISIBLE_MS = 3600; // status hint flashes on, then auto-fades after this (no permanent nag)
 
 export class HUD {
   private readonly root: HTMLDivElement;
 
-  // Instrument spine: ONE frosted capsule of compact icon + micro-bar "pods"
-  // (water / hull / fuel / fires / threat), replacing the five wide chips. Pods are
+  // Instrument strip: ONE frosted capsule of compact icon + NUMBER "pods" laid out
+  // as a horizontal, wrapping top band (water / hull / fuel / fires / threat / compass /
+  // wind) — the mobile-portrait "all info in the top band, no bars" layout. Pods are
   // transparent — only the capsule carries glass, so it's a single backdrop-blur layer.
   private readonly spine: HTMLDivElement;
   private readonly waterPod: Pod;
-  private waterPodBg = ''; // baseline water-gauge fill (captured at build), restored after a drop-result flash
-  private gaugeFlashTimer = 0; // setTimeout id: restore the water gauge after a result tint
+  private waterNumBg = ''; // baseline water-readout color (captured at build), restored after a drop-result flash
+  private gaugeFlashTimer = 0; // setTimeout id: restore the water readout after a result tint
   private readonly hullPod: Pod;
   private readonly fuelPod: Pod;
   private readonly firesPod: Pod;
   private readonly threatPod: Pod;
+  private readonly compassPod: Pod; // heading in degrees (replaces the scrolling heading tape)
+  private readonly windPod: Pod; // wind speed in knots + a heading-relative direction arrow
   private readonly pods: Pod[];
   private readonly objPanel: HTMLDivElement; // campaign objective checklist (hidden in sandbox)
   private objSig = ''; // last-rendered objective signature (skip DOM churn when unchanged)
@@ -135,7 +136,6 @@ export class HUD {
   private readonly spdCtx: CanvasRenderingContext2D;
   private readonly altCtx: CanvasRenderingContext2D;
 
-  private readonly headCtx: CanvasRenderingContext2D;
   private readonly radarCanvas: HTMLCanvasElement;
   private readonly radarCtx: CanvasRenderingContext2D;
   private readonly minimap: HTMLCanvasElement; // baked satellite terrain (world-aligned)
@@ -148,7 +148,6 @@ export class HUD {
   private radarMax = 300; // expanded radar side (clamped to the short viewport side)
   private spdCanvas!: HTMLCanvasElement;
   private altCanvas!: HTMLCanvasElement;
-  private headCanvas!: HTMLCanvasElement;
   // C5 burn overlay: the live fire field + a small offscreen raster of it (burnt = ash scar,
   // hot = warm front). Rebuilt every few frames (fire spreads slowly) and blitted under the blips
   // with the SAME heading-up affine as the satellite map, so it stays registered with the terrain.
@@ -233,48 +232,64 @@ export class HUD {
       leftCol.appendChild(menuBtn);
     }
 
-    // --- Instrument spine: ONE frosted capsule of compact icon + micro-bar pods,
-    // replacing the five wide chips so the top-left band stays slim (the portrait win)
-    // and reads identically in landscape. Order: water → health → fuel → fires → threat.
-    // Pods are transparent; only the capsule blurs (one GPU layer). Hairline dividers
-    // between rows make it read as one instrument, not stacked chips. ---
-    this.spine = frosted({ display: 'flex', flexDirection: 'column', padding: '0', overflow: 'hidden' });
-    this.waterPod = makePod(WATER_SVG, `linear-gradient(90deg, ${UI.water}, ${UI.accent})`, false);
-    this.waterPod.fill.style.boxShadow = UI.glow; // keep the water glow
-    this.waterPodBg = this.waterPod.fill.style.background; // baseline fill, restored after a drop-result flash
-    this.hullPod = makePod(HEALTH_SVG, `linear-gradient(90deg, #ff5d4d, #ffb24a, #5fd17a)`, false);
-    this.fuelPod = makePod(FUEL_SVG, `linear-gradient(90deg, #ff5d4d, #ffb24a, ${UI.accent})`, false);
-    this.firesPod = makePod(FIRES_SVG, '', true); // a COUNT, not a bar
-    this.threatPod = makePod(THREAT_SVG, `linear-gradient(90deg, #ffb24a, ${UI.warn})`, false);
-    this.pods = [this.waterPod, this.hullPod, this.fuelPod, this.firesPod, this.threatPod];
-    this.waterPod.divider.style.display = 'none'; // no hairline above the first row
-    for (const p of this.pods) this.spine.append(p.divider, p.row);
-    setPodHidden(this.fuelPod, true); // hidden until a mission supplies fuel (sandbox shows 4 rows)
+    // --- Instrument strip: ONE frosted capsule of compact icon + NUMBER cells laid
+    // out as a horizontal band that WRAPS — "all the info in the top 15%, function =
+    // icon + number, no bars". Order: water → health → fuel → fires → threat → compass
+    // → wind. Cells are transparent; only the capsule blurs (one GPU layer). It hugs its
+    // content on wide screens (one row) and wraps to 2–3 rows on a narrow phone, kept
+    // clear of the radar by a max-width set per breakpoint in applyLayout. ---
+    this.spine = frosted({
+      display: 'flex',
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      alignItems: 'center',
+      padding: '0',
+    });
+    this.waterPod = makePod(WATER_SVG); // % of bucket capacity
+    this.waterNumBg = this.waterPod.num.style.color; // baseline readout color, restored after a drop-result flash
+    this.hullPod = makePod(HEALTH_SVG); // airframe %
+    this.fuelPod = makePod(FUEL_SVG); // tank %
+    this.firesPod = makePod(FIRES_SVG); // fires remaining (count)
+    this.threatPod = makePod(THREAT_SVG); // most-endangered structure %
+    this.compassPod = makePod(COMPASS_SVG); // heading °
+    this.windPod = makePod(WIND_SVG); // wind kt (icon rotates to the heading-relative gust)
+    this.pods = [
+      this.waterPod,
+      this.hullPod,
+      this.fuelPod,
+      this.firesPod,
+      this.threatPod,
+      this.compassPod,
+      this.windPod,
+    ];
+    for (const p of this.pods) this.spine.append(p.cell);
+    setPodHidden(this.fuelPod, true); // hidden until a mission supplies fuel
+    setPodHidden(this.threatPod, true); // hidden until there are structures to defend
     leftCol.appendChild(this.spine);
 
     // Objective checklist (campaign — populated each frame from the mission tracker).
     this.objPanel = frosted({ padding: '9px 13px 10px', display: 'none', minWidth: '190px' });
     leftCol.appendChild(this.objPanel);
 
-    // Radio comms log — DISPATCH/CREW/WARNING lines that slide in under the objectives and auto-
-    // expire (the mission "talking" to the pilot). Sits in the left instrument stack so it never
-    // collides with the radar; lines are created on demand (comms are events, not per-frame).
+    // Radio comms log — DISPATCH/CREW/WARNING lines that drop in under the status hint and auto-
+    // expire (the mission "talking" to the pilot). Lives in the TOP-CENTER stack with the hint, so
+    // every transient "message" reads from one place; built/appended just below where topCenter is
+    // assembled. Lines are created on demand (comms are events, not per-frame).
     this.commsWrap = el('div', {
       display: 'flex',
       flexDirection: 'column',
       gap: '6px',
-      alignItems: 'flex-start',
-      maxWidth: 'min(300px, 60vw)',
+      alignItems: 'center',
+      maxWidth: 'min(360px, 84vw)',
       marginTop: '2px',
       pointerEvents: 'none',
     });
-    leftCol.appendChild(this.commsWrap);
 
     const topLeft = anchor('top-left');
     topLeft.appendChild(leftCol);
     this.root.appendChild(topLeft);
 
-    // --- Status hint (stacked under the heading tape in the top-center anchor) ---
+    // --- Status hint (the "tooltip"): top-center, above the comms log ---
     this.hint = frosted({
       fontSize: '14px',
       fontWeight: '500',
@@ -315,19 +330,12 @@ export class HUD {
     this.altCanvas = alt.canvas;
     this.root.appendChild(alt.canvas);
 
-    // --- Heading tape + status hint (top-center anchor, heading above hint) ---
-    const head = makeCanvas(HEAD_W, HEAD_H, {
-      borderRadius: '99px',
-      background: UI.panel,
-      border: `1px solid ${UI.stroke}`,
-      boxShadow: UI.shadow,
-      backdropFilter: UI.blur,
-    });
-    this.headCtx = head.ctx;
-    this.headCanvas = head.canvas;
+    // --- Messages (top-center anchor): the transient status hint, then the radio comms
+    // log stacked beneath it. Heading now lives in the top instrument strip (compass
+    // cell), so the scrolling heading tape is retired. ---
     const topCenter = anchor('top-center');
-    topCenter.appendChild(head.canvas);
     topCenter.appendChild(this.hint);
+    topCenter.appendChild(this.commsWrap);
     this.root.appendChild(topCenter);
 
     // --- Radar (top-right anchor, rounded square, tap to expand local ↔ whole-world) ---
@@ -359,36 +367,34 @@ export class HUD {
   }
 
   /** Size the responsive instruments for the active breakpoint. Anchors own
-   *  position + safe-area in CSS; this sets only the exact pixel sizes (gauge
-   *  rails, heading + tape scale, radar) that have to be computed. */
+   *  position + safe-area in CSS; this sets only the exact pixel sizes (instrument
+   *  cells, tape scale, radar) that have to be computed. */
   private applyLayout(s: LayoutState): void {
     const k = s.compact ? 0.92 : 1;
     const set = s.set;
 
-    // Instrument-spine pods: size icon + micro-bar (or the fires count) from podSize.
+    // Instrument strip: size each icon + number cell from podSize.
     const pod = Math.round(set.podSize * k);
-    const ic = Math.round(pod * 0.42); // icon glyph
-    const barH = Math.round(pod * 0.3); // micro-bar height
-    const barW = Math.round(pod * 2.6); // micro-bar width (clear magnitude read, far slimmer than the old chips)
-    const padV = Math.round(pod * 0.22); // row vertical padding
-    const numFs = Math.round(pod * 0.5); // fires count font
+    const ic = Math.round(pod * 0.46); // icon glyph
+    const padV = Math.round(pod * 0.2); // cell vertical padding
+    const padH = Math.round(pod * 0.26); // cell horizontal padding
+    const gap = Math.round(pod * 0.22); // icon ↔ number gap
+    const numFs = Math.round(pod * 0.52); // number font
     for (const p of this.pods) {
-      p.row.style.paddingTop = p.row.style.paddingBottom = `${padV}px`;
+      p.cell.style.padding = `${padV}px ${padH}px`;
+      p.cell.style.gap = `${gap}px`;
       p.svg.setAttribute('width', `${ic}`);
       p.svg.setAttribute('height', `${ic}`);
-      p.track.style.width = `${barW}px`;
-      p.track.style.height = `${barH}px`;
       p.num.style.fontSize = `${numFs}px`;
-      p.num.style.minWidth = `${Math.round(pod * 0.9)}px`; // stable when fires count goes 9 → 10
+      p.num.style.minWidth = `${Math.round(pod * 0.62)}px`; // stable as a digit count changes (e.g. fires 9 → 10)
     }
-    // Bake the static reserve "warn ticks" once (health 30%, fuel 25% reserve) — a precursor before the flash.
-    applyTick(this.hullPod.track, 30);
-    applyTick(this.fuelPod.track, 25);
 
-    // Heading tape — backing store is fixed at HEAD_W; CSS scales the display down.
-    const hw = Math.round(set.headWidth * k);
-    this.headCanvas.style.width = `${hw}px`;
-    this.headCanvas.style.height = `${Math.round((HEAD_H * hw) / HEAD_W)}px`;
+    // Cap the strip's width so it WRAPS to a second/third row instead of running into the
+    // top-right radar on narrow phones; on wide screens this is far bigger than the content
+    // so it stays a single row. Leaves room for the radar + a comfortable gutter.
+    const radarW = Math.round(set.radarBase * k);
+    const stripMax = Math.max(150, s.w - radarW - set.edge * 4 - 24);
+    this.spine.style.maxWidth = `${stripMax}px`;
 
     // Flight tapes — center gap + scale (backing stores stay crisp; only display moves).
     this.tapeGap = Math.round(set.tapeGap * k);
@@ -458,28 +464,44 @@ export class HUD {
   }
 
   update(s: HudState): void {
-    // --- Instrument spine: one width/text write per pod (O(1)); flashes/glows only when flagged. ---
-    this.waterPod.fill.style.width = `${clamp01(s.water / s.waterMax) * 100}%`;
-    this.hullPod.fill.style.width = `${clamp01(s.health ?? 1) * 100}%`;
-    flashPod(this.hullPod, !!s.healthLow); // critical → row pulses (sin only runs when low)
+    // --- Instrument strip: one text write per cell (O(1)); colour flips/glows only when flagged. ---
+    // Gauges read as whole-percent numbers (no bars); fires is a raw count; compass/wind are units.
+    this.waterPod.num.textContent = `${Math.round(clamp01(s.water / s.waterMax) * 100)}`;
+    this.hullPod.num.textContent = `${Math.round(clamp01(s.health ?? 1) * 100)}`;
+    setNumWarn(this.hullPod, !!s.healthLow); // critical → red + pulse (sin only runs when low)
     if (s.fuel !== undefined) {
       setPodHidden(this.fuelPod, false);
-      this.fuelPod.fill.style.width = `${clamp01(s.fuel) * 100}%`;
-      flashPod(this.fuelPod, !!s.fuelLow);
+      this.fuelPod.num.textContent = `${Math.round(clamp01(s.fuel) * 100)}`;
+      setNumWarn(this.fuelPod, !!s.fuelLow);
     } else {
-      setPodHidden(this.fuelPod, true); // sandbox / non-fuel mission → collapse the row + its divider
+      setPodHidden(this.fuelPod, true); // sandbox / non-fuel mission → drop the cell entirely
     }
     this.firesPod.num.textContent = `${s.firesLeft}`;
     const firesOut = s.firesLeft === 0;
-    this.firesPod.row.style.opacity = firesOut ? '0.5' : '1'; // "no fires left" reads as resolved
+    this.firesPod.cell.style.opacity = firesOut ? '0.5' : '1'; // "no fires left" reads as resolved
     this.firesPod.num.style.color = firesOut ? UI.dim : UI.text;
-    const threat = clamp01(s.threat);
-    this.threatPod.fill.style.width = `${threat * 100}%`;
-    const threatHot = threat > 0.6;
-    this.threatPod.svg.setAttribute('stroke', threatHot ? UI.warn : '#eaf6ff'); // one attribute flip, gated
-    this.threatPod.track.style.boxShadow = threatHot ? `0 0 8px ${UI.warn}` : 'none';
+    // Threat: only shown when there are structures to defend; turns red + glows when high.
+    const hasStructures = s.structures.length > 0;
+    setPodHidden(this.threatPod, !hasStructures);
+    if (hasStructures) {
+      const threat = clamp01(s.threat);
+      this.threatPod.num.textContent = `${Math.round(threat * 100)}`;
+      const threatHot = threat > 0.6;
+      this.threatPod.svg.setAttribute('stroke', threatHot ? UI.warn : '#eaf6ff'); // one attribute flip, gated
+      this.threatPod.num.style.color = threatHot ? UI.warn : UI.text;
+      this.threatPod.cell.style.textShadow = threatHot ? `0 0 8px ${UI.warn}` : 'none';
+    }
+    // Compass: numeric heading (replaces the old scrolling tape). Wind: knots, with the icon
+    // rotated to the heading-relative gust direction (the radar wind-arrow, folded in here).
+    this.compassPod.num.textContent = `${Math.round(headingDeg(s.yaw))}°`;
+    this.windPod.num.textContent = `${Math.round(s.windKt)}`;
+    const cy = Math.cos(s.yaw);
+    const sy = Math.sin(s.yaw);
+    const wfwd = Math.cos(s.windDir) * cy - Math.sin(s.windDir) * sy; // gust along the nose
+    const wrgt = Math.cos(s.windDir) * sy + Math.sin(s.windDir) * cy; // gust along the right
+    this.windPod.svg.style.transform = `rotate(${Math.atan2(-wfwd, wrgt)}rad)`; // screen dir = (rgt, −fwd)
     // One capsule-edge warn glow if anything is critical (single write on the whole instrument).
-    const anyLow = !!s.healthLow || !!s.fuelLow || threatHot;
+    const anyLow = !!s.healthLow || !!s.fuelLow || (hasStructures && clamp01(s.threat) > 0.6);
     this.spine.style.boxShadow = anyLow ? `0 0 12px ${UI.warn}, ${UI.shadow}` : UI.shadow;
 
     this.setHint(s.hint);
@@ -508,7 +530,6 @@ export class HUD {
       ra: s.raFt, // radar altitude readout (the landing number)
     });
 
-    this.drawHeading(headingDeg(s.yaw));
     this.drawRadar(s);
 
     if ((s.won || s.lost) && !this.banner) this.showBanner(s);
@@ -629,15 +650,17 @@ export class HUD {
   }
 
   /**
-   * Flash the WATER gauge fill a result color for `ms`, then restore its baseline gradient — the
-   * quick visual confirmation of a drop's result (green direct / amber too-high / red miss), paired
-   * with the Dispatch readout. Event-driven (called once per committed drop), so no per-frame cost.
+   * Flash the WATER readout a result color for `ms`, then restore its baseline — the quick visual
+   * confirmation of a drop's result (green direct / amber too-high / red miss), paired with the
+   * Dispatch readout. Event-driven (called once per committed drop), so no per-frame cost.
    */
   flashGauge(color: string, ms: number): void {
     if (this.gaugeFlashTimer) window.clearTimeout(this.gaugeFlashTimer); // re-flash: restart cleanly
-    this.waterPod.fill.style.background = color;
+    this.waterPod.num.style.color = color;
+    this.waterPod.num.style.textShadow = `0 0 8px ${color}`;
     this.gaugeFlashTimer = window.setTimeout(() => {
-      this.waterPod.fill.style.background = this.waterPodBg;
+      this.waterPod.num.style.color = this.waterNumBg;
+      this.waterPod.num.style.textShadow = 'none';
       this.gaugeFlashTimer = 0;
     }, ms);
   }
@@ -645,9 +668,9 @@ export class HUD {
   // --- Radio comms + pre-flight briefing (the mission "experience" layer) ----
 
   /**
-   * Post a radio line to the comms log: a frosted toast tagged DISPATCH / CREW / WARNING, sliding in
-   * from the right and auto-expiring. Created on demand (comms are events, not per-frame); the stack
-   * is capped to a few visible lines so it never crowds the HUD.
+   * Post a radio line to the comms log: a frosted toast tagged DISPATCH / CREW / WARNING, dropping in
+   * under the status hint (top-center) and auto-expiring. Created on demand (comms are events, not
+   * per-frame); the stack is capped to a few visible lines so it never crowds the HUD.
    */
   pushComms(speaker: CommsSpeaker, text: string, urgency: CommsUrgency): void {
     const color =
@@ -657,8 +680,9 @@ export class HUD {
       borderLeft: `3px solid ${color}`,
       borderRadius: '10px',
       maxWidth: '100%',
+      textAlign: 'center',
       opacity: '0',
-      transform: 'translateX(-18px)',
+      transform: 'translateY(-8px)',
       transition: 'opacity 0.22s ease, transform 0.22s ease',
     });
     if (urgency === 'alert') line.style.boxShadow = `0 0 14px ${color}66, ${UI.shadow}`;
@@ -671,12 +695,12 @@ export class HUD {
     // (A rAF-based reveal can be throttled when the tab is backgrounded; this is synchronous.)
     void line.offsetWidth;
     line.style.opacity = '1';
-    line.style.transform = 'translateX(0)';
+    line.style.transform = 'translateY(0)';
     while (this.commsWrap.childElementCount > 4) this.commsWrap.firstElementChild?.remove();
     const ttl = urgency === 'alert' ? 6500 : urgency === 'warn' ? 5500 : 4800;
     window.setTimeout(() => {
       line.style.opacity = '0';
-      line.style.transform = 'translateX(-18px)';
+      line.style.transform = 'translateY(-8px)';
       window.setTimeout(() => line.remove(), 300);
     }, ttl);
   }
@@ -1022,53 +1046,6 @@ export class HUD {
 
   // --- Canvas instruments ---------------------------------------------------
 
-  /** Scrolling compass tape: hairline ticks every 10°, cardinals every 90°, the
-   *  live heading centered under an accent pointer with a light numeric readout. */
-  private drawHeading(deg: number): void {
-    const ctx = this.headCtx;
-    const w = HEAD_W;
-    const h = HEAD_H;
-    ctx.clearRect(0, 0, w, h);
-
-    const cx = w / 2;
-    const pxPerDeg = w / 96;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    for (let d = Math.ceil(deg - 48); d <= deg + 48; d++) {
-      if (d % 5 !== 0) continue;
-      const norm = ((d % 360) + 360) % 360;
-      const x = cx + (d - deg) * pxPerDeg;
-      const fade = 1 - Math.min(1, Math.abs(d - deg) / 52); // dim toward the edges
-      const major = norm % 90 === 0;
-      ctx.strokeStyle = `rgba(255,255,255,${(major ? 0.85 : 0.35) * fade})`;
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(x, h - 7);
-      ctx.lineTo(x, h - (major ? 15 : 11));
-      ctx.stroke();
-      if (major) {
-        ctx.fillStyle = `rgba(231,247,255,${fade})`;
-        ctx.font = '600 11px ' + UI.font;
-        ctx.fillText(CARDINALS[norm / 90], x, 9);
-      }
-    }
-
-    // Center pointer + heading number.
-    ctx.fillStyle = UI.accent;
-    ctx.shadowColor = UI.accent;
-    ctx.shadowBlur = 8;
-    ctx.beginPath();
-    ctx.moveTo(cx, h - 5);
-    ctx.lineTo(cx - 5, h - 13);
-    ctx.lineTo(cx + 5, h - 13);
-    ctx.closePath();
-    ctx.fill();
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = '#fff';
-    ctx.font = '600 12px ' + UI.font;
-    ctx.fillText(`${Math.round(deg).toString().padStart(3, '0')}°`, cx, h - 22);
-  }
-
   /** C5: hand the radar the live fire field (FireSystem.fieldView). The arrays are stable, so we
    *  keep the reference and re-raster it every few frames into a tiny offscreen canvas. */
   setBurnField(view: FireFieldView): void {
@@ -1377,42 +1354,9 @@ export class HUD {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('N', R + (nx / nlen) * (reach - 4), R + (ny / nlen) * (reach - 4));
-
-    // Wind widget (top-left): a heading-relative arrow (pointing the way the wind
-    // blows you) + the speed in knots. Rotates as you turn, like the rest of the map.
-    const wfwd = Math.cos(s.windDir) * cos - Math.sin(s.windDir) * sin;
-    const wrgt = Math.cos(s.windDir) * sin + Math.sin(s.windDir) * cos;
-    const wx = 15;
-    const wy = 14;
-    ctx.save();
-    ctx.translate(wx, wy);
-    ctx.rotate(Math.atan2(-wfwd, wrgt)); // screen dir = (rgt, −fwd)
-    ctx.strokeStyle = UI.accent;
-    ctx.fillStyle = UI.accent;
-    ctx.lineWidth = 1.5;
-    ctx.shadowColor = 'rgba(0,0,0,0.6)';
-    ctx.shadowBlur = 2;
-    ctx.beginPath();
-    ctx.moveTo(-7, 0);
-    ctx.lineTo(5, 0);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(8, 0);
-    ctx.lineTo(2, -3.5);
-    ctx.lineTo(2, 3.5);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = 'rgba(231,247,255,0.92)';
-    ctx.font = '600 9px ' + UI.font;
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(`${Math.round(s.windKt)} kt`, wx + 13, wy);
+    // (Wind moved to the top instrument strip's wind cell — no longer drawn on the radar.)
   }
 }
-
-const CARDINALS = ['N', 'E', 'S', 'W'];
 
 /** Trace a rounded-rectangle path (clip/stroke the square radar lens). */
 function roundRectPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
@@ -1439,9 +1383,9 @@ function label(text: string): HTMLDivElement {
   return el('div', { fontSize: '10px', fontWeight: '600', letterSpacing: '2px', color: UI.dim }, text);
 }
 
-// --- Instrument-spine pods --------------------------------------------------
-// Compact icon + micro-bar rows inside the single frosted capsule. Stroked 24x24
-// glyphs (same idiom as the eye icon); width/height are set per breakpoint.
+// --- Instrument-strip cells -------------------------------------------------
+// Compact icon + NUMBER cells inside the single frosted capsule. Stroked 24x24
+// glyphs (same idiom as the eye icon); icon size + number font are set per breakpoint.
 const WATER_SVG =
   '<svg viewBox="0 0 24 24" fill="none" stroke="#67e8ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
   '<path d="M12 3.2C12 3.2 5.5 10.3 5.5 14.5a6.5 6.5 0 0 0 13 0C18.5 10.3 12 3.2 12 3.2Z"/></svg>';
@@ -1457,67 +1401,49 @@ const FIRES_SVG =
 const THREAT_SVG =
   '<svg viewBox="0 0 24 24" fill="none" stroke="#eaf6ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
   '<path d="M12 4 21 19H3Z"/><path d="M12 10V14"/><circle cx="12" cy="17" r="0.9" fill="currentColor" stroke="none"/></svg>';
+const COMPASS_SVG =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="#eaf6ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<circle cx="12" cy="12" r="9"/><path d="M12 5 14 12 12 19 10 12Z" fill="#67e8ff" stroke="#67e8ff"/></svg>';
+// Arrow points local +X (right); the cell rotates it to the heading-relative gust each frame
+// (set every frame, so no CSS transition — that would only lag + spin on the ±180° wrap).
+const WIND_SVG =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="#67e8ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<path d="M3 12H17"/><path d="M13 7 18 12 13 17"/></svg>';
 
 interface Pod {
-  row: HTMLDivElement;
-  svg: SVGElement;
-  track: HTMLDivElement; // micro-bar track (detached for the fires count pod)
-  fill: HTMLDivElement; // gauge fill (width driven per frame)
-  num: HTMLDivElement; // fires count (detached for gauge pods)
-  divider: HTMLDivElement; // hairline ABOVE this row (the first row's is hidden)
+  cell: HTMLDivElement; // the icon + number row (hidden/pulsed as a unit)
+  svg: SVGElement; // stroked glyph (recoloured / rotated per state)
+  num: HTMLDivElement; // the live numeric readout
 }
 
-/** Build one spine pod: a stroked icon + either a micro-bar (gauges) or a bold count
- *  (fires). The capsule supplies the glass, so the row itself is transparent. */
-function makePod(iconSvg: string, fillBg: string, isCount: boolean): Pod {
-  const divider = el('div', { height: '1px', background: UI.stroke, margin: '0 6px', flex: '0 0 auto' });
-  const row = el('div', { display: 'flex', alignItems: 'center', gap: '8px', padding: '0 11px' });
+/** Build one strip cell: a stroked icon + a bold numeric readout. The capsule supplies
+ *  the glass, so the cell itself is transparent. (No bars — function = icon + number.) */
+function makePod(iconSvg: string): Pod {
+  const cell = el('div', { display: 'flex', alignItems: 'center', gap: '8px', padding: '0 11px', lineHeight: '1' });
   const box = el('div', { flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center' });
   box.innerHTML = iconSvg;
   const svg = box.querySelector('svg') as SVGElement;
-  const track = el('div', {
-    marginLeft: 'auto',
-    background: 'rgba(255,255,255,0.10)',
-    borderRadius: '99px',
-    overflow: 'hidden',
-  });
-  const fill = barFill(fillBg);
-  track.appendChild(fill);
   const num = el('div', {
-    marginLeft: 'auto',
     fontWeight: '700',
     color: UI.text,
     lineHeight: '1',
-    textAlign: 'right',
-    display: isCount ? 'block' : 'none',
+    textAlign: 'left',
   });
   num.style.setProperty('font-variant-numeric', 'tabular-nums');
-  row.append(box, isCount ? num : track);
-  return { row, svg, track, fill, num, divider };
+  cell.append(box, num);
+  return { cell, svg, num };
 }
 
-/** Pulse a pod's row opacity while its gauge is in the critical band. */
-function flashPod(p: Pod, low: boolean): void {
-  p.row.style.opacity = low ? `${0.6 + 0.4 * Math.abs(Math.sin(Date.now() / 200))}` : '1';
+/** Drive a gauge cell's critical state: red readout + a gentle pulse while low
+ *  (the sin only runs when low, so it's free at full health). */
+function setNumWarn(p: Pod, low: boolean): void {
+  p.num.style.color = low ? UI.warn : UI.text;
+  p.cell.style.opacity = low ? `${0.6 + 0.4 * Math.abs(Math.sin(Date.now() / 200))}` : '1';
 }
 
-/** Collapse a pod row AND its divider together (hides FUEL in the sandbox with no gap). */
+/** Collapse a cell entirely (hides FUEL / THREAT when a mission doesn't use them). */
 function setPodHidden(p: Pod, hidden: boolean): void {
-  p.row.style.display = hidden ? 'none' : 'flex';
-  p.divider.style.display = hidden ? 'none' : 'block';
-}
-
-/** Bake a static 1px reserve tick into a micro-bar track (health 30%, fuel 25%) — the
- *  "approaching low" precursor before the flash. Pure background; nothing per frame. */
-function applyTick(track: HTMLDivElement, pct: number): void {
-  track.style.backgroundImage =
-    `linear-gradient(90deg, transparent calc(${pct}% - 1px), ${UI.warn} ${pct}%, transparent calc(${pct}% + 1px)),` +
-    ` linear-gradient(rgba(255,255,255,0.10), rgba(255,255,255,0.10))`;
-}
-
-/** A gauge fill bar with the given background; width is driven each frame. */
-function barFill(background: string): HTMLDivElement {
-  return el('div', { width: '0%', height: '100%', borderRadius: '99px', background, transition: 'width 0.12s linear' });
+  p.cell.style.display = hidden ? 'none' : 'flex';
 }
 
 /** Seconds → m:ss for survive / time-limit readouts. */

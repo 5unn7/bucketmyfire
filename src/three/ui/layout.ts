@@ -23,8 +23,7 @@ export type Breakpoint = 'phonePortrait' | 'phoneLandscape' | 'tablet' | 'deskto
 export interface LayoutSet {
   edge: number; // base inset from the screen edge, added on top of the safe-area inset
   gap: number; // stack gap for anchored columns
-  podSize: number; // instrument-spine pod row height (icon + micro-bar); bar/icon px derive from it
-  headWidth: number; // heading tape width
+  podSize: number; // instrument-strip cell scale (icon + number px derive from it)
   tapeGap: number; // px from screen center to each flight tape's inner edge
   tapeScale: number; // CSS scale applied to the flight tapes (backing store stays crisp)
   radarBase: number; // collapsed radar side
@@ -52,19 +51,19 @@ export interface LayoutState {
  */
 export const SETS: Record<Breakpoint, LayoutSet> = {
   phonePortrait: {
-    edge: 12, gap: 7, podSize: 30, headWidth: 168, tapeGap: 52, tapeScale: 0.8,
+    edge: 12, gap: 7, podSize: 30, tapeGap: 52, tapeScale: 0.8,
     radarBase: 110, radarMaxFrac: 0.82, stickRadius: 60, clusterBtn: 70, dropSize: 92, eyeSize: 54, helpSize: 44,
   },
   phoneLandscape: {
-    edge: 14, gap: 6, podSize: 30, headWidth: 210, tapeGap: 58, tapeScale: 0.84,
+    edge: 14, gap: 6, podSize: 30, tapeGap: 58, tapeScale: 0.84,
     radarBase: 112, radarMaxFrac: 0.8, stickRadius: 56, clusterBtn: 66, dropSize: 90, eyeSize: 52, helpSize: 42,
   },
   tablet: {
-    edge: 18, gap: 8, podSize: 34, headWidth: 244, tapeGap: 70, tapeScale: 1.0,
+    edge: 18, gap: 8, podSize: 34, tapeGap: 70, tapeScale: 1.0,
     radarBase: 128, radarMaxFrac: 0.66, stickRadius: 66, clusterBtn: 76, dropSize: 100, eyeSize: 58, helpSize: 44,
   },
   desktop: {
-    edge: 22, gap: 9, podSize: 38, headWidth: 256, tapeGap: 84, tapeScale: 1.0,
+    edge: 22, gap: 9, podSize: 38, tapeGap: 84, tapeScale: 1.0,
     radarBase: 140, radarMaxFrac: 0.5, stickRadius: 60, clusterBtn: 70, dropSize: 92, eyeSize: 56, helpSize: 40,
   },
 };

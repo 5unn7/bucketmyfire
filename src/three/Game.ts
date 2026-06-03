@@ -42,7 +42,7 @@ import { HeroFireLights } from './lighting/HeroFireLights';
 import type { HazeSource } from './postfx/Composer';
 import { HeliAudio } from './audio/HeliAudio';
 import { Profile } from './ui/profile';
-import { createCrewBasket, CrewBasketMesh } from './meshes/crewBasket';
+import { createCrewFigures } from './meshes/crewFigures';
 import { createLandingZone, LandingZoneMesh } from './meshes/landingZone';
 import { CrewTransport, CrewZone } from './sim/CrewTransport';
 import { FuelSim } from './sim/FuelSim';
@@ -182,10 +182,11 @@ export class Game {
   private inBriefing = true; // pre-flight briefing card up → sim + clock paused until BEGIN
   private readonly payloadMode: 'water' | 'crew';
   private readonly bucketType: 'bambi' | 'valve';
-  private readonly crew?: CrewTransport; // crew sling transport (crew payload missions)
-  private readonly crewBasket?: CrewBasketMesh; // slung crew basket (replaces the bucket)
+  private readonly crew?: CrewTransport; // crew land-and-board transport (crew payload missions)
   private readonly lzMeshes: LandingZoneMesh[] = []; // landing-zone markers (parallel to crew zones)
-  private readonly crewZones: CrewZone[] = []; // resolved world-space crew endpoints
+  private readonly crewFigures: THREE.Group[] = []; // standing crew at each zone (parallel to crew zones)
+  private readonly crewZones: CrewZone[] = []; // resolved world-space crew endpoints (refined to flat landing spots)
+  private readonly landingPads: { x: number; z: number }[] = []; // where the flight floor eases to skids height (helipad + crew LZs)
   private readonly fuelSim?: FuelSim; // range model (fuel missions only)
   private readonly slung: THREE.Group; // the mesh hanging on the longline (bucket or crew basket)
   private readonly slungAnchorY: number; // its swivel-head local Y (rope attach point)
@@ -246,6 +247,20 @@ export class Game {
       pad.position.set(this.helipadXZ.x, this.world.groundHeightAt(this.helipadXZ.x, this.helipadXZ.z), this.helipadXZ.z);
       this.scene.add(pad);
     }
+
+    // Crew landing pads (crew missions): resolve each crew endpoint to a flat dry landing spot — the
+    // base endpoint snaps to the helipad you cold-start on — then register them all in `landingPads`
+    // so (a) `landingFloorAt` eases the flight floor down to skids height there (a real touchdown, not
+    // a hover) and (b) the forest clears a NARROW patch around each (registered with setClearings
+    // below). Resolved HERE, before the cold start queries `landingFloorAt` and before the forest builds.
+    if (this.helipadXZ) this.landingPads.push({ x: this.helipadXZ.x, z: this.helipadXZ.z });
+    if (this.mission.zones?.length) {
+      for (const z of this.resolveCrewZones()) {
+        this.crewZones.push(z);
+        this.landingPads.push({ x: z.x, z: z.z });
+      }
+    }
+
     // Cold start: park the airframe shut-down ON the pad so the pilot spools the rotors and lifts off
     // from home, nose pointed out to open ground.
     if (!this.engineStarted && this.helipadXZ) {
@@ -266,7 +281,10 @@ export class Game {
       if (b) builtSites.push({ name: b.name, x: b.x, z: b.z });
     }
     for (const g of structPlan.groups) builtSites.push({ name: g.community.name, x: g.community.x, z: g.community.z });
-    this.world.setClearings(builtSites);
+    // Hamlets get the full yard; crew LZs get a NARROW cleared patch (per-centre radius) so the heli
+    // can set its skids down without the canopy in the way — but the bush around them stays forest.
+    const lzClearings = this.crewZones.map((z) => ({ x: z.x, z: z.z, radius: MISSIONS.lzClearRadius }));
+    this.world.setClearings([...builtSites, ...lzClearings]);
 
     // Atmosphere (B2): a gradient sky dome + aerial-perspective fog + sun/hemisphere
     // light, all configured from one time-of-day preset so they stay coherent (fog
@@ -462,18 +480,13 @@ export class Game {
     this.bucketSim = new BucketSim(p.x, p.y, p.z);
     this.bucket = createBucket();
     this.scene.add(this.bucket.group);
-    // Payload: water missions sling the Bambi bucket; crew missions hide it and sling a crew
-    // basket on the SAME rope/pendulum (BucketSim is pure physics — only the mesh swaps).
-    if (this.payloadMode === 'crew') {
-      this.bucket.group.visible = false;
-      this.crewBasket = createCrewBasket();
-      this.scene.add(this.crewBasket.group);
-      this.slung = this.crewBasket.group;
-      this.slungAnchorY = this.crewBasket.topAnchorY;
-    } else {
-      this.slung = this.bucket.group;
-      this.slungAnchorY = this.bucket.topAnchorY;
-    }
+    // Payload: water missions sling the Bambi bucket. Crew missions carry the crew IN THE CABIN —
+    // the heli LANDS to load/unload — so there's no slung load and no longline at all; the bucket
+    // is hidden and the rope (below) is switched off. `slung` is left pointing at the hidden bucket
+    // only to satisfy the field; it's never posed for crew (the bucket/rope block is water-gated).
+    this.slung = this.bucket.group;
+    this.slungAnchorY = this.bucket.topAnchorY;
+    if (this.payloadMode === 'crew') this.bucket.group.visible = false;
     // The longline is drawn as a short chain of segments so it can BOW into a
     // catenary (a single straight segment can't sag). Endpoints + sag are set every
     // frame in update(); the depth of the sag scales with how full the bucket is.
@@ -486,6 +499,7 @@ export class Game {
     // never recompute it, so once the heli flies away from the origin the line
     // gets frustum-culled and vanishes. It's only two points — skip culling.
     this.rope.frustumCulled = false;
+    if (this.payloadMode === 'crew') this.rope.visible = false; // no longline in crew missions
     this.scene.add(this.rope);
     this.dropMarker = new DropMarker(this.scene); // predicted-impact ring (adds itself to the scene)
     this.scene.add(this.spray.points); // pooled drop-spray particle cloud
@@ -493,15 +507,21 @@ export class Game {
     this.scene.add(this.embers.points); // pooled per-fire sparks/embers
     this.scene.add(this.ambientEmbers.points); // subtle ambient amber motes (atmosphere)
 
-    // Crew landing zones (delivery/evac missions): resolve each spec to a world point, drop a
-    // marker mesh, and hand the list to the transport sim. No-op for water missions.
-    if (this.mission.zones?.length) {
-      for (const z of crewZones(this.world, this.mission)) {
-        this.crewZones.push(z);
+    // Crew landing zones (delivery/evac missions): the endpoints were resolved to flat landing spots
+    // up front (`this.crewZones`). Drop a marker + a knot of standing crew at each, then hand the list
+    // to the transport sim. The crew figures are toggled per-frame from the transport state (waiting →
+    // boarded → set down). No-op for water missions.
+    if (this.crewZones.length) {
+      for (const z of this.crewZones) {
+        const gy = this.world.groundHeightAt(z.x, z.z);
         const lz = createLandingZone();
-        lz.group.position.set(z.x, this.world.groundHeightAt(z.x, z.z), z.z);
+        lz.group.position.set(z.x, gy, z.z);
         this.scene.add(lz.group);
         this.lzMeshes.push(lz);
+        const figs = createCrewFigures();
+        figs.position.set(z.x, gy, z.z);
+        this.scene.add(figs);
+        this.crewFigures.push(figs);
       }
       this.crew = new CrewTransport(this.crewZones);
     }
@@ -693,110 +713,37 @@ export class Game {
     // "Submerged" is read from the World water plane under the bucket's XZ (using
     // last frame's position — one-frame lag is imperceptible), and is consistent
     // with the flight floor and every other height query.
-    const fillRatio = this.water / this.capacity;
-    // When the heli is on the deck the slung load isn't dangling under the belly — a ground crew lays
-    // it out on the pad just ahead of the nose, line slack. While AGL is below `parkAgl` we PARK the
-    // bucket there (upright, motion zeroed) and hand back to the pendulum once it lifts off.
-    const onGround = this.heliSim.agl < BUCKET3D.parkAgl;
-    let dipping = false;
-    if (onGround) {
-      const fx = Math.cos(this.heliSim.yaw);
-      const fz = -Math.sin(this.heliSim.yaw); // world-forward for this heading (nose = +X)
-      const px = this.heliSim.position.x + fx * BUCKET3D.parkAhead;
-      const pz = this.heliSim.position.z + fz * BUCKET3D.parkAhead;
-      const py = this.obstacles.heightAt(px, pz) + BUCKET3D.bottomOffset; // rest on the ground
-      this.bucketSim.parkAt(px, py, pz);
-    } else {
-      // "Submerged" is read from the World water plane under the bucket's XZ (last frame's position —
-      // one-frame lag is imperceptible), consistent with the flight floor and every other height query.
-      const wl = this.world.waterLevelAt(this.bucketSim.position.x, this.bucketSim.position.z);
-      dipping = wl !== null && this.bucketSim.position.y <= wl + BUCKET3D.dipThreshold;
-      // Collision surface under the bucket (terrain raised to any treetop it'd catch on).
-      const obstacleY = this.obstacles.heightAt(this.bucketSim.position.x, this.bucketSim.position.z);
-      this.bucketObstacleY = obstacleY; // cache the raw surface under the bucket for the drop-AGL term
-      this.bucketSim.update(dtMs, this.heliSim.position, this.heliSim.velX, this.heliSim.velZ, fillRatio, dipping, obstacleY);
-    }
-    const bp = this.bucketSim.position;
-    this.slung.position.copy(bp); // bucket (water) or crew basket (crew) on the same line
-    if (this.payloadMode === 'water') this.bucket.setFill(fillRatio);
-    const tip = this.bucketSim.tip;
-    // --- Pendulum swing: in the air the bucket HANGS ALONG the longline instead of staying bolt-
-    // upright, so the lateral lag the sim already produces also reads as the body swinging out. Align
-    // its local up-axis toward the heli (the rope direction), partially by swingTilt so it leans into
-    // the swing, then layer the scoop tip on as an extra forward pitch about local X. Parked on the
-    // deck it just sits upright. ---
-    if (onGround) {
-      _bucketQuat.identity(); // sits upright on the pad
-    } else {
-      _ropeDir
-        .set(
-          this.heliSim.position.x - bp.x,
-          this.heliSim.position.y - bp.y,
-          this.heliSim.position.z - bp.z,
-        )
-        .normalize();
-      _swingQuat.setFromUnitVectors(_UP, _ropeDir); // full hang-along-the-rope tilt
-      _bucketQuat.identity().slerp(_swingQuat, BUCKET3D.swingTilt); // partial lean
-      _bucketQuat.multiply(_tipQuat.setFromAxisAngle(_X, tip)); // + scoop tip (local X)
-    }
-    this.slung.quaternion.copy(_bucketQuat);
-
-    // Attach the longline to the bucket's SWIVEL HEAD — but the swivel now rides wherever
-    // the swing puts it, so derive its WORLD position from the bucket transform (local
-    // (0, topAnchorY, 0) → world) instead of assuming it sits straight above the body.
-    // Then draw the rope as a sagging catenary: walk N points from the heli anchor down
-    // to the swivel and dip the interior by a mid-span sag that EASES with load — a light
-    // bucket lets the line bow soft and flexible, a full one pulls it taut and straight.
-    _swivel.set(0, this.slungAnchorY, 0).applyQuaternion(_bucketQuat).add(bp);
-    const sx = this.heliSim.position.x;
-    const sy = this.heliSim.position.y;
-    const sz = this.heliSim.position.z;
-    const ex = _swivel.x;
-    const ey = _swivel.y;
-    const ez = _swivel.z;
-    const sag = BUCKET3D.ropeSagEmpty + (BUCKET3D.ropeSagFull - BUCKET3D.ropeSagEmpty) * fillRatio;
-    const rp = this.ropeGeom.attributes.position as THREE.BufferAttribute;
-    const segs = BUCKET3D.ropeSegments;
-    for (let i = 0; i <= segs; i++) {
-      const t = i / segs;
-      const droop = sag * 4 * t * (1 - t); // parabolic bow: 0 at both ends, max at mid-span
-      rp.setXYZ(i, sx + (ex - sx) * t, sy + (ey - sy) * t - droop, sz + (ez - sz) * t);
-    }
-    rp.needsUpdate = true;
-
-    // --- Scoop is physical: fill while the bucket is dipped into a lake (water payload only) ---
+    // Slung bucket + scoop/scrape/drop is WATER payload only. Crew missions carry the crew in the
+    // CABIN and LAND to load/unload — no slung load, no rope, no scoop — so for them this is skipped
+    // and the readouts stay inert; the crew-transport block below drives those missions instead.
     let scooping = false;
-    if (!frozen && this.payloadMode === 'water' && dipping && this.water < this.capacity) {
-      this.water = Math.min(this.capacity, this.water + this.fillRate * (dtMs / 1000));
-      scooping = true;
-    }
-
-    // --- Scrape: the bucket is dragging on terrain/treetops (the sim clamps + drags
-    // it). Drag fast enough and a loaded bucket slops water out the top — the cost of
-    // flying too low. The spill rides the same spray as a drop (and ripples on water). ---
     let scraping = false;
-    if (this.bucketSim.contact && this.bucketSim.dragSpeed > BUCKET3D.spillDragMin) {
-      scraping = true;
-      if (this.water > 0) {
-        const spill = BUCKET3D.spillPerDrag * this.bucketSim.dragSpeed * (dtMs / 1000);
-        this.water = Math.max(0, this.water - spill);
-      }
+    let dropping = false;
+    let overWater = false;
+    if (this.payloadMode === 'water') {
+      ({ scooping, scraping, dropping, overWater } = this.updateSlungBucket(dtMs, c, frozen));
     }
 
-    const overWater = this.world.isOverWater(bp.x, bp.z);
-    const dropping = this.updateDrop(c, dtMs);
-
-    // --- Crew sling transport (delivery/evac missions): work zones low + slow; pose the
-    // basket occupancy and recolor the landing-zone markers (active / inactive / done). ---
+    // --- Crew transport (delivery/evac missions): advance the LAND-and-board ferry, recolor the
+    // landing-zone markers, and show/hide the standing crew at each zone so a pickup/drop reads. ---
     if (this.crew) {
       if (!frozen) {
         this.crew.update(dt, this.heliSim.position.x, this.heliSim.position.z, this.heliSim.agl, this.heliSim.speed);
       }
-      this.crewBasket?.setOccupied(this.crew.carrying);
       const views = this.crew.views;
+      const carrying = this.crew.carrying;
+      const delivered = this.crew.delivered;
+      const total = this.crew.total;
       for (let i = 0; i < this.lzMeshes.length; i++) {
         const v = views[i];
         this.lzMeshes[i].setState(v.done ? 'done' : v.active ? 'active' : 'inactive');
+        const figs = this.crewFigures[i];
+        if (!figs) continue;
+        // A LOAD zone shows the crew WAITING until we land and board it (vanish while carried / once
+        // the run is delivered). An UNLOAD zone shows the crew once they're SET DOWN there (single
+        // zone done; the reusable base shows the rescued once any have been brought in).
+        figs.visible =
+          v.role === 'load' ? v.active && delivered < total : v.single ? v.done : delivered > 0;
       }
     }
 
@@ -993,7 +940,7 @@ export class Game {
         this.ripples.spawn(this._drop.cx, this._drop.cz, WATER.dropStrength);
         this.rippleTimer = 0.1;
       } else if (scooping) {
-        this.ripples.spawn(bp.x, bp.z, WATER.dipStrength);
+        this.ripples.spawn(this.bucketSim.position.x, this.bucketSim.position.z, WATER.dipStrength);
         this.rippleTimer = 0.18;
       }
     }
@@ -1019,9 +966,9 @@ export class Game {
       // that lives ~its life drifts the same offset resolveDrop applied to the douse center — the
       // visible curtain blows downwind exactly as far as the water actually lands.
       this.spray.emit(
-        bp.x,
-        bp.y,
-        bp.z,
+        this.bucketSim.position.x,
+        this.bucketSim.position.y,
+        this.bucketSim.position.z,
         this.heliSim.velX + this.wind.vx * DROP_PHYSICS.windDriftGain,
         this.heliSim.velZ + this.wind.vz * DROP_PHYSICS.windDriftGain,
       );
@@ -1035,7 +982,7 @@ export class Game {
     // amber (too high, dispersed) / red (no fire under it, you'll miss). Hidden when cruising high or
     // with no fire in reach. It's literally a visualization of resolveDrop, so what you aim is what hits. ---
     if (this.payloadMode === 'water' && this.water > 0 && !this.won && !this.lost) {
-      const pm = this.resolveDrop(bp.x, bp.z, this.bucketSim.position.y);
+      const pm = this.resolveDrop(this.bucketSim.position.x, this.bucketSim.position.z, this.bucketSim.position.y);
       const nearFire = this.nearestFireDist(pm.cx, pm.cz, activeFires);
       if (pm.agl >= DROP_FX.markerShowAGL || nearFire > DROP_FX.markerHideDist) {
         this.dropMarker.hide();
@@ -1215,6 +1162,108 @@ export class Game {
     return d <= MISSIONS.refuelRadius && this.heliSim.agl <= MISSIONS.refuelAgl && this.heliSim.speed <= MISSIONS.refuelSpeed;
   }
 
+  /**
+   * WATER-payload per-frame: swing + pose the slung Bambi bucket, redraw the longline catenary,
+   * fill it while dipped in a lake (scoop), spill on a hard scrape, and resolve a drop. Returns the
+   * flags Game's ripple/spray/HUD/audio read. Crew missions never call this — they carry the crew in
+   * the cabin and LAND to load/unload, so they fly with no slung load and no rope.
+   */
+  private updateSlungBucket(
+    dtMs: number,
+    c: ControlState,
+    frozen: boolean,
+  ): { scooping: boolean; scraping: boolean; dropping: boolean; overWater: boolean } {
+    const fillRatio = this.water / this.capacity;
+    // When the heli is on the deck the slung load isn't dangling under the belly — a ground crew lays
+    // it out on the pad just ahead of the nose, line slack. While AGL is below `parkAgl` we PARK the
+    // bucket there (upright, motion zeroed) and hand back to the pendulum once it lifts off.
+    const onGround = this.heliSim.agl < BUCKET3D.parkAgl;
+    let dipping = false;
+    if (onGround) {
+      const fx = Math.cos(this.heliSim.yaw);
+      const fz = -Math.sin(this.heliSim.yaw); // world-forward for this heading (nose = +X)
+      const px = this.heliSim.position.x + fx * BUCKET3D.parkAhead;
+      const pz = this.heliSim.position.z + fz * BUCKET3D.parkAhead;
+      const py = this.obstacles.heightAt(px, pz) + BUCKET3D.bottomOffset; // rest on the ground
+      this.bucketSim.parkAt(px, py, pz);
+    } else {
+      // "Submerged" is read from the World water plane under the bucket's XZ (last frame's position —
+      // one-frame lag is imperceptible), consistent with the flight floor and every other height query.
+      const wl = this.world.waterLevelAt(this.bucketSim.position.x, this.bucketSim.position.z);
+      dipping = wl !== null && this.bucketSim.position.y <= wl + BUCKET3D.dipThreshold;
+      // Collision surface under the bucket (terrain raised to any treetop it'd catch on).
+      const obstacleY = this.obstacles.heightAt(this.bucketSim.position.x, this.bucketSim.position.z);
+      this.bucketObstacleY = obstacleY; // cache the raw surface under the bucket for the drop-AGL term
+      this.bucketSim.update(dtMs, this.heliSim.position, this.heliSim.velX, this.heliSim.velZ, fillRatio, dipping, obstacleY);
+    }
+    const bp = this.bucketSim.position;
+    this.slung.position.copy(bp);
+    this.bucket.setFill(fillRatio);
+    const tip = this.bucketSim.tip;
+    // --- Pendulum swing: in the air the bucket HANGS ALONG the longline instead of staying bolt-
+    // upright, so the lateral lag the sim already produces also reads as the body swinging out. Align
+    // its local up-axis toward the heli (the rope direction), partially by swingTilt so it leans into
+    // the swing, then layer the scoop tip on as an extra forward pitch about local X. Parked on the
+    // deck it just sits upright. ---
+    if (onGround) {
+      _bucketQuat.identity(); // sits upright on the pad
+    } else {
+      _ropeDir
+        .set(
+          this.heliSim.position.x - bp.x,
+          this.heliSim.position.y - bp.y,
+          this.heliSim.position.z - bp.z,
+        )
+        .normalize();
+      _swingQuat.setFromUnitVectors(_UP, _ropeDir); // full hang-along-the-rope tilt
+      _bucketQuat.identity().slerp(_swingQuat, BUCKET3D.swingTilt); // partial lean
+      _bucketQuat.multiply(_tipQuat.setFromAxisAngle(_X, tip)); // + scoop tip (local X)
+    }
+    this.slung.quaternion.copy(_bucketQuat);
+
+    // Attach the longline to the bucket's SWIVEL HEAD — but the swivel now rides wherever the swing
+    // puts it, so derive its WORLD position from the bucket transform. Then draw the rope as a sagging
+    // catenary that EASES with load — a light bucket bows soft, a full one pulls it taut and straight.
+    _swivel.set(0, this.slungAnchorY, 0).applyQuaternion(_bucketQuat).add(bp);
+    const sx = this.heliSim.position.x;
+    const sy = this.heliSim.position.y;
+    const sz = this.heliSim.position.z;
+    const ex = _swivel.x;
+    const ey = _swivel.y;
+    const ez = _swivel.z;
+    const sag = BUCKET3D.ropeSagEmpty + (BUCKET3D.ropeSagFull - BUCKET3D.ropeSagEmpty) * fillRatio;
+    const rp = this.ropeGeom.attributes.position as THREE.BufferAttribute;
+    const segs = BUCKET3D.ropeSegments;
+    for (let i = 0; i <= segs; i++) {
+      const t = i / segs;
+      const droop = sag * 4 * t * (1 - t); // parabolic bow: 0 at both ends, max at mid-span
+      rp.setXYZ(i, sx + (ex - sx) * t, sy + (ey - sy) * t - droop, sz + (ez - sz) * t);
+    }
+    rp.needsUpdate = true;
+
+    // --- Scoop is physical: fill while the bucket is dipped into a lake ---
+    let scooping = false;
+    if (!frozen && dipping && this.water < this.capacity) {
+      this.water = Math.min(this.capacity, this.water + this.fillRate * (dtMs / 1000));
+      scooping = true;
+    }
+
+    // --- Scrape: the bucket is dragging on terrain/treetops (the sim clamps + drags it). Drag fast
+    // enough and a loaded bucket slops water out the top — the cost of flying too low. ---
+    let scraping = false;
+    if (this.bucketSim.contact && this.bucketSim.dragSpeed > BUCKET3D.spillDragMin) {
+      scraping = true;
+      if (this.water > 0) {
+        const spill = BUCKET3D.spillPerDrag * this.bucketSim.dragSpeed * (dtMs / 1000);
+        this.water = Math.max(0, this.water - spill);
+      }
+    }
+
+    const overWater = this.world.isOverWater(bp.x, bp.z);
+    const dropping = this.updateDrop(c, dtMs);
+    return { scooping, scraping, dropping, overWater };
+  }
+
   /** Top surface at (x, z): the lake water level over a lake, else the ground. */
   private surfaceAt(x: number, z: number): number {
     const wl = this.world.waterLevelAt(x, z);
@@ -1247,21 +1296,64 @@ export class Game {
   }
 
   /**
+   * Resolve the mission's crew endpoints to flat, landable spots. The nominal point comes from the
+   * seeded scenario (`crewZones`); the BASE endpoint snaps to the helipad you cold-start on (so you
+   * board where you're parked), and every other LZ is nudged to the flattest dry spot in a small
+   * ring so the skids meet level ground rather than a slope. Deterministic from the world seed.
+   */
+  private resolveCrewZones(): CrewZone[] {
+    const depot = this.depotXZ;
+    const pad = this.helipadXZ;
+    return crewZones(this.world, this.mission).map((z) => {
+      if (depot && pad && Math.hypot(z.x - depot.x, z.z - depot.z) < 2) {
+        return { ...z, x: pad.x, z: pad.z }; // the base zone boards/disembarks on the helipad
+      }
+      const spot = this.findFlatSpotNear(z.x, z.z, 10);
+      return { ...z, x: spot.x, z: spot.z };
+    });
+  }
+
+  /** Flattest dry spot in a small ring around (cx,cz) — keeps a crew LZ near its nominal point but
+   *  off slopes/water so a touchdown sits level. Falls back to the nominal point. */
+  private findFlatSpotNear(cx: number, cz: number, R: number): { x: number; z: number } {
+    let best = { x: cx, z: cz };
+    let bestScore = this.world.isOverWater(cx, cz) ? -Infinity : -this.world.slopeAt(cx, cz) * 40;
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      for (const rr of [R * 0.5, R]) {
+        const x = cx + Math.cos(a) * rr;
+        const z = cz + Math.sin(a) * rr;
+        if (this.world.isOverWater(x, z)) continue;
+        const score = -this.world.slopeAt(x, z) * 40 - rr * 0.1; // flat, and as close to nominal as it can be
+        if (score > bestScore) {
+          bestScore = score;
+          best = { x, z };
+        }
+      }
+    }
+    return best;
+  }
+
+  /**
    * The altitude floor the flight model rests on — `World.flightFloorAt`, but eased DOWN to the
-   * landing-pad clearance within `padBlendRadius` of the base helipad so a cold start sits the heli
-   * skids-down on the deck and lifts off cleanly (no snap up to canopy height). `Math.min` keeps it
-   * from ever raising the floor (so a low scoop over water near the base still bottoms out normally).
+   * landing-pad clearance within `padBlendRadius` of any landing pad (the base helipad AND every
+   * crew LZ) so the heli sits skids-down on the deck and lifts off cleanly (no snap up to canopy
+   * height). Takes the MIN over all pads and the real floor — easing can only ever LOWER it (so a
+   * low scoop over water away from a pad still bottoms out normally).
    */
   private landingFloorAt(x: number, z: number): number {
     const real = this.world.flightFloorAt(x, z);
-    const pad = this.helipadXZ;
-    if (!pad) return real;
-    const d = Math.hypot(x - pad.x, z - pad.z);
-    if (d >= FLIGHT.padBlendRadius) return real;
-    const padFloor = this.world.groundHeightAt(pad.x, pad.z) + FLIGHT.landClearance;
-    const t = d / FLIGHT.padBlendRadius;
-    const s = t * t * (3 - 2 * t); // smoothstep: pad floor at the deck → the real floor at the rim
-    return Math.min(real, padFloor + (real - padFloor) * s);
+    let floor = real;
+    for (const pad of this.landingPads) {
+      const d = Math.hypot(x - pad.x, z - pad.z);
+      if (d >= FLIGHT.padBlendRadius) continue;
+      const padFloor = this.world.groundHeightAt(pad.x, pad.z) + FLIGHT.landClearance;
+      const t = d / FLIGHT.padBlendRadius;
+      const s = t * t * (3 - 2 * t); // smoothstep: pad floor at the deck → the real floor at the rim
+      const eased = Math.min(real, padFloor + (real - padFloor) * s);
+      if (eased < floor) floor = eased;
+    }
+    return floor;
   }
 
   /**
