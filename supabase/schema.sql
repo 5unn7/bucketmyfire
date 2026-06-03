@@ -92,3 +92,92 @@ grant usage on schema public to anon;
 grant select, insert on public.scores to anon;
 grant select on public.mission_best to anon;
 grant select on public.career_totals to anon;
+
+-- ===========================================================================
+-- Cloud saves — passwordless "name + email" progress sync (optional, no auth).
+-- ===========================================================================
+-- Lets a pilot restore their campaign progress (unlocks, best scores, chosen
+-- heli/callsign) on a new device or after clearing their browser, by entering
+-- their pilot name + email. There are NO passwords and NO Supabase Auth.
+--
+-- Privacy: the email is hashed CLIENT-SIDE (SHA-256) before it ever leaves the
+-- browser, so this table only ever stores an opaque hash — it can never leak a
+-- plaintext email. The table is fully locked (RLS on, ZERO policies, all privs
+-- revoked); the ONLY way in is the two SECURITY DEFINER RPCs below, each of which
+-- requires the caller to already know the email (to produce the hash) + the exact
+-- pilot name. Rows therefore can't be enumerated or scraped through the REST API.
+--
+-- Threat model (accept for a casual arcade game): anyone who knows BOTH your email
+-- and your callsign could load/overwrite that save. The stakes are game progress
+-- only; this is the "lightweight, no verification" model the project opted into.
+
+create table if not exists public.cloud_saves (
+  id          bigint generated always as identity primary key,
+  email_hash  text        not null,                  -- client-side SHA-256 hex (never the raw email)
+  pilot       text        not null,
+  save        jsonb       not null,                  -- versioned progress+profile envelope
+  updated_at  timestamptz not null default now(),
+
+  constraint cloud_saves_hash_len  check (char_length(email_hash) between 16 and 128),
+  constraint cloud_saves_pilot_len check (char_length(pilot) between 1 and 24),
+  constraint cloud_saves_save_size check (pg_column_size(save) <= 32768)   -- ~32KB cap (anti-abuse)
+);
+
+-- One save per (email, pilot) — a shared family email can still hold several distinct pilots.
+create unique index if not exists cloud_saves_key
+  on public.cloud_saves (email_hash, lower(pilot));
+
+alter table public.cloud_saves enable row level security;
+-- No policies + revoke = anon/authenticated have NO direct table access. The RPCs are the only door.
+revoke all on public.cloud_saves from anon, authenticated;
+
+-- Upsert a save. SECURITY DEFINER writes past RLS; empty search_path + schema-qualified refs are
+-- the standard hardening for definer functions.
+create or replace function public.save_cloud_progress(p_email_hash text, p_pilot text, p_save jsonb)
+returns timestamptz
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_ts timestamptz;
+begin
+  if p_email_hash is null or char_length(p_email_hash) not between 16 and 128 then
+    raise exception 'invalid email_hash';
+  end if;
+  if p_pilot is null or char_length(p_pilot) not between 1 and 24 then
+    raise exception 'invalid pilot';
+  end if;
+  if p_save is null or pg_column_size(p_save) > 32768 then
+    raise exception 'invalid save';
+  end if;
+
+  insert into public.cloud_saves (email_hash, pilot, save, updated_at)
+  values (p_email_hash, p_pilot, p_save, now())
+  on conflict (email_hash, lower(pilot))
+  do update set save = excluded.save, pilot = excluded.pilot, updated_at = now()
+  returning updated_at into v_ts;
+
+  return v_ts;
+end;
+$$;
+
+-- Fetch a save by email-hash + pilot (case-insensitive). Returns 0 or 1 row.
+create or replace function public.load_cloud_progress(p_email_hash text, p_pilot text)
+returns table (save jsonb, pilot text, updated_at timestamptz)
+language sql
+security definer
+set search_path = ''
+as $$
+  select s.save, s.pilot, s.updated_at
+  from public.cloud_saves s
+  where s.email_hash = p_email_hash
+    and lower(s.pilot) = lower(p_pilot)
+  limit 1;
+$$;
+
+-- Only anon may call the two narrow RPCs; nothing else is exposed.
+revoke all on function public.save_cloud_progress(text, text, jsonb) from public;
+revoke all on function public.load_cloud_progress(text, text)        from public;
+grant execute on function public.save_cloud_progress(text, text, jsonb) to anon;
+grant execute on function public.load_cloud_progress(text, text)        to anon;

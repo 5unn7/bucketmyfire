@@ -58,6 +58,45 @@ export function getCompletion(id: string): CompletionRecord | null {
   return load().completions[id] ?? null;
 }
 
+/** The full progress snapshot (for cloud-save upload). Same shape `recordWin` maintains. */
+export function exportProgress(): Progress {
+  return load();
+}
+
+/**
+ * Fold an imported progress (a cloud restore) into the local one. Non-destructive by design: the
+ * union of completed missions, the MAX best score per mission, and the completion ledger of
+ * whichever side won that mission — so loading an old save can only ever ADD unlocks/scores, never
+ * wipe local ones. `incoming` may be partial/untrusted (it comes off the network), so every field
+ * is read defensively.
+ */
+export function importProgress(incoming: Partial<Progress>): void {
+  const cur = load();
+  const inCompleted = Array.isArray(incoming.completed) ? incoming.completed : [];
+  const inBest = incoming.best && typeof incoming.best === 'object' ? incoming.best : {};
+  const inCompletions = incoming.completions && typeof incoming.completions === 'object' ? incoming.completions : {};
+
+  const out: Progress = {
+    completed: Array.from(new Set([...cur.completed, ...inCompleted.filter((id) => typeof id === 'string')])),
+    best: { ...cur.best },
+    completions: { ...cur.completions },
+  };
+
+  for (const [id, score] of Object.entries(inBest)) {
+    if (typeof score !== 'number' || !isFinite(score)) continue;
+    if (!(id in out.best) || score > out.best[id]) {
+      out.best[id] = score;
+      if (inCompletions[id]) out.completions[id] = inCompletions[id]; // keep the winning side's ledger
+    }
+  }
+  // Fill in any completion ledgers for missions local never recorded at all.
+  for (const [id, rec] of Object.entries(inCompletions)) {
+    if (rec && !(id in out.completions)) out.completions[id] = rec;
+  }
+
+  save(out);
+}
+
 /** Linear unlock: the first mission, or any whose predecessor (by index) has been completed. */
 export function isUnlocked(def: MissionDef, catalog: MissionDef[]): boolean {
   if (def.index <= 0) return true;

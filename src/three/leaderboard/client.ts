@@ -96,10 +96,18 @@ function headers(extra?: Record<string, string>): Record<string, string> {
 }
 
 /** Abort a request that hangs (flaky mobile network) so the UI never waits forever. */
-function withTimeout(ms: number): { signal: AbortSignal; done: () => void } {
+export function withTimeout(ms: number): { signal: AbortSignal; done: () => void } {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), ms);
   return { signal: ctrl.signal, done: () => clearTimeout(t) };
+}
+
+/** REST base URL + auth headers, reused by the cloud-save module (same project + anon key). */
+export function restBase(): string {
+  return URL_BASE;
+}
+export function restHeaders(extra?: Record<string, string>): Record<string, string> {
+  return headers(extra);
 }
 
 // --- Public API -------------------------------------------------------------

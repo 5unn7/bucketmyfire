@@ -3,8 +3,10 @@ import { bestScore, isUnlocked } from '../missions/progress';
 import { HELIS, MAPS, CatalogItem, firstAvailable, findItem, loadProfile, saveProfile } from './profile';
 import { makeIcon } from './icons';
 import { openLeaderboard } from './Leaderboard';
+import { openCloudSave } from './CloudSave';
 import { validateCallsign, MAX_CALLSIGN } from './callsign';
 import { isNameTaken, getClientId } from '../leaderboard/client';
+import { isCloudLinked } from '../leaderboard/cloudSave';
 
 /**
  * Campaign mission-select menu — a full-screen DOM overlay in the game's frosted-glass
@@ -246,6 +248,31 @@ export class MissionSelect {
     lb.addEventListener('pointerleave', () => (lb.style.boxShadow = 'none'));
     lb.addEventListener('pointerdown', () => openLeaderboard(catalog));
     bar.appendChild(lb);
+
+    // --- Cloud-save button — save/restore progress by name + email (no password) ---
+    const cloud = div(
+      {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        background: UI.cardGlass,
+        border: `1px solid ${UI.stroke}`,
+        borderRadius: '99px',
+        padding: '9px 16px',
+        cursor: 'pointer',
+        fontSize: '13px',
+        fontWeight: '700',
+        letterSpacing: '0.5px',
+        color: UI.text,
+        transition: 'border-color 0.12s ease, box-shadow 0.12s ease',
+      },
+      isCloudLinked() ? '☁ Saved' : '☁ Save progress',
+    );
+    setBlur(cloud);
+    cloud.addEventListener('pointerenter', () => (cloud.style.boxShadow = `0 0 0 1px ${UI.stroke}`));
+    cloud.addEventListener('pointerleave', () => (cloud.style.boxShadow = 'none'));
+    cloud.addEventListener('pointerdown', () => openCloudSave());
+    bar.appendChild(cloud);
 
     return bar;
   }

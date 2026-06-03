@@ -49,6 +49,7 @@ import { MissionRuntime } from './missions/MissionRuntime';
 import { MissionDirector } from './missions/MissionDirector';
 import { recordWin } from './missions/progress';
 import { submitScore } from './leaderboard/client';
+import { cloudAutoSave } from './leaderboard/cloudSave';
 import type { MissionDef, MissionSignals, MissionAction } from './missions/types';
 import type { EndScreenHooks } from './HUD';
 import { seedFires, structurePlan, crewZones, igniteFromPlacement } from './missions/scenario';
@@ -1094,6 +1095,9 @@ export class Game {
         score: this.finalScore,
         timeS: this.missionElapsed,
       });
+      // Cloud progress sync (optional): if this device is linked to an email account, push the
+      // freshly-recorded unlocks/scores. No-ops when unlinked or Supabase is unconfigured.
+      void cloudAutoSave();
     }
   }
 
