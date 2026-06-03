@@ -7,6 +7,8 @@ import {
   findItem,
   loadProfile,
   saveProfile,
+  isHeliUnlocked,
+  missionsCleared,
 } from './profile';
 import { makeIcon } from './icons';
 
@@ -221,12 +223,13 @@ export function runOnboarding(): Promise<Profile> {
 
   return new Promise<Profile>((resolve) => {
     const saved = loadProfile();
+    const cleared = missionsCleared(); // campaign progress gates which helis are flyable
 
     // Working selection — pre-filled from a saved profile when present.
     let selMap: CatalogItem = findItem(MAPS, saved?.mapId) ?? firstAvailable(MAPS);
     let selHeli: CatalogItem = findItem(HELIS, saved?.heliId) ?? firstAvailable(HELIS);
     if (!selMap.available) selMap = firstAvailable(MAPS);
-    if (!selHeli.available) selHeli = firstAvailable(HELIS);
+    if (!isHeliUnlocked(selHeli, cleared)) selHeli = firstAvailable(HELIS);
 
     const overlay = h('div', { className: 'bmf-ob' });
     document.body.appendChild(overlay);
@@ -272,14 +275,20 @@ export function runOnboarding(): Promise<Profile> {
       const startBtn = h('button', { className: 'bmf-btn', type: 'button', textContent: 'Start mission' });
 
       const updateValid = (): void => {
-        startBtn.disabled = input.value.trim().length === 0 || !selMap.available || !selHeli.available;
+        startBtn.disabled = input.value.trim().length === 0 || !selMap.available || !isHeliUnlocked(selHeli, cleared);
       };
 
-      // Card builder bound to a selection slot.
+      // Card builder bound to a selection slot. `gate` decides per-item whether the card is
+      // pickable and, if not, the badge text — maps gate on `available` ("Soon"), helis on
+      // campaign progress ("🔒 Sortie N"). Defaults to the available/Soon behaviour.
       const buildCards = (
         catalog: CatalogItem[],
         getSel: () => CatalogItem,
         setSel: (c: CatalogItem) => void,
+        gate: (item: CatalogItem) => { usable: boolean; lockText: string } = (i) => ({
+          usable: i.available,
+          lockText: 'Soon',
+        }),
       ): HTMLElement => {
         const grid = h('div', { className: 'bmf-cards' });
         const cards = catalog.map((item) => {
@@ -296,13 +305,14 @@ export function runOnboarding(): Promise<Profile> {
             body.append(h('div', { className: 'bmf-specs' }, item.specs.map(specMeter)));
           }
 
+          const { usable, lockText } = gate(item);
           const card = h('button', { className: 'bmf-card', type: 'button' }, [art, body]);
           card.append(
-            item.available
+            usable
               ? h('div', { className: 'bmf-check', textContent: '✓' })
-              : h('div', { className: 'bmf-soon', textContent: 'Soon' }),
+              : h('div', { className: 'bmf-soon', textContent: lockText }),
           );
-          if (item.available) {
+          if (usable) {
             card.addEventListener('click', () => {
               setSel(item);
               for (const c of cards) c.el.classList.toggle('is-selected', c.item === item);
@@ -310,6 +320,8 @@ export function runOnboarding(): Promise<Profile> {
             });
           } else {
             card.classList.add('is-soon');
+            // A locked-but-real airframe explains itself on hover; "Soon" content stays mute.
+            if (item.available && item.unlockAfter) card.title = `Unlocks after clearing Sortie ${item.unlockAfter}`;
           }
           if (item === getSel()) card.classList.add('is-selected');
           return { el: card, item };
@@ -324,7 +336,10 @@ export function runOnboarding(): Promise<Profile> {
       ]);
       const heliSection = h('div', { className: 'bmf-section' }, [
         h('p', { className: 'bmf-label', textContent: 'Choose your helicopter' }),
-        buildCards(HELIS, () => selHeli, (c) => (selHeli = c)),
+        buildCards(HELIS, () => selHeli, (c) => (selHeli = c), (item) => ({
+          usable: isHeliUnlocked(item, cleared),
+          lockText: item.available ? `🔒 Sortie ${item.unlockAfter}` : 'Soon',
+        })),
       ]);
 
       startBtn.addEventListener('click', () => {

@@ -1,6 +1,6 @@
 import type { MissionDef } from '../missions/types';
 import { bestScore, isUnlocked } from '../missions/progress';
-import { HELIS, MAPS, CatalogItem, firstAvailable, findItem, loadProfile, saveProfile } from './profile';
+import { HELIS, MAPS, CatalogItem, firstAvailable, findItem, loadProfile, saveProfile, isHeliUnlocked, missionsCleared } from './profile';
 import { makeIcon } from './icons';
 import { openLeaderboard } from './Leaderboard';
 import { openCloudSave } from './CloudSave';
@@ -285,9 +285,10 @@ export class MissionSelect {
    */
   private heliPicker(): HTMLDivElement {
     const saved = loadProfile();
-    let selected = findItem(HELIS, saved?.heliId)?.available
-      ? (findItem(HELIS, saved?.heliId) as CatalogItem)
-      : firstAvailable(HELIS);
+    // Heli unlocks are gated on campaign progress; read the cleared-sortie count once for the grid.
+    const cleared = missionsCleared();
+    const savedHeli = findItem(HELIS, saved?.heliId);
+    let selected = savedHeli && isHeliUnlocked(savedHeli, cleared) ? savedHeli : firstAvailable(HELIS);
 
     const persist = (heli: CatalogItem): void => {
       const cur = loadProfile();
@@ -311,7 +312,7 @@ export class MissionSelect {
 
     const cards: { el: HTMLDivElement; item: CatalogItem; set: (on: boolean) => void }[] = [];
     for (const heli of HELIS) {
-      const usable = heli.available;
+      const usable = isHeliUnlocked(heli, cleared);
       const card = div({
         position: 'relative',
         display: 'flex',
@@ -346,11 +347,15 @@ export class MissionSelect {
       card.appendChild(art);
       card.appendChild(meta);
       if (!usable) {
-        const soon = div(
-          { position: 'absolute', top: '8px', right: '8px', fontSize: '9px', letterSpacing: '0.12em', fontWeight: '700', color: UI.dim },
-          'SOON',
+        // A playable-but-unearned heli shows its campaign requirement; a future airframe (none
+        // yet) would show "SOON". `unlockAfter` sorties = clear that-numbered sortie to unlock.
+        const lockText = heli.available ? `🔒 Sortie ${heli.unlockAfter}` : 'SOON';
+        if (heli.available) card.title = `Unlocks after clearing Sortie ${heli.unlockAfter}`;
+        const badge = div(
+          { position: 'absolute', top: '8px', right: '8px', fontSize: '9px', letterSpacing: '0.1em', fontWeight: '700', color: UI.dim },
+          lockText,
         );
-        card.appendChild(soon);
+        card.appendChild(badge);
       }
 
       const setSelected = (on: boolean): void => {

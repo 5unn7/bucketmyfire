@@ -5,15 +5,16 @@
  * HELICOPTER, then persists that choice in the browser (localStorage) so a
  * returning player skips straight to a "Welcome back" quick-start.
  *
- * v1 scope: only ONE map and ONE helicopter are actually playable (the live
- * boreal world + the Bell 205A-1 hero model). The catalog still lists the
- * planned future picks as `available: false` ("Coming soon") so the picker
- * reads as a real roster — and so wiring the real maps/helis in later is just
- * flipping a flag and pointing the generator at a preset (the planned seams:
- * a map = TERRAIN profile + seed + lake set behind World; a heli = a livery +
- * flight tuning behind createHelicopter()). Nothing downstream branches on the
- * id yet, so adding content never breaks an existing save.
+ * Scope: ONE map is playable today (the live boreal world); the other maps are
+ * `available: false` placeholders ("Coming soon"). All THREE helicopters are
+ * playable, but the campaign GATES them — they are not all unlocked at the start:
+ * the Bell 205A-1 is open from sortie one, the Bell 212 unlocks once you've cleared
+ * `unlockAfter` sorties, and the UH-60 unlocks for the last three. `isHeliUnlocked()`
+ * resolves that gate against `missions/progress`; the pickers (Onboarding +
+ * MissionSelect) render a locked card with the requirement until it's met.
  */
+
+import { getProgress } from '../missions/progress';
 
 export interface Profile {
   /** Pilot callsign — display only (shown on the end banner). */
@@ -35,6 +36,9 @@ export interface CatalogItem {
   glyph: string; // a single emoji/glyph standing in for cover art
   /** Optional spec bars (helis) — value is 0..1, drives a little meter on the card. */
   specs?: { label: string; value: number }[];
+  /** Campaign gate (helis): sorties that must be CLEARED before this airframe is
+   *  flyable. 0/undefined → open from the start. See isHeliUnlocked(). */
+  unlockAfter?: number;
 }
 
 // --- Maps -------------------------------------------------------------------
@@ -74,6 +78,11 @@ export const MAPS: CatalogItem[] = [
 // gameplay class in config.ts (HELI_CLASSES) by the SAME id — so selecting one now changes
 // the airframe AND how it flies/carries/survives. The spec bars below illustrate that class:
 // 205 = slow/forgiving/small, 212 = medium, UH-60 = fast/big/twitchy/tough.
+//
+// They are GATED by campaign progress (`unlockAfter` = sorties to clear), so a new pilot
+// starts on the trainer and earns the heavier ships: the 205 is open, the 212 unlocks after
+// the first three sorties, and the Black Hawk unlocks for the last three. (Additive — clearing
+// a tier never takes an earlier airframe away.)
 export const HELIS: CatalogItem[] = [
   {
     id: 'bell-205a1',
@@ -96,6 +105,7 @@ export const HELIS: CatalogItem[] = [
     tagline: 'Twin-engine medium',
     blurb: 'The twin-pac sister of the Huey — more power, a bigger belly, and a tougher hull. A balanced step up from the 205: faster and carries more, still steady in the gusts off the lakes.',
     available: true,
+    unlockAfter: 3, // earned after the first three sorties
     accent: '#d8a12a',
     glyph: '🚁',
     specs: [
@@ -111,6 +121,7 @@ export const HELIS: CatalogItem[] = [
     tagline: 'Supreme — a handful',
     blurb: 'A big four-blade utility ship: the fastest, biggest tank (double the 205), and toughest hull. But heavy and twitchy down low — all that momentum overshoots, so it takes a confident hand. Supreme range and payload for an experienced pilot.',
     available: true,
+    unlockAfter: 7, // unlocks for the last three sorties
     accent: '#5b6b50',
     glyph: '🚁',
     specs: [
@@ -129,6 +140,23 @@ export function firstAvailable(catalog: CatalogItem[]): CatalogItem {
 
 export function findItem(catalog: CatalogItem[], id: string | undefined): CatalogItem | undefined {
   return catalog.find((c) => c.id === id);
+}
+
+/**
+ * How many campaign sorties the pilot has CLEARED — the value heli unlocks gate on.
+ * Reads the same localStorage progress the mission menu uses (0 for a fresh pilot).
+ */
+export function missionsCleared(): number {
+  return getProgress().completed.length;
+}
+
+/**
+ * Is a helicopter flyable right now? It must exist (`available`) AND the campaign must have
+ * cleared at least `unlockAfter` sorties (default 0 → open from the start). Pass a pre-read
+ * `cleared` count when gating a whole picker grid so it doesn't re-hit storage per card.
+ */
+export function isHeliUnlocked(heli: CatalogItem, cleared: number = missionsCleared()): boolean {
+  return heli.available && cleared >= (heli.unlockAfter ?? 0);
 }
 
 const STORAGE_KEY = 'bmf.profile.v1';
@@ -155,7 +183,9 @@ export function loadProfile(): Profile | null {
     return {
       name: name.slice(0, 24),
       mapId: map?.available ? map.id : firstAvailable(MAPS).id,
-      heliId: heli?.available ? heli.id : firstAvailable(HELIS).id,
+      // Clamp a still-locked heli (e.g. progress was cleared/restored under the saved pick)
+      // back to the always-open trainer, so the boot path can never fly an un-earned airframe.
+      heliId: heli && isHeliUnlocked(heli) ? heli.id : firstAvailable(HELIS).id,
     };
   } catch {
     return null; // corrupt JSON — start fresh
