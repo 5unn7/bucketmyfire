@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- bucketmyfire is a single client-side page; the campaign missions are ?m= query routes that
+     serve the same HTML shell, so only the canonical homepage is listed (matches the <link
+     rel="canonical"> in index.html). Bump <lastmod> on meaningful content changes. -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://bucketmyfire.com/</loc>
+    <lastmod>2026-06-03</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+</urlset>
