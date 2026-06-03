@@ -76,12 +76,6 @@ export class HelicopterSim {
     return Math.hypot(this.vel.x, this.vel.z);
   }
 
-  /** This airframe's empty top-speed cap (units/s) — base maxSpeed × the class multiplier.
-   *  Game compares live speed against it to detect overspeed/over-stress for the damage model. */
-  get effectiveMaxSpeed(): number {
-    return FLIGHT.maxSpeed * this.cls.speedMul;
-  }
-
   /** Horizontal velocity components (units/s) — fed to the slung bucket. */
   get velX(): number {
     return this.vel.x;

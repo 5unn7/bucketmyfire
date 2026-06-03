@@ -54,7 +54,7 @@ export class MissionSelect {
     header.appendChild(
       div(
         { fontSize: '13px', fontWeight: '700', letterSpacing: '5px', color: UI.accent, marginBottom: '8px' },
-        'BUCKETMYFIRE',
+        'BUCKET MY FIRE',
       ),
     );
     header.appendChild(div({ fontSize: '30px', fontWeight: '800', letterSpacing: '0.5px' }, 'Campaign'));

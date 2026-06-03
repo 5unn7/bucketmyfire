@@ -1462,7 +1462,7 @@ export class Game {
   private scoopHint(overWater: boolean, scooping: boolean): string | null {
     if (this.water >= this.capacity) return null;
     if (scooping) return 'Scooping…';
-    if (overWater) return 'Descend (J) to fill the bucket';
+    if (overWater) return 'Descend (▼ / J) to fill the bucket';
     return null;
   }
 

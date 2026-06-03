@@ -158,7 +158,9 @@ export class World {
   getCommunity(which: number | 'base'): CommunitySite | null {
     if (which === 'base') return this.communities.find((c) => c.kind === 'base') ?? null;
     const towns = this.communities.filter((c) => c.kind === 'town');
-    return towns[which] ?? this.communities[which] ?? null;
+    // Town index only — never fall through to a BASE slot (the array's first `baseCount` entries are
+    // bases now), so a mission's `community: N` can't accidentally resolve to a refuel base.
+    return towns[which] ?? null;
   }
 
   /**

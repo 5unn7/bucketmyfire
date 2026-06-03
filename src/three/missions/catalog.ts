@@ -20,7 +20,7 @@ export const CAMPAIGN: MissionDef[] = [
     name: 'Checkout Flight',
     brief: 'Your first flight. Hold START to spin up the rotors, lift off from base, then scoop from the lake and douse three spot fires. Calm air — learn the aircraft.',
     intel:
-      'Welcome aboard, Water-1. First things first — hold the START dial to bring the rotors up to speed, then ease her off the deck. Three spot fires are smouldering in the bush beside the lake to the north. Drop low over open water to fill the Bambi bucket, then pickle it over the flames. Winds are light today — a good morning to get the feel of the aircraft.',
+      'Welcome aboard, Water-1. First things first — hold the START dial to bring the rotors up to speed, then ease her off the deck. Three spot fires are smouldering in the bush beside the lake to the north. Fly low over open water to fill the Bambi bucket, then hit DROP to release it over the flames. Winds are light today — a good morning to get the feel of the aircraft.',
     difficulty: 1,
     seed: 21,
     wind: { strengthScale: 0.4 },
@@ -111,7 +111,7 @@ export const CAMPAIGN: MissionDef[] = [
         trigger: { at: 'time', seconds: 65 },
         actions: [
           { do: 'wind', angle: 0.7, strengthScale: 2.0, ease: 6 },
-          { do: 'comms', speaker: 'warning', urgency: 'alert', text: "Wind shift! She's backing to the southeast — the front is turning onto the town. Reposition, now!" },
+          { do: 'comms', speaker: 'warning', urgency: 'alert', text: "Wind shift! She's backing to the southeast — the front is turning onto Sproule. Reposition, now!" },
           { do: 'ignite', place: { at: 'nearCommunity', community: 0, offset: 70, size: 'small' } },
         ],
       },
