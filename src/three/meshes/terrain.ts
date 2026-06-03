@@ -299,11 +299,11 @@ function addTerrainDetail(material: THREE.MeshStandardMaterial, frame?: FrameCon
             vec4 bf = texture2D(uBurnTex, bUv);
             float heat = bf.r;     // actively burning 0..1
             float scorch = bf.g;   // burned-out scar 0/1
-            // Char: burned-out ground AND the hot leading edge darken to charred earth. The blend
-            // stops short of pure black (lighter charcoal + 0.78 mix) so the hillshade relief still
-            // reads through — a burned ridge stays distinct from a burned valley.
+            // Char: burned-out ground AND the hot leading edge darken HARD to blackened earth — a
+            // dangerous wildfire leaves the ground deeply charred. Kept a hair off pure black so a
+            // little hillshade relief still reads (a burned ridge stays distinct from a burned valley).
             float burnAmt = max(scorch, smoothstep(0.04, 0.45, heat));
-            diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.085, 0.072, 0.058), burnAmt * 0.78);
+            diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.028, 0.024, 0.020), burnAmt * 0.9);
             // Ember underglow on actively-burning ground (HDR > 1 → feeds bloom): a deep orange-red
             // that brightens with heat, so the live front reads as a glowing continuous band.
             totalEmissiveRadiance += vec3(2.6, 0.62, 0.10) * heat * heat * 1.35;
