@@ -744,6 +744,45 @@ export const EMBERS = {
   minHeat: 0.3, // only genuinely hot fires throw firebrands
 } as const;
 
+// Ambient drifting embers (atmosphere). A SUBTLE, persistent field of slow amber motes floating
+// in the fire-season air around the camera — distinct from EMBERS (bright sparks thrown off a
+// blaze that arc and die). They drift on the wind, breathe, and recycle forever, and THICKEN near
+// active fires (more motes respawn downwind of a blaze the closer you are). Tune "subtle vs more"
+// with `max` + `baseAlpha`; "how much it clumps at fires" with `fireBias`/`fireSenseRadius`.
+// Pooled additive GPU points (vfx/AmbientEmbers.ts) — fixed `max`, O(max)/frame, no recompiles.
+export const AMBIENT_EMBERS = {
+  max: 130, // pooled mote cap — kept low so the air glints, never swarms (subtle, not a blizzard)
+  radius: 95, // motes live within this horizontal radius of the camera (units)
+  recycleScale: 1.25, // recycle a mote once it drifts past radius × this (then it respawns near cam)
+  belowCam: 46, // motes spawn from this far BELOW the camera…
+  aboveCam: 22, // …up to this far above it (the air column you actually see)
+  rise: 0.45, // gentle buoyant drift up (units/s) — they float, they don't shoot
+  drift: 0.5, // small random lateral launch speed (units/s)
+  windInfluence: 3.0, // downwind drift the mote eases toward (units/s) — light; embers hang, not streak
+  windCatch: 0.5, // how fast a mote is dragged to the wind drift (per second) — slow, lazy
+  swayAmp: 0.45, // per-mote sine sway amplitude (units/s) — the lazy weave of a floating ember
+  swayHz: 0.45, // sway frequency (Hz)
+  life: 8.0, // seconds a mote lives before recycling (long → they linger in the air)
+  fadeIn: 0.14, // fraction of life spent fading IN (no birth pop)
+  fadeOut: 0.32, // fraction of life spent fading OUT (no death pop)
+  size: 1.7, // base point size — tiny glowing motes
+  baseAlpha: 0.42, // PEAK opacity — the subtlety dial (lower = more delicate)
+  colorHot: 0xffb866, // warm amber (fresh / fire-fed motes)
+  colorCool: 0xc4500f, // deep ember (ambient / aged motes)
+  twinkleHz: 2.0, // slow breathe rate (Hz) — a glow, not a glint
+  ambientBright: 0.55, // alpha scale for a far-from-fire mote (dimmer — just atmosphere)
+  fireBright: 1.0, // alpha scale for a fire-fed mote (brighter — it's a real ember)
+  // Fire coupling: a blaze within `fireSenseRadius` of the camera pulls up to `fireBias` of the
+  // respawns to spawn downwind of it → the air visibly thickens with embers near the fire.
+  fireBias: 0.65, // max fraction of respawns pulled to near a fire (at full proximity)
+  fireSenseRadius: 240, // a fire within this of the camera contributes density + is a spawn source (units)
+  fireDownwind: 16, // how far downwind of a fire a fire-fed mote spawns (units)
+  fireScatter: 16, // lateral scatter around the downwind spawn point (units)
+  fireLift: 5, // base height above the fire a fire-fed mote spawns (units)
+  fireLiftRand: 16, // extra random height on top (units) → a rising column of embers
+  fireRise: 1.8, // upward speed of a fire-fed mote (units/s) — rises faster than ambient
+} as const;
+
 // Water shader (B1). A single shared ShaderMaterial (onBeforeCompile over Standard)
 // across all lakes: animated normals, real depth-fade color (from a per-vertex water
 // depth baked off World.groundHeightAt), fresnel sky tint, shoreline foam, and an

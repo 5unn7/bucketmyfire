@@ -33,6 +33,7 @@ import { createWaterMaterial } from './water/WaterMaterial';
 import { WaterSpray } from './vfx/WaterSpray';
 import { SmokePlume } from './vfx/SmokePlume';
 import { Embers } from './vfx/Embers';
+import { AmbientEmbers } from './vfx/AmbientEmbers';
 import { createSkyDome } from './sky/SkyDome';
 import { applyAtmosphere, GOLDEN } from './sky/TimeOfDay';
 import { HeroFireLights } from './lighting/HeroFireLights';
@@ -107,6 +108,7 @@ export class Game {
   private readonly spray = new WaterSpray(); // pooled water-drop spray (B4/C2)
   private readonly smoke = new SmokePlume(); // pooled per-fire smoke plumes (B4)
   private readonly embers = new Embers(); // pooled per-fire sparks/embers (cinematic layer)
+  private readonly ambientEmbers = new AmbientEmbers(); // subtle drifting amber motes around the camera
   private readonly audio = new HeliAudio(); // procedural rotor drone + scoop/drop/win SFX
   private readonly lakes: Lake[] = [];
   // C3: engine-agnostic fire sim (owns fire state as numbers) + a FIXED pool of fire
@@ -464,6 +466,7 @@ export class Game {
     this.scene.add(this.spray.points); // pooled drop-spray particle cloud
     this.scene.add(this.smoke.points); // pooled per-fire smoke plumes
     this.scene.add(this.embers.points); // pooled per-fire sparks/embers
+    this.scene.add(this.ambientEmbers.points); // subtle ambient amber motes (atmosphere)
 
     // Crew landing zones (delivery/evac missions): resolve each spec to a world point, drop a
     // marker mesh, and hand the list to the transport sim. No-op for water missions.
@@ -893,6 +896,9 @@ export class Game {
     this.sun.target.position.set(hp.x, hp.y, hp.z);
     this.chase.update(dt, this.heliSim.position, this.heliSim.yaw, this.input.look);
     this.skyDome.position.copy(this.chase.camera.position); // keep the sky centered on the eye
+    // Ambient amber motes drift in the air around the eye and thicken near a blaze (atmosphere).
+    const cam = this.chase.camera.position;
+    this.ambientEmbers.update(dt, cam.x, cam.y, cam.z, this.wind.vx, this.wind.vz, this.elapsed, activeFires, FIRE3D.maxIntensity);
     // Forest LOD: only keep the tree chunks near the camera (frustum culling drops the
     // rest); centered on the eye so chunks ahead/behind toggle correctly.
     this.forest.cull(this.chase.camera.position.x, this.chase.camera.position.z);
