@@ -504,6 +504,9 @@ export class Game {
       this.pilotName,
       this.end,
     );
+    // Tuck the controls "?" button into the radar's corner (top-right, under the minimap) so it
+    // shares the map column and reflows down when the radar is expanded.
+    this.hud.mountUnderRadar(this.input.helpButton);
     // C5: hand the radar the live fire field so it shades the burnt area (and the live front).
     this.hud.setBurnField(this.fireSystem.fieldView());
     // The reactive arc opens with a pre-flight DISPATCH briefing card; the sim + mission clock stay

@@ -92,6 +92,7 @@ const LOW_AGL_FT = 250; // altimeter reads LOW (red) below this AGL in feet
 const HEAD_W = 256; // heading-tape logical/backing width; display width scales down per breakpoint
 const HEAD_H = 34;
 const RANGE_NEAR = 160; // world units to the radar edge when collapsed (zoomed-in local map)
+const HINT_VISIBLE_MS = 3600; // status hint flashes on, then auto-fades after this (no permanent nag)
 
 export class HUD {
   private readonly root: HTMLDivElement;
@@ -109,6 +110,10 @@ export class HUD {
   private readonly objPanel: HTMLDivElement; // campaign objective checklist (hidden in sandbox)
   private objSig = ''; // last-rendered objective signature (skip DOM churn when unchanged)
   private readonly hint: HTMLDivElement;
+  private hintText: string | null = null; // last hint we acted on (skip re-trigger when unchanged)
+  private hintHideTimer = 0; // setTimeout: start the fade-out
+  private hintFadeTimer = 0; // setTimeout: drop it from layout once the fade finishes
+  private readonly topRight: HTMLDivElement; // radar column — extra icons (help "?") tuck under the map
   private readonly smoke: HTMLDivElement; // C5: blinding-smoke veil when the camera is in a plume
   private banner?: HTMLDivElement;
   private readonly commsWrap: HTMLDivElement; // radio comms log (DISPATCH/CREW/WARNING toasts)
@@ -277,6 +282,8 @@ export class HUD {
       maxWidth: '90vw',
       boxSizing: 'border-box',
       display: 'none',
+      opacity: '0',
+      transition: 'opacity 0.35s ease',
     });
 
     // --- Fighter-jet scrolling tapes flanking the heli: airspeed LEFT, altitude
@@ -337,9 +344,9 @@ export class HUD {
       this.radarExpanded = !this.radarExpanded;
       this.sizeRadar();
     });
-    const topRight = anchor('top-right');
-    topRight.appendChild(radar.canvas);
-    this.root.appendChild(topRight);
+    this.topRight = anchor('top-right');
+    this.topRight.appendChild(radar.canvas);
+    this.root.appendChild(this.topRight);
 
     parent.appendChild(this.root);
 
@@ -411,6 +418,42 @@ export class HUD {
     this.smoke.style.opacity = `${clamp01(density)}`;
   }
 
+  /** Mount an extra control (the help "?" button) into the radar column, directly under the
+   *  minimap — so it shares the top-right corner and reflows down when the radar expands. */
+  mountUnderRadar(node: HTMLElement): void {
+    this.topRight.appendChild(node);
+  }
+
+  /**
+   * Status hint: flash a NEW message briefly, then fade it out — and never nag with the same
+   * message twice running. Game recomputes the hint string every frame, so a persistent
+   * condition (e.g. "Descend to fill the bucket" while loitering over a lake) used to pin the
+   * banner on permanently; now each distinct prompt shows once and clears itself.
+   */
+  private setHint(text: string | null): void {
+    if (text === this.hintText) return; // unchanged since last frame — don't re-trigger the flash
+    this.hintText = text;
+    window.clearTimeout(this.hintHideTimer);
+    window.clearTimeout(this.hintFadeTimer);
+    if (!text) {
+      this.fadeOutHint(); // condition cleared — let whatever is showing fade away
+      return;
+    }
+    this.hint.textContent = text;
+    this.hint.style.display = 'block';
+    void this.hint.offsetWidth; // force reflow so the fade-in runs from opacity 0
+    this.hint.style.opacity = '1';
+    this.hintHideTimer = window.setTimeout(() => this.fadeOutHint(), HINT_VISIBLE_MS);
+  }
+
+  /** Fade the hint out, then drop it from layout once the transition has finished. */
+  private fadeOutHint(): void {
+    this.hint.style.opacity = '0';
+    this.hintFadeTimer = window.setTimeout(() => {
+      this.hint.style.display = 'none';
+    }, 360);
+  }
+
   update(s: HudState): void {
     // --- Instrument spine: one width/text write per pod (O(1)); flashes/glows only when flagged. ---
     this.waterPod.fill.style.width = `${clamp01(s.water / s.waterMax) * 100}%`;
@@ -436,12 +479,7 @@ export class HUD {
     const anyLow = !!s.healthLow || !!s.fuelLow || threatHot;
     this.spine.style.boxShadow = anyLow ? `0 0 12px ${UI.warn}, ${UI.shadow}` : UI.shadow;
 
-    if (s.hint) {
-      this.hint.textContent = s.hint;
-      this.hint.style.display = 'block';
-    } else {
-      this.hint.style.display = 'none';
-    }
+    this.setHint(s.hint);
 
     // Campaign objective checklist — rebuilt only when its rendered text changes (no per-frame churn).
     this.renderObjectives(s.objectives);

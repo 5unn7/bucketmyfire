@@ -124,6 +124,12 @@ export class Input {
     return { active: this.lookActive, yawRate: this.lookYawRate, pitchRate: this.lookPitchRate };
   }
 
+  /** The "?" help button. Game mounts it under the radar (HUD.mountUnderRadar) so it lives in
+   *  the minimap's top-right corner rather than floating at the bottom of the screen. */
+  get helpButton(): HTMLDivElement {
+    return this.helpBtn;
+  }
+
   // --- Responsive sizing ----------------------------------------------------
 
   /** Size + reflow the controls for the active breakpoint. Anchors handle
@@ -377,8 +383,10 @@ export class Input {
 
   // --- Help / controls hint -------------------------------------------------
 
-  /** A "?" icon (bottom-center) that toggles a controls panel. Shown once on load so
-   *  a first-time pilot sees the scheme, then dismissable with any tap. */
+  /** A "?" icon that toggles a controls panel. Shown once on load so a first-time pilot sees
+   *  the scheme, then dismissable with any tap. The icon itself is mounted under the radar by
+   *  Game (HUD.mountUnderRadar) so it sits in the minimap's top-right corner; only the
+   *  full-screen controls overlay is parented here. */
   private buildHelpUI(root: HTMLElement): void {
     // Full-screen scrim behind the panel: any tap on it closes the help.
     const overlay = div({
@@ -441,9 +449,8 @@ export class Input {
     });
     overlay.addEventListener('pointerdown', () => setOpen(false));
 
-    const a = anchor('bottom-center');
-    a.appendChild(icon);
-    root.appendChild(a);
+    // Only the full-screen controls overlay is parented here; the "?" icon is mounted under the
+    // radar by Game so it shares the minimap's top-right corner (HUD.mountUnderRadar).
     root.appendChild(overlay);
 
     setOpen(true); // show the scheme once on first load
