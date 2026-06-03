@@ -295,8 +295,10 @@ export const BUCKET3D = {
   type: 'bambi' as 'bambi' | 'valve',
   dumpRate: 200, // litres/sec while a latched 'bambi' dump runs — full tank gone in ~0.5s
   dropRate: 120, // litres/sec while a 'valve' bucket is held open — a tank lasts ~0.8s
-  dropRadius: 20, // world units a drop douses around the bucket — tight but FORGIVING, so an approximate
-  // drop still lands meaningful water on the fire (the predicted-impact ring mirrors this)
+  dropRadius: 30, // world units a drop douses around the bucket — WIDE + forgiving (was 20): a near-miss or
+  // a swung bucket still lands meaningful water on the fire, so you don't have to hover dead-on. Per-cell
+  // potency is unchanged (the douse dilute term scales with this), it just covers ~2× the area → a typical
+  // fire clears in 1–2 passes. The predicted-impact ring mirrors this exactly, so what you aim is what hits.
   dipThreshold: 1.2, // bucket counts as "in the water" within this of the surface
   // Physical scoop tip: while the bucket is submerged it eases a forward tilt and a
   // small downward dip offset, then levels out when it lifts clear. Vertical follow
@@ -334,13 +336,14 @@ export const BUCKET3D = {
 export const DROP_PHYSICS = {
   // Height band (bucket AGL, units). One-sided: full strength at/below bandHi (a deck dump is never
   // wrongly nerfed); only ABOVE the band does the load spread thin + weak.
-  bandHi: 70, // top of the sweet spot — at/below: density=1, radius≈dropRadius // a low water-bomber run
+  bandHi: 90, // top of the sweet spot (raised 70 → 90): at/below this bucket-AGL density=1, radius≈dropRadius —
+  // a WIDE in-band window so you don't have to nail a precise low altitude; a normal-height run still bites full.
   ceilAGL: 200, // at/above here the load is mist: min density, max spread // ~900ft — you SEE it drift, it does ~nothing
   // Footprint growth with height (multipliers on BUCKET3D.dropRadius).
-  tightRadiusMul: 0.9, // radius mult on the deck — a tight, dense splash (0.9·20≈18u)
-  wideRadiusMul: 1.7, // radius mult at/above ceilAGL — a wider thin veil (1.7·20≈34u), but still realistic
+  tightRadiusMul: 0.9, // radius mult on the deck — a tight, dense splash (0.9·30≈27u)
+  wideRadiusMul: 1.7, // radius mult at/above ceilAGL — a wider thin veil (1.7·30≈51u), but still realistic
   // Effectiveness (per-litre density) above the band.
-  minDensityMul: 0.12, // density at ceilAGL — mist does ~12% per-litre work // the "too high = useless" cap
+  minDensityMul: 0.2, // density at ceilAGL — mist does ~20% per-litre work (eased 0.12 → 0.2 so a high drop is weak, not useless)
   areaFalloff: 1.0, // 0 = density-only high penalty, 1 = full 1/areaRatio per-cell dilution as the disc widens
   // Radial coverage within the disc (EDGE falloff): water peaks at center, tapers to the rim.
   edgeFloor: 0.45, // min coverage at the very rim (0..1) — a near-miss / edge clip still lands REAL water
@@ -355,7 +358,7 @@ export const DROP_PHYSICS = {
   // a doused-out cell can't re-light). This is what makes a fire reliably SHRINK as you bucket it and turns the
   // orange ground BLACK, instead of leaving a faint re-flaring ember. Above the lock (edge clip / thin high drop)
   // a cell keeps its heat and re-flares (slowly, per FIRE3D.cellRegrow). Set ≈ the lowest live heat that still reads.
-  extinguishLock: 0.25,
+  extinguishLock: 0.3,
   // Wind drift of the impact point (falling water is carried downwind; more the higher you drop).
   fallG: 42, // gravity (u/s²) for fall-TIME only. = SPRAY.gravity so the douse offset & the visible spray fall in lockstep
   v0Down: 16, // initial downward droplet speed (= SPRAY.speedDown) for the exact fall-time form
@@ -367,11 +370,12 @@ export const DROP_PHYSICS = {
 
 // --- Drop feedback (predicted-impact ring + post-drop readout) — VISUAL/UX only, never feeds the sim.
 export const DROP_FX = {
-  markerShowAGL: 90, // show the predicted ring only below this bucket AGL // above = cruising, no clutter
+  markerShowAGL: 110, // show the predicted ring only below this bucket AGL (raised with the wider in-band window) // above = cruising, no clutter
   markerColorInBand: 0x49e0a0, // green-cyan: this drop will bite
   markerColorTooHigh: 0xffb24a, // amber: weak/dispersed (matches the existing crew-toast amber)
   markerColorWide: 0xff5a5a, // red: predicted center far from any live fire — you'll miss
-  markerWideDist: 30, // units from the nearest live fire beyond which the ring reads as a MISS (red)
+  markerWideDist: 42, // units from the nearest live fire beyond which the ring reads as a MISS (red) — raised with
+  // the wider dropRadius so the ring only warns "you'll miss" when the bigger splash genuinely won't reach the fire
   markerHideDist: 180, // no active fire within this of the predicted center → hide the ring (not on a run)
   markerMinOpacity: 0.18, // floor opacity (too-high fades toward this)
   markerMaxOpacity: 0.75, // in-band opacity — bright = confident
@@ -573,11 +577,11 @@ export const FIRE3D = {
   // 0.0018, and scaled by the mission's spreadScale). Gated in code on wind + a very hot source — stops "fireworks".
   spotDist: 34, // how far downwind (units) a spotting ember lands — ~3 cells: stays VISUALLY
   // ATTACHED to the head (reads as the front advancing, not a new fire teleporting across the map)
-  litresToClear: 45, // water litres that fully zero a cell's heat. A full 100L bambi dump (knockRef≈2.2)
-  // now CLEARS the cells it lands on dead-on — every cell in the disc is driven to 0, SCORCHES to mud, and
-  // locks out (can't re-light). So actively bucketing a fire actually puts it OUT (was 135 > the 100L tank
-  // → mathematically impossible to clear a hot cell). A fire wider than one ~20u disc is walked pass by pass
-  // (≈1–5 buckets by size); bigger buckets (212/UH-60) clear more per pass. Pairs with DROP_PHYSICS.extinguishLock.
+  litresToClear: 35, // water litres that fully zero a cell's heat. A full 100L bambi dump (knockRef≈2.9) DECISIVELY
+  // clears the cells it lands on — every cell in the ~27u disc is driven to 0, SCORCHES to mud, and locks out
+  // (can't re-light). So actively bucketing a fire puts it OUT (was 135 > the 100L tank → impossible to clear a hot
+  // cell; eased again 45 → 35 so it's reliably easy). A fire wider than one disc is walked pass by pass (≈1–2 passes
+  // for a typical fire with the wider dropRadius); bigger buckets (212/UH-60) clear more. Pairs with DROP_PHYSICS.extinguishLock.
   cellsForFullSize: 46, // burning cells in a cluster that read as footprint size 1 (raised so flame/
   // smoke scale tracks the now-larger sustained fronts)
   cellsPerFire: 8, // cells ≈ one "fire" for the burned-out / doused scoring counters
@@ -703,6 +707,7 @@ export const MISSIONS = {
   dropSec: 2.2, // landed dwell to set a crew DOWN at a dropoff zone
   zoneSmoke: 0x39d0ff, // marker-smoke / ring tint for an ACTIVE (next) zone (cyan)
   zoneSmokeDone: 0x5a6b72, // tint once a zone is satisfied (greyed out)
+  zoneHome: 0x5fe0a0, // persistent tint for the reusable HOME base zone — always lit, distinct green from the cyan LZs
 
   // --- Fuel / range (Track C6 — calibrated to the hero Bell 205A-1, 60× time compression:
   // full bucket + full power ≈ 2.5 min endurance, light loiter ≈ 4.2 min). Only missions

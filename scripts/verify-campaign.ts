@@ -243,10 +243,10 @@ function trippingSignals(elapsed: number): MissionSignals {
   // (b) a drop's footprint is BOUNDED — a cell well OUTSIDE the ~20u disc keeps its full heat while the
   // centre is cleared, so a fire wider than one disc is walked pass by pass (≈1–5 buckets), not deleted map-wide.
   const b = mk();
-  b.igniteAt(cc, cc, 4, 1.0); // a wide patch so there are lit cells both inside AND outside the disc
+  b.igniteAt(cc, cc, 8, 1.0); // a wide patch so there are lit cells both inside AND outside the disc
   b.douse(cc, cc, BUCKET3D.dropRadius, litres, 1);
   const atCenter = b.heatAt(cc, cc);
-  const outside = b.heatAt(cc + 3 * cellSize, cc); // ~3 cells (≈35u) out, beyond the ~20u drop radius
+  const outside = b.heatAt(cc + BUCKET3D.dropRadius + 2 * cellSize, cc); // a couple cells beyond the drop radius
   ok(
     'suppression: the drop footprint is bounded — fire outside the disc survives (multi-pass)',
     outside > 0.9 && atCenter <= 0.05,
