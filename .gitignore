@@ -31,3 +31,8 @@ public/animals/ultimate_3d_animal_pack_free_download/
 !public/**/*.jpeg
 heli-preview.html
 icons-preview.html
+
+# Standalone QA/screenshot harnesses + their output — drive on-disk Playwright Chromium to
+# regenerate shots locally (e.g. .qa-shot.cjs responsive QA, .og-shot.cjs the OG card). Local-only.
+.*-shot.cjs
+.qa/
