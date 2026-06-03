@@ -245,10 +245,11 @@ export class MissionSelect {
   }
 
   /**
-   * ② Aircraft — a compact PILL selector (was a band of three big cards). One tidy,
-   * wrapping row; the selected pill carries the accent; locked airframes show their
-   * campaign requirement. A spec strip under the row reflects the current pick. The
-   * choice persists to the profile so the mission boot flies it.
+   * ② Aircraft — a horizontally SCROLLABLE card carousel (swipe on touch, scroll/drag on
+   * desktop) with scroll-snap. Each card carries its art, tagline and spec meters; the
+   * selected card holds the accent and locked airframes show their campaign requirement.
+   * Selection is on `click` (not pointerdown) so a swipe-to-scroll gesture never selects.
+   * The choice persists to the profile so the mission boot flies it.
    */
   private aircraftStep(): HTMLDivElement {
     const saved = loadProfile();
@@ -267,86 +268,123 @@ export class MissionSelect {
     persist(selected); // a player who never touches the picker still flies a valid, saved choice
 
     const wrap = section({ margin: '0 auto 26px' });
-    wrap.appendChild(stepHeader(2, 'Aircraft'));
+    wrap.appendChild(stepHeader(2, 'Aircraft', 'swipe to browse'));
 
-    const row = div({ display: 'flex', gap: '10px', flexWrap: 'wrap' });
-    wrap.appendChild(row);
+    injectScrollStyles();
+    const scroller = div({
+      display: 'flex',
+      gap: '12px',
+      overflowX: 'auto',
+      scrollSnapType: 'x mandatory',
+      paddingBottom: '8px',
+      margin: '0 -2px',
+    });
+    scroller.className = 'bmf-hscroll';
+    wrap.appendChild(scroller);
 
-    // Spec strip: tagline + four mini-meters for the SELECTED airframe (info on demand,
-    // not a wall of text on every card).
-    const specBox = div({ marginTop: '14px', maxWidth: '520px' });
-    wrap.appendChild(specBox);
-    const renderSpecs = (heli: CatalogItem): void => {
-      specBox.replaceChildren(
-        div({ fontSize: '12px', color: UI.dim, lineHeight: '1.5', marginBottom: '10px' }, `${heli.name} — ${heli.tagline}`),
-      );
-      if (heli.specs) {
-        const meters = div({ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px 18px' });
-        for (const s of heli.specs) meters.appendChild(specMeter(s.label, s.value, heli.accent));
-        specBox.appendChild(meters);
-      }
-    };
+    const cards: { item: CatalogItem; set: (on: boolean) => void }[] = [];
+    let selectedEl: HTMLDivElement | undefined;
 
-    const pills: { item: CatalogItem; set: (on: boolean) => void }[] = [];
     for (const heli of HELIS) {
       const usable = isHeliUnlocked(heli, cleared);
-      const pill = div({
+      const card = div({
         position: 'relative',
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: '9px',
+        flex: '0 0 auto',
+        width: '214px',
+        scrollSnapAlign: 'start',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '11px',
         background: UI.cardGlass,
         border: `1px solid ${UI.stroke}`,
-        borderRadius: '99px',
-        padding: '6px 14px 6px 7px',
+        borderRadius: '14px',
+        boxShadow: UI.shadow,
+        padding: '14px',
         cursor: usable ? 'pointer' : 'default',
-        opacity: usable ? '1' : '0.45',
+        opacity: usable ? '1' : '0.5',
         transition: 'border-color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease',
       });
-      setBlur(pill);
+      setBlur(card);
 
-      const art = div({ width: '30px', height: '30px', flex: 'none', borderRadius: '8px' });
+      // Header: procedural icon on its accent halo + name / tagline.
+      const head = div({ display: 'flex', alignItems: 'center', gap: '12px' });
+      const art = div({ width: '48px', height: '48px', flex: 'none', borderRadius: '10px' });
       art.style.background = `radial-gradient(120% 100% at 50% 30%, ${heli.accent}3a, transparent 72%)`;
       const icon = makeIcon(heli.id);
-      icon.setAttribute('width', '30');
-      icon.setAttribute('height', '30');
+      icon.setAttribute('width', '48');
+      icon.setAttribute('height', '48');
       art.appendChild(icon);
-      pill.appendChild(art);
+      const meta = div({ minWidth: '0' });
+      meta.appendChild(
+        div({ fontSize: '15px', fontWeight: '700', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }, heli.name),
+      );
+      meta.appendChild(
+        div({ fontSize: '10px', letterSpacing: '0.06em', textTransform: 'uppercase', color: UI.accent, opacity: '0.85', marginTop: '2px' }, heli.tagline),
+      );
+      head.append(art, meta);
+      card.appendChild(head);
 
-      pill.appendChild(div({ fontSize: '13px', fontWeight: '700', whiteSpace: 'nowrap' }, heli.name));
+      // Spec meters — one row per stat, on every card now (the carousel has the room).
+      if (heli.specs) {
+        const meters = div({ display: 'grid', gap: '7px' });
+        for (const s of heli.specs) meters.appendChild(specMeter(s.label, s.value, heli.accent));
+        card.appendChild(meters);
+      }
 
       if (!usable) {
-        const lockText = heli.available ? `🔒 M${heli.unlockAfter}` : 'SOON';
-        if (heli.available) pill.title = `Unlocks after clearing Mission ${heli.unlockAfter}`;
-        pill.appendChild(
-          div({ fontSize: '10px', letterSpacing: '0.08em', fontWeight: '700', color: UI.faint, marginLeft: '2px' }, lockText),
+        // A full-width footer strip (not a corner badge) so it never overlaps a long name.
+        const lockText = heli.available ? `🔒 Unlocks after Mission ${heli.unlockAfter}` : '🔒 Coming soon';
+        if (heli.available) card.title = `Unlocks after clearing Mission ${heli.unlockAfter}`;
+        card.appendChild(
+          div(
+            {
+              marginTop: '2px',
+              fontSize: '10px',
+              letterSpacing: '0.06em',
+              fontWeight: '700',
+              color: UI.text,
+              textAlign: 'center',
+              background: 'rgba(0,0,0,0.3)',
+              borderRadius: '8px',
+              padding: '7px',
+            },
+            lockText,
+          ),
         );
       }
 
       const setSelected = (on: boolean): void => {
-        pill.style.borderColor = on ? UI.accent : UI.stroke;
-        pill.style.background = on ? UI.accentFill : UI.cardGlass;
-        pill.style.boxShadow = on ? `0 0 0 1px ${UI.accent}66` : 'none';
+        card.style.borderColor = on ? UI.accent : UI.stroke;
+        card.style.background = on ? UI.accentFill : UI.cardGlass;
+        card.style.boxShadow = on ? `0 0 0 2px ${UI.accent}55, ${UI.shadow}` : UI.shadow;
       };
-      setSelected(usable && heli.id === selected.id);
+      const isSel = usable && heli.id === selected.id;
+      setSelected(isSel);
+      if (isSel) selectedEl = card;
 
       if (usable) {
-        pill.addEventListener('pointerenter', () => {
-          if (heli.id !== selected.id) pill.style.borderColor = `${UI.accent}55`;
+        card.addEventListener('pointerenter', () => {
+          if (heli.id !== selected.id) card.style.borderColor = `${UI.accent}55`;
         });
-        pill.addEventListener('pointerleave', () => setSelected(heli.id === selected.id));
-        pill.addEventListener('pointerdown', () => {
+        card.addEventListener('pointerleave', () => setSelected(heli.id === selected.id));
+        card.addEventListener('click', () => {
           selected = heli;
           persist(heli);
-          for (const p of pills) p.set(p.item.id === heli.id);
-          renderSpecs(heli);
+          for (const c of cards) c.set(c.item.id === heli.id);
         });
       }
-      pills.push({ item: heli, set: setSelected });
-      row.appendChild(pill);
+      cards.push({ item: heli, set: setSelected });
+      scroller.appendChild(card);
     }
 
-    renderSpecs(selected);
+    // After mount/layout, bring the selected airframe into view (horizontal only — don't scroll
+    // the page). rAF runs once the overlay is in the document, so offsetLeft is real.
+    if (selectedEl) {
+      const target = selectedEl;
+      requestAnimationFrame(() => {
+        scroller.scrollLeft = Math.max(0, target.offsetLeft - 2);
+      });
+    }
     return wrap;
   }
 
@@ -563,6 +601,22 @@ function utilityChip(icon: string, label: string, onClick: () => void): HTMLDivE
   });
   chip.addEventListener('pointerdown', onClick);
   return chip;
+}
+
+// One-time scoped styles for the aircraft carousel: a thin, unobtrusive scrollbar and snap
+// behaviour that inline styles can't express (::-webkit-scrollbar, scrollbar-width).
+let scrollStylesInjected = false;
+function injectScrollStyles(): void {
+  if (scrollStylesInjected) return;
+  scrollStylesInjected = true;
+  const tag = document.createElement('style');
+  tag.textContent = `
+  .bmf-hscroll { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.22) transparent; -webkit-overflow-scrolling: touch; scroll-padding-left: 2px; }
+  .bmf-hscroll::-webkit-scrollbar { height: 6px; }
+  .bmf-hscroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.18); border-radius: 99px; }
+  .bmf-hscroll::-webkit-scrollbar-track { background: transparent; }
+  `;
+  document.head.appendChild(tag);
 }
 
 /** A compact labelled meter (0..1) for an aircraft spec. */

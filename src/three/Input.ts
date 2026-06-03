@@ -11,8 +11,8 @@
  *   - Drop water: the DROP button, or Space. A 'bambi' bucket dumps fully on a
  *     single tap; a 'valve' bucket pours while held and pauses on release.
  *
- * A "?" help icon toggles an on-screen controls panel; it shows once on first
- * load so a new pilot sees the scheme.
+ * A "?" help icon toggles the quick-start modal (`ui/HelpModal`) — a how-to-play
+ * tutorial plus the controls reference. It auto-opens once for a first-time pilot.
  *
  * Scooping is NOT a button — you descend over a lake until the slung bucket
  * dips into the water and fills (handled in Game from the bucket's height).
@@ -26,6 +26,7 @@ import { CAMERA } from './config';
 import type { LookOffset } from './ChaseCamera';
 import { UI, div, button, setBlur, anchor } from './ui/theme';
 import { onLayout, type LayoutState } from './ui/layout';
+import { HelpModal, hasSeenHelp, markHelpSeen } from './ui/HelpModal';
 
 export interface ControlState {
   turn: number; // -1 turn left .. +1 turn right
@@ -76,6 +77,7 @@ export class Input {
   private eyeBtn!: HTMLDivElement;
   private eyeSvg!: SVGElement;
   private helpBtn!: HTMLDivElement;
+  private help!: HelpModal;
 
   constructor(parent: HTMLElement) {
     window.addEventListener('keydown', (e) => {
@@ -381,79 +383,28 @@ export class Input {
     root.appendChild(a);
   }
 
-  // --- Help / controls hint -------------------------------------------------
+  // --- Help / quick-start ---------------------------------------------------
 
-  /** A "?" icon that toggles a controls panel. Shown once on load so a first-time pilot sees
-   *  the scheme, then dismissable with any tap. The icon itself is mounted under the radar by
-   *  Game (HUD.mountUnderRadar) so it sits in the minimap's top-right corner; only the
-   *  full-screen controls overlay is parented here. */
-  private buildHelpUI(root: HTMLElement): void {
-    // Full-screen scrim behind the panel: any tap on it closes the help.
-    const overlay = div({
-      position: 'fixed',
-      inset: '0',
-      display: 'none',
-      alignItems: 'center',
-      justifyContent: 'center',
-      background: 'rgba(0,0,0,0.5)',
-      pointerEvents: 'auto',
-      touchAction: 'none',
-      zIndex: '20',
-    });
-
-    const panel = div({
-      maxWidth: '320px',
-      margin: '0 18px',
-      padding: '20px 24px',
-      borderRadius: '16px',
-      background: 'rgba(10,16,22,0.92)',
-      border: `1px solid ${UI.strokeStrong}`,
-      color: UI.text,
-      fontFamily: UI.font,
-      fontSize: '15px',
-      lineHeight: '1.4',
-      boxShadow: '0 12px 44px rgba(0,0,0,0.55)',
-    });
-    setBlur(panel);
-    panel.appendChild(
-      div(
-        { fontSize: '13px', fontWeight: '700', letterSpacing: '3px', marginBottom: '14px', color: UI.accent },
-        'CONTROLS',
-      ),
-    );
-    helpRow(panel, 'Turn', 'stick ◄ ► · A D');
-    helpRow(panel, 'Forward / Back', 'stick ▲ ▼ · W S');
-    helpRow(panel, 'Climb', '▲ · I');
-    helpRow(panel, 'Descend', '▼ · J');
-    helpRow(panel, 'Drop water', 'DROP · Space');
-    panel.appendChild(
-      div(
-        { marginTop: '12px', fontSize: '13px', opacity: '0.8', lineHeight: '1.5' },
-        'Scoop by flying low over a lake and descending until the bucket dips in.',
-      ),
-    );
-    panel.appendChild(
-      div({ marginTop: '12px', fontSize: '12px', opacity: '0.6', textAlign: 'center' }, 'tap to close'),
-    );
-    overlay.appendChild(panel);
+  /** A "?" icon that opens the quick-start modal (`ui/HelpModal`) — a how-to-play tutorial plus
+   *  the touch/keyboard controls reference. It auto-opens ONCE for a first-time pilot (gated in
+   *  localStorage) so the greeting shows exactly once but stays reopenable forever. The icon is
+   *  mounted under the radar by Game (HUD.mountUnderRadar); the modal owns its own body-level
+   *  scrim, so nothing extra is parented here. */
+  private buildHelpUI(_root: HTMLElement): void {
+    this.help = new HelpModal();
 
     const icon = button('?', { position: 'relative', color: UI.dim, fontWeight: '600' });
     this.helpBtn = icon;
-
-    const setOpen = (open: boolean) => {
-      overlay.style.display = open ? 'flex' : 'none';
-    };
     icon.addEventListener('pointerdown', (e) => {
       e.stopPropagation();
-      setOpen(true);
+      this.help.toggle();
     });
-    overlay.addEventListener('pointerdown', () => setOpen(false));
 
-    // Only the full-screen controls overlay is parented here; the "?" icon is mounted under the
-    // radar by Game so it shares the minimap's top-right corner (HUD.mountUnderRadar).
-    root.appendChild(overlay);
-
-    setOpen(true); // show the scheme once on first load
+    // First-time pilots get the quick-start automatically, exactly once.
+    if (!hasSeenHelp()) {
+      this.help.open();
+      markHelpSeen();
+    }
   }
 }
 
@@ -474,14 +425,6 @@ function deadzone(v: number): number {
   const a = Math.abs(v);
   if (a < STICK_DEADZONE) return 0;
   return Math.sign(v) * ((a - STICK_DEADZONE) / (1 - STICK_DEADZONE));
-}
-
-/** One "Label …… keys" line in the help panel (label left, keys right). */
-function helpRow(parent: HTMLElement, label: string, keys: string): void {
-  const row = div({ display: 'flex', justifyContent: 'space-between', gap: '18px', padding: '3px 0' });
-  row.appendChild(div({ color: UI.dim }, label));
-  row.appendChild(div({ fontWeight: '600', whiteSpace: 'nowrap', color: UI.text }, keys));
-  parent.appendChild(row);
 }
 
 /** Wire a div to call `set(true)` while pressed and `set(false)` on release, with
