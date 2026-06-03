@@ -73,7 +73,7 @@ export class MissionSelect {
     this.root.appendChild(intro);
 
     // ① Callsign  ② Aircraft  ③ Sortie — the three numbered steps of the pre-flight flow.
-    this.root.appendChild(this.callsignStep());
+    this.root.appendChild(this.callsignStep(catalog));
     this.root.appendChild(this.aircraftStep());
     this.root.appendChild(this.sortieStep(catalog, onSelect));
 
@@ -112,9 +112,10 @@ export class MissionSelect {
 
   /**
    * ① Callsign — the editable pilot name (the leaderboard submits under it). Click the
-   * chip to rename; validation + async uniqueness check keep the saved profile valid.
+   * chip to rename; validation + async uniqueness check keep the saved profile valid. A
+   * returning pilot (cleared ≥ 1 sortie) also gets a career-record strip here.
    */
-  private callsignStep(): HTMLDivElement {
+  private callsignStep(catalog: MissionDef[]): HTMLDivElement {
     const wrap = section({ margin: '0 auto 24px' });
     wrap.appendChild(stepHeader(1, 'Callsign', 'tap to rename'));
 
@@ -235,6 +236,11 @@ export class MissionSelect {
     chipCol.appendChild(chip);
     chipCol.appendChild(msg);
     wrap.appendChild(chipCol);
+
+    // Returning pilots see their career record right under the name. New pilots get nothing
+    // (no empty zeroes) — the record only appears once there's something to show.
+    const record = pilotRecord(catalog);
+    if (record) wrap.appendChild(record);
     return wrap;
   }
 
@@ -475,6 +481,57 @@ function stepHeader(n: number, label: string, hint?: string): HTMLDivElement {
   );
   if (hint) row.appendChild(div({ fontSize: '11px', color: UI.faint, marginTop: '1px' }, hint));
   return row;
+}
+
+/**
+ * Career-record strip for a returning pilot — sorties cleared, career score (sum of personal
+ * bests), best single sortie, and a campaign-progress bar. Returns null for a fresh pilot
+ * (nothing cleared) so the home screen stays clean on a first visit.
+ */
+function pilotRecord(catalog: MissionDef[]): HTMLDivElement | null {
+  const prog = getProgress();
+  const cleared = prog.completed.length;
+  if (cleared === 0) return null;
+
+  const total = catalog.length;
+  const bests = Object.values(prog.best);
+  const careerScore = bests.reduce((a, b) => a + b, 0);
+  const topSortie = bests.reduce((m, b) => Math.max(m, b), 0);
+  const pct = total ? Math.round((cleared / total) * 100) : 0;
+
+  const panel = div({
+    marginTop: '12px',
+    maxWidth: '440px',
+    background: UI.cardGlass,
+    border: `1px solid ${UI.stroke}`,
+    borderRadius: '12px',
+    padding: '13px 16px 14px',
+  });
+  setBlur(panel);
+
+  const stats = div({ display: 'flex', gap: '24px', flexWrap: 'wrap' });
+  stats.append(
+    statTile('Sorties', `${cleared}/${total}`),
+    statTile('Career score', careerScore.toLocaleString()),
+    statTile('Best sortie', topSortie.toLocaleString()),
+  );
+  panel.appendChild(stats);
+
+  const track = div({ marginTop: '13px', height: '5px', borderRadius: '99px', background: 'rgba(255,255,255,0.10)', overflow: 'hidden' });
+  track.appendChild(div({ height: '100%', width: `${pct}%`, background: UI.accent, borderRadius: '99px' }));
+  panel.appendChild(track);
+  panel.appendChild(
+    div({ marginTop: '6px', fontSize: '10px', fontWeight: '700', letterSpacing: '1.5px', color: UI.faint }, `CAMPAIGN ${pct}% COMPLETE`),
+  );
+  return panel;
+}
+
+/** A label-over-value stat used in the pilot record. */
+function statTile(label: string, value: string): HTMLDivElement {
+  const t = div({});
+  t.appendChild(div({ fontSize: '18px', fontWeight: '800', color: UI.text, lineHeight: '1.1' }, value));
+  t.appendChild(div({ fontSize: '10px', fontWeight: '700', letterSpacing: '1.5px', color: UI.faint, marginTop: '3px' }, label.toUpperCase()));
+  return t;
 }
 
 /** A slim top-bar utility chip (leaderboard / cloud-save) — icon + label, low weight. */

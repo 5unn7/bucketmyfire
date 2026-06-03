@@ -29,4 +29,8 @@ soft alpha mask.
 
 ## Audio
 
-`public/.../helicopter-loop.mp3` — rotor loop (see its source for licensing).
+Two recorded helicopter clips under `public/audio/`, played by `src/three/audio/HeliAudio.ts` —
+both **free to use, no attribution required**:
+
+- `helicopter-start.mp3` — a ~7s engine-start crank fired once as the cold-start rotor spool begins.
+- `helicopter-flying-loop.mp3` — the steady in-flight rotor drone, looped seamlessly.

@@ -109,33 +109,3 @@ export function bestScore(id: string): number | null {
   const b = load().best[id];
   return b ?? null;
 }
-
-// --- Selected-mission handoff (menu → reload → Game) ------------------------
-// The menu and the end-banner buttons stash the chosen mission here, then reload;
-// `main.ts` reads it to boot straight into that mission (no Three.js teardown needed).
-
-const SEL = 'bmf.selected.v1';
-
-export function getSelectedId(): string | null {
-  try {
-    return localStorage.getItem(SEL);
-  } catch {
-    return null;
-  }
-}
-
-export function setSelectedId(id: string): void {
-  try {
-    localStorage.setItem(SEL, id);
-  } catch {
-    /* ignore */
-  }
-}
-
-export function clearSelectedId(): void {
-  try {
-    localStorage.removeItem(SEL);
-  } catch {
-    /* ignore */
-  }
-}

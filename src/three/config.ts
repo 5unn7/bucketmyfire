@@ -209,7 +209,7 @@ export const FLIGHT = {
 // and the sound wind up together. Release the dial early and the RPM bleeds back down — you must
 // hold continuously. Headless QA (?qa / ?autostart) skips the ritual and flies immediately.
 export const STARTUP = {
-  holdSeconds: 5, // continuous hold on START to bring the rotor from 0 → full RPM
+  holdSeconds: 7, // continuous hold on START to bring the rotor from 0 → full RPM (matches the 7s engine-start clip, audio/HeliAudio.ts)
   spinDownSeconds: 3, // RPM bleeds back toward 0 over this long when START is released before full
 };
 
@@ -295,8 +295,8 @@ export const BUCKET3D = {
   type: 'bambi' as 'bambi' | 'valve',
   dumpRate: 200, // litres/sec while a latched 'bambi' dump runs — full tank gone in ~0.5s
   dropRate: 120, // litres/sec while a 'valve' bucket is held open — a tank lasts ~0.8s
-  dropRadius: 15, // world units a drop douses around the bucket — a tight, realistic bucket footprint
-  // (was 26; the predicted-impact ring mirrors this, so the ring shrank with it)
+  dropRadius: 20, // world units a drop douses around the bucket — tight but FORGIVING, so an approximate
+  // drop still lands meaningful water on the fire (the predicted-impact ring mirrors this)
   dipThreshold: 1.2, // bucket counts as "in the water" within this of the surface
   // Physical scoop tip: while the bucket is submerged it eases a forward tilt and a
   // small downward dip offset, then levels out when it lifts clear. Vertical follow
@@ -337,22 +337,25 @@ export const DROP_PHYSICS = {
   bandHi: 70, // top of the sweet spot — at/below: density=1, radius≈dropRadius // a low water-bomber run
   ceilAGL: 200, // at/above here the load is mist: min density, max spread // ~900ft — you SEE it drift, it does ~nothing
   // Footprint growth with height (multipliers on BUCKET3D.dropRadius).
-  tightRadiusMul: 0.9, // radius mult on the deck — a tight, dense splash (0.9·15≈13.5u)
-  wideRadiusMul: 1.7, // radius mult at/above ceilAGL — a wider thin veil (1.7·15≈25.5u), but still realistic
+  tightRadiusMul: 0.9, // radius mult on the deck — a tight, dense splash (0.9·20≈18u)
+  wideRadiusMul: 1.7, // radius mult at/above ceilAGL — a wider thin veil (1.7·20≈34u), but still realistic
   // Effectiveness (per-litre density) above the band.
   minDensityMul: 0.12, // density at ceilAGL — mist does ~12% per-litre work // the "too high = useless" cap
   areaFalloff: 1.0, // 0 = density-only high penalty, 1 = full 1/areaRatio per-cell dilution as the disc widens
   // Radial coverage within the disc (EDGE falloff): water peaks at center, tapers to the rim.
-  edgeFloor: 0.12, // min coverage at the very rim (0..1) — a rim splash still wets/feeds back, ~8× weaker than center
+  edgeFloor: 0.45, // min coverage at the very rim (0..1) — a near-miss / edge clip still lands REAL water
+  // (rim ≈ half the center, not 1/8th): you don't have to be pixel-perfect, but dead-on is still best
   coverWetFloor: 0.6, // FLOOR on the wet-firebreak coverage — keep the HOLDING LINE broad even on edge hits
   // (decouples "edge doesn't extinguish" — good — from "edge doesn't hold a line" — a separate, riskier nerf)
   // Intensity resistance (DEAD-ON-HOT): a hotter cell absorbs less knock per litre → multiple passes.
-  hotResist: 0.55, // diminishing-returns strength (0=flat/old, 1=max). 0.55 → a max-heat cell needs ~2-3 passes
+  hotResist: 0.4, // diminishing-returns strength (0=flat/old, 1=max). 0.4 → a max-heat cell needs ~2 passes
+  // (eased from 0.55 — combined with the small footprint + no self-extinguish it was too grindy to kill a fire)
   hotResistFloor: 0.3, // least a fully-hot cell is knocked vs flat — hot cells still take real damage, just resist
   // Wind drift of the impact point (falling water is carried downwind; more the higher you drop).
   fallG: 42, // gravity (u/s²) for fall-TIME only. = SPRAY.gravity so the douse offset & the visible spray fall in lockstep
   v0Down: 16, // initial downward droplet speed (= SPRAY.speedDown) for the exact fall-time form
-  windDriftGain: 6.0, // world u/s of horizontal drift per 1.0 wind.strength. Mirrors FLIGHT.windSpeed=6 → "same wind"
+  windDriftGain: 4.0, // world u/s of horizontal drift per 1.0 wind.strength — eased so wind nudges the drop
+  // off target without yanking it off the fire (you still lead into the wind, but a calm drop lands true)
   windDriftMax: 22.0, // hard clamp on total drift (≈0.85·dropRadius) so a centered drop can still partially connect
   minDriftAgl: 2.0, // below this AGL fall-time≈0 → no drift (avoids sqrt noise when the bucket scrapes the canopy)
 } as const;

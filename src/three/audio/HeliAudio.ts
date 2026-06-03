@@ -1,20 +1,27 @@
 import { AUDIO } from '../config';
-import rotorLoopUrl from './helicopter-loop.mp3';
+
+// Two REAL recorded helicopter clips, served from public/audio (BASE_URL keeps the path
+// correct under the GitHub-Pages base). Both are free to use, no attribution required.
+const ROTOR_LOOP_URL = import.meta.env.BASE_URL + 'audio/helicopter-flying-loop.mp3';
+const ENGINE_START_URL = import.meta.env.BASE_URL + 'audio/helicopter-start.mp3';
 
 /**
- * Helicopter audio. The rotor is a REAL recorded helicopter loop (a free,
- * no-attribution Mixkit clip — "Video game helicopter", chosen for its strong,
- * recognizable ~16 Hz blade-chop and clean loopability), played seamlessly via
- * the Web Audio API. The scoop / drop / win cues are short procedural one-shots
- * (no extra assets needed).
+ * Helicopter audio. Two REAL recorded clips drive it:
+ *   - a ~7s ENGINE-START one-shot that fires the moment the cold-start spool begins
+ *     (the crank/whine), timed to the 7s START hold (`STARTUP.holdSeconds`), and
+ *   - a steady FLYING LOOP that plays seamlessly underneath and is the constant rotor
+ *     drone once airborne.
+ * The scoop / drop / win cues stay short procedural one-shots (no extra assets).
  *
- * Why a sample and not a synth: a real rotor recording carries the engine + blade
- * harmonics + chop together — far more convincing than oscillators. We keep it a
- * CONSTANT drone (it just loops): working harder only nudges the VOLUME and a tiny
- * playback-rate, never sweeps pitch like a car engine.
+ * Why samples and not a synth: a real recording carries the engine + blade harmonics +
+ * chop together — far more convincing than oscillators. The flying loop is a CONSTANT
+ * drone (it just loops): working harder only nudges the VOLUME and a tiny playback-rate,
+ * never sweeps pitch like a car engine. The cold-start crank is the start clip's job; the
+ * loop's rpm-scaled volume just swells the rotor up to speed underneath it.
  *
- * The decoded clip is rebuilt once into an equal-power CROSSFADE loop so there is
- * no click at the loop seam (the raw clip's head and tail don't match).
+ * The decoded loop is rebuilt once into an equal-power CROSSFADE loop so there is
+ * no click at the loop seam (the raw clip's head and tail don't match). The start clip
+ * is played as-is (a one-shot, never looped).
  *
  * Browser autoplay policy: an AudioContext starts suspended until a user gesture,
  * so we lazily unlock on the first pointer/key/touch and ramp the master in.
@@ -29,6 +36,7 @@ const ROTOR_RATE_LOAD = 0.05; // tiny playback-rate rise at full effort (≤5%)
 const ROTOR_SPOOL_RATE = 0.5; // playback-rate floor at zero RPM — the cold-start spool winds it UP to 1.0
 const CROSSFADE_SEC = 0.35; // seam crossfade length
 const COMMS_GAIN = 0.16; // radio-squelch blip level (the "kshh" before a dispatch line)
+const START_GAIN = 0.9; // engine-start crank one-shot level
 
 export class HeliAudio {
   private readonly ctx: AudioContext;
@@ -36,10 +44,16 @@ export class HeliAudio {
   private readonly rotorGain: GainNode;
   private rotorSrc: AudioBufferSourceNode | null = null;
   private rotorBuffer: AudioBuffer | null = null;
+  private startBuffer: AudioBuffer | null = null; // ~7s engine-start crank (one-shot)
 
   private started = false; // a user gesture has unlocked + nodes are running
   private pendingStart = false; // unlock happened before the clip finished loading
   private muted = false;
+
+  // Cold-start crank: fired ONCE the first frame the rotor begins spooling (rpm enters 0..1).
+  // Latched so a release/re-hold of the START dial doesn't replay it, and so the headless
+  // skip-cold-start path (rpm pinned at 1) never triggers it.
+  private engineStartFired = false;
 
   // Edge trackers so Game can pass raw per-frame booleans.
   private wasScooping = false;
@@ -62,8 +76,8 @@ export class HeliAudio {
     this.rotorGain.gain.value = ROTOR_BASE_GAIN;
     this.rotorGain.connect(this.master);
 
-    // Load + decode + crossfade-loop the rotor clip (async; may finish after unlock).
-    void this.loadRotor();
+    // Load + decode both clips (async; may finish after unlock).
+    void this.loadClips();
 
     // Unlock on the first user gesture (autoplay policy), then self-detach.
     this.unlockHandler = (): void => this.ensureStarted();
@@ -77,19 +91,33 @@ export class HeliAudio {
     });
   }
 
-  private async loadRotor(): Promise<void> {
-    try {
-      // Fetch as a media range (like an <audio> element would) — servers/CDNs
-      // serve audio more reliably this way, and it dodges environments that
-      // short-circuit a plain fetch of a media MIME type to an empty 204.
-      const res = await fetch(rotorLoopUrl, { headers: { Range: 'bytes=0-' } });
-      const raw = await res.arrayBuffer();
-      const decoded = await this.ctx.decodeAudioData(raw);
-      this.rotorBuffer = this.makeSeamlessLoop(decoded);
-      if (this.pendingStart) this.startRotor();
-    } catch {
-      // Audio is non-essential; fail silently if decode/fetch is unavailable.
-    }
+  private async loadClips(): Promise<void> {
+    // Both decode independently — a failure on one must not block the other (audio is
+    // non-essential; fail silently per-clip if decode/fetch is unavailable).
+    await Promise.all([
+      this.decode(ROTOR_LOOP_URL)
+        .then((b) => {
+          this.rotorBuffer = this.makeSeamlessLoop(b);
+          if (this.pendingStart) this.startRotor();
+        })
+        .catch(() => {}),
+      this.decode(ENGINE_START_URL)
+        .then((b) => {
+          this.startBuffer = b; // one-shot, no loop treatment
+        })
+        .catch(() => {}),
+    ]);
+  }
+
+  /**
+   * Fetch + decode an audio clip. Fetched as a media range (like an <audio> element
+   * would) — servers/CDNs serve audio more reliably this way, and it dodges
+   * environments that short-circuit a plain fetch of a media MIME type to an empty 204.
+   */
+  private async decode(url: string): Promise<AudioBuffer> {
+    const res = await fetch(url, { headers: { Range: 'bytes=0-' } });
+    const raw = await res.arrayBuffer();
+    return this.ctx.decodeAudioData(raw);
   }
 
   /** Resume the context and start the rotor loop once a gesture has occurred. */
@@ -146,6 +174,14 @@ export class HeliAudio {
     const ease = AUDIO.paramEaseSec;
 
     const rpm = p.rpm === undefined ? 1 : Math.max(0, Math.min(1, p.rpm));
+
+    // Cold-start crank: while the rotor is spooling (rpm in the open interval 0..1), fire the
+    // ~7s engine-start clip once. The skip-cold-start path (rpm pinned at 1) is never in (0,1),
+    // so it stays silent. We keep retrying until it actually plays — covering the rare case
+    // where the clip hasn't finished decoding the frame spool-up begins; `playEngineStart`
+    // latches `engineStartFired` only on success, so a release/re-hold never replays it.
+    if (!this.engineStartFired && rpm > 0 && rpm < 1) this.playEngineStart();
+
     const speedN = Math.min(1, p.speed / p.maxSpeed);
     const effort = Math.min(
       1,
@@ -169,6 +205,23 @@ export class HeliAudio {
     this.wasScooping = p.scooping;
     this.wasDropping = p.dropping;
     this.wasWon = p.won;
+  }
+
+  /**
+   * The recorded engine-start crank — a ~7s one-shot played as the cold-start spool begins.
+   * Timed to the START hold (`STARTUP.holdSeconds`), so a continuous hold lands the crank's
+   * tail right as the rotor reaches full RPM; the flying loop swells up underneath it. No
+   * loop treatment — it plays once through its own gain on the master bus (so 'M' mutes it).
+   */
+  private playEngineStart(): void {
+    if (!this.started || !this.startBuffer) return; // not unlocked / not decoded yet — retry next frame
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.startBuffer;
+    const g = this.ctx.createGain();
+    g.gain.value = START_GAIN;
+    src.connect(g).connect(this.master);
+    src.start();
+    this.engineStartFired = true; // latch only on success
   }
 
   // === One-shots (procedural, no assets) ==================================

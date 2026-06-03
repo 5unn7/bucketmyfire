@@ -5,19 +5,20 @@ import { Composer } from './postfx/Composer';
 import { shouldAutostart, defaultProfile } from './ui/Onboarding';
 import { MissionSelect } from './ui/MissionSelect';
 import { CAMPAIGN, missionById } from './missions/catalog';
-import { getSelectedId, setSelectedId, clearSelectedId } from './missions/progress';
 import { openLeaderboard } from './ui/Leaderboard';
 import type { MissionDef } from './missions/types';
 import type { EndScreenHooks } from './HUD';
 
 /**
- * 3D entry point + campaign router. With no mission selected we show the MissionSelect menu;
- * picking a mission boots the Game with that MissionDef. The end-banner buttons (next / retry /
- * menu) persist the choice to localStorage and reload — so mission switching needs no Three.js
- * teardown (the renderer/composer/HUD/Input all own GPU + DOM resources that a reload clears).
+ * 3D entry point + campaign router. The home screen (MissionSelect) is the DEFAULT landing for
+ * everyone — new and returning. A mission runs only when the URL carries `?m=<id>`: picking a
+ * sortie, advancing (next), and retrying all navigate via `?m=` and reload, so a refresh resumes
+ * the current mission with no Three.js teardown, while a fresh visit to the bare URL always lands
+ * on the home screen (we deliberately do NOT persist a "resume into last mission" across sessions —
+ * returning pilots see their record on the menu and pick from there).
  *
- * `?autostart` skips the menu and boots straight into a mission (default: the first sortie), so
- * the headless QA harness can drive `window.__game`. `?m=<id>` selects a specific mission.
+ * `?autostart` boots straight into the first sortie (so the headless QA harness can drive
+ * `window.__game`); `?m=<id>` deep-links a specific mission.
  */
 const container = document.getElementById('game') as HTMLDivElement;
 
@@ -40,23 +41,16 @@ if (webglAvailable()) {
 /** Campaign router: a chosen mission (URL `?m=` / saved / autostart) boots the Game; otherwise we
  *  show the menu. Pulled into a function so the WebGL guard above can gate it cleanly. */
 function routeMission(): void {
-  const urlMission = params.get('m');
-  let selectedId = urlMission ?? getSelectedId();
+  let selectedId = params.get('m');
   if (!selectedId && shouldAutostart()) selectedId = CAMPAIGN[0].id;
 
   if (selectedId) {
-    const mission = missionById(selectedId) ?? CAMPAIGN[0];
-    setSelectedId(mission.id);
-    bootMission(mission);
+    bootMission(missionById(selectedId) ?? CAMPAIGN[0]);
   } else {
-    // No mission chosen yet → the campaign menu. First pick boots directly (nothing built yet,
-    // so no teardown); subsequent switches go through the end-banner reload path.
-    let menu: MissionSelect | undefined;
-    menu = new MissionSelect(container, CAMPAIGN, (id) => {
-      setSelectedId(id);
-      menu?.dispose();
-      bootMission(missionById(id) ?? CAMPAIGN[0]);
-    });
+    // No `?m=` → the home screen, the default landing for everyone. Picking a sortie navigates
+    // with `?m=` (a reload, no Three.js teardown) so retry/refresh resume that mission, while the
+    // bare URL always returns here. The menu mounts itself into `container`.
+    new MissionSelect(container, CAMPAIGN, (id) => gotoCampaign(id));
   }
 }
 
@@ -117,16 +111,10 @@ function endHooks(mission: MissionDef): EndScreenHooks {
   return {
     hasNext: !!next,
     onNext: () => {
-      if (next) {
-        setSelectedId(next.id);
-        gotoCampaign(next.id); // explicit URL so a stale ?m= doesn't override the advance
-      }
+      if (next) gotoCampaign(next.id); // ?m= advances and reloads into the next sortie
     },
-    onRetry: () => location.reload(), // same mission — a plain reload keeps the right target
-    onMenu: () => {
-      clearSelectedId();
-      gotoCampaign(null); // drop ?m= (+ autostart) so the router lands on the menu
-    },
+    onRetry: () => location.reload(), // same mission — the ?m= in the URL keeps the right target
+    onMenu: () => gotoCampaign(null), // drop ?m= (+ autostart) so the router lands on the home screen
     onLeaderboard: () => openLeaderboard(CAMPAIGN, mission.id),
   };
 }
