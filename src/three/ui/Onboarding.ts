@@ -62,7 +62,8 @@ function injectStyles(): void {
     position: fixed; inset: 0; z-index: 50;
     display: flex; align-items: flex-start; justify-content: center;
     overflow-y: auto; -webkit-overflow-scrolling: touch;
-    padding: max(24px, env(safe-area-inset-top)) 18px 40px;
+    padding: max(24px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right))
+             max(40px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
     box-sizing: border-box;
     font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     color: rgba(255,255,255,0.94);

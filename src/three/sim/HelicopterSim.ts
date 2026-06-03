@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { FLIGHT, WASH } from '../config';
+import { FLIGHT, WASH, resolveHeliClass, type HeliClass } from '../config';
 
 export interface FlightInput {
   /** Yaw: -1 turn the nose left … +1 turn right. The pilot steers directly. */
@@ -34,6 +34,11 @@ export class HelicopterSim {
   bank = 0; // roll (rad), about the forward axis
   pitch = 0; // pitch (rad), about the lateral axis
   agl = FLIGHT.maxClearance; // height above the flight floor (above ground level)
+  /** Downward speed (units/s) at the instant it bottomed out on the floor THIS frame, else 0.
+   *  Read by Game as the hard-landing impact signal for the health/damage model. */
+  landingImpact = 0;
+  /** Per-heli class — its capacity/feel/durability multipliers (defaults to the 205A-1 baseline). */
+  private readonly cls: HeliClass;
   private altitude = FLIGHT.startAltitude;
   private altVel = 0; // vertical speed (units/s), eased toward the collective target
   // Last frame's horizontal velocity — differenced to get acceleration, which is
@@ -45,13 +50,36 @@ export class HelicopterSim {
   private turnInput = 0;
   private throttleInput = 0;
 
-  constructor(x = 0, z = 0) {
+  constructor(x = 0, z = 0, heliClass: HeliClass = resolveHeliClass()) {
     this.position.set(x, FLIGHT.startAltitude, z);
+    this.cls = heliClass;
+  }
+
+  /**
+   * Park the aircraft on the deck at (x, z): position + altitude sit on the flight floor and all
+   * motion is zeroed — the cold-start pose before the pilot spools the rotors and lifts off. The
+   * cold start freezes the flight step until the engine is up, so it stays put here until then.
+   */
+  land(x: number, z: number, floorY: number): void {
+    const y = floorY + FLIGHT.minClearance;
+    this.position.set(x, y, z);
+    this.altitude = y;
+    this.altVel = 0;
+    this.vel.set(0, 0, 0);
+    this.prevVelX = 0;
+    this.prevVelZ = 0;
+    this.agl = FLIGHT.minClearance;
   }
 
   /** Horizontal speed (units/s). */
   get speed(): number {
     return Math.hypot(this.vel.x, this.vel.z);
+  }
+
+  /** This airframe's empty top-speed cap (units/s) — base maxSpeed × the class multiplier.
+   *  Game compares live speed against it to detect overspeed/over-stress for the damage model. */
+  get effectiveMaxSpeed(): number {
+    return FLIGHT.maxSpeed * this.cls.speedMul;
   }
 
   /** Horizontal velocity components (units/s) — fed to the slung bucket. */
@@ -89,22 +117,24 @@ export class HelicopterSim {
   ): void {
     if (!Number.isFinite(dt) || dt <= 0) return;
 
+    // Per-heli class scales the airframe's power/feel; the payload penalties then stack on top.
+    const cls = this.cls;
     const load = Number.isFinite(payloadRatio) ? THREE.MathUtils.clamp(payloadRatio, 0, 1) : 0;
-    const enginePower = FLIGHT.enginePower * (1 - FLIGHT.payloadAccelPenalty * load);
-    const maxSpeed = FLIGHT.maxSpeed * (1 - FLIGHT.payloadSpeedPenalty * load);
-    const climbSpeed = FLIGHT.climbSpeed * (1 - FLIGHT.payloadClimbPenalty * load);
+    const enginePower = FLIGHT.enginePower * cls.powerMul * (1 - FLIGHT.payloadAccelPenalty * load);
+    const maxSpeed = FLIGHT.maxSpeed * cls.speedMul * (1 - FLIGHT.payloadSpeedPenalty * load);
+    const climbSpeed = FLIGHT.climbSpeed * cls.climbMul * (1 - FLIGHT.payloadClimbPenalty * load);
 
     // --- Smooth the raw inputs (a key tap or stick flick is a hard step) into eased
     // control demands, framerate-independent. This is the core of "smooth transitions":
     // turns and throttle now ramp in and ROLL OUT instead of snapping on/off. ---
-    const ctlA = 1 - Math.pow(1 - FLIGHT.controlResponse, dt * 60);
+    const ctlA = 1 - Math.pow(1 - FLIGHT.controlResponse * cls.controlMul, dt * 60);
     this.turnInput += (THREE.MathUtils.clamp(input.turn, -1, 1) - this.turnInput) * ctlA;
     this.throttleInput += (THREE.MathUtils.clamp(input.throttle, -1, 1) - this.throttleInput) * ctlA;
 
     // --- Yaw: the pilot turns the nose directly, at a rate set by the (smoothed) stick.
     // (No more chasing the velocity vector — that was what made the view swing.) ---
     const turn = this.turnInput;
-    this.yaw -= turn * FLIGHT.yawRate * dt; // stick-right turns the nose toward screen-right
+    this.yaw -= turn * FLIGHT.yawRate * cls.yawMul * dt; // stick-right turns the nose toward screen-right
 
     // Nose-forward unit vector for the current heading.
     const fx = Math.cos(this.yaw);
@@ -122,7 +152,7 @@ export class HelicopterSim {
     const dive = Math.max(0, -this.pitch);
     this.vel.x += fx * dive * FLIGHT.pitchThrust * dt;
     this.vel.z += fz * dive * FLIGHT.pitchThrust * dt;
-    const drag = Math.max(0, 1 - FLIGHT.linearDrag * dt);
+    const drag = Math.max(0, 1 - FLIGHT.linearDrag * cls.dragMul * dt);
     this.vel.x *= drag;
     this.vel.z *= drag;
     // Speed cap — RAISED while diving so a committed nose-down run outpaces level
@@ -162,15 +192,22 @@ export class HelicopterSim {
     // out on the floor; it only lifts when you ease off or pull up near the deck.
     const ge = Number.isFinite(groundEffect) ? THREE.MathUtils.clamp(groundEffect, 0, 1) : 0;
     targetAltVel += WASH.groundLift * ge * Math.max(0, 1 + lift);
-    const resp = FLIGHT.collectiveResponse * (1 - FLIGHT.payloadResponsePenalty * load);
+    const resp = FLIGHT.collectiveResponse * cls.collectiveMul * (1 - FLIGHT.payloadResponsePenalty * load);
     const altA = 1 - Math.pow(1 - resp, dt * 60); // per-60fps factor → framerate-independent ease
     this.altVel += (targetAltVel - this.altVel) * altA;
     this.altitude += this.altVel * dt;
     const minAlt = floorY + FLIGHT.minClearance;
     const maxAlt = floorY + FLIGHT.maxClearance;
+    // Hard-landing signal: capture the DOWNWARD speed at the instant the heli bottoms out on the
+    // floor (descending into it), then arrest it. Game reads this as the impact for the damage model;
+    // cleared to 0 on any frame that doesn't bottom out, so it's a one-shot per touchdown.
+    this.landingImpact = 0;
     if (this.altitude < minAlt) {
+      if (this.altVel < 0) {
+        this.landingImpact = -this.altVel;
+        this.altVel = 0;
+      }
       this.altitude = minAlt;
-      if (this.altVel < 0) this.altVel = 0;
     } else if (this.altitude > maxAlt) {
       this.altitude = maxAlt;
       if (this.altVel > 0) this.altVel = 0;

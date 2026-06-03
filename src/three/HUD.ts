@@ -18,12 +18,16 @@
  *                           fires red, out-of-range fires pinned to the rim)
  */
 
-import type { TrackerItem } from './missions/types';
+import type { TrackerItem, CommsSpeaker, CommsUrgency, MissionDef } from './missions/types';
 import type { FireFieldView } from './sim/FireSystem';
+import { UI, el, frosted, makeCanvas, clamp01, anchor, setBlur } from './ui/theme';
+import { onLayout, type LayoutState } from './ui/layout';
 
 export interface HudState {
   water: number;
   waterMax: number;
+  health?: number; // 0..1 airframe health (always supplied; drives the HEALTH gauge)
+  healthLow?: boolean; // gauge flashes red below the warn line
   firesLeft: number;
   hint: string | null;
   won: boolean;
@@ -50,6 +54,16 @@ export interface HudState {
   fuel?: number; // 0..1 tank fraction (undefined → no FuelSim → fuel gauge hidden)
   fuelLow?: boolean; // gauge flashes (below reserve)
   zones?: { x: number; z: number; active: boolean; done: boolean }[]; // crew landing zones (radar blips)
+  // Debrief summary for the end banner (what the run achieved) — built once at outcome.
+  debrief?: {
+    firesOut: number;
+    firesTotal: number;
+    structSaved: number;
+    structTotal: number;
+    crewDone: number;
+    crewTotal: number;
+    timeSec: number;
+  };
 }
 
 /** Campaign end-banner callbacks (set by Game from main's mission router). */
@@ -67,46 +81,48 @@ export interface MapLabels {
   lakes: { name: string; x: number; z: number }[];
 }
 
-// --- Design tokens ----------------------------------------------------------
-const UI = {
-  accent: '#67e8ff',
-  accentSoft: 'rgba(103,232,255,0.55)',
-  text: 'rgba(255,255,255,0.94)',
-  dim: 'rgba(255,255,255,0.45)',
-  warn: '#ff5d4d',
-  fire: '#ff7a45',
-  water: '#56c4ee',
-  panel: 'rgba(14,20,27,0.38)',
-  stroke: 'rgba(255,255,255,0.12)',
-  blur: 'blur(12px) saturate(120%)',
-  font: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
-  shadow: '0 6px 28px rgba(0,0,0,0.32)',
-  glow: '0 0 10px rgba(103,232,255,0.45)',
-};
+// Design tokens + DOM helpers (el / frosted / makeCanvas / clamp01) now live in
+// ui/theme.ts and are imported above, so HUD and the touch controls share one
+// glass-cockpit language. `anchor()` (also from theme) + `onLayout` (layout.ts)
+// drive the responsive, safe-area-aware placement.
 
 const TAPE_W = 78; // jet tape canvas width
 const TAPE_H = 188; // jet tape canvas height (the scrolling window)
-const TAPE_GAP = 70; // px from screen center to each tape's inner edge (clearance for the heli)
 const LOW_AGL_FT = 250; // altimeter reads LOW (red) below this AGL in feet
-const HEAD_W = 244;
+const HEAD_W = 256; // heading-tape logical/backing width; display width scales down per breakpoint
 const HEAD_H = 34;
-const RADAR_MIN = 128; // collapsed radar side (px, square)
-const RADAR_MAX = 300; // expanded radar side (px)
 const RANGE_NEAR = 160; // world units to the radar edge when collapsed (zoomed-in local map)
 
 export class HUD {
   private readonly root: HTMLDivElement;
 
-  private readonly waterFill: HTMLDivElement;
-  private readonly firesText: HTMLDivElement;
-  private readonly threatFill: HTMLDivElement; // C3: structure-danger gauge
-  private readonly fuelWrap: HTMLDivElement; // campaign fuel gauge (hidden unless fuel supplied)
-  private readonly fuelFill: HTMLDivElement;
+  // Instrument spine: ONE frosted capsule of compact icon + micro-bar "pods"
+  // (water / hull / fuel / fires / threat), replacing the five wide chips. Pods are
+  // transparent — only the capsule carries glass, so it's a single backdrop-blur layer.
+  private readonly spine: HTMLDivElement;
+  private readonly waterPod: Pod;
+  private readonly hullPod: Pod;
+  private readonly fuelPod: Pod;
+  private readonly firesPod: Pod;
+  private readonly threatPod: Pod;
+  private readonly pods: Pod[];
   private readonly objPanel: HTMLDivElement; // campaign objective checklist (hidden in sandbox)
   private objSig = ''; // last-rendered objective signature (skip DOM churn when unchanged)
   private readonly hint: HTMLDivElement;
   private readonly smoke: HTMLDivElement; // C5: blinding-smoke veil when the camera is in a plume
   private banner?: HTMLDivElement;
+  private readonly commsWrap: HTMLDivElement; // radio comms log (DISPATCH/CREW/WARNING toasts)
+  // Cold-start engine dial (hold to spool the rotors) — present only between BEGIN and full RPM.
+  private engineHoldState = false; // the START dial is pressed (pointer or Space/Enter) this frame
+  private engineStartEl?: {
+    wrap: HTMLDivElement;
+    dial: HTMLDivElement;
+    ring: HTMLDivElement;
+    label: HTMLDivElement;
+    sub: HTMLDivElement;
+    onKey: (e: KeyboardEvent) => void;
+    onKeyUp: (e: KeyboardEvent) => void;
+  };
 
   // Fighter-jet scrolling tapes (canvas): airspeed left of the heli, altitude right.
   private readonly spdCtx: CanvasRenderingContext2D;
@@ -119,6 +135,13 @@ export class HUD {
   private readonly labels: MapLabels; // A5: static place names drawn screen-upright on the radar
   private readonly dpr = Math.min(window.devicePixelRatio || 1, 2);
   private radarExpanded = false; // tap the radar to toggle local ↔ whole-world view
+  // Responsive sizing — driven by applyLayout() from the layout controller (event-driven, not per-frame).
+  private tapeGap = 70; // px from center to each flight tape
+  private radarBase = 128; // collapsed radar side
+  private radarMax = 300; // expanded radar side (clamped to the short viewport side)
+  private spdCanvas!: HTMLCanvasElement;
+  private altCanvas!: HTMLCanvasElement;
+  private headCanvas!: HTMLCanvasElement;
   // C5 burn overlay: the live fire field + a small offscreen raster of it (burnt = ash scar,
   // hot = warm front). Rebuilt every few frames (fire spreads slowly) and blitted under the blips
   // with the SAME heading-up affine as the satellite map, so it stays registered with the terrain.
@@ -169,12 +192,9 @@ export class HUD {
     // chips) so the campaign's optional FUEL gauge and OBJECTIVE checklist can slot in without
     // colliding. Water → fuel → fires → threat → objectives, top to bottom. ---
     const leftCol = el('div', {
-      position: 'absolute',
-      left: '18px',
-      top: '14px',
       display: 'flex',
       flexDirection: 'column',
-      gap: '8px',
+      gap: 'var(--bmf-gap)',
       alignItems: 'flex-start',
     });
 
@@ -206,100 +226,87 @@ export class HUD {
       leftCol.appendChild(menuBtn);
     }
 
-    // Water gauge
-    const waterWrap = frosted({ padding: '8px 12px 10px' });
-    waterWrap.appendChild(label('WATER'));
-    const wtrack = barTrack();
-    this.waterFill = barFill(`linear-gradient(90deg, ${UI.water}, ${UI.accent})`);
-    this.waterFill.style.boxShadow = UI.glow;
-    wtrack.appendChild(this.waterFill);
-    waterWrap.appendChild(wtrack);
-    leftCol.appendChild(waterWrap);
-
-    // Fuel gauge (campaign — hidden unless a mission runs the FuelSim)
-    this.fuelWrap = frosted({ padding: '8px 12px 10px', display: 'none' });
-    this.fuelWrap.appendChild(label('FUEL'));
-    const ftrack = barTrack();
-    this.fuelFill = barFill(`linear-gradient(90deg, #ff5d4d, #ffb24a, #67e8ff)`);
-    ftrack.appendChild(this.fuelFill);
-    this.fuelWrap.appendChild(ftrack);
-    leftCol.appendChild(this.fuelWrap);
-
-    // Fire counter
-    const fireWrap = frosted({ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '9px' });
-    const fireDot = el('div', {
-      width: '9px',
-      height: '9px',
-      borderRadius: '99px',
-      background: UI.fire,
-      boxShadow: `0 0 9px ${UI.fire}`,
-    });
-    this.firesText = el('div', { fontSize: '19px', fontWeight: '600', letterSpacing: '0.5px' });
-    const fireCol = el('div', {});
-    fireCol.appendChild(label('FIRES'));
-    fireCol.appendChild(this.firesText);
-    fireWrap.appendChild(fireDot);
-    fireWrap.appendChild(fireCol);
-    leftCol.appendChild(fireWrap);
-
-    // Threat gauge: how endangered the structures are (amber→red as fires close in).
-    const threatWrap = frosted({ padding: '8px 12px 10px' });
-    threatWrap.appendChild(label('THREAT'));
-    const ttrack = barTrack();
-    this.threatFill = barFill(`linear-gradient(90deg, #ffb24a, ${UI.warn})`);
-    ttrack.appendChild(this.threatFill);
-    threatWrap.appendChild(ttrack);
-    leftCol.appendChild(threatWrap);
+    // --- Instrument spine: ONE frosted capsule of compact icon + micro-bar pods,
+    // replacing the five wide chips so the top-left band stays slim (the portrait win)
+    // and reads identically in landscape. Order: water → health → fuel → fires → threat.
+    // Pods are transparent; only the capsule blurs (one GPU layer). Hairline dividers
+    // between rows make it read as one instrument, not stacked chips. ---
+    this.spine = frosted({ display: 'flex', flexDirection: 'column', padding: '0', overflow: 'hidden' });
+    this.waterPod = makePod(WATER_SVG, `linear-gradient(90deg, ${UI.water}, ${UI.accent})`, false);
+    this.waterPod.fill.style.boxShadow = UI.glow; // keep the water glow
+    this.hullPod = makePod(HEALTH_SVG, `linear-gradient(90deg, #ff5d4d, #ffb24a, #5fd17a)`, false);
+    this.fuelPod = makePod(FUEL_SVG, `linear-gradient(90deg, #ff5d4d, #ffb24a, ${UI.accent})`, false);
+    this.firesPod = makePod(FIRES_SVG, '', true); // a COUNT, not a bar
+    this.threatPod = makePod(THREAT_SVG, `linear-gradient(90deg, #ffb24a, ${UI.warn})`, false);
+    this.pods = [this.waterPod, this.hullPod, this.fuelPod, this.firesPod, this.threatPod];
+    this.waterPod.divider.style.display = 'none'; // no hairline above the first row
+    for (const p of this.pods) this.spine.append(p.divider, p.row);
+    setPodHidden(this.fuelPod, true); // hidden until a mission supplies fuel (sandbox shows 4 rows)
+    leftCol.appendChild(this.spine);
 
     // Objective checklist (campaign — populated each frame from the mission tracker).
     this.objPanel = frosted({ padding: '9px 13px 10px', display: 'none', minWidth: '190px' });
     leftCol.appendChild(this.objPanel);
 
-    this.root.appendChild(leftCol);
+    // Radio comms log — DISPATCH/CREW/WARNING lines that slide in under the objectives and auto-
+    // expire (the mission "talking" to the pilot). Sits in the left instrument stack so it never
+    // collides with the radar; lines are created on demand (comms are events, not per-frame).
+    this.commsWrap = el('div', {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '6px',
+      alignItems: 'flex-start',
+      maxWidth: 'min(300px, 60vw)',
+      marginTop: '2px',
+      pointerEvents: 'none',
+    });
+    leftCol.appendChild(this.commsWrap);
 
-    // --- Status hint (top-center, under the heading tape) ---
+    const topLeft = anchor('top-left');
+    topLeft.appendChild(leftCol);
+    this.root.appendChild(topLeft);
+
+    // --- Status hint (stacked under the heading tape in the top-center anchor) ---
     this.hint = frosted({
-      position: 'absolute',
-      left: '50%',
-      top: '58px',
-      transform: 'translateX(-50%)',
       fontSize: '14px',
       fontWeight: '500',
       color: '#dff6ff',
       padding: '6px 13px',
       borderRadius: '99px',
       whiteSpace: 'nowrap',
+      maxWidth: '90vw',
+      boxSizing: 'border-box',
       display: 'none',
     });
-    this.root.appendChild(this.hint);
 
     // --- Fighter-jet scrolling tapes flanking the heli: airspeed LEFT, altitude
     // RIGHT (real HUD convention). Transparent canvases — thin glowing ladders that
     // float over the world, with numbers scrolling past a boxed live readout. ---
+    // Left/right placement + scale come from applyLayout; transform-origin pins each
+    // tape's INNER edge (toward the heli) so shrinking on small screens keeps the
+    // center gap honest.
     const spd = makeCanvas(TAPE_W, TAPE_H, {
       position: 'absolute',
-      left: `calc(50% - ${TAPE_GAP + TAPE_W}px)`,
       top: '52%',
+      transformOrigin: 'right center',
       transform: 'translateY(-50%)',
     });
     this.spdCtx = spd.ctx;
+    this.spdCanvas = spd.canvas;
     this.root.appendChild(spd.canvas);
 
     const alt = makeCanvas(TAPE_W, TAPE_H, {
       position: 'absolute',
-      left: `calc(50% + ${TAPE_GAP}px)`,
       top: '52%',
+      transformOrigin: 'left center',
       transform: 'translateY(-50%)',
     });
     this.altCtx = alt.ctx;
+    this.altCanvas = alt.canvas;
     this.root.appendChild(alt.canvas);
 
-    // --- Heading tape (top center) ---
+    // --- Heading tape + status hint (top-center anchor, heading above hint) ---
     const head = makeCanvas(HEAD_W, HEAD_H, {
-      position: 'absolute',
-      left: '50%',
-      top: '14px',
-      transform: 'translateX(-50%)',
       borderRadius: '99px',
       background: UI.panel,
       border: `1px solid ${UI.stroke}`,
@@ -307,13 +314,14 @@ export class HUD {
       backdropFilter: UI.blur,
     });
     this.headCtx = head.ctx;
-    this.root.appendChild(head.canvas);
+    this.headCanvas = head.canvas;
+    const topCenter = anchor('top-center');
+    topCenter.appendChild(head.canvas);
+    topCenter.appendChild(this.hint);
+    this.root.appendChild(topCenter);
 
-    // --- Radar (top-right, rounded square, tap to expand local ↔ whole-world) ---
-    const radar = makeCanvas(RADAR_MIN, RADAR_MIN, {
-      position: 'absolute',
-      right: '14px',
-      top: '14px',
+    // --- Radar (top-right anchor, rounded square, tap to expand local ↔ whole-world) ---
+    const radar = makeCanvas(this.radarBase, this.radarBase, {
       borderRadius: '16px',
       background: UI.panel,
       border: `1px solid ${UI.stroke}`,
@@ -329,16 +337,68 @@ export class HUD {
       this.radarExpanded = !this.radarExpanded;
       this.sizeRadar();
     });
-    this.root.appendChild(radar.canvas);
+    const topRight = anchor('top-right');
+    topRight.appendChild(radar.canvas);
+    this.root.appendChild(topRight);
 
     parent.appendChild(this.root);
+
+    // Size + place everything for the current breakpoint, and re-apply on every
+    // resize / orientation change (event-driven — never per frame).
+    onLayout((s) => this.applyLayout(s));
+  }
+
+  /** Size the responsive instruments for the active breakpoint. Anchors own
+   *  position + safe-area in CSS; this sets only the exact pixel sizes (gauge
+   *  rails, heading + tape scale, radar) that have to be computed. */
+  private applyLayout(s: LayoutState): void {
+    const k = s.compact ? 0.92 : 1;
+    const set = s.set;
+
+    // Instrument-spine pods: size icon + micro-bar (or the fires count) from podSize.
+    const pod = Math.round(set.podSize * k);
+    const ic = Math.round(pod * 0.42); // icon glyph
+    const barH = Math.round(pod * 0.3); // micro-bar height
+    const barW = Math.round(pod * 2.6); // micro-bar width (clear magnitude read, far slimmer than the old chips)
+    const padV = Math.round(pod * 0.22); // row vertical padding
+    const numFs = Math.round(pod * 0.5); // fires count font
+    for (const p of this.pods) {
+      p.row.style.paddingTop = p.row.style.paddingBottom = `${padV}px`;
+      p.svg.setAttribute('width', `${ic}`);
+      p.svg.setAttribute('height', `${ic}`);
+      p.track.style.width = `${barW}px`;
+      p.track.style.height = `${barH}px`;
+      p.num.style.fontSize = `${numFs}px`;
+      p.num.style.minWidth = `${Math.round(pod * 0.9)}px`; // stable when fires count goes 9 → 10
+    }
+    // Bake the static reserve "warn ticks" once (health 30%, fuel 25% reserve) — a precursor before the flash.
+    applyTick(this.hullPod.track, 30);
+    applyTick(this.fuelPod.track, 25);
+
+    // Heading tape — backing store is fixed at HEAD_W; CSS scales the display down.
+    const hw = Math.round(set.headWidth * k);
+    this.headCanvas.style.width = `${hw}px`;
+    this.headCanvas.style.height = `${Math.round((HEAD_H * hw) / HEAD_W)}px`;
+
+    // Flight tapes — center gap + scale (backing stores stay crisp; only display moves).
+    this.tapeGap = Math.round(set.tapeGap * k);
+    const tf = `translateY(-50%) scale(${set.tapeScale})`;
+    this.spdCanvas.style.left = `calc(50% - ${this.tapeGap + TAPE_W}px)`;
+    this.spdCanvas.style.transform = tf;
+    this.altCanvas.style.left = `calc(50% + ${this.tapeGap}px)`;
+    this.altCanvas.style.transform = tf;
+
+    // Radar — collapsed base per set; expanded capped to the short viewport side.
+    this.radarBase = Math.round(set.radarBase * k);
+    this.radarMax = Math.max(this.radarBase + 40, Math.round(Math.min(set.radarMaxFrac * Math.min(s.w, s.h), 320)));
+    this.sizeRadar();
   }
 
   /** Resize the radar canvas backing store for the current expand state (resets the
    *  context transform, so re-apply the DPR scale). Anchored top-right, so it grows
    *  down-and-left and stays in the corner. */
   private sizeRadar(): void {
-    const size = this.radarExpanded ? RADAR_MAX : RADAR_MIN;
+    const size = this.radarExpanded ? this.radarMax : this.radarBase;
     this.radarCanvas.width = Math.round(size * this.dpr);
     this.radarCanvas.height = Math.round(size * this.dpr);
     this.radarCanvas.style.width = `${size}px`;
@@ -352,27 +412,35 @@ export class HUD {
   }
 
   update(s: HudState): void {
-    this.waterFill.style.width = `${clamp01(s.water / s.waterMax) * 100}%`;
-    this.firesText.textContent = `${s.firesLeft}`;
-    // Threat gauge fills as fires close on the structures; it pulses red when critical.
+    // --- Instrument spine: one width/text write per pod (O(1)); flashes/glows only when flagged. ---
+    this.waterPod.fill.style.width = `${clamp01(s.water / s.waterMax) * 100}%`;
+    this.hullPod.fill.style.width = `${clamp01(s.health ?? 1) * 100}%`;
+    flashPod(this.hullPod, !!s.healthLow); // critical → row pulses (sin only runs when low)
+    if (s.fuel !== undefined) {
+      setPodHidden(this.fuelPod, false);
+      this.fuelPod.fill.style.width = `${clamp01(s.fuel) * 100}%`;
+      flashPod(this.fuelPod, !!s.fuelLow);
+    } else {
+      setPodHidden(this.fuelPod, true); // sandbox / non-fuel mission → collapse the row + its divider
+    }
+    this.firesPod.num.textContent = `${s.firesLeft}`;
+    const firesOut = s.firesLeft === 0;
+    this.firesPod.row.style.opacity = firesOut ? '0.5' : '1'; // "no fires left" reads as resolved
+    this.firesPod.num.style.color = firesOut ? UI.dim : UI.text;
     const threat = clamp01(s.threat);
-    this.threatFill.style.width = `${threat * 100}%`;
-    this.threatFill.style.boxShadow = threat > 0.6 ? `0 0 10px ${UI.warn}` : 'none';
+    this.threatPod.fill.style.width = `${threat * 100}%`;
+    const threatHot = threat > 0.6;
+    this.threatPod.svg.setAttribute('stroke', threatHot ? UI.warn : '#eaf6ff'); // one attribute flip, gated
+    this.threatPod.track.style.boxShadow = threatHot ? `0 0 8px ${UI.warn}` : 'none';
+    // One capsule-edge warn glow if anything is critical (single write on the whole instrument).
+    const anyLow = !!s.healthLow || !!s.fuelLow || threatHot;
+    this.spine.style.boxShadow = anyLow ? `0 0 12px ${UI.warn}, ${UI.shadow}` : UI.shadow;
+
     if (s.hint) {
       this.hint.textContent = s.hint;
       this.hint.style.display = 'block';
     } else {
       this.hint.style.display = 'none';
-    }
-
-    // Campaign fuel gauge (hidden in the sandbox / non-fuel missions). Flashes under reserve.
-    if (s.fuel !== undefined) {
-      this.fuelWrap.style.display = '';
-      this.fuelFill.style.width = `${clamp01(s.fuel) * 100}%`;
-      this.fuelWrap.style.boxShadow = s.fuelLow ? `0 0 12px ${UI.warn}` : UI.shadow;
-      this.fuelWrap.style.opacity = s.fuelLow ? `${0.6 + 0.4 * Math.abs(Math.sin(Date.now() / 200))}` : '1';
-    } else {
-      this.fuelWrap.style.display = 'none';
     }
 
     // Campaign objective checklist — rebuilt only when its rendered text changes (no per-frame churn).
@@ -452,20 +520,54 @@ export class HUD {
       padding: '26px 36px 22px',
       borderRadius: '20px',
       pointerEvents: 'auto',
-      minWidth: '300px',
+      maxWidth: 'min(92vw, 360px)',
+      boxSizing: 'border-box',
     });
     const who = this.pilotName ?? 'pilot';
     const headline = s.won ? 'MISSION COMPLETE' : 'MISSION FAILED';
     this.banner.appendChild(
       el('div', { fontSize: '32px', fontWeight: '800', letterSpacing: '0.5px', color: s.lost ? UI.warn : UI.accent }, headline),
     );
-    this.banner.appendChild(
-      el(
-        'div',
-        { fontSize: '15px', marginTop: '8px', color: 'rgba(231,247,255,0.82)' },
-        s.won ? `Great flying, ${who}.` : 'The fire won this time.',
-      ),
-    );
+    // Reactive closing line — reads the outcome, not a canned string.
+    const d = s.debrief;
+    let sub: string;
+    if (s.won) {
+      if (d && d.structTotal > 0 && d.structSaved === d.structTotal && d.firesOut >= d.firesTotal) sub = `Flawless sortie, ${who}. Not a structure lost.`;
+      else if (d && d.structTotal > 0 && d.structSaved < d.structTotal) sub = `Mission complete — but the fire took ${d.structTotal - d.structSaved}.`;
+      else sub = `Good flying, ${who}.`;
+    } else if (d && d.structTotal > 0 && d.structSaved < d.structTotal) {
+      sub = 'The community couldn’t be held.';
+    } else {
+      sub = 'The fire won this time.';
+    }
+    this.banner.appendChild(el('div', { fontSize: '15px', marginTop: '8px', color: 'rgba(231,247,255,0.82)' }, sub));
+
+    // Debrief summary — what the run actually achieved (built from the latched ledger + final state).
+    if (d) {
+      const stats = el('div', {
+        marginTop: '14px',
+        display: 'inline-flex',
+        flexDirection: 'column',
+        gap: '4px',
+        padding: '10px 16px',
+        borderRadius: '12px',
+        background: 'rgba(255,255,255,0.04)',
+        border: `1px solid ${UI.stroke}`,
+        fontSize: '13px',
+        color: 'rgba(231,247,255,0.85)',
+      });
+      const row = (k: string, v: string): void => {
+        const r = el('div', { display: 'flex', justifyContent: 'space-between', gap: '22px', minWidth: '180px' });
+        r.appendChild(el('div', { color: UI.dim }, k));
+        r.appendChild(el('div', { fontWeight: '700' }, v));
+        stats.appendChild(r);
+      };
+      row('Fires out', `${d.firesOut}/${d.firesTotal}`);
+      if (d.structTotal > 0) row('Structures saved', `${d.structSaved}/${d.structTotal}`);
+      if (d.crewTotal > 0) row('Crews delivered', `${d.crewDone}/${d.crewTotal}`);
+      row('Time', fmtTime(d.timeSec));
+      this.banner.appendChild(stats);
+    }
     this.banner.appendChild(
       el('div', { fontSize: '18px', fontWeight: '700', marginTop: '12px' }, `Score ${s.score.toLocaleString()}`),
     );
@@ -483,6 +585,252 @@ export class HUD {
       }
     }
     this.root.appendChild(this.banner);
+  }
+
+  // --- Radio comms + pre-flight briefing (the mission "experience" layer) ----
+
+  /**
+   * Post a radio line to the comms log: a frosted toast tagged DISPATCH / CREW / WARNING, sliding in
+   * from the right and auto-expiring. Created on demand (comms are events, not per-frame); the stack
+   * is capped to a few visible lines so it never crowds the HUD.
+   */
+  pushComms(speaker: CommsSpeaker, text: string, urgency: CommsUrgency): void {
+    const color =
+      speaker === 'warning' || urgency === 'alert' ? UI.warn : speaker === 'crew' ? '#ffb24a' : speaker === 'pilot' ? UI.text : UI.accent;
+    const line = frosted({
+      padding: '7px 12px 8px',
+      borderLeft: `3px solid ${color}`,
+      borderRadius: '10px',
+      maxWidth: '100%',
+      opacity: '0',
+      transform: 'translateX(-18px)',
+      transition: 'opacity 0.22s ease, transform 0.22s ease',
+    });
+    if (urgency === 'alert') line.style.boxShadow = `0 0 14px ${color}66, ${UI.shadow}`;
+    line.appendChild(
+      el('div', { fontSize: '10px', fontWeight: '700', letterSpacing: '1.8px', color }, speaker.toUpperCase()),
+    );
+    line.appendChild(el('div', { fontSize: '13px', lineHeight: '1.35', color: UI.text, marginTop: '2px' }, text));
+    this.commsWrap.appendChild(line);
+    // Force a reflow so the transition runs from the initial (faded/offset) state, then reveal.
+    // (A rAF-based reveal can be throttled when the tab is backgrounded; this is synchronous.)
+    void line.offsetWidth;
+    line.style.opacity = '1';
+    line.style.transform = 'translateX(0)';
+    while (this.commsWrap.childElementCount > 4) this.commsWrap.firstElementChild?.remove();
+    const ttl = urgency === 'alert' ? 6500 : urgency === 'warn' ? 5500 : 4800;
+    window.setTimeout(() => {
+      line.style.opacity = '0';
+      line.style.transform = 'translateX(-18px)';
+      window.setTimeout(() => line.remove(), 300);
+    }, ttl);
+  }
+
+  /**
+   * Pre-flight briefing card (the arc's opening): a frosted modal over the frozen scene with the
+   * mission name, the intel paragraph, and a BEGIN FLIGHT button. Game keeps the sim + clock paused
+   * until `onBegin` fires. Dismissed on BEGIN or a tap on the scrim.
+   */
+  showBriefing(def: MissionDef, onBegin: () => void): void {
+    const scrim = el('div', {
+      position: 'fixed',
+      inset: '0',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: 'rgba(4,8,12,0.55)',
+      zIndex: '30',
+      pointerEvents: 'auto',
+    });
+    const card = frosted({ maxWidth: '440px', margin: '0 20px', padding: '24px 26px 20px', borderRadius: '18px' });
+    card.appendChild(
+      el('div', { fontSize: '11px', fontWeight: '700', letterSpacing: '3px', color: UI.accent, marginBottom: '4px' }, 'DISPATCH BRIEFING'),
+    );
+    card.appendChild(el('div', { fontSize: '24px', fontWeight: '800', letterSpacing: '0.3px' }, def.name));
+    // Difficulty pips.
+    const pips = el('div', { display: 'flex', gap: '4px', marginTop: '8px', marginBottom: '12px' });
+    for (let i = 0; i < 5; i++) {
+      pips.appendChild(el('div', { width: '18px', height: '4px', borderRadius: '99px', background: i < def.difficulty ? UI.fire : 'rgba(255,255,255,0.14)' }));
+    }
+    card.appendChild(pips);
+    card.appendChild(
+      el('div', { fontSize: '14px', lineHeight: '1.55', color: 'rgba(231,247,255,0.86)', marginBottom: '18px' }, def.intel ?? def.brief),
+    );
+    const begin = bannerButton('BEGIN FLIGHT ▸', UI.accent, () => {
+      scrim.remove();
+      onBegin();
+    });
+    const row = el('div', { display: 'flex', justifyContent: 'flex-end' });
+    row.appendChild(begin);
+    card.appendChild(row);
+    scrim.appendChild(card);
+    // Tapping the scrim (outside the card) also begins — forgiving on mobile.
+    scrim.addEventListener('pointerdown', (e) => {
+      if (e.target === scrim) {
+        scrim.remove();
+        onBegin();
+      }
+    });
+    this.root.appendChild(scrim);
+  }
+
+  // --- Cold engine start (hold-to-spool dial) --------------------------------
+
+  /** True while the START dial is being held (pointer drag or Space/Enter). Game reads this each
+   *  frame to spool the rotor RPM up; releasing lets it bleed back down. */
+  get engineHold(): boolean {
+    return this.engineHoldState;
+  }
+
+  /**
+   * Show the cold-start dial: a big circular HOLD-TO-START control with a progress ring that fills
+   * as the rotor spools. Surfaced by Game once the briefing is dismissed (and only when the engine
+   * isn't already running). Holding it — by pointer, or Space/Enter on desktop — drives `engineHold`;
+   * Game integrates RPM and calls `setEngineStart`/`hideEngineStart`.
+   */
+  showEngineStart(): void {
+    if (this.engineStartEl) return;
+
+    // Click-through wrapper centred a little above mid-screen (clear of the grounded heli below);
+    // only the dial itself is interactive.
+    const wrap = el('div', {
+      position: 'fixed',
+      left: '50%',
+      top: '44%',
+      transform: 'translate(-50%, -50%)',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      gap: '14px',
+      zIndex: '25',
+      pointerEvents: 'none',
+      transition: 'opacity 0.3s ease, transform 0.3s ease',
+    });
+
+    const size = 134;
+    const dial = el('div', {
+      position: 'relative',
+      width: `${size}px`,
+      height: `${size}px`,
+      borderRadius: '50%',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      cursor: 'pointer',
+      pointerEvents: 'auto',
+      touchAction: 'none',
+      background: 'radial-gradient(circle at 50% 40%, rgba(20,30,40,0.72), rgba(6,10,14,0.84))',
+      border: `1px solid ${UI.strokeStrong}`,
+      boxShadow: UI.shadowBtn,
+      userSelect: 'none',
+    });
+    setBlur(dial);
+
+    // Progress ring: a conic-gradient sweep masked down to a thin annulus around the dial.
+    const ringPx = 7;
+    const ring = el('div', {
+      position: 'absolute',
+      inset: `-${ringPx + 1}px`,
+      borderRadius: '50%',
+      background: `conic-gradient(${UI.accent} 0deg, rgba(255,255,255,0.08) 0deg)`,
+      pointerEvents: 'none',
+    });
+    const ringMask = `radial-gradient(farthest-side, transparent calc(100% - ${ringPx}px), #000 calc(100% - ${ringPx}px))`;
+    ring.style.setProperty('-webkit-mask', ringMask);
+    ring.style.setProperty('mask', ringMask);
+
+    const inner = el('div', {
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      gap: '2px',
+      pointerEvents: 'none',
+    });
+    const label = el('div', { fontSize: '18px', fontWeight: '800', letterSpacing: '2.5px', color: UI.text }, 'START');
+    const sub = el('div', { fontSize: '11px', fontWeight: '700', letterSpacing: '1.5px', color: UI.dim }, '0%');
+    inner.append(label, sub);
+    dial.append(ring, inner);
+
+    const caption = el(
+      'div',
+      { fontSize: '12px', fontWeight: '700', letterSpacing: '2.5px', color: UI.accent, textShadow: '0 1px 8px rgba(0,0,0,0.7)' },
+      'HOLD TO START ENGINE',
+    );
+    wrap.append(dial, caption);
+
+    // Pointer and keyboard holds are tracked separately and OR'd, so releasing one input doesn't
+    // cancel a hold still active on the other.
+    let pointerHeld = false;
+    let keyHeld = false;
+    const sync = (): void => {
+      this.engineHoldState = pointerHeld || keyHeld;
+    };
+
+    // Press handling. NB: do NOT stopPropagation — let the pointerdown bubble to window so HeliAudio
+    // unlocks on this gesture. setPointerCapture keeps the hold alive if the finger drifts off.
+    dial.addEventListener('pointerdown', (e) => {
+      pointerHeld = true;
+      sync();
+      try {
+        dial.setPointerCapture(e.pointerId);
+      } catch {
+        /* capture is best-effort */
+      }
+    });
+    for (const ev of ['pointerup', 'pointercancel', 'pointerleave'] as const) {
+      dial.addEventListener(ev, () => {
+        pointerHeld = false;
+        sync();
+      });
+    }
+
+    // Desktop convenience: hold Space or Enter to start (flight is frozen during the spool, so the
+    // usual Space=drop binding is inert here).
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.code === 'Space' || e.code === 'Enter') {
+        e.preventDefault();
+        keyHeld = true;
+        sync();
+      }
+    };
+    const onKeyUp = (e: KeyboardEvent): void => {
+      if (e.code === 'Space' || e.code === 'Enter') {
+        keyHeld = false;
+        sync();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('keyup', onKeyUp);
+
+    this.root.appendChild(wrap);
+    this.engineStartEl = { wrap, dial, ring, label, sub, onKey, onKeyUp };
+  }
+
+  /** Update the dial to the live RPM (0..1) and held state — ring fill, % readout, hold glow. */
+  setEngineStart(rpm: number, holding: boolean): void {
+    const e = this.engineStartEl;
+    if (!e) return;
+    const r = clamp01(rpm);
+    const full = r >= 1;
+    const col = full ? '#46d17a' : UI.accent;
+    e.ring.style.background = `conic-gradient(${col} ${r * 360}deg, rgba(255,255,255,0.08) ${r * 360}deg)`;
+    e.sub.textContent = `${Math.round(r * 100)}%`;
+    e.label.textContent = full ? 'READY' : 'START';
+    e.label.style.color = full ? col : UI.text;
+    e.dial.style.boxShadow = holding || full ? `0 0 24px ${col}, ${UI.shadowBtn}` : UI.shadowBtn;
+  }
+
+  /** Tear down the dial (rotors are up) — detach key listeners, fade out, remove. */
+  hideEngineStart(): void {
+    const e = this.engineStartEl;
+    if (!e) return;
+    window.removeEventListener('keydown', e.onKey);
+    window.removeEventListener('keyup', e.onKeyUp);
+    this.engineHoldState = false;
+    this.engineStartEl = undefined;
+    e.wrap.style.opacity = '0';
+    e.wrap.style.transform = 'translate(-50%, -50%) scale(0.85)';
+    window.setTimeout(() => e.wrap.remove(), 320);
   }
 
   // --- Tape builder ---------------------------------------------------------
@@ -756,7 +1104,7 @@ export class HUD {
   private drawRadar(s: HudState): void {
     const ctx = this.radarCtx;
     const dpr = this.dpr;
-    const d = this.radarExpanded ? RADAR_MAX : RADAR_MIN;
+    const d = this.radarExpanded ? this.radarMax : this.radarBase;
     const R = d / 2;
     const reach = R - 9;
     // Collapsed = tight local map; expanded = (almost) the whole world.
@@ -1028,34 +1376,87 @@ function headingDeg(yaw: number): number {
   return (deg + 360) % 360;
 }
 
-function clamp01(v: number): number {
-  return v < 0 ? 0 : v > 1 ? 1 : v;
-}
-
-// --- DOM helpers ------------------------------------------------------------
-
-function el(_tag: 'div', style: Partial<CSSStyleDeclaration>, text?: string): HTMLDivElement {
-  const node = document.createElement('div');
-  Object.assign(node.style, style);
-  if (text !== undefined) node.textContent = text;
-  return node;
-}
+// --- DOM helpers (el / frosted / makeCanvas / clamp01 live in ui/theme.ts) --
 
 /** A small uppercase tracked caption. */
 function label(text: string): HTMLDivElement {
   return el('div', { fontSize: '10px', fontWeight: '600', letterSpacing: '2px', color: UI.dim }, text);
 }
 
-/** The grey rail behind a gauge fill (water / fuel / threat all share this shape). */
-function barTrack(): HTMLDivElement {
-  return el('div', {
-    width: '184px',
-    height: '6px',
-    marginTop: '7px',
+// --- Instrument-spine pods --------------------------------------------------
+// Compact icon + micro-bar rows inside the single frosted capsule. Stroked 24x24
+// glyphs (same idiom as the eye icon); width/height are set per breakpoint.
+const WATER_SVG =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="#67e8ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<path d="M12 3.2C12 3.2 5.5 10.3 5.5 14.5a6.5 6.5 0 0 0 13 0C18.5 10.3 12 3.2 12 3.2Z"/></svg>';
+const HEALTH_SVG =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="#eaf6ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<path d="M12 3 19 6V11c0 5-3.4 8.3-7 10-3.6-1.7-7-5-7-10V6Z"/><path d="M9 12 11 14 15 9.5"/></svg>';
+const FUEL_SVG =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="#eaf6ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<rect x="5" y="4" width="9" height="16" rx="1.5"/><path d="M5 9H14"/><path d="M14 8h3a2 2 0 0 1 2 2v5a1.5 1.5 0 0 0 2 1.5"/><path d="M19 7V5"/></svg>';
+const FIRES_SVG =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="#ff7a45" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<path d="M12 3c1 4 5 5 5 10a5 5 0 0 1-10 0c0-3 2-3.5 2.5-6 1.3 1 2.5 1 2.5-4Z"/></svg>';
+const THREAT_SVG =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="#eaf6ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<path d="M12 4 21 19H3Z"/><path d="M12 10V14"/><circle cx="12" cy="17" r="0.9" fill="currentColor" stroke="none"/></svg>';
+
+interface Pod {
+  row: HTMLDivElement;
+  svg: SVGElement;
+  track: HTMLDivElement; // micro-bar track (detached for the fires count pod)
+  fill: HTMLDivElement; // gauge fill (width driven per frame)
+  num: HTMLDivElement; // fires count (detached for gauge pods)
+  divider: HTMLDivElement; // hairline ABOVE this row (the first row's is hidden)
+}
+
+/** Build one spine pod: a stroked icon + either a micro-bar (gauges) or a bold count
+ *  (fires). The capsule supplies the glass, so the row itself is transparent. */
+function makePod(iconSvg: string, fillBg: string, isCount: boolean): Pod {
+  const divider = el('div', { height: '1px', background: UI.stroke, margin: '0 6px', flex: '0 0 auto' });
+  const row = el('div', { display: 'flex', alignItems: 'center', gap: '8px', padding: '0 11px' });
+  const box = el('div', { flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center' });
+  box.innerHTML = iconSvg;
+  const svg = box.querySelector('svg') as SVGElement;
+  const track = el('div', {
+    marginLeft: 'auto',
     background: 'rgba(255,255,255,0.10)',
     borderRadius: '99px',
     overflow: 'hidden',
   });
+  const fill = barFill(fillBg);
+  track.appendChild(fill);
+  const num = el('div', {
+    marginLeft: 'auto',
+    fontWeight: '700',
+    color: UI.text,
+    lineHeight: '1',
+    textAlign: 'right',
+    display: isCount ? 'block' : 'none',
+  });
+  num.style.setProperty('font-variant-numeric', 'tabular-nums');
+  row.append(box, isCount ? num : track);
+  return { row, svg, track, fill, num, divider };
+}
+
+/** Pulse a pod's row opacity while its gauge is in the critical band. */
+function flashPod(p: Pod, low: boolean): void {
+  p.row.style.opacity = low ? `${0.6 + 0.4 * Math.abs(Math.sin(Date.now() / 200))}` : '1';
+}
+
+/** Collapse a pod row AND its divider together (hides FUEL in the sandbox with no gap). */
+function setPodHidden(p: Pod, hidden: boolean): void {
+  p.row.style.display = hidden ? 'none' : 'flex';
+  p.divider.style.display = hidden ? 'none' : 'block';
+}
+
+/** Bake a static 1px reserve tick into a micro-bar track (health 30%, fuel 25%) — the
+ *  "approaching low" precursor before the flash. Pure background; nothing per frame. */
+function applyTick(track: HTMLDivElement, pct: number): void {
+  track.style.backgroundImage =
+    `linear-gradient(90deg, transparent calc(${pct}% - 1px), ${UI.warn} ${pct}%, transparent calc(${pct}% + 1px)),` +
+    ` linear-gradient(rgba(255,255,255,0.10), rgba(255,255,255,0.10))`;
 }
 
 /** A gauge fill bar with the given background; width is driven each frame. */
@@ -1091,34 +1492,3 @@ function bannerButton(text: string, accent: string, onClick: () => void): HTMLDi
   return b;
 }
 
-/** A frosted-glass panel: translucent fill, hairline border, backdrop blur. */
-function frosted(extra: Partial<CSSStyleDeclaration>): HTMLDivElement {
-  const node = el('div', {
-    background: UI.panel,
-    border: `1px solid ${UI.stroke}`,
-    borderRadius: '12px',
-    boxShadow: UI.shadow,
-    backdropFilter: UI.blur,
-    ...extra,
-  });
-  node.style.setProperty('-webkit-backdrop-filter', UI.blur);
-  return node;
-}
-
-/** Create a DPR-crisp 2D canvas positioned via inline styles. Mirrors any
- *  `backdropFilter` into the -webkit- prefix for Safari/iOS. */
-function makeCanvas(
-  w: number,
-  h: number,
-  style: Partial<CSSStyleDeclaration>,
-): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } {
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.round(w * dpr);
-  canvas.height = Math.round(h * dpr);
-  Object.assign(canvas.style, { width: `${w}px`, height: `${h}px`, pointerEvents: 'none' }, style);
-  if (style.backdropFilter) canvas.style.setProperty('-webkit-backdrop-filter', style.backdropFilter);
-  const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
-  ctx.scale(dpr, dpr);
-  return { canvas, ctx };
-}

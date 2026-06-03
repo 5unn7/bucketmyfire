@@ -70,50 +70,54 @@ export const MAPS: CatalogItem[] = [
 ];
 
 // --- Helicopters ------------------------------------------------------------
-// Each entry maps to a glTF model in meshes/heliModels.ts (HELI_MODELS) by id.
-// Spec bars are illustrative until per-heli flight tuning lands — all three
-// currently share the tuned flight model; selecting one swaps the airframe.
+// Each entry maps to a glTF model in meshes/heliModels.ts (HELI_MODELS) by id AND to a
+// gameplay class in config.ts (HELI_CLASSES) by the SAME id — so selecting one now changes
+// the airframe AND how it flies/carries/survives. The spec bars below illustrate that class:
+// 205 = slow/forgiving/small, 212 = medium, UH-60 = fast/big/twitchy/tough.
 export const HELIS: CatalogItem[] = [
   {
     id: 'bell-205a1',
     name: 'Bell 205A-1',
-    tagline: 'The workhorse',
-    blurb: 'Single-engine Huey derivative in water-bomber livery. Balanced, forgiving, a real slung-bucket feel.',
+    tagline: 'The trainer',
+    blurb: 'Single-engine Huey in water-bomber livery. The forgiving one: stable and easy to place — but the slowest, with the smallest bucket (half the Black Hawk). Learn the slung-bucket feel here.',
     available: true,
     accent: '#c8362a',
     glyph: '🚁',
     specs: [
-      { label: 'Speed', value: 0.62 },
-      { label: 'Agility', value: 0.6 },
-      { label: 'Bucket', value: 0.55 },
+      { label: 'Speed', value: 0.55 },
+      { label: 'Agility', value: 0.85 },
+      { label: 'Bucket', value: 0.5 },
+      { label: 'Hull', value: 0.6 },
     ],
   },
   {
     id: 'bell-212',
     name: 'Bell 212',
     tagline: 'Twin-engine medium',
-    blurb: 'The twin-pac sister of the Huey — more power on tap and a bigger belly. Steady in the gusts off the lakes.',
+    blurb: 'The twin-pac sister of the Huey — more power, a bigger belly, and a tougher hull. A balanced step up from the 205: faster and carries more, still steady in the gusts off the lakes.',
     available: true,
     accent: '#d8a12a',
     glyph: '🚁',
     specs: [
-      { label: 'Speed', value: 0.6 },
-      { label: 'Agility', value: 0.52 },
-      { label: 'Bucket', value: 0.72 },
+      { label: 'Speed', value: 0.7 },
+      { label: 'Agility', value: 0.62 },
+      { label: 'Bucket', value: 0.75 },
+      { label: 'Hull', value: 0.75 },
     ],
   },
   {
     id: 'uh-60',
     name: 'UH-60 Black Hawk',
-    tagline: 'Heavy & fast',
-    blurb: 'A big four-blade utility ship. Hauls a heavy load fast between distant fires — less nimble down low.',
+    tagline: 'Supreme — a handful',
+    blurb: 'A big four-blade utility ship: the fastest, biggest tank (double the 205), and toughest hull. But heavy and twitchy down low — all that momentum overshoots, so it takes a confident hand. Supreme range and payload for an experienced pilot.',
     available: true,
     accent: '#5b6b50',
     glyph: '🚁',
     specs: [
-      { label: 'Speed', value: 0.82 },
-      { label: 'Agility', value: 0.48 },
-      { label: 'Bucket', value: 0.88 },
+      { label: 'Speed', value: 0.95 },
+      { label: 'Agility', value: 0.4 },
+      { label: 'Bucket', value: 1.0 },
+      { label: 'Hull', value: 0.95 },
     ],
   },
 ];

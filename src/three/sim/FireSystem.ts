@@ -59,6 +59,16 @@ export interface WindLike {
 }
 
 /**
+ * Per-instance tuning the MISSION dials (vs the global `FIRE3D` baseline). `spreadScale` multiplies
+ * the front's pre-heat creep AND ember-spotting rate, so one fire model serves a near-static tutorial
+ * spot (~0.25) through a screaming firestorm (~1.3). 1 = the config baseline. (Game passes
+ * `mission.fire.spreadScale`.) Kept numeric-only so the engine-agnostic sim boundary holds.
+ */
+export interface FireTuning {
+  spreadScale?: number;
+}
+
+/**
  * Read-only view of the live cellular field for RENDERERS (terrain char + ember glow, minimap
  * burn overlay). Numbers only — no Three — so the engine-agnostic sim boundary holds. The arrays
  * are the sim's OWN buffers (no copy): treat them as read-only and valid only for the current
@@ -101,7 +111,11 @@ export class FireSystem {
   // Stable field view object (built once) handed to renderers each frame — no per-frame alloc.
   private readonly fieldViewObj: FireFieldView;
 
-  constructor(private readonly deps: FireDeps) {
+  // Mission-dialled spread pace (1 = FIRE3D baseline) — multiplies pre-heat creep + spotting.
+  private readonly spreadScale: number;
+
+  constructor(private readonly deps: FireDeps, tuning: FireTuning = {}) {
+    this.spreadScale = Math.max(0, tuning.spreadScale ?? 1);
     const N = this.n * this.n;
     this.fuel = new Float32Array(N);
     this.heat = new Float32Array(N);
@@ -212,6 +226,9 @@ export class FireSystem {
 
     const n = this.n;
     const N = n * n;
+    // Mission-scaled spread levers (the calm FIRE3D baseline × this mission's spreadScale).
+    const spreadRate = FIRE3D.spreadRate * this.spreadScale;
+    const spotChance = FIRE3D.spotChance * this.spreadScale;
     const wlen = Math.hypot(wind.vx, wind.vz);
     const wnx = wlen > 1e-4 ? wind.vx / wlen : 0;
     const wnz = wlen > 1e-4 ? wind.vz / wlen : 0;
@@ -275,14 +292,14 @@ export class FireSystem {
           // Thin fuel carries the front more slowly.
           w *= 0.4 + 0.6 * fj;
 
-          this.preheat[j] += FIRE3D.spreadRate * h * w * inv * dt;
+          this.preheat[j] += spreadRate * h * w * inv * dt;
         }
       }
 
       // Spotting: ONLY a very hot head in STRONG wind, and rarely — this is the lever that
       // keeps the map from lighting up everywhere at once (a real fire mostly creeps; embers
       // jump ahead only occasionally in a strong wind).
-      if (wlen > 0.5 && h > 0.75 && this.deps.rng() < FIRE3D.spotChance * dt) {
+      if (wlen > 0.5 && h > 0.75 && this.deps.rng() < spotChance * dt) {
         const dist = FIRE3D.spotDist * (0.5 + this.deps.rng());
         const ang = Math.atan2(wnz, wnx) + (this.deps.rng() - 0.5) * 0.7;
         const sx = -this.half + (cx + 0.5) * this.cellSize + Math.cos(ang) * dist;

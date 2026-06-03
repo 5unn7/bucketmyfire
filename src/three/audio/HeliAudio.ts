@@ -26,7 +26,9 @@ import rotorLoopUrl from './helicopter-loop.mp3';
 const ROTOR_BASE_GAIN = 0.85; // loop volume at idle
 const ROTOR_LOAD_GAIN = 0.18; // extra volume at full effort
 const ROTOR_RATE_LOAD = 0.05; // tiny playback-rate rise at full effort (≤5%)
+const ROTOR_SPOOL_RATE = 0.5; // playback-rate floor at zero RPM — the cold-start spool winds it UP to 1.0
 const CROSSFADE_SEC = 0.35; // seam crossfade length
+const COMMS_GAIN = 0.16; // radio-squelch blip level (the "kshh" before a dispatch line)
 
 export class HeliAudio {
   private readonly ctx: AudioContext;
@@ -137,20 +139,27 @@ export class HeliAudio {
     scooping: boolean;
     dropping: boolean;
     won: boolean;
+    rpm?: number; // main-rotor spin fraction 0..1 (cold start spools it up); default 1 = full
   }): void {
     if (!this.started) return;
     const now = this.ctx.currentTime;
     const ease = AUDIO.paramEaseSec;
 
+    const rpm = p.rpm === undefined ? 1 : Math.max(0, Math.min(1, p.rpm));
     const speedN = Math.min(1, p.speed / p.maxSpeed);
     const effort = Math.min(
       1,
       Math.abs(p.throttle) * 0.55 + Math.max(0, p.lift) * 0.5 + speedN * 0.4,
     );
 
-    this.rotorGain.gain.setTargetAtTime(ROTOR_BASE_GAIN + ROTOR_LOAD_GAIN * effort, now, ease);
+    // Volume scales with effort AND the spin-up RPM: silent on the deck, swelling to the full drone
+    // as the rotor comes up to speed, then the usual effort nudge once flying.
+    this.rotorGain.gain.setTargetAtTime((ROTOR_BASE_GAIN + ROTOR_LOAD_GAIN * effort) * rpm, now, ease);
     if (this.rotorSrc) {
-      this.rotorSrc.playbackRate.setTargetAtTime(1 + ROTOR_RATE_LOAD * effort, now, ease);
+      // The cold-start spool also pitches the loop UP from a low idle to full (ROTOR_SPOOL_RATE → 1),
+      // selling the wind-up; at full RPM it's just the tiny effort-driven rate rise as before.
+      const spool = ROTOR_SPOOL_RATE + (1 - ROTOR_SPOOL_RATE) * rpm;
+      this.rotorSrc.playbackRate.setTargetAtTime(spool * (1 + ROTOR_RATE_LOAD * effort), now, ease);
     }
 
     // Edge-triggered one-shots.
@@ -163,6 +172,48 @@ export class HeliAudio {
   }
 
   // === One-shots (procedural, no assets) ==================================
+
+  /**
+   * A radio-squelch blip for a posted DISPATCH/CREW/WARNING comms line — the "kshh" of a transmission
+   * opening plus a short carrier chirp so it reads as RADIO, not just noise. Urgency brightens the
+   * filter + chirp (alert = a quick double-blip). No assets; reuses the unlock + master bus.
+   */
+  playSquelch(urgency: 'info' | 'warn' | 'alert' = 'info'): void {
+    if (!this.started) return;
+    const t = this.ctx.currentTime;
+    const dur = urgency === 'alert' ? 0.16 : 0.12;
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.makeNoiseBuffer(dur + 0.05);
+    const band = this.ctx.createBiquadFilter();
+    band.type = 'bandpass';
+    band.frequency.value = urgency === 'warn' ? 1800 : urgency === 'alert' ? 2200 : 1500;
+    band.Q.value = 0.7;
+    const ng = this.ctx.createGain();
+    ng.gain.setValueAtTime(0, t);
+    ng.gain.linearRampToValueAtTime(COMMS_GAIN, t + 0.008);
+    ng.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(band).connect(ng).connect(this.master);
+    src.start(t);
+    src.stop(t + dur + 0.05);
+
+    // A short square-wave carrier under the noise; alert fires a quick double to read as urgent.
+    const beeps = urgency === 'alert' ? [0, 0.13] : [0];
+    const f0 = urgency === 'info' ? 620 : urgency === 'warn' ? 760 : 900;
+    for (const off of beeps) {
+      const bt = t + off;
+      const osc = this.ctx.createOscillator();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(f0, bt);
+      osc.frequency.exponentialRampToValueAtTime(f0 * 0.8, bt + 0.05);
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(0, bt);
+      g.gain.linearRampToValueAtTime(COMMS_GAIN * 0.5, bt + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, bt + 0.09);
+      osc.connect(g).connect(this.master);
+      osc.start(bt);
+      osc.stop(bt + 0.1);
+    }
+  }
 
   /** Bucket bites the lake — a short watery "ker-sploosh." */
   private playSplash(): void {

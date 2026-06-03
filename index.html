@@ -15,13 +15,47 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="theme-color" content="#1b2a1f" />
-    <title>Bucket My Fire</title>
+    <title>Bucket My Fire — Helicopter Wildfire Simulator</title>
+
+    <!-- SEO + social share. Open Graph / Twitter cards make the link unfurl with a
+         title, blurb, and preview image on X / Discord / iMessage / Slack — which is
+         how shared links actually pull in visitors. og:image MUST be an absolute URL. -->
+    <meta
+      name="description"
+      content="Fly a water-bomber helicopter over the northern Saskatchewan wilderness — scoop from lakes, drop on wildfires, and save the forest before it spreads. A free real-3D flight game that runs right in your browser, phone or desktop."
+    />
+    <link rel="canonical" href="https://bucketmyfire.com/" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Bucket My Fire" />
+    <meta property="og:url" content="https://bucketmyfire.com/" />
+    <meta property="og:title" content="Bucket My Fire — Helicopter Wildfire Simulator" />
+    <meta
+      property="og:description"
+      content="Fly a water-bomber over northern Saskatchewan: scoop from lakes, bomb wildfires, save the forest. Free real-3D flight game in your browser."
+    />
+    <meta property="og:image" content="https://bucketmyfire.com/og-image.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="A water-bomber helicopter with a slung Bambi bucket flying over a burning Saskatchewan forest."
+    />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Bucket My Fire — Helicopter Wildfire Simulator" />
+    <meta
+      name="twitter:description"
+      content="Fly a water-bomber over northern Saskatchewan: scoop from lakes, bomb wildfires, save the forest. Free real-3D flight game in your browser."
+    />
+    <meta name="twitter:image" content="https://bucketmyfire.com/og-image.jpg" />
     <style>
       html,
       body {
         margin: 0;
         padding: 0;
-        height: 100%;
+        height: 100vh; /* fallback for browsers without dynamic-viewport units */
+        height: 100dvh; /* track the visible viewport as mobile toolbars show/hide */
         background: #0e160f;
         overflow: hidden;
         overscroll-behavior: none;
@@ -32,7 +66,8 @@
       }
       #game {
         width: 100vw;
-        height: 100vh;
+        height: 100vh; /* fallback */
+        height: 100dvh;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -45,5 +80,22 @@
   <body>
     <div id="game"></div>
     <script type="module" src="/src/three/main.ts"></script>
+
+    <!-- ─────────────────────────────────────────────────────────────────────────
+         Cloudflare Web Analytics — privacy-first visitor tracking (no cookies, no
+         consent banner). Free + unlimited. Reports pageviews, referrers, country,
+         device and top pages.
+
+         ⚠️ ONE-TIME SETUP — paste your token below:
+           1. Go to https://dash.cloudflare.com → Analytics → Web Analytics → "Add a site"
+           2. Enter  bucketmyfire.com  (no need to proxy DNS — the beacon works standalone)
+           3. Copy the token Cloudflare gives you and replace REPLACE_WITH_CF_TOKEN
+         Until the token is replaced the beacon loads but records nothing.
+         The token is NOT a secret — it is meant to live in client HTML. ───────── -->
+    <script
+      defer
+      src="https://static.cloudflareinsights.com/beacon.min.js"
+      data-cf-beacon='{"token": "REPLACE_WITH_CF_TOKEN"}'
+    ></script>
   </body>
 </html>

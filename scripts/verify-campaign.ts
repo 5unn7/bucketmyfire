@@ -20,8 +20,9 @@ import { Structures } from '../src/three/sim/Structures';
 import { CrewTransport } from '../src/three/sim/CrewTransport';
 import { FuelSim } from '../src/three/sim/FuelSim';
 import { MissionRuntime } from '../src/three/missions/MissionRuntime';
+import { MissionDirector } from '../src/three/missions/MissionDirector';
 import { CAMPAIGN } from '../src/three/missions/catalog';
-import { seedFires, structurePlan, crewZones } from '../src/three/missions/scenario';
+import { seedFires, structurePlan, crewZones, igniteFromPlacement } from '../src/three/missions/scenario';
 import type { MissionDef, MissionSignals } from '../src/three/missions/types';
 import { WORLD3D } from '../src/three/config';
 
@@ -36,6 +37,8 @@ interface Rig {
   crew?: CrewTransport;
   fuel?: FuelSim;
   runtime: MissionRuntime;
+  director: MissionDirector;
+  fireBound: number;
   firesInitial: number;
   depot: { x: number; z: number } | null;
 }
@@ -44,13 +47,16 @@ function build(mission: MissionDef): Rig {
   const world = new World(mission.seed);
   const wind = new Wind(mission.wind?.angle, mission.wind?.strengthScale ?? 1);
   const fireBound = WORLD3D.size / 2 - 40;
-  const fire = new FireSystem({
-    rng: world.rng,
-    groundHeightAt: (x, z) => world.groundHeightAt(x, z),
-    isOverWater: (x, z) => world.isOverWater(x, z),
-    fuelAt: (x, z) => world.placement.fuelAt(x, z),
-    pickSite: (min) => world.placement.fireSite(world.rng, fireBound, min),
-  });
+  const fire = new FireSystem(
+    {
+      rng: world.rng,
+      groundHeightAt: (x, z) => world.groundHeightAt(x, z),
+      isOverWater: (x, z) => world.isOverWater(x, z),
+      fuelAt: (x, z) => world.placement.fuelAt(x, z),
+      pickSite: (min) => world.placement.fireSite(world.rng, fireBound, min),
+    },
+    { spreadScale: mission.fire?.spreadScale }, // validate each mission at its REAL configured pace
+  );
   seedFires(world, fire, mission, { vx: wind.vx, vz: wind.vz }, fireBound);
   const firesInitial = fire.activeCount;
   const structures = new Structures({
@@ -65,7 +71,19 @@ function build(mission: MissionDef): Rig {
   const crew = mission.zones?.length ? new CrewTransport(crewZones(world, mission)) : undefined;
   const fuel = mission.fuel ? new FuelSim() : undefined;
   const base = world.getCommunity('base');
-  return { world, wind, fire, structures, crew, fuel, runtime: new MissionRuntime(mission), firesInitial, depot: base ? { x: base.x, z: base.z } : null };
+  return {
+    world,
+    wind,
+    fire,
+    structures,
+    crew,
+    fuel,
+    runtime: new MissionRuntime(mission),
+    director: new MissionDirector(mission),
+    fireBound,
+    firesInitial,
+    depot: base ? { x: base.x, z: base.z } : null,
+  };
 }
 
 function signals(r: Rig, elapsed: number): MissionSignals {
@@ -80,6 +98,8 @@ function signals(r: Rig, elapsed: number): MissionSignals {
     elapsed,
     fuel: r.fuel?.fuel ?? 1,
     starved: r.fuel?.starved ?? false,
+    threat: r.structures.threat,
+    windAngle: r.wind.angle,
   };
 }
 
@@ -113,7 +133,14 @@ function run(mission: MissionDef, mode: Mode): { r: Rig; elapsed: number } {
     r.fire.update(DT * 1000, r.wind);
     r.structures.update(DT * 1000, r.fire.active());
     elapsed += DT;
-    r.runtime.update(signals(r, elapsed));
+    const sig = signals(r, elapsed);
+    r.runtime.update(sig);
+    // Run the REACTIVE layer too and execute its world actions (flare-ups / wind shifts), so the
+    // gate proves every mission still completes with its authored beats live. Comms are no-ops here.
+    // Wind shifts FIRST so a same-beat ignite orients to the new wind (matches Game).
+    const acts = r.director.update(sig, r.runtime);
+    for (const a of acts) if (a.do === 'wind') r.wind.shiftTo(a.angle, a.strengthScale, a.ease);
+    for (const a of acts) if (a.do === 'ignite') igniteFromPlacement(r.world, r.fire, a.place, { vx: r.wind.intendedVx, vz: r.wind.intendedVz }, r.fireBound);
   }
   return { r, elapsed };
 }
@@ -143,6 +170,8 @@ function trippingSignals(elapsed: number): MissionSignals {
     elapsed,
     fuel: 0,
     starved: true,
+    threat: 1,
+    windAngle: 0,
   };
 }
 

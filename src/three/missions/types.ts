@@ -88,14 +88,66 @@ export interface FailCondition {
   label?: string;
 }
 
+// --- Reactive mission SCRIPT (the experience layer) ------------------------
+// A mission is a FULL ARC: a briefing, escalating beats that react to play + the fire, narrated by
+// radio comms, then a debrief. The script is authored DATA (catalog.ts) evaluated by the pure
+// `MissionDirector` (numbers/POJOs, like MissionRuntime); only Game turns the resulting actions into
+// Three/DOM/audio. Each beat fires its actions ONCE, the first frame its trigger becomes true.
+
+/** Who is on the radio. Drives the comms-line colour + label (DISPATCH cyan / CREW amber / WARNING red). */
+export type CommsSpeaker = 'dispatch' | 'crew' | 'warning' | 'pilot';
+
+/** Comms urgency → the squelch tone + how insistently the line reads. */
+export type CommsUrgency = 'info' | 'warn' | 'alert';
+
+/**
+ * When a beat fires. All conditions read the live `MissionSignals` (+ the runtime ledger for
+ * objective/outcome triggers); a beat latches the first frame its condition holds.
+ */
+export type MissionTrigger =
+  | { at: 'start' } // the mission begins (briefing line)
+  | { at: 'time'; seconds: number } // mission-elapsed ≥ seconds
+  | { at: 'firesDoused'; n: number } // cumulative fires water-killed ≥ n
+  | { at: 'firesLeft'; n: number } // active fire clusters ≤ n (and the mission is underway)
+  | { at: 'threat'; min: number } // a structure's danger gauge ≥ min (0..1)
+  | { at: 'structureLost'; n?: number } // total structures destroyed ≥ n (default 1)
+  | { at: 'crewDelivered'; n: number } // crews delivered ≥ n
+  | { at: 'fuelBelow'; frac: number } // fuel fraction < frac
+  | { at: 'objectiveDone'; id?: string } // a goal sub-task latched done (optional specific id)
+  | { at: 'won' }
+  | { at: 'lost' };
+
+/** What a beat does. `comms` always; `ignite`/`wind` are the world REACTIONS (decided: scripted beats). */
+export type MissionAction =
+  | { do: 'comms'; speaker: CommsSpeaker; text: string; urgency?: CommsUrgency }
+  // A flare-up / new spot fire / re-spread. Reuses the FirePlacement vocabulary + scenario resolution,
+  // so a beat can ignite anything the opening fires can (a cluster downwind, a fire near a community…).
+  | { do: 'ignite'; place: FirePlacement }
+  // Shift the wind (the "wind-shift" beat): ease the heading toward `angle` and/or the gust strength
+  // toward `strengthScale×` over `ease` seconds. Either is optional.
+  | { do: 'wind'; angle?: number; strengthScale?: number; ease?: number };
+
+/** One authored beat: when it fires (once) and what it does. */
+export interface MissionBeat {
+  id: string; // stable per mission (for the latch + headless assertions)
+  trigger: MissionTrigger;
+  actions: MissionAction[];
+}
+
 export interface MissionDef {
   id: string;
   index: number; // campaign order (drives linear unlock)
   name: string;
   brief: string; // 1–2 line briefing shown in the menu + start card
+  intel?: string; // longer pre-flight briefing paragraph (the briefing card body; falls back to brief)
   difficulty: 1 | 2 | 3 | 4 | 5;
   seed: number; // world seed — each mission grows its own boreal map
   wind?: { angle?: number; strengthScale?: number };
+  // Per-mission fire-spread pacing. `spreadScale` multiplies the calm `FIRE3D` baseline spread
+  // (pre-heat creep + ember spotting), so the SAME fire model reads as a near-static tutorial spot
+  // (~0.25) up to a screaming firestorm (~1.3). 1 = the config baseline; omit → 1. This is how
+  // "spread according to the mission" is dialled, mirroring `wind.strengthScale`. (FireSystem reads it.)
+  fire?: { spreadScale?: number };
   bucket?: 'bambi' | 'valve';
   payload?: 'water' | 'crew'; // crew → bucket hidden, the rope slings a crew basket; scoop/drop off
   fuel?: boolean; // enable the FuelSim range model
@@ -104,6 +156,14 @@ export interface MissionDef {
   zones?: ZonePlacement[];
   objectives: Objective[];
   fails?: FailCondition[];
+  script?: MissionBeat[]; // the reactive arc: briefing/beats/debrief comms + world reactions
+}
+
+/** A radio comms line surfaced to the HUD log + a squelch (emitted by the MissionDirector via Game). */
+export interface CommsLine {
+  speaker: CommsSpeaker;
+  text: string;
+  urgency: CommsUrgency;
 }
 
 /** Per-frame world snapshot Game hands to MissionRuntime (it already computes most of this). */
@@ -118,6 +178,8 @@ export interface MissionSignals {
   elapsed: number; // seconds since the mission became active
   fuel: number; // 0..1 (1 when no FuelSim)
   starved: boolean; // ran the tank dry
+  threat: number; // 0..1 — most-endangered structure's danger (drives 'threat' beats); 0 when none
+  windAngle: number; // current wind heading (rad) — for flavour/diagnostics in beats
 }
 
 export type MissionState = 'active' | 'won' | 'lost';

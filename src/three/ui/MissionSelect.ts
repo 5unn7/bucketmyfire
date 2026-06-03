@@ -41,7 +41,10 @@ export class MissionSelect {
       background: 'radial-gradient(120% 90% at 50% 0%, rgba(20,32,44,0.86), rgba(4,7,11,0.94))',
       fontFamily: UI.font,
       color: UI.text,
-      padding: '40px 22px 60px',
+      // Safe-area-aware so cards clear a side notch / home-indicator in landscape.
+      padding:
+        'max(40px, env(safe-area-inset-top)) max(22px, env(safe-area-inset-right)) ' +
+        'max(60px, env(safe-area-inset-bottom)) max(22px, env(safe-area-inset-left))',
       boxSizing: 'border-box',
     });
 
@@ -73,7 +76,7 @@ export class MissionSelect {
       maxWidth: '960px',
       margin: '0 auto',
       display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+      gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
       gap: '16px',
     });
     this.root.appendChild(grid);

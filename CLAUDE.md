@@ -6,8 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **bucketmyfire** is a mobile-browser helicopter simulator: fly a water-bomber over
 northern Saskatchewan, scoop water into a slung Bambi bucket from lakes, and drop it
-on forest fires before they spread. It runs entirely client-side — no backend, no
-binary art assets (all geometry/textures are procedural).
+on forest fires before they spread. It runs entirely client-side — no backend. Art is
+**procedural-first** (geometry + GLSL + runtime textures), with a **few licensed downloaded
+assets** swapped in behind procedural fallbacks: the glTF helicopters under `public/models/`,
+the wildlife glb, the `public/textures/smoke-puff.png` sprite, and the rotor-audio mp3 — each
+credited by a `license.txt`/`ATTRIBUTION.txt` beside it. (The old "zero binary assets" rule has
+softened to "procedural unless procedural can't get there, then a credited fallback.")
 
 > **One optional exception to "no backend":** the global leaderboard
 > (`src/three/leaderboard/`) talks to Supabase via plain `fetch` (no SDK) when
@@ -23,9 +27,20 @@ a bucket that swings and lags) — all holding 60fps on mobile browsers.
 > **The game pivoted from 2D Phaser to real-3D Three.js.** The live game is the
 > Three.js build under `src/three/`. The old Phaser tree (`src/main.ts`,
 > `src/scenes/`, `src/objects/`, `src/controls/`, `src/constants.ts`) is **legacy
-> fallback** — kept (this is not a git repo) but not loaded. `index.html` boots
-> `src/three/main.ts`. When working on the game, assume `src/three/` unless told
-> otherwise. See `docs/ROADMAP.md` for the approved vision and phase status.
+> fallback** — kept (not loaded). `index.html` boots `src/three/main.ts`. When working
+> on the game, assume `src/three/` unless told otherwise. See `docs/ROADMAP.md` for the
+> approved vision and phase status.
+
+> **This IS a git repo now** (`main` branch), and **every push to `main` auto-deploys** to
+> GitHub Pages via `.github/workflows/deploy.yml` (CI builds → publishes `dist/` to `gh-pages`;
+> manual fallback `scripts/deploy.ps1`). The game is live at **5unn7.github.io/bucketmyfire**.
+> Prefer additive changes, but normal git hygiene applies — branch, commit, and don't be afraid
+> to delete proven-dead code.
+
+> **Project-specific skills live in `.claude/skills/`.** When the task matches, use them:
+> **`bmf-verify`** (headless verification — there's no test runner), **`bmf-mission`** (author a
+> campaign mission), **`bmf-tune`** (balance values in `config.ts`), **`bmf-asset`** (add a
+> procedural mesh / pooled VFX / shader / model).
 
 ## Commands
 
@@ -34,6 +49,7 @@ npm run dev        # Vite dev server on :5173, exposed on LAN (test on a real ph
 npm run build      # tsc --noEmit type-gate, then vite build → dist/ (static site)
 npm run typecheck  # tsc --noEmit only
 npm run preview    # serve the production build locally
+npm run verify:campaign  # esbuild-bundle the pure sims → Node; prove every mission is completable
 npm run lint       # eslint over src/
 npm run format     # prettier over src/
 ```
@@ -45,13 +61,23 @@ because `tsc --noEmit` runs before `vite build`. The strict tsconfig has
 To deploy: `npm run build` and host `dist/` on any static host (`base: './'` in
 `vite.config.ts` makes it path-independent).
 
-### Verifying behavior (no unit tests)
+### Verifying behavior (no unit tests) — see the `bmf-verify` skill
 
-`src/three/main.ts` hangs a debug handle on `window.__game`; `Game.debug` exposes
-read-only flight/world state (`x,y,z,agl,floor,bucketY,water,firesLeft,lakes,fires`).
-Drive the heli headless via Playwright and read that hook to assert behavior, and
-screenshot for visual phases. This is the project's standing verification approach
-(see `docs/ROADMAP.md` → "Verification approach").
+Three escalating levels (use the cheapest that catches your bug class):
+
+1. **`npm run build`** — type gate only. It will happily ship a broken GLSL shader.
+2. **Pure-sim Node assertions** — `sim/*.ts` are engine-agnostic, so bundle them with esbuild and
+   assert the numbers in Node (no browser). `npm run verify:campaign` is the worked example
+   (`scripts/verify-campaign.ts`): it runs a deterministic "perfect player" through every mission.
+   Best for flight/bucket/fire/fuel/crew logic and determinism from `WORLD3D.seed`.
+3. **Live headless** — the only way to catch shader-compile errors (they pass the build). `main.ts`
+   hangs a debug handle on `window.__game`, but it's now **gated**: present only when
+   `import.meta.env.DEV || ?qa`. So `npm run dev` exposes it always; a `vite preview`/prod build
+   needs **`?qa`** on the URL. `__game.debug` is read-only state (`x,y,z,agl,floor,bucketY,water,
+   firesLeft,burnedOut,lakes,fires[]`); `__game.fireSystem.igniteAt(...)` and
+   `__game.heliSim.position` (teleport) drive it. URL router: `?autostart`, `?m=<missionId>`.
+   `scripts/shot.mjs` is a full screenshot example. The **`bmf-verify`** skill documents the
+   "MCP Playwright browser is locked" workaround (vite preview + temp `playwright-core`).
 
 ## Architecture (the live 3D build, `src/three/`)
 
@@ -61,22 +87,33 @@ single `setAnimationLoop` that clamps `dt`, samples the quality watchdog, steps
 orchestration; everything else is a focused module it composes.
 
 ```
-main.ts (renderer + loop + QualityTier)
+main.ts (renderer + loop + QualityTier + Composer + campaign router)
   └─ Game.ts (scene graph + per-frame "draw + rules")
        ├─ World.ts ........... heightfield: the single source of ground/water truth
+       ├─ world/ ............. generation: noise, biomes, placement, minimap, names
        ├─ sim/ ............... engine-agnostic physics (numbers only, no Three scene/DOM)
        │    ├─ HelicopterSim   momentum flight integrator (the core "feel")
        │    ├─ BucketSim       spring-damped slung-bucket pendulum
+       │    ├─ FireSystem      cellular fire FIELD (spread/burn-out/re-flare/scorch)
+       │    ├─ Structures      cabins/depot with health (the stakes / lose condition)
+       │    ├─ FuelSim         thrust+payload-metered range model (refuel at depot)
+       │    ├─ CrewTransport   slung crew/cargo insertion + evacuation
+       │    ├─ RotorWash       AGL → downwash + ground-effect signals
        │    └─ Wind            drifting wind vector (biases fire + water)
-       ├─ meshes/ ............ procedural geometry (terrain, trees, heli, bucket, lake, fire)
+       ├─ meshes/ ............ procedural geometry (terrain, trees, heli, bucket, lake, fire, cabin…)
        ├─ water/ ............. shared animated water ShaderMaterial + ripple pool
-       ├─ vfx/ ............... pooled GPU Points (water spray)
-       ├─ render/ ............ FrameContext (shared uniforms) + QualityTier (adaptive)
-       ├─ ChaseCamera.ts ..... trailing follow-cam with ground-clearance guard
+       ├─ vfx/ ............... pooled GPU Points (water spray, smoke plumes, embers)
+       ├─ sky/ ............... camera-following sky dome + time-of-day presets
+       ├─ postfx/ ............ EffectComposer: bloom, god-rays, heat-haze, color grade
+       ├─ lighting/ .......... pooled hero fire point-lights (no recompiles)
+       ├─ render/ ............ FrameContext (shared uniforms) + QualityTier + FireFieldTexture
+       ├─ missions/ .......... data-driven MissionDef catalog + runtime + director + progress
+       ├─ leaderboard/ ....... env-gated Supabase PostgREST client (plain fetch, RLS)
+       ├─ ui/ ................ HUD, MissionSelect menu, onboarding, leaderboard, profile/picker
+       ├─ audio/ ............. HeliAudio (recorded rotor loop + procedural SFX)
+       ├─ ChaseCamera.ts ..... trailing follow-cam with ground-clearance guard + free-look
        ├─ Input.ts ........... keyboard + touch merged behind read(): ControlState
-       ├─ HUD.ts ............. DOM overlay (water bar, fire count, hint, victory)
-       ├─ Lake.ts / Fire.ts .. per-instance runtime objects
-       └─ config.ts .......... ALL gameplay + visual tuning
+       └─ config.ts .......... ALL gameplay + visual tuning (see the bmf-tune skill)
 ```
 
 ### `World` is the keystone — read it first
@@ -145,10 +182,19 @@ heli and bucket each frame.
 
 ### Fire simulation
 
-`Fire.ts` instances have `intensity` that `grow()`s back when ignored and `douse()`s
-down under water (self-destructs at zero). Fires **spread** on a wind-biased timer
-(`Game.spreadFires`) — each active fire may spawn a neighbour, never onto water, under
-a hard `maxActive` cap. Win = every fire extinguished (`won` latches the sim off).
+Fire is a **cellular FIELD**, not a handful of objects (`sim/FireSystem.ts`, engine-agnostic —
+World fields are injected as callbacks, it never imports `World`). A fixed grid of cells each hold
+`fuel` (sampled once from `world.fuelAt` → forest burns, rock/water/road don't) and live `heat`; a
+burning cell **pre-heats neighbours** weighted by wind + slope + fuel, so an advancing **front**
+creeps, runs downwind, climbs uphill, and **stalls at firebreaks** (doused ground stays wet for a
+cooldown). Each fire carries a `size` 0..1 that **grows** while it burns and only **spots** new
+fires once established; dousing knocks down intensity **and** size, so a big blaze **re-flares**
+and needs several passes (`killSize`). The ≤`maxActive` flame **meshes** are a pooled view of the
+hottest cell clusters (built once, no runtime add/remove). The field is packed into a DataTexture
+each frame (`render/FireFieldTexture.ts`) that drives terrain char + ember glow + the radar scar.
+Fires also ignite **trees** and panic **fauna**, and damage **`sim/Structures.ts`** within
+`threatRadius` — **lose** when every structure is destroyed. **Win** = every fire out (water kills
+score more than natural burn-outs). All of this is `FIRE3D`/`STRUCTURES` in `config.ts`.
 
 ### Rendering performance system
 
@@ -156,9 +202,13 @@ a hard `maxActive` cap. Win = every fire extinguished (`won` latches the sim off
   frame-time watchdog** that steps DOWN a tier under sustained load. Only the cheap,
   **recompile-free** knobs move at runtime (DPR, shadows on/off); load-time fields
   (shadow-map size, water tessellation) are read once at construction.
-- `render/FrameContext.ts` — a shared uniform bus (`uTime`, `uWind`, `uSunDir`). Every
+- `render/FrameContext.ts` — a shared uniform bus (`uTime`, `uWind`, `uSunDir`, `uWash`). Every
   animated material grabs the **same `{ value }` references** in its `onBeforeCompile`,
   so one `update()` per frame propagates to all of them with no per-material plumbing.
+- `postfx/Composer.ts` — the main loop renders **through** an EffectComposer (bloom → god-rays →
+  heat-haze → tonemap/color-grade), tier-gated (off on low, half-res on med, full on high; chosen
+  once at load). `lighting/HeroFireLights.ts` is a **fixed pool** of point-lights repositioned onto
+  the hottest fires each frame (never added/removed → no recompiles).
 
 **Mobile-60fps invariants** (from the roadmap, enforce them): heavy generation is
 one-time at load; per-frame work is O(1); **no shader recompiles after load** (fixed
@@ -171,6 +221,22 @@ In `water/WaterMaterial.ts` (onBeforeCompile over `MeshStandardMaterial`), patch
 normal at the `<lights_physical_fragment>` chunk, **not** `<lights_fragment_begin>` — the
 PBR material struct is built before the latter, so patching there renders white.
 
+### Missions & campaign (see the `bmf-mission` skill)
+
+A **10-mission linear-unlock campaign** sits on top of the sandbox. A `MissionDef`
+(`missions/types.ts`, `missions/catalog.ts`) is **pure SCENARIO data** (seed, where the fires/
+crews/structures sit, win/lose) — `config.ts` `MISSIONS` holds the mechanic VALUES. `Game` resolves
+a def's placement specs against the seeded `World` (`missions/scenario.ts`) and feeds a per-frame
+`MissionSignals` snapshot to `missions/MissionRuntime.ts`, which latches objectives (`extinguishAll`/
+`extinguishCount`/`deliver`/`evacuate`/`survive`) and fails (`protect`/`timeout`/`fuelOut`).
+`missions/MissionDirector.ts` runs the reactive radio-comms/ignite/wind **beats**. `main.ts` routes
+`?m=<id>` / the `MissionSelect` menu; **switching a mission is a page reload** (no Three.js
+teardown). `missions/progress.ts` persists unlock + best score to localStorage and is authoritative
+for unlocks. **3 helicopters are playable** (`meshes/heliModels.ts` registry + `ui/profile.ts`
+picker; physics is shared). Audio is `audio/HeliAudio.ts` (a recorded rotor loop + procedural
+scoop/drop/win SFX). The optional global leaderboard (`leaderboard/`) posts scores to Supabase via
+env-gated plain `fetch` and degrades to "offline" when unconfigured.
+
 ### Input
 
 `Input.ts` merges keyboard and on-screen touch behind one `read(): ControlState`
@@ -182,29 +248,40 @@ analog stick. Touch overrides keyboard when the stick is engaged.
 
 ### Tuning
 
-`src/three/config.ts` is the **single source of gameplay + visual tuning** — `WORLD3D`
-(size/seed/basins), `FLIGHT` (power/drag/speed/clearances/payload penalties), `BUCKET3D`,
-`LAKES3D`, `FIRE3D`, `QUALITY` presets, `WATER`/`RIPPLE_SLOTS`, `SPRAY`, `CAMERA`. Prefer
-changing values here over hard-coding them in modules. (Note: the legacy Phaser build has
-its own separate `src/constants.ts` — don't confuse the two.)
+`src/three/config.ts` is the **single source of gameplay + visual tuning** — ~30 blocks now:
+`WORLD3D`/`TERRAIN`/`LAKE_SHAPE`/`STREAM`/`BIOMES` (world gen), `FLIGHT`/`WASH`/`BUCKET3D`
+(physics feel), `FIRE3D`/`STRUCTURES`/`COMMUNITIES`/`ROADS` (fire + map), `MISSIONS`/`SCORE`
+(campaign mechanics + scoring), `QUALITY`/`POSTFX`/`GODRAYS`/`GRADE`/`FIRELIGHT`/`EMBERS`/`WATER`/
+`CLOUDS`/`SPRAY`/`SMOKE`/`HAZE` (visuals), `AUDIO`, `CAMERA`, `FAUNA`, `INSTRUMENTS`. Prefer
+changing values here over hard-coding them in modules — the **`bmf-tune`** skill maps "change X" to
+the right block. (Note: the legacy Phaser build has its own separate `src/constants.ts` — don't
+confuse the two.)
 
 ## Conventions
 
 - TypeScript strict mode. Y-up world; the craft flies in the XZ plane, altitude along +Y.
   The heli mesh nose points local **+X**; with `group.rotation.y = yaw`, world-forward is
   `(cos yaw, 0, -sin yaw)`. Airframe is posed `rotation.set(bank, yaw, pitch, 'YZX')`.
-- **Zero binary assets** — procedural geometry + GLSL (ShaderMaterial / onBeforeCompile)
-  + runtime/data textures only. To swap in real art, replace a `meshes/createX()` builder;
-  nothing downstream changes.
-- **Additive / reversible** — this is *not* a git repo. Prefer new files over rewrites;
-  don't delete a thing until its replacement is proven (this is why the Phaser tree lives on).
+- **Procedural-first art** — geometry + GLSL (ShaderMaterial / onBeforeCompile) + runtime/data
+  textures. A *few* licensed downloaded assets exist (glTF helis/wildlife, smoke sprite, rotor mp3)
+  swapped in **behind a procedural fallback** and credited by a `license.txt`/`ATTRIBUTION.txt`
+  beside the file under `public/`. Build procedural unless it truly can't reach the look; then add
+  a credited fallback. To swap in real art, replace a `meshes/createX()` builder — nothing
+  downstream changes. See the **`bmf-asset`** skill.
+- **Additive but git-backed** — this *is* a git repo (auto-deploys on push to `main`). Prefer new
+  files over risky rewrites and don't delete until a replacement is proven, but use normal git
+  hygiene (branch, commit). The legacy Phaser tree is kept as a reference fallback, not loaded.
 - `Training/` and `water-b1-beauty.jpeg` hold concept/reference art — **not** game assets.
 
 ## Roadmap
 
-`docs/ROADMAP.md` is the approved plan: Phase 1 (unified `World` + AGL flight) and the
-B0/B1 visual phases are **done**; remaining work is three parallel tracks — **A** generative
-world (noise → biomes → placement → rivers), **B** visuals (atmosphere, fire glow/bloom,
-particles, terrain shading, models), **C** physics depth (drop dynamics, fire dynamics +
-stakes, rotor wash, assists). World scale is **decided: bounded, streaming-ready behind the
-`World` API.** Consult it before starting a new feature so it lands in the right track.
+`docs/ROADMAP.md` is the approved plan and is **largely shipped**: Phase 1 (unified `World` + AGL
+flight), Track **A** (noise → biomes → placement → rivers), Track **B** (water, atmosphere, bloom,
+smoke/embers, terrain shading, models/foliage + tree LOD), Track **C** (fire dynamics + stakes,
+fire size classes, rotor wash + ground effect), and Track **D** (the 10-mission campaign, which
+also realized the C6 fuel/range model) are all marked **done**. Remaining/optional: C5 assists,
+C6 forward fuel caches, SSAO, and a few polish items — check the roadmap's status markers before
+starting. World scale is **decided: bounded ~1500u, streaming-ready behind the `World` API.**
+Consult it so a new feature lands in the right track. (Live Playwright visual passes are noted as
+"pending" on several phases — the MCP browser was repeatedly locked; see the **`bmf-verify`** skill
+for how to verify live anyway.)

@@ -11,33 +11,21 @@
  *   - Drop water: the DROP button, or Space. A 'bambi' bucket dumps fully on a
  *     single tap; a 'valve' bucket pours while held and pauses on release.
  *
- * A "?" help icon (top-right) toggles an on-screen controls panel; it shows once
- * on first load so a new pilot sees the scheme.
+ * A "?" help icon toggles an on-screen controls panel; it shows once on first
+ * load so a new pilot sees the scheme.
  *
  * Scooping is NOT a button — you descend over a lake until the slung bucket
  * dips into the water and fills (handled in Game from the bucket's height).
+ *
+ * Layout: every cluster is mounted on a responsive, safe-area-aware `anchor()`
+ * (see `ui/theme.ts`) and sized per breakpoint from `onLayout` (see `ui/layout.ts`)
+ * — so the pad clears notches and reflows between portrait/landscape/desktop with
+ * no per-orientation special-casing here.
  */
 import { CAMERA } from './config';
 import type { LookOffset } from './ChaseCamera';
-
-// Design tokens — mirror HUD.ts's glass-cockpit language so the touch controls
-// read as part of the same cockpit as the instruments: dark frosted glass,
-// hairline strokes, one cyan accent. (Kept local to avoid coupling Input → HUD;
-// if these ever drift, lift both into a shared theme module.)
-const UI = {
-  accent: '#67e8ff',
-  accentSoft: 'rgba(103,232,255,0.55)',
-  glass: 'rgba(12,18,25,0.42)', // frosted panel fill (a touch more opaque than the HUD chips so buttons hold up over bright terrain)
-  stroke: 'rgba(255,255,255,0.18)',
-  blur: 'blur(12px) saturate(120%)',
-  shadow: '0 6px 22px rgba(0,0,0,0.40)',
-  text: 'rgba(234,246,255,0.95)',
-  dim: 'rgba(255,255,255,0.5)',
-  warm: '#ff7a45', // the DROP / fire accent
-  warmGlass: 'rgba(44,17,13,0.46)',
-  warmStroke: 'rgba(255,138,110,0.85)',
-  font: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
-};
+import { UI, div, button, setBlur, anchor } from './ui/theme';
+import { onLayout, type LayoutState } from './ui/layout';
 
 export interface ControlState {
   turn: number; // -1 turn left .. +1 turn right
@@ -73,6 +61,22 @@ export class Input {
   private lookYawRate = 0;
   private lookPitchRate = 0;
 
+  // Live joystick base radius (max thumb travel) — recomputed per breakpoint so the
+  // pointer math below tracks the on-screen size.
+  private stickR = 65;
+
+  // Element refs resized by applyLayout().
+  private stickBase!: HTMLDivElement;
+  private stickThumb!: HTMLDivElement;
+  private stickTicks: HTMLDivElement[] = [];
+  private climbBtn!: HTMLDivElement;
+  private descendBtn!: HTMLDivElement;
+  private dropBtn!: HTMLDivElement;
+  private clusterRow!: HTMLDivElement;
+  private eyeBtn!: HTMLDivElement;
+  private eyeSvg!: SVGElement;
+  private helpBtn!: HTMLDivElement;
+
   constructor(parent: HTMLElement) {
     window.addEventListener('keydown', (e) => {
       this.held.add(e.code);
@@ -82,6 +86,7 @@ export class Input {
     window.addEventListener('blur', () => this.held.clear());
 
     this.buildTouchUI(parent);
+    onLayout((s) => this.applyLayout(s)); // size + reflow now and on every resize/orientation change
   }
 
   read(): ControlState {
@@ -119,6 +124,50 @@ export class Input {
     return { active: this.lookActive, yawRate: this.lookYawRate, pitchRate: this.lookPitchRate };
   }
 
+  // --- Responsive sizing ----------------------------------------------------
+
+  /** Size + reflow the controls for the active breakpoint. Anchors handle
+   *  position + safe-area in CSS; this only sets the per-element pixel sizes that
+   *  must be exact (and keeps `stickR` in sync with the pointer math). */
+  private applyLayout(s: LayoutState): void {
+    const k = s.compact ? 0.92 : 1;
+    const set = s.set;
+
+    // Joystick.
+    const R = Math.round(set.stickRadius * k);
+    this.stickR = R;
+    const d = R * 2;
+    Object.assign(this.stickBase.style, { width: `${d}px`, height: `${d}px` });
+    const thumb = Math.round(R * 0.92);
+    Object.assign(this.stickThumb.style, {
+      width: `${thumb}px`,
+      height: `${thumb}px`,
+      marginLeft: `${-thumb / 2}px`,
+      marginTop: `${-thumb / 2}px`,
+    });
+    for (const t of this.stickTicks) t.style.transformOrigin = `1px ${R - 6}px`;
+
+    // Collective + DROP cluster.
+    const cb = Math.round(set.clusterBtn * k);
+    for (const el of [this.climbBtn, this.descendBtn]) {
+      Object.assign(el.style, { width: `${cb}px`, height: `${cb}px`, fontSize: `${Math.round(cb * 0.29)}px` });
+    }
+    const drop = Math.round(set.dropSize * k);
+    Object.assign(this.dropBtn.style, { width: `${drop}px`, height: `${drop}px`, fontSize: `${Math.round(drop * 0.16)}px` });
+    this.clusterRow.style.gap = `${Math.round(set.gap * 1.7)}px`;
+
+    // Free-look eye.
+    const eye = Math.round(set.eyeSize * k);
+    Object.assign(this.eyeBtn.style, { width: `${eye}px`, height: `${eye}px` });
+    const glyph = Math.round(eye * 0.52);
+    this.eyeSvg.setAttribute('width', `${glyph}`);
+    this.eyeSvg.setAttribute('height', `${glyph}`);
+
+    // Help.
+    const help = Math.round(set.helpSize * k);
+    Object.assign(this.helpBtn.style, { width: `${help}px`, height: `${help}px`, fontSize: `${Math.round(help * 0.5)}px` });
+  }
+
   // --- Touch UI -------------------------------------------------------------
 
   private buildTouchUI(parent: HTMLElement): void {
@@ -130,56 +179,51 @@ export class Input {
       zIndex: '10',
     });
 
-    // Virtual joystick (bottom-left) — a frosted dish with hairline axis ticks and
-    // a glowing cyan knob, so it reads as an instrument rather than a flat blob.
-    const R = 65; // base radius
+    this.buildStick(root);
+    this.buildCluster(root);
+    this.buildLookUI(root);
+    this.buildHelpUI(root);
+
+    parent.appendChild(root);
+  }
+
+  /** Virtual joystick (bottom-left) — a frosted dish with hairline axis ticks and a
+   *  glowing cyan knob, so it reads as an instrument rather than a flat blob. */
+  private buildStick(root: HTMLElement): void {
     const base = div({
-      position: 'fixed',
-      left: '32px',
-      bottom: '32px',
-      width: `${R * 2}px`,
-      height: `${R * 2}px`,
+      position: 'relative',
       borderRadius: '50%',
       background: 'radial-gradient(circle at 50% 42%, rgba(24,34,44,0.34), rgba(8,12,18,0.52))',
-      border: `1px solid ${UI.stroke}`,
-      boxShadow: `inset 0 1px 22px rgba(0,0,0,0.42), ${UI.shadow}`,
+      border: `1px solid ${UI.strokeStrong}`,
+      boxShadow: `inset 0 1px 22px rgba(0,0,0,0.42), ${UI.shadowBtn}`,
       pointerEvents: 'auto',
       touchAction: 'none',
     });
     setBlur(base);
-    // Inner guide ring + four faint axis ticks (N/E/S/W) to hint the stick travel.
+    // Inner guide ring.
     base.appendChild(
-      div({
-        position: 'absolute',
-        inset: '20px',
-        borderRadius: '50%',
-        border: '1px solid rgba(255,255,255,0.08)',
-      }),
+      div({ position: 'absolute', inset: '20px', borderRadius: '50%', border: '1px solid rgba(255,255,255,0.08)' }),
     );
+    // Four faint axis ticks (N/E/S/W) — origin set per size in applyLayout().
     for (let i = 0; i < 4; i++) {
-      base.appendChild(
-        div({
-          position: 'absolute',
-          left: '50%',
-          top: '6px',
-          width: '2px',
-          height: '8px',
-          marginLeft: '-1px',
-          borderRadius: '1px',
-          background: 'rgba(103,232,255,0.35)',
-          transformOrigin: `1px ${R - 6}px`,
-          transform: `rotate(${i * 90}deg)`,
-        }),
-      );
+      const tick = div({
+        position: 'absolute',
+        left: '50%',
+        top: '6px',
+        width: '2px',
+        height: '8px',
+        marginLeft: '-1px',
+        borderRadius: '1px',
+        background: 'rgba(103,232,255,0.35)',
+        transform: `rotate(${i * 90}deg)`,
+      });
+      this.stickTicks.push(tick);
+      base.appendChild(tick);
     }
     const thumb = div({
       position: 'absolute',
       left: '50%',
       top: '50%',
-      width: '60px',
-      height: '60px',
-      marginLeft: '-30px',
-      marginTop: '-30px',
       borderRadius: '50%',
       background: 'radial-gradient(circle at 40% 34%, rgba(255,255,255,0.55), rgba(150,182,202,0.24))',
       border: `1.5px solid ${UI.accentSoft}`,
@@ -188,7 +232,8 @@ export class Input {
       pointerEvents: 'none',
     });
     base.appendChild(thumb);
-    root.appendChild(base);
+    this.stickBase = base;
+    this.stickThumb = thumb;
 
     const setKnobActive = (on: boolean) => {
       thumb.style.boxShadow = on
@@ -199,6 +244,7 @@ export class Input {
 
     let stickId = -1;
     const onStick = (e: PointerEvent) => {
+      const R = this.stickR;
       const rect = base.getBoundingClientRect();
       const cx = rect.left + rect.width / 2;
       const cy = rect.top + rect.height / 2;
@@ -233,34 +279,44 @@ export class Input {
     base.addEventListener('pointerup', releaseStick);
     base.addEventListener('pointercancel', releaseStick);
 
-    // Right-hand cluster: a vertical collective pair (climb / descend) sitting just
-    // left of the DROP hero, all sharing one baseline so they read as one group.
-    const climb = button('▲', { right: '148px', bottom: '100px', width: '76px', height: '76px', fontSize: '22px' });
-    const descend = button('▼', { right: '148px', bottom: '16px', width: '76px', height: '76px', fontSize: '22px' });
+    const a = anchor('bottom-left');
+    a.appendChild(base);
+    root.appendChild(a);
+  }
+
+  /** Right-hand cluster: a vertical collective pair (climb / descend) sitting just
+   *  left of the DROP hero, all sharing one baseline so they read as one group. */
+  private buildCluster(root: HTMLElement): void {
+    const climb = button('▲', { position: 'relative' });
+    const descend = button('▼', { position: 'relative' });
     const drop = button('DROP', {
-      right: '28px',
-      bottom: '38px',
-      width: '100px',
-      height: '100px',
+      position: 'relative',
       background: UI.warmGlass,
       borderColor: UI.warmStroke,
       color: '#ffe7df',
-      fontSize: '16px',
       fontWeight: '700',
       letterSpacing: '1.5px',
-      boxShadow: `0 0 18px rgba(255,90,60,0.28), ${UI.shadow}`,
+      boxShadow: `0 0 18px rgba(255,90,60,0.28), ${UI.shadowBtn}`,
     });
+    this.climbBtn = climb;
+    this.descendBtn = descend;
+    this.dropBtn = drop;
     holdButton(climb, (on) => (this.btnUp = on));
     holdButton(descend, (on) => (this.btnDown = on));
     holdButton(drop, (on) => (this.btnDrop = on), UI.warm);
-    root.appendChild(climb);
-    root.appendChild(descend);
-    root.appendChild(drop);
 
-    this.buildLookUI(root);
-    this.buildHelpUI(root);
+    const col = div({ display: 'flex', flexDirection: 'column', gap: 'var(--bmf-gap)', alignItems: 'center' });
+    col.appendChild(climb);
+    col.appendChild(descend);
 
-    parent.appendChild(root);
+    const row = div({ display: 'flex', flexDirection: 'row', alignItems: 'flex-end' });
+    row.appendChild(col);
+    row.appendChild(drop);
+    this.clusterRow = row;
+
+    const a = anchor('bottom-right');
+    a.appendChild(row);
+    root.appendChild(a);
   }
 
   // --- Free-look "eye" button -----------------------------------------------
@@ -268,18 +324,12 @@ export class Input {
   /** An eye icon (right edge, mid-screen) you press-and-drag to orbit the camera.
    *  Drag = orbit SPEED, not distance: a small push held in any direction spins the
    *  view continuously (a full 360° either way), so the button can sit near the edge
-   *  and you never run out of room. Release returns to the default chase pose (the
-   *  ease-back lives in ChaseCamera; here we just zero the rates and drop `active`). */
+   *  and you never run out of room. Release returns to the default chase pose. */
   private buildLookUI(root: HTMLElement): void {
-    const icon = button('', {
-      right: '36px',
-      top: '50%',
-      transform: 'translateY(-50%)',
-      width: '58px',
-      height: '58px',
-      cursor: 'grab',
-    });
+    const icon = button('', { position: 'relative', cursor: 'grab' });
     icon.innerHTML = EYE_SVG;
+    this.eyeBtn = icon;
+    this.eyeSvg = icon.querySelector('svg') as SVGElement;
 
     const R = CAMERA.lookPadRadius;
     let pid = -1;
@@ -320,12 +370,14 @@ export class Input {
     icon.addEventListener('pointerup', end);
     icon.addEventListener('pointercancel', end);
 
-    root.appendChild(icon);
+    const a = anchor('right-center');
+    a.appendChild(icon);
+    root.appendChild(a);
   }
 
   // --- Help / controls hint -------------------------------------------------
 
-  /** A "?" icon (top-right) that toggles a controls panel. Shown once on load so
+  /** A "?" icon (bottom-center) that toggles a controls panel. Shown once on load so
    *  a first-time pilot sees the scheme, then dismissable with any tap. */
   private buildHelpUI(root: HTMLElement): void {
     // Full-screen scrim behind the panel: any tap on it closes the help.
@@ -347,7 +399,7 @@ export class Input {
       padding: '20px 24px',
       borderRadius: '16px',
       background: 'rgba(10,16,22,0.92)',
-      border: `1px solid ${UI.stroke}`,
+      border: `1px solid ${UI.strokeStrong}`,
       color: UI.text,
       fontFamily: UI.font,
       fontSize: '15px',
@@ -357,13 +409,7 @@ export class Input {
     setBlur(panel);
     panel.appendChild(
       div(
-        {
-          fontSize: '13px',
-          fontWeight: '700',
-          letterSpacing: '3px',
-          marginBottom: '14px',
-          color: UI.accent,
-        },
+        { fontSize: '13px', fontWeight: '700', letterSpacing: '3px', marginBottom: '14px', color: UI.accent },
         'CONTROLS',
       ),
     );
@@ -379,24 +425,12 @@ export class Input {
       ),
     );
     panel.appendChild(
-      div(
-        { marginTop: '12px', fontSize: '12px', opacity: '0.6', textAlign: 'center' },
-        'tap to close',
-      ),
+      div({ marginTop: '12px', fontSize: '12px', opacity: '0.6', textAlign: 'center' }, 'tap to close'),
     );
     overlay.appendChild(panel);
 
-    // Bottom-center: the radar moved to the top-right, freeing this spot, and it
-    // stays clear of the joystick (bottom-left) and the climb/drop cluster (bottom-right).
-    const icon = button('?', {
-      left: '50%',
-      bottom: '18px',
-      transform: 'translateX(-50%)',
-      width: '38px',
-      height: '38px',
-      fontSize: '19px',
-      color: UI.dim,
-    });
+    const icon = button('?', { position: 'relative', color: UI.dim, fontWeight: '600' });
+    this.helpBtn = icon;
 
     const setOpen = (open: boolean) => {
       overlay.style.display = open ? 'flex' : 'none';
@@ -407,7 +441,9 @@ export class Input {
     });
     overlay.addEventListener('pointerdown', () => setOpen(false));
 
-    root.appendChild(icon);
+    const a = anchor('bottom-center');
+    a.appendChild(icon);
+    root.appendChild(a);
     root.appendChild(overlay);
 
     setOpen(true); // show the scheme once on first load
@@ -433,56 +469,12 @@ function deadzone(v: number): number {
   return Math.sign(v) * ((a - STICK_DEADZONE) / (1 - STICK_DEADZONE));
 }
 
-// --- DOM helpers ------------------------------------------------------------
-
-function div(style: Partial<CSSStyleDeclaration>, text?: string): HTMLDivElement {
-  const node = document.createElement('div');
-  Object.assign(node.style, style);
-  if (text !== undefined) node.textContent = text;
-  return node;
-}
-
 /** One "Label …… keys" line in the help panel (label left, keys right). */
 function helpRow(parent: HTMLElement, label: string, keys: string): void {
-  const row = div({
-    display: 'flex',
-    justifyContent: 'space-between',
-    gap: '18px',
-    padding: '3px 0',
-  });
+  const row = div({ display: 'flex', justifyContent: 'space-between', gap: '18px', padding: '3px 0' });
   row.appendChild(div({ color: UI.dim }, label));
   row.appendChild(div({ fontWeight: '600', whiteSpace: 'nowrap', color: UI.text }, keys));
   parent.appendChild(row);
-}
-
-/** Add backdrop-blur (with the -webkit- prefix iOS/Safari still needs). */
-function setBlur(node: HTMLElement): void {
-  node.style.backdropFilter = UI.blur;
-  node.style.setProperty('-webkit-backdrop-filter', UI.blur);
-}
-
-function button(label: string, style: Partial<CSSStyleDeclaration>): HTMLDivElement {
-  const node = div({
-    position: 'fixed',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: '50%',
-    background: UI.glass,
-    border: `1px solid ${UI.stroke}`,
-    color: UI.text,
-    fontFamily: UI.font,
-    fontSize: '24px',
-    fontWeight: '600',
-    boxShadow: UI.shadow,
-    userSelect: 'none',
-    pointerEvents: 'auto',
-    touchAction: 'none',
-    ...style,
-  });
-  setBlur(node);
-  node.textContent = label;
-  return node;
 }
 
 /** Wire a div to call `set(true)` while pressed and `set(false)` on release, with

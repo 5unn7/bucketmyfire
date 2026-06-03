@@ -1,7 +1,7 @@
 import { World, CommunitySite } from '../World';
 import type { FireSystem } from '../sim/FireSystem';
 import type { CrewZone } from '../sim/CrewTransport';
-import type { MissionDef, ZonePlacement, SizeClass } from './types';
+import type { MissionDef, ZonePlacement, SizeClass, FirePlacement } from './types';
 import { WORLD3D } from '../config';
 
 /**
@@ -93,15 +93,35 @@ export function seedFires(
   fireBound: number,
 ): void {
   for (const f of mission.fires) {
+    igniteFromPlacement(world, fire, f, wind, fireBound);
+  }
+}
+
+/**
+ * Resolve + ignite ONE FirePlacement. Shared by `seedFires` (the opening blaze) AND the
+ * `MissionDirector`'s flare-up / spot-fire / re-spread beats, so a scripted mid-mission ignition
+ * lands with the exact same vocabulary and fuel-snapping as the authored opening fires.
+ */
+export function igniteFromPlacement(
+  world: World,
+  fire: FireSystem,
+  f: FirePlacement,
+  wind: { vx: number; vz: number },
+  fireBound: number,
+): void {
+  {
     const cls = SIZE_CLASS[f.size];
     if (f.at === 'point') {
       fire.igniteAt(f.x, f.z, cls.radius, cls.heat);
     } else if (f.at === 'nearCommunity') {
       const base = communityPoint(world, f.community);
       const count = f.count ?? 1;
+      // A numeric phase that's consistent whether `community` is an index or 'base' (vs the old
+      // `toString().length`, where 'base' (4) fanned the ring quite differently from index 0/1).
+      const phase = f.community === 'base' ? -1 : f.community;
       for (let i = 0; i < count; i++) {
         // Fan multiple fires around the community at the offset radius (deterministic angles).
-        const ang = (i / count) * Math.PI * 2 + f.community.toString().length;
+        const ang = (i / count) * Math.PI * 2 + phase;
         const off = f.offset ?? 60;
         const target = fuelPointNear(world, base.x + Math.cos(ang) * off, base.z + Math.sin(ang) * off);
         fire.igniteAt(target.x, target.z, cls.radius, cls.heat);

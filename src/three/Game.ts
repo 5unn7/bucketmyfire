@@ -43,13 +43,15 @@ import { createCrewBasket, CrewBasketMesh } from './meshes/crewBasket';
 import { createLandingZone, LandingZoneMesh } from './meshes/landingZone';
 import { CrewTransport, CrewZone } from './sim/CrewTransport';
 import { FuelSim } from './sim/FuelSim';
+import { HealthSim } from './sim/HealthSim';
 import { MissionRuntime } from './missions/MissionRuntime';
+import { MissionDirector } from './missions/MissionDirector';
 import { recordWin } from './missions/progress';
 import { submitScore } from './leaderboard/client';
-import type { MissionDef, MissionSignals } from './missions/types';
+import type { MissionDef, MissionSignals, MissionAction } from './missions/types';
 import type { EndScreenHooks } from './HUD';
-import { seedFires, structurePlan, crewZones } from './missions/scenario';
-import { WORLD3D, FLIGHT, BUCKET3D, FIRE3D, WATER, WASH, SPRAY, SMOKE, EMBERS, INSTRUMENTS, ROADS, MISSIONS, COMMUNITIES } from './config';
+import { seedFires, structurePlan, crewZones, igniteFromPlacement } from './missions/scenario';
+import { WORLD3D, FLIGHT, STARTUP, BUCKET3D, FIRE3D, WATER, WASH, SPRAY, SMOKE, EMBERS, INSTRUMENTS, ROADS, MISSIONS, COMMUNITIES, HEALTH, resolveHeliClass } from './config';
 
 // Instrument calibration factors (world units → real-world HUD units). Derived from
 // the FLIGHT caps so the gauges stay consistent if those are retuned.
@@ -84,7 +86,8 @@ export class Game {
   private readonly input: Input;
   private readonly hud: HUD;
 
-  private readonly heliSim = new HelicopterSim(0, 0);
+  private readonly heliSim: HelicopterSim; // built in the ctor with the selected heli's class
+  private readonly healthSim: HealthSim; // airframe health/damage (crash on zero) — every mission
   private readonly heli: HelicopterMesh;
   private readonly bucketSim: BucketSim;
   private readonly bucket: BucketMesh;
@@ -123,8 +126,15 @@ export class Game {
 
   private water = 0;
   private dumping = false; // 'bambi' bucket: a one-tap dump is in progress (drains to empty)
+  // Cold engine start: every mission begins shut down on the deck at base. The pilot HOLDS the START
+  // dial to spool the rotor from rest to full; flight + the mission clock stay frozen until then.
+  // `rotorRpm` scales the rotor visuals + the audio drone; `engineStarted` latches at full RPM.
+  // Headless QA skips the ritual (engineStarted true, rpm 1, airborne at origin as before).
+  private rotorRpm: number;
+  private engineStarted: boolean;
   private won = false;
   private lost = false; // C3: every structure destroyed → mission failed (latches the sim off)
+  private crashed = false; // health hit zero → airframe destroyed (a Game-level loss, any mission)
   private finalScore = 0; // computed once when the mission ends (win or loss)
   private elapsed = 0; // total seconds, drives fire flicker
   private rippleTimer = 0; // throttles ripple-ring spawns while scooping/dropping
@@ -147,10 +157,15 @@ export class Game {
   private readonly pilotName?: string; // callsign from onboarding (display only)
   private readonly mapId?: string; // selected map id (v1: nominal — one playable map)
   private readonly heliId?: string; // selected helicopter id (v1: nominal — one playable heli)
+  private readonly capacity: number; // this heli's bucket capacity (litres) — from HELI_CLASSES
+  private readonly fillRate: number; // this heli's scoop fill rate (litres/sec) — from HELI_CLASSES
 
   // --- Campaign layer -------------------------------------------------------
   private readonly mission: MissionDef;
   private readonly runtime: MissionRuntime; // objective/fail evaluation (engine-agnostic)
+  private readonly director: MissionDirector; // reactive beats: comms / flare-ups / wind shifts
+  private readonly fireBound = WORLD3D.size / 2 - 40; // valid-fire-site radius (matches scenario seeding)
+  private inBriefing = true; // pre-flight briefing card up → sim + clock paused until BEGIN
   private readonly payloadMode: 'water' | 'crew';
   private readonly bucketType: 'bambi' | 'valve';
   private readonly crew?: CrewTransport; // crew sling transport (crew payload missions)
@@ -165,14 +180,34 @@ export class Game {
   private missionElapsed = 0; // seconds the mission has been active (stops on win/lose)
   private readonly end?: EndScreenHooks;
 
-  constructor(container: HTMLElement, tier: QualityTier, mission: MissionDef, profile?: Profile, end?: EndScreenHooks) {
+  constructor(
+    container: HTMLElement,
+    tier: QualityTier,
+    mission: MissionDef,
+    profile?: Profile,
+    end?: EndScreenHooks,
+    opts: { skipColdStart?: boolean } = {},
+  ) {
     this.mission = mission;
     this.end = end;
+    // Cold start (every mission) unless a headless QA boot opts out (?qa / ?autostart): then the
+    // aircraft is already running and airborne at origin, so the existing autopilot/teleport flows
+    // and screenshots work unchanged.
+    this.engineStarted = opts.skipColdStart ?? false;
+    this.rotorRpm = this.engineStarted ? 1 : 0;
     this.payloadMode = mission.payload ?? 'water';
     this.bucketType = mission.bucket ?? (BUCKET3D.type as 'bambi' | 'valve');
     this.pilotName = profile?.name;
     this.mapId = profile?.mapId;
     this.heliId = profile?.heliId;
+    // The selected airframe's class drives its feel (flight multipliers), payload (capacity/fill),
+    // and durability (toughness). Unknown/undefined → the 205A-1 baseline. The flight sim + the
+    // health sim take it now; capacity/fillRate replace the shared BUCKET3D constants below.
+    const heliClass = resolveHeliClass(this.heliId);
+    this.capacity = heliClass.capacity;
+    this.fillRate = heliClass.fillRate;
+    this.heliSim = new HelicopterSim(0, 0, heliClass);
+    this.healthSim = new HealthSim(heliClass.toughness);
     const aspect = container.clientWidth / container.clientHeight;
 
     // Build the seeded world FIRST (every mesh/sim below reads from it), the mission wind,
@@ -185,6 +220,13 @@ export class Game {
       const base = this.world.getCommunity('base');
       return base ? { x: base.x, z: base.z } : null;
     })();
+
+    // Cold start: park the airframe shut-down ON THE DECK at the base (the depot pad) so the pilot
+    // spools the rotors and lifts off from home. (QA's skip leaves it airborne at origin as before.)
+    if (!this.engineStarted) {
+      const p = this.depotXZ ?? { x: 0, z: 0 };
+      this.heliSim.land(p.x, p.z, this.world.flightFloorAt(p.x, p.z));
+    }
 
     // Resolve the mission's building plan UP FRONT so the cleared yards — AND the radar place-
     // name labels — line up with where buildings actually stand (the depot's base + each defended
@@ -339,13 +381,16 @@ export class Game {
     // World). A fixed pool of fire meshes (size maxActive) is built once and synced
     // to the sim's active fires each frame — fires never add/remove scene objects.
     const fireBound = WORLD3D.size / 2 - 40;
-    this.fireSystem = new FireSystem({
-      rng: this.world.rng,
-      groundHeightAt: (x, z) => this.world.groundHeightAt(x, z),
-      isOverWater: (x, z) => this.world.isOverWater(x, z),
-      fuelAt: (x, z) => this.world.placement.fuelAt(x, z),
-      pickSite: (minFromOrigin) => this.world.placement.fireSite(this.world.rng, fireBound, minFromOrigin),
-    });
+    this.fireSystem = new FireSystem(
+      {
+        rng: this.world.rng,
+        groundHeightAt: (x, z) => this.world.groundHeightAt(x, z),
+        isOverWater: (x, z) => this.world.isOverWater(x, z),
+        fuelAt: (x, z) => this.world.placement.fuelAt(x, z),
+        pickSite: (minFromOrigin) => this.world.placement.fireSite(this.world.rng, fireBound, minFromOrigin),
+      },
+      { spreadScale: this.mission.fire?.spreadScale }, // per-mission spread pacing (FIRE3D baseline × this)
+    );
     for (let i = 0; i < FIRE3D.maxActive; i++) {
       const m = createFire();
       m.light.visible = false; // perf: many dynamic lights force recompiles (see meshes/fire.ts)
@@ -437,6 +482,7 @@ export class Game {
     if (this.mission.fuel) this.fuelSim = new FuelSim();
 
     this.runtime = new MissionRuntime(this.mission);
+    this.director = new MissionDirector(this.mission); // reactive arc (briefing/beats/debrief)
 
     this.chase = new ChaseCamera(aspect, this.world);
     this.input = new Input(container);
@@ -456,6 +502,14 @@ export class Game {
     );
     // C5: hand the radar the live fire field so it shades the burnt area (and the live front).
     this.hud.setBurnField(this.fireSystem.fieldView());
+    // The reactive arc opens with a pre-flight DISPATCH briefing card; the sim + mission clock stay
+    // paused (inBriefing) until the pilot hits BEGIN, then the authored 'start' beat radios in.
+    this.hud.showBriefing(this.mission, () => {
+      this.inBriefing = false;
+      // Cold start: the briefing hands off to the engine-start dial — hold it to spool the rotors
+      // before the aircraft will fly. (Already running under a QA skip → straight to flight.)
+      if (!this.engineStarted) this.hud.showEngineStart();
+    });
   }
 
   get camera(): THREE.PerspectiveCamera {
@@ -485,6 +539,8 @@ export class Game {
       wash: this.wash.surface,
       groundEffect: this.wash.groundEffect,
       water: this.water,
+      health: this.healthSim.health, // airframe health 0..1 (for headless damage/crash assertions)
+      crashed: this.crashed,
       firesLeft: this.fireSystem.activeCount,
       burnedOut: this.fireSystem.burnedOut, // C3: fires that consumed their fuel and self-extinguished
       lakes: this.lakes.map((l) => ({ x: l.x, z: l.z, r: l.r })),
@@ -536,7 +592,26 @@ export class Game {
     const dtMs = dt * 1000;
     this.elapsed += dt;
     const c = this.input.read();
-    const frozen = this.won || this.lost; // mission over → freeze the sim (win or loss)
+
+    // --- Cold engine start: after BEGIN, the rotors sit still until the pilot HOLDS the START dial
+    // to spool them to full RPM. Hold accumulates, releasing bleeds it back down; rotor visuals +
+    // audio scale by `rotorRpm` so the disc and the drone wind up together. Flight and the mission
+    // clock stay frozen (below) until the engine is up, then the authored 'start' beat radios in. ---
+    if (!this.engineStarted && !this.inBriefing) {
+      const holding = this.hud.engineHold;
+      const rate = holding ? dt / STARTUP.holdSeconds : -dt / STARTUP.spinDownSeconds;
+      this.rotorRpm = Math.max(0, Math.min(1, this.rotorRpm + rate));
+      this.hud.setEngineStart(this.rotorRpm, holding);
+      if (this.rotorRpm >= 1) {
+        this.engineStarted = true;
+        this.hud.hideEngineStart();
+      }
+    }
+
+    // Freeze the sim when the mission is over (win/loss), while the pre-flight briefing card is up,
+    // or while the engine is still spooling — so the fire doesn't spread and the mission clock doesn't
+    // run before the pilot hits BEGIN and brings the rotors up to speed.
+    const frozen = this.won || this.lost || this.inBriefing || !this.engineStarted;
 
     if (!frozen) {
       this.missionElapsed += dt; // mission clock (drives survive/timeout; stops on win/lose)
@@ -544,7 +619,7 @@ export class Game {
       // AGL flight: the altitude band rides the World floor under the heli, and a
       // full bucket flies heavy (weight coupling).
       const floorY = this.world.flightFloorAt(this.heliSim.position.x, this.heliSim.position.z);
-      const payloadRatio = this.water / BUCKET3D.capacity;
+      const payloadRatio = this.water / this.capacity;
       // Wind drift in world units/s — pushes the heli over the ground (headwind hurts).
       const windX = this.wind.vx * FLIGHT.windSpeed;
       const windZ = this.wind.vz * FLIGHT.windSpeed;
@@ -579,14 +654,15 @@ export class Game {
     const g = this.heli.group;
     g.position.copy(this.heliSim.position);
     g.rotation.set(this.heliSim.bank, this.heliSim.yaw, this.heliSim.pitch, 'YZX');
-    this.heli.rotor.rotation.y += FLIGHT.rotorSpin * dt;
-    this.heli.tailRotor.rotation.x += FLIGHT.tailRotorSpin * dt;
+    // Rotors spin at a rate scaled by the live RPM (0 on the cold deck → full once spooled).
+    this.heli.rotor.rotation.y += FLIGHT.rotorSpin * this.rotorRpm * dt;
+    this.heli.tailRotor.rotation.x += FLIGHT.tailRotorSpin * this.rotorRpm * dt;
 
     // --- Swing the bucket, pose it, and redraw the rope between heli and bucket ---
     // "Submerged" is read from the World water plane under the bucket's XZ (using
     // last frame's position — one-frame lag is imperceptible), and is consistent
     // with the flight floor and every other height query.
-    const fillRatio = this.water / BUCKET3D.capacity;
+    const fillRatio = this.water / this.capacity;
     const wl = this.world.waterLevelAt(this.bucketSim.position.x, this.bucketSim.position.z);
     const dipping = wl !== null && this.bucketSim.position.y <= wl + BUCKET3D.dipThreshold;
     // Collision surface under the bucket (terrain raised to any treetop it'd catch on).
@@ -646,8 +722,8 @@ export class Game {
 
     // --- Scoop is physical: fill while the bucket is dipped into a lake (water payload only) ---
     let scooping = false;
-    if (!frozen && this.payloadMode === 'water' && dipping && this.water < BUCKET3D.capacity) {
-      this.water = Math.min(BUCKET3D.capacity, this.water + BUCKET3D.refillRate * (dtMs / 1000));
+    if (!frozen && this.payloadMode === 'water' && dipping && this.water < this.capacity) {
+      this.water = Math.min(this.capacity, this.water + this.fillRate * (dtMs / 1000));
       scooping = true;
     }
 
@@ -685,7 +761,17 @@ export class Game {
     if (!frozen) {
       this.fireSystem.update(dtMs, this.wind);
       this.structures.update(dtMs, this.fireSystem.active());
-      this.runtime.update(this.missionSignals());
+      const sig = this.missionSignals();
+      this.runtime.update(sig);
+      // Reactive arc: fire the mission's authored beats for the current state, then execute their
+      // actions. This is the ONLY mission layer that touches the world/HUD/audio (the director is pure).
+      if (!this.director.spent) {
+        const actions = this.director.update(sig, this.runtime);
+        // Apply any WIND shift FIRST, so a same-beat ignite lays its new fire along the NEW wind
+        // (the ignite reads wind.intendedVx/Vz — the heading the gust is now easing toward).
+        for (let i = 0; i < actions.length; i++) if (actions[i].do === 'wind') this.runMissionAction(actions[i]);
+        for (let i = 0; i < actions.length; i++) if (actions[i].do !== 'wind') this.runMissionAction(actions[i]);
+      }
       if (this.runtime.state !== 'active') this.latchOutcome();
     }
     // C5: repack the live fire field into the shared DataTexture the terrain chars/glows from —
@@ -711,6 +797,28 @@ export class Game {
       } else if (m.group.visible) {
         m.group.visible = false;
       }
+    }
+    // --- Airframe health / damage: drain from fire-heat (a LOW pass over a blaze), bucket scrape,
+    // overspeed, and hard landings; repair grounded/slow at the depot. Zero health → crash (instant
+    // fail, any mission). Fire-heat is gated on flying low over the column — attack it from up high. ---
+    if (!frozen) {
+      let fireHeat = 0;
+      if (this.heliSim.agl < HEALTH.fireAgl) {
+        for (let i = 0; i < activeFires.length; i++) {
+          const f = activeFires[i];
+          const fall = 1 - Math.hypot(f.x - washX, f.z - washZ) / HEALTH.fireRadius;
+          if (fall > 0) fireHeat += (f.intensity / FIRE3D.maxIntensity) * fall;
+        }
+      }
+      const maxSp = this.heliSim.effectiveMaxSpeed;
+      this.healthSim.update(dt, {
+        fireHeat,
+        scrapeSpeed: this.bucketSim.contact ? this.bucketSim.dragSpeed : 0,
+        overspeed: maxSp > 0 ? Math.max(0, (this.heliSim.speed - maxSp) / maxSp) : 0,
+        impact: this.heliSim.landingImpact,
+        repairing: this.canRefuel(),
+      });
+      if (this.healthSim.dead && !this.won && !this.lost) this.crashLoss();
     }
     // Sync the structure meshes: char + collapse with damage, ember while burning.
     const sList = this.structures.list;
@@ -865,7 +973,9 @@ export class Game {
         : this.scoopHint(overWater, scooping);
     this.hud.update({
       water: this.water,
-      waterMax: BUCKET3D.capacity,
+      waterMax: this.capacity,
+      health: this.healthSim.health,
+      healthLow: this.healthSim.low,
       firesLeft,
       hint,
       won: this.won,
@@ -899,6 +1009,19 @@ export class Game {
       fuel: this.fuelSim ? this.fuelSim.fuel : undefined,
       fuelLow: this.fuelSim ? this.fuelSim.low : undefined,
       zones: this.crew ? this.crew.views.map((v) => ({ x: v.x, z: v.z, active: v.active, done: v.done })) : undefined,
+      // Debrief summary (only meaningful at outcome; the banner reads it when it shows).
+      debrief:
+        this.won || this.lost
+          ? {
+              firesOut: Math.max(0, this.firesInitial - firesLeft),
+              firesTotal: this.firesInitial,
+              structSaved: this.structures.aliveCount,
+              structTotal: this.structures.total,
+              crewDone: this.crew?.delivered ?? 0,
+              crewTotal: this.crew?.total ?? 0,
+              timeSec: this.missionElapsed,
+            }
+          : undefined,
     });
 
     // --- Audio: constant rotor drone whose blade-slap swells with effort, plus
@@ -911,7 +1034,24 @@ export class Game {
       scooping,
       dropping,
       won: this.won,
+      rpm: this.rotorRpm, // cold-start spool: the drone winds up with the rotor
     });
+  }
+
+  /** Execute one reactive-beat action — the thin Game-side bridge from the pure director to the
+   *  world / HUD / audio. Posts a radio line (+ squelch), ignites a flare-up, or shifts the wind. */
+  private runMissionAction(a: MissionAction): void {
+    if (a.do === 'comms') {
+      const urgency = a.urgency ?? 'info';
+      this.hud.pushComms(a.speaker, a.text, urgency);
+      this.audio.playSquelch(urgency === 'info' ? 'info' : urgency === 'warn' ? 'warn' : 'alert');
+    } else if (a.do === 'ignite') {
+      // Use the wind the gust is easing TOWARD (intended), so a fire lit in the same beat as a wind
+      // shift orients to the NEW wind, not the pre-shift vector.
+      igniteFromPlacement(this.world, this.fireSystem, a.place, { vx: this.wind.intendedVx, vz: this.wind.intendedVz }, this.fireBound);
+    } else if (a.do === 'wind') {
+      this.wind.shiftTo(a.angle, a.strengthScale, a.ease);
+    }
   }
 
   /** Build the per-frame snapshot the mission evaluator reads (Game already tracks all of it). */
@@ -927,6 +1067,8 @@ export class Game {
       elapsed: this.missionElapsed,
       fuel: this.fuelSim?.fuel ?? 1,
       starved: this.fuelSim?.starved ?? false,
+      threat: this.structures.threat,
+      windAngle: this.wind.angle,
     };
   }
 
@@ -947,6 +1089,21 @@ export class Game {
         timeS: this.missionElapsed,
       });
     }
+  }
+
+  /**
+   * Airframe destroyed (health hit zero): force a mission loss this instant, on ANY mission. Sets the
+   * same fields latchOutcome() sets for a loss; `frozen` (which includes `lost`) then freezes the sim
+   * and the HUD shows the loss banner next frame. A WARNING comms line + alert squelch sell the mayday.
+   * Kept Game-level (not a MissionRuntime fail) so it's universal and the campaign verifier is untouched.
+   */
+  private crashLoss(): void {
+    if (this.won || this.lost) return;
+    this.crashed = true;
+    this.lost = true;
+    this.finalScore = this.runtime.score;
+    this.hud.pushComms('warning', 'Mayday — airframe down!', 'alert');
+    this.audio.playSquelch('alert');
   }
 
   /** Fuel missions: grounded + slow within the depot radius → refuelling this frame. */
@@ -1010,7 +1167,7 @@ export class Game {
 
   /** Status line: guide the player to dip, or show the fill in progress. */
   private scoopHint(overWater: boolean, scooping: boolean): string | null {
-    if (this.water >= BUCKET3D.capacity) return null;
+    if (this.water >= this.capacity) return null;
     if (scooping) return 'Scooping…';
     if (overWater) return 'Descend (J) to fill the bucket';
     return null;

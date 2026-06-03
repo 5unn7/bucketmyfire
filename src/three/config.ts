@@ -119,16 +119,19 @@ export const BIOMES = {
 // pitches with the throttle. Altitude (collective) carries its own inertia so
 // climbs/descents feel weighty.
 export const FLIGHT = {
-  enginePower: 140, // horizontal thrust (units/s^2) in the input direction
+  enginePower: 105, // horizontal thrust (units/s^2) in the input direction (lowered with maxSpeed so
+  // the build-up to cruise stays weighty instead of snapping straight to the lower cap)
   linearDrag: 1.6, // horizontal air resistance: higher = settles faster
-  maxSpeed: 41, // horizontal AIRSPEED cap (units/s) → 110 kt at the coherent ~4.5 ft/unit
-  // scale (see INSTRUMENTS / maxClearance). At this scale a world-diagonal crossing is
-  // ~50s and 110 kt reads as a real cruise; the kt calibration tracks this cap.
+  maxSpeed: 30, // horizontal AIRSPEED cap (units/s). LOWERED from 41 so the whole game flies SLOWER:
+  // at this pace you maneuver more, so the per-heli handling spread (the docile, precise 205 vs the
+  // fast, slippery Black Hawk) actually READS instead of blurring together at speed. A world-diagonal
+  // crossing is now ~70s. The kt calibration (INSTRUMENTS.topSpeedKt) tracks this cap, lowered with it.
   // Wind blows the airframe over the ground: ground velocity = airspeed + wind, so a
   // headwind cuts your ground speed (you crawl into it) and a tailwind shoves you
   // along — a light heli gets pushed around. Scales the unit Wind vector to units/s.
-  windSpeed: 8, // world units/s of drift at full wind strength (lowered: wind nudges, doesn't shove)
-  windHoldSpeed: 12, // airspeed (units/s) below which wind fades out → a hover holds station
+  windSpeed: 6, // world units/s of drift at full wind strength (scaled down with maxSpeed so wind's
+  // pull RELATIVE to airspeed is unchanged — it still nudges, doesn't shove)
+  windHoldSpeed: 9, // airspeed (units/s) below which wind fades out → a hover holds station
   // (so releasing the stick doesn't let the wind carry you away)
   // Helicopter-style steering: the stick TURNS the nose (yawRate) and pushes
   // forward/back along it (variable throttle). The nose no longer chases velocity.
@@ -151,7 +154,8 @@ export const FLIGHT = {
   // not just a cosmetic tilt. Tucking the nose tilts the thrust vector forward and down,
   // so a dive surges AND descends — and a committed dive can outrun level cruise. Pull UP
   // collective to flare out of it. Raise these for a more aggressive, weightier dive.
-  pitchThrust: 90, // extra forward accel (units/s^2) per radian of nose-down disc — the speed surge
+  pitchThrust: 66, // extra forward accel (units/s^2) per radian of nose-down disc — the speed surge
+  // (scaled down with maxSpeed so a committed dive stays proportional to the new, slower cruise)
   pitchDive: 36, // sink rate (units/s) per radian of nose-down BEYOND the cruise trim — the descent
   diveSpeedBoost: 0.28, // top-speed cap raised by up to this fraction in a full committed dive
   // Collective: the pilot raises/lowers altitude directly. To scoop you simply
@@ -182,7 +186,7 @@ export const FLIGHT = {
   // --- Weight coupling: a full bucket flies heavy and sluggish, recovers on drop ---
   // Each penalty is the fraction shaved off the parameter at a full (ratio = 1) bucket.
   payloadAccelPenalty: 0.35, // engine thrust loss when loaded
-  payloadSpeedPenalty: 0.18, // top-speed loss when loaded → 110 kt empty drops to ~90 kt full
+  payloadSpeedPenalty: 0.18, // top-speed loss when loaded → 80 kt empty drops to ~66 kt full
   payloadClimbPenalty: 0.4, // climb-rate loss when loaded — the main "heavy to fly" effect
   // A full bucket sags DOWN only slightly — it doesn't auto-descend, it just settles
   // a touch at neutral collective and takes longer to spool the climb (responsePenalty).
@@ -190,6 +194,17 @@ export const FLIGHT = {
   // as water drains.
   payloadSink: 1.5, // gentle downward drift (units/s) at a full bucket (small on purpose)
   payloadResponsePenalty: 0.5, // fraction of vertical responsiveness lost when full (laggier collective)
+};
+
+// Cold engine start. Every mission begins shut down ON THE DECK at the base: the pilot HOLDS the
+// START dial to spool the main rotor from rest to full RPM before the aircraft will fly. Flight and
+// the mission clock stay frozen until the rotors are up (the authored 'start' radio beat fires the
+// instant they are), and the rotor visuals + the audio drone both scale by the live RPM so the disc
+// and the sound wind up together. Release the dial early and the RPM bleeds back down — you must
+// hold continuously. Headless QA (?qa / ?autostart) skips the ritual and flies immediately.
+export const STARTUP = {
+  holdSeconds: 5, // continuous hold on START to bring the rotor from 0 → full RPM
+  spinDownSeconds: 3, // RPM bleeds back toward 0 over this long when START is released before full
 };
 
 // Rotor downwash + ground effect (Track C4). The column of air a helicopter throws
@@ -217,10 +232,12 @@ export const WASH = {
 
 // Instrument calibration — DISPLAY ONLY. Physics runs in world units (the feel is
 // tuned there); the HUD converts to real-world numbers for a light water-bomber
-// (AS350-class): 110 kt empty / ~90 kt full airspeed, 2500 ft ceiling. The factors
+// (AS350-class): 80 kt empty / ~66 kt full airspeed, 2500 ft ceiling. The factors
 // are derived from the FLIGHT caps so changing those keeps the gauges consistent.
 export const INSTRUMENTS = {
-  topSpeedKt: 110, // empty FLIGHT.maxSpeed maps to this on the airspeed tape
+  topSpeedKt: 80, // empty FLIGHT.maxSpeed maps to this on the airspeed tape (lowered WITH maxSpeed,
+  // 41→30, keeping the world→kt scale constant so the slower aircraft reads honestly; the faster
+  // Black Hawk still tapes well above this)
   ceilingFt: 2500, // top of the AGL band (FLIGHT.maxClearance) maps to this on the altimeter
   maxVsiFpm: 1600, // full-collective climb (FLIGHT.climbSpeed) maps to this on the VSI
   lowAltFt: 250, // altimeter reads LOW (red) below this AGL
@@ -294,6 +311,74 @@ export const BUCKET3D = {
   spillDragMin: 4, // drag speed (units/s) below which a scrape is gentle enough not to slop water
   spillPerDrag: 0.5, // litres slopped per (unit/s) of drag speed, per second, while scraping with water
 };
+
+// --- Per-helicopter classes (the "feel" + payload + durability of each airframe) ----------
+// All three playable helis used to SHARE the FLIGHT/BUCKET3D tuning — selecting one only swapped
+// the mesh. A `HeliClass` gives each its own character: the base FLIGHT/BUCKET3D numbers are
+// calibrated to the hero Bell 205A-1, so the 205 is all-1.0 BASELINE and the others scale RELATIVE
+// to it (multipliers applied at point-of-use in HelicopterSim; payload penalties still stack on top).
+// Absolute fields (capacity/fillRate/toughness) replace the shared BUCKET3D constants for that heli.
+//   - Bell 205A-1 : the trainer — simplest/most forgiving, slowest, smallest bucket (the baseline).
+//   - Bell 212    : medium across the board.
+//   - UH-60       : supreme but a HANDFUL — fastest, biggest bucket (2× the 205), toughest airframe,
+//                   but hard to control (twitchy yaw + LOW drag = lots of momentum → it overshoots).
+export interface HeliClass {
+  id: string;
+  // --- Bucket payload (absolute) ---
+  capacity: number; // litres the bucket holds (205 = half the Black Hawk)
+  fillRate: number; // litres/sec while scooping (a bigger bucket fills a touch slower)
+  // --- Flight feel (multipliers over FLIGHT.*) ---
+  powerMul: number; // enginePower (horizontal accel)
+  speedMul: number; // maxSpeed top-speed cap (205 is the slowest)
+  climbMul: number; // climbSpeed
+  yawMul: number; // yawRate — HIGH = the nose whips around (twitchy)
+  dragMul: number; // linearDrag — LOW = carries momentum/overshoots → "hard to control/place"
+  controlMul: number; // controlResponse input smoothing — LOW = floatier/laggier to place precisely
+  collectiveMul: number; // collectiveResponse — LOW = heavier/laggier vertical
+  // --- Airframe ---
+  toughness: number; // divides incoming health damage (HIGH = a durable airframe)
+}
+
+export const HELI_CLASSES: Record<string, HeliClass> = {
+  'bell-205a1': {
+    id: 'bell-205a1', capacity: 100, fillRate: 45,
+    powerMul: 1.0, speedMul: 1.0, climbMul: 1.0, yawMul: 1.0, dragMul: 1.0, controlMul: 1.0, collectiveMul: 1.0,
+    toughness: 1.0,
+  },
+  'bell-212': {
+    id: 'bell-212', capacity: 150, fillRate: 55,
+    powerMul: 1.15, speedMul: 1.12, climbMul: 1.1, yawMul: 1.05, dragMul: 0.92, controlMul: 0.95, collectiveMul: 0.95,
+    toughness: 1.15,
+  },
+  'uh-60': {
+    id: 'uh-60', capacity: 200, fillRate: 70,
+    powerMul: 1.4, speedMul: 1.34, climbMul: 1.25, yawMul: 1.25, dragMul: 0.78, controlMul: 0.82, collectiveMul: 0.82,
+    toughness: 1.3,
+  },
+};
+
+/** Resolve a heli's class; unknown/undefined → the 205A-1 baseline (mirrors swapInModel's fallback). */
+export function resolveHeliClass(id?: string): HeliClass {
+  return HELI_CLASSES[id ?? ''] ?? HELI_CLASSES['bell-205a1'];
+}
+
+// Airframe health / damage. A new durability mechanic on TOP of the sandbox: the heli takes damage
+// from flying low through fire, slamming down (hard landings), dragging the bucket through terrain at
+// speed, and overspeed/over-stress; at zero health it CRASHES (instant mission fail), and it REPAIRS
+// at the depot (alongside refuel). Per-heli `toughness` (HELI_CLASSES) divides the damage. Engine-
+// agnostic state lives in sim/HealthSim.ts (numbers only, like FuelSim). Tuned FORGIVING on purpose —
+// the campaign was balanced without it, so normal flying rarely crashes; you must abuse the airframe.
+export const HEALTH = {
+  lowWarn: 0.3, // health gauge flashes below this
+  fireDmgPerSec: 0.12, // health/sec at full fire-heat exposure while low over a blaze
+  fireAgl: 14, // only cooked below this radar altitude over a fire (fly the column from up high)
+  fireRadius: 24, // horizontal reach (units) a fire cooks the heli (≈ WASH.fanRadius)
+  scrapeDmgPerUnit: 0.012, // health/sec per (unit/s) of bucket scrape speed ABOVE BUCKET3D.spillDragMin
+  overspeedDmgPerSec: 0.1, // health/sec at full over-stress (a sustained dive past the speed cap)
+  hardLandingSink: 14, // sink rate (units/s) a floor contact must beat to be a SAFE settle (no damage)
+  impactDmgPerUnit: 0.05, // health lost per (unit/s) of sink ABOVE hardLandingSink on a hard landing
+  repairPerSec: 0.1, // health/sec restored at the depot (slower than refuel — no free instant patch)
+} as const;
 
 // Lake centers (XZ); water height is sampled from the terrain at runtime.
 export const LAKES3D = [
@@ -383,18 +468,21 @@ export const FIRE3D = {
   wetRegrowSuppress: 0.85, // fraction of regrow removed in a fully-wet cell (0 = no effect, 1 = frozen)
   // Spread is SLOW and DIRECTIONAL: a creeping flank, a faster head running downwind. Base
   // time-to-ignite ≈ igniteThreshold / (spreadRate·heat·weight) − preheat decay, so these two
-  // set the creep. Flat/no-wind ≈ a cell every ~5s (~2.5 u/s); downwind head ≈ ~1s (~11 u/s).
-  spreadRate: 0.34, // pre-heat deposited per (neighbour · heat · sec) — lower = slower creep (eased from 0.5)
-  igniteThreshold: 1.25, // pre-heat a cell must accumulate before it ignites — higher = slower (raised from 1.0)
-  preheatDecay: 0.25, // per-sec bleed of un-ignited pre-heat (a stalled flank cools instead of creeping forever)
-  windSpread: 2.6, // extra pre-heat multiplier for a downwind neighbour (raised: the head RUNS with
-  // the wind — reading the wind and attacking the head upwind becomes the core skill)
-  slopeSpread: 1.8, // extra pre-heat multiplier for an uphill neighbour (fire climbs decisively)
+  // set the creep. These are the CALM BASELINE (eased hard — "spread was insane"): flat/no-wind
+  // ≈ a cell every ~11s (~1 u/s); downwind head ≈ ~4s (~3 u/s). Each MISSION then dials the pace
+  // up or down with `fire.spreadScale` (catalog.ts → FireSystem) — a near-static tutorial spot at
+  // 0.25, a screaming firestorm at 1.3 — so spread is tuned PER MISSION instead of one hot rate.
+  spreadRate: 0.2, // pre-heat deposited per (neighbour · heat · sec) — lower = slower creep (eased 0.34 → 0.2)
+  igniteThreshold: 1.7, // pre-heat a cell must accumulate before it ignites — higher = slower (raised 1.25 → 1.7)
+  preheatDecay: 0.34, // per-sec bleed of un-ignited pre-heat (raised: a stalled flank cools off faster, so creep dies)
+  windSpread: 1.7, // extra pre-heat multiplier for a downwind neighbour (eased 2.6 → 1.7: the head still
+  // RUNS with the wind, but no longer outpaces the player — reading the wind stays the core skill)
+  slopeSpread: 1.3, // extra pre-heat multiplier for an uphill neighbour (eased 1.8 → 1.3 — fire still climbs)
   slopeRef: 6, // height diff (units) between cells that counts as a "full" slope for spread
   wetResist: 4, // a doused (wet) cell's ignition threshold is multiplied up to this — firebreaks hold
   minFuel: 0.06, // a cell below this fuel can't ignite or sustain (front stalls in thin fuel)
-  spotChance: 0.004, // per hot cell, per sec: throw an ember ahead — RARE, and only in strong wind (rarer: slower spread)
-  // (gated in code on wind strength + a very hot source). This is what stops "fireworks everywhere".
+  spotChance: 0.0018, // per hot cell, per sec: throw an ember ahead — RARE, only in strong wind (eased 0.004 →
+  // 0.0018, and scaled by the mission's spreadScale). Gated in code on wind + a very hot source — stops "fireworks".
   spotDist: 34, // how far downwind (units) a spotting ember lands — ~3 cells: stays VISUALLY
   // ATTACHED to the head (reads as the front advancing, not a new fire teleporting across the map)
   litresToClear: 135, // water litres that fully zero a cell's heat (raised from 55). A full 100L

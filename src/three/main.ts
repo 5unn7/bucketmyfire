@@ -144,7 +144,10 @@ function bootMission(mission: MissionDef): void {
   renderer.shadowMap.enabled = tier.current.shadows;
   tier.onChange((s) => renderer.setPixelRatio(Math.min(window.devicePixelRatio, s.dprCap)));
 
-  const game = new Game(container, tier, mission, defaultProfile(), endHooks(mission));
+  // Headless QA (?qa drives __game; ?autostart boots straight into a mission) skips the cold-start
+  // ritual — the autopilot/teleport/screenshot flows expect a running, airborne aircraft.
+  const skipColdStart = params.has('qa') || params.has('autostart');
+  const game = new Game(container, tier, mission, defaultProfile(), endHooks(mission), { skipColdStart });
 
   // Bloom post-process (B3) — fire/sun glow, render path chosen by tier at load.
   const composer = new Composer(renderer, game.scene, game.camera, tier);
