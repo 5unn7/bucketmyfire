@@ -35,6 +35,11 @@ const ROTOR_LOAD_GAIN = 0.18; // extra volume at full effort
 const ROTOR_RATE_LOAD = 0.05; // tiny playback-rate rise at full effort (≤5%)
 const ROTOR_SPOOL_RATE = 0.5; // playback-rate floor at zero RPM — the cold-start spool winds it UP to 1.0
 const CROSSFADE_SEC = 0.35; // seam crossfade length
+// Shave this much off EACH end of the raw flying loop before it's made seamless. The recorded clip
+// ramps in/out at its boundaries; since the seam crossfade blends the tail INTO the head, an
+// untrimmed end smears that artifact across every loop. Trimming first keeps the drone clean. (Local,
+// not in config, to match the other rotor constants here.)
+const ROTOR_TRIM_SEC = 0.25;
 const COMMS_GAIN = 0.16; // radio-squelch blip level (the "kshh" before a dispatch line)
 const START_GAIN = 0.9; // engine-start crank one-shot level
 
@@ -45,6 +50,8 @@ export class HeliAudio {
   private rotorSrc: AudioBufferSourceNode | null = null;
   private rotorBuffer: AudioBuffer | null = null;
   private startBuffer: AudioBuffer | null = null; // ~7s engine-start crank (one-shot)
+  private startSrc: AudioBufferSourceNode | null = null; // the crank currently sounding (so we can cut it)
+  private startGain: GainNode | null = null; // its gain — ramped to 0 for a click-free abort
 
   private started = false; // a user gesture has unlocked + nodes are running
   private pendingStart = false; // unlock happened before the clip finished loading
@@ -97,7 +104,8 @@ export class HeliAudio {
     await Promise.all([
       this.decode(ROTOR_LOOP_URL)
         .then((b) => {
-          this.rotorBuffer = this.makeSeamlessLoop(b);
+          // Trim the clip's ramped ends BEFORE the seam crossfade (which blends tail→head), then loop.
+          this.rotorBuffer = this.makeSeamlessLoop(this.trimEnds(b, ROTOR_TRIM_SEC));
           if (this.pendingStart) this.startRotor();
         })
         .catch(() => {}),
@@ -168,19 +176,24 @@ export class HeliAudio {
     dropping: boolean;
     won: boolean;
     rpm?: number; // main-rotor spin fraction 0..1 (cold start spools it up); default 1 = full
+    engineHolding?: boolean; // START dial currently held — gates the crank so a release cuts it
   }): void {
     if (!this.started) return;
     const now = this.ctx.currentTime;
     const ease = AUDIO.paramEaseSec;
 
     const rpm = p.rpm === undefined ? 1 : Math.max(0, Math.min(1, p.rpm));
+    const holding = p.engineHolding ?? false;
 
-    // Cold-start crank: while the rotor is spooling (rpm in the open interval 0..1), fire the
-    // ~7s engine-start clip once. The skip-cold-start path (rpm pinned at 1) is never in (0,1),
-    // so it stays silent. We keep retrying until it actually plays — covering the rare case
-    // where the clip hasn't finished decoding the frame spool-up begins; `playEngineStart`
-    // latches `engineStartFired` only on success, so a release/re-hold never replays it.
-    if (!this.engineStartFired && rpm > 0 && rpm < 1) this.playEngineStart();
+    // Cold-start crank: fire the ~7s engine-start clip while the pilot HOLDS the START dial and the
+    // rotor is spooling (rpm in the open interval 0..1). The clip is a one-shot the player can't
+    // pause, so we gate it on `holding`: release the dial before full RPM and we cut the crank (with
+    // a short fade) and re-arm it, so a fresh hold re-cranks from the top. A continuous hold to full
+    // RPM plays through naturally (rpm reaches 1 → the cut below no longer applies). The skip-cold-
+    // start path (rpm pinned at 1, never holding) stays silent. We keep retrying the fire each frame
+    // until it actually plays — covering the rare case where the clip hasn't finished decoding yet.
+    if (!this.engineStartFired && holding && rpm > 0 && rpm < 1) this.playEngineStart();
+    else if (this.engineStartFired && !holding && rpm < 1) this.abortEngineStart();
 
     const speedN = Math.min(1, p.speed / p.maxSpeed);
     const effort = Math.min(
@@ -212,6 +225,7 @@ export class HeliAudio {
    * Timed to the START hold (`STARTUP.holdSeconds`), so a continuous hold lands the crank's
    * tail right as the rotor reaches full RPM; the flying loop swells up underneath it. No
    * loop treatment — it plays once through its own gain on the master bus (so 'M' mutes it).
+   * We keep the source + gain so an early release can cut it (`abortEngineStart`).
    */
   private playEngineStart(): void {
     if (!this.started || !this.startBuffer) return; // not unlocked / not decoded yet — retry next frame
@@ -221,7 +235,38 @@ export class HeliAudio {
     g.gain.value = START_GAIN;
     src.connect(g).connect(this.master);
     src.start();
+    // Self-clear when it ends naturally (a hold held to full RPM), so a stale handle isn't aborted.
+    src.onended = (): void => {
+      if (this.startSrc === src) {
+        this.startSrc = null;
+        this.startGain = null;
+      }
+    };
+    this.startSrc = src;
+    this.startGain = g;
     this.engineStartFired = true; // latch only on success
+  }
+
+  /**
+   * Cut a crank still sounding when the pilot lets go of the START dial before full RPM — a short
+   * gain fade (click-free) then stop, and re-arm `engineStartFired` so the next hold re-cranks.
+   */
+  private abortEngineStart(): void {
+    if (!this.startSrc) return;
+    const t = this.ctx.currentTime;
+    try {
+      if (this.startGain) {
+        this.startGain.gain.cancelScheduledValues(t);
+        this.startGain.gain.setValueAtTime(this.startGain.gain.value, t);
+        this.startGain.gain.linearRampToValueAtTime(0.0001, t + 0.08);
+      }
+      this.startSrc.stop(t + 0.1);
+    } catch {
+      /* already stopped — ignore */
+    }
+    this.startSrc = null;
+    this.startGain = null;
+    this.engineStartFired = false; // re-arm: a fresh hold re-cranks from the top
   }
 
   // === One-shots (procedural, no assets) ==================================
@@ -325,6 +370,26 @@ export class HeliAudio {
   }
 
   // === Helpers ============================================================
+
+  /**
+   * Slice `trim` seconds off BOTH ends of a decoded clip, returning a fresh shorter buffer.
+   * Drops the recording's ramped-in/out boundaries so the seam crossfade has clean material to
+   * loop. Clamped so a too-large trim can never invert the length (keeps at least a third of the
+   * clip); a non-positive trim returns the clip untouched.
+   */
+  private trimEnds(src: AudioBuffer, trim: number): AudioBuffer {
+    const sr = src.sampleRate;
+    const cut = Math.max(0, Math.floor(trim * sr));
+    const outLen = src.length - cut * 2;
+    if (cut === 0 || outLen < Math.floor(src.length / 3)) return src; // nothing to do / would over-trim
+    const out = this.ctx.createBuffer(src.numberOfChannels, outLen, sr);
+    for (let ch = 0; ch < src.numberOfChannels; ch++) {
+      const inD = src.getChannelData(ch);
+      const outD = out.getChannelData(ch);
+      for (let i = 0; i < outLen; i++) outD[i] = inD[cut + i];
+    }
+    return out;
+  }
 
   private makeNoiseBuffer(seconds: number): AudioBuffer {
     const len = Math.floor(this.ctx.sampleRate * seconds);

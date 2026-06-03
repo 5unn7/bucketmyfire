@@ -1135,6 +1135,7 @@ export class Game {
       dropping,
       won: this.won,
       rpm: this.rotorRpm, // cold-start spool: the drone winds up with the rotor
+      engineHolding: !this.engineStarted && this.hud.engineHold, // crank only sounds while START is held
     });
   }
 
