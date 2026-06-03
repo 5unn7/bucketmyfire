@@ -1371,12 +1371,12 @@ export class HUD {
       const oy = p.y - R;
       const dist = Math.hypot(ox, oy);
       if (dist <= reach) {
-        ctx.fillStyle = 'rgba(255,122,69,0.30)';
+        ctx.fillStyle = 'rgba(255,42,42,0.32)'; // RED halo — a fire MARKER, distinct from the orange burn shade
         ctx.beginPath();
         ctx.arc(p.x, p.y, 5.5, 0, Math.PI * 2);
         ctx.fill();
-        ctx.fillStyle = UI.fire;
-        ctx.shadowColor = UI.fire;
+        ctx.fillStyle = UI.fireMarker;
+        ctx.shadowColor = UI.fireMarker;
         ctx.shadowBlur = 8;
         ctx.beginPath();
         ctx.arc(p.x, p.y, 2.6, 0, Math.PI * 2);
@@ -1389,7 +1389,7 @@ export class HUD {
         ctx.save();
         ctx.translate(rx, ry);
         ctx.rotate(a);
-        ctx.fillStyle = UI.fire;
+        ctx.fillStyle = UI.fireMarker;
         ctx.beginPath();
         ctx.moveTo(2, 0);
         ctx.lineTo(-3, -3);

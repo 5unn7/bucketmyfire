@@ -348,9 +348,14 @@ export const DROP_PHYSICS = {
   coverWetFloor: 0.6, // FLOOR on the wet-firebreak coverage — keep the HOLDING LINE broad even on edge hits
   // (decouples "edge doesn't extinguish" — good — from "edge doesn't hold a line" — a separate, riskier nerf)
   // Intensity resistance (DEAD-ON-HOT): a hotter cell absorbs less knock per litre → multiple passes.
-  hotResist: 0.4, // diminishing-returns strength (0=flat/old, 1=max). 0.4 → a max-heat cell needs ~2 passes
-  // (eased from 0.55 — combined with the small footprint + no self-extinguish it was too grindy to kill a fire)
+  hotResist: 0.2, // diminishing-returns strength (0=flat/old, 1=max). Eased 0.4 → 0.2 so a hot crown cell
+  // no longer shrugs off water — a dead-on full pass drives even a max-heat cell to 0 (extinguish, don't grind).
   hotResistFloor: 0.3, // least a fully-hot cell is knocked vs flat — hot cells still take real damage, just resist
+  // A cell whose heat a drop knocks to/below this is OUT for good: it drops to 0 and SCORCHES to mud (locked —
+  // a doused-out cell can't re-light). This is what makes a fire reliably SHRINK as you bucket it and turns the
+  // orange ground BLACK, instead of leaving a faint re-flaring ember. Above the lock (edge clip / thin high drop)
+  // a cell keeps its heat and re-flares (slowly, per FIRE3D.cellRegrow). Set ≈ the lowest live heat that still reads.
+  extinguishLock: 0.25,
   // Wind drift of the impact point (falling water is carried downwind; more the higher you drop).
   fallG: 42, // gravity (u/s²) for fall-TIME only. = SPRAY.gravity so the douse offset & the visible spray fall in lockstep
   v0Down: 16, // initial downward droplet speed (= SPRAY.speedDown) for the exact fall-time form
@@ -533,8 +538,11 @@ export const FIRE3D = {
   blobCells: 24, // coarse grid the field is clustered into → up to maxActive rendered "fires"
   seedHeat: 0.2, // heat a freshly-ignited cell starts at (0..1) — a weak lick that must build
   seedRadius: 1, // radius (cells) of the disc lit when a fire is seeded/spotted — start as a SPOT
-  cellRegrow: 0.16, // heat/sec a burning cell climbs toward its fuel ceiling (lowered again: a fire
-  // builds more gradually + a knockdown buys longer relief before it climbs back; pairs with wetRegrowSuppress below)
+  cellRegrow: 0.03, // heat/sec a burning cell climbs toward its fuel ceiling — kept VERY LOW so a fire
+  // barely re-heats: a cell you knock down but don't fully clear creeps back only slowly, so dousing makes
+  // monotonic progress instead of racing a re-flare, and a fresh ignition builds gradually. (A wet cell's
+  // regrow is near-frozen on top of this via wetRegrowSuppress below.) Established blazes still START hot —
+  // missions seed them at an explicit per-size-class heat (scenario SIZE_CLASS), this only governs re-climb.
   cellBurnRate: 0, // fuel/sec a cell consumes at full heat. 0 = fires NEVER self-extinguish: a fire
   // burns until the PLAYER waters it out (you can't win by waiting). Kept as a lever — raise it to let
   // neglected fronts slowly starve again, but the design intent now is a persistent, player-fought blaze.
@@ -565,9 +573,11 @@ export const FIRE3D = {
   // 0.0018, and scaled by the mission's spreadScale). Gated in code on wind + a very hot source — stops "fireworks".
   spotDist: 34, // how far downwind (units) a spotting ember lands — ~3 cells: stays VISUALLY
   // ATTACHED to the head (reads as the front advancing, not a new fire teleporting across the map)
-  litresToClear: 135, // water litres that fully zero a cell's heat (raised from 55). A full 100L
-  // bambi dump now KNOCKS DOWN a full-heat cell (1.0 → ~0.26) instead of deleting it — a big blaze
-  // re-flares and needs several passes, while a young/cool fire (heat ≲0.7) still dies in one drop.
+  litresToClear: 45, // water litres that fully zero a cell's heat. A full 100L bambi dump (knockRef≈2.2)
+  // now CLEARS the cells it lands on dead-on — every cell in the disc is driven to 0, SCORCHES to mud, and
+  // locks out (can't re-light). So actively bucketing a fire actually puts it OUT (was 135 > the 100L tank
+  // → mathematically impossible to clear a hot cell). A fire wider than one ~20u disc is walked pass by pass
+  // (≈1–5 buckets by size); bigger buckets (212/UH-60) clear more per pass. Pairs with DROP_PHYSICS.extinguishLock.
   cellsForFullSize: 46, // burning cells in a cluster that read as footprint size 1 (raised so flame/
   // smoke scale tracks the now-larger sustained fronts)
   cellsPerFire: 8, // cells ≈ one "fire" for the burned-out / doused scoring counters

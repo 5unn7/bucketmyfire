@@ -415,21 +415,22 @@ export class FireSystem {
           const resist = 1 - DROP_PHYSICS.hotResist * (1 - DROP_PHYSICS.hotResistFloor) * h;
           let knock = (knockRef * cover * resist * effMul) / dilute;
           if (knock > knockRef) knock = knockRef; // a tight drop can never beat the flat reference
-          const after = Math.max(0, h - knock);
+          let after = Math.max(0, h - knock);
+          // EXTINGUISH: water that knocks a cell to/below `extinguishLock` puts it OUT for good — it drops
+          // to 0 heat and SCORCHES to mud (locked: a doused-out cell can't re-ignite — scorch blocks Pass-B).
+          // Since fires don't self-extinguish, this is what makes a fire monotonically SHRINKABLE: every cell
+          // a drop clears stays out and the orange ground turns black. A cell only PARTLY knocked down (still
+          // above the lock — an edge clip or a thin/high drop) keeps its heat and re-flares (slowly now).
+          if (after <= DROP_PHYSICS.extinguishLock) {
+            after = 0;
+            this.extinguishedCells++;
+            res.cellsExtinguished++;
+            this.scorch[i] = 1;
+          }
           res.heatPresent += h;
           res.heatRemoved += h - after;
           res.cellsHit++;
           if (h > res.peakHeatHit) res.peakHeatHit = h;
-          if (after <= 0) {
-            this.extinguishedCells++;
-            res.cellsExtinguished++;
-            // Water that drives a cell fully OUT chars + locks it: a watered-out cell can't re-ignite
-            // (scorch blocks Pass-B reignition). Since fires don't self-extinguish, this is what makes
-            // a fire monotonically SHRINKABLE — every cell you fully douse stays out. A cell only KNOCKED
-            // DOWN (a hot or edge cell that doesn't reach 0) is NOT scorched, so it re-flares and needs
-            // another pass (concerns 2 & 3 intact).
-            this.scorch[i] = 1;
-          }
           this.heat[i] = after;
         }
         this.preheat[i] = 0; // water kills pending ignition across the whole disc (hard zero)

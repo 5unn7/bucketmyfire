@@ -207,8 +207,9 @@ function trippingSignals(elapsed: number): MissionSignals {
   };
 }
 
-// --- Suppression-math guards: prove EDGE falloff + hot-resist are LIVE on a synthetic max-heat cell
-// (flat, fully-fuelled ground). Locks the new douse model against a silent regression to flat-knock. ---
+// --- Suppression-math guards: prove dousing actually EXTINGUISHES and that a drop's footprint is
+// BOUNDED (a wide fire needs several passes) on a synthetic max-heat cell (flat, fully-fuelled ground).
+// Locks the rebalanced douse model: a full dead-on pass clears its disc → fire shrinks ~1–5 buckets. ---
 {
   const mk = () =>
     new FireSystem({
@@ -226,27 +227,30 @@ function trippingSignals(elapsed: number): MissionSignals {
   const half = WORLD3D.size / 2;
   const cc = -half + (Math.floor(half / cellSize) + 0.5) * cellSize; // a cell center near the origin
 
-  // (a) a dead-on pass on a h=1.0 cell must NOT zero it (resist holds → a re-flare residual remains).
+  // (a) a dead-on full pass on a h=1.0 cell EXTINGUISHES it — actively bucketing a fire puts it OUT (the
+  // cell is driven to 0 and scorch-locks to mud). This is the rebalanced intent (litresToClear=45, hotResist=0.2,
+  // extinguishLock): water that lands dead-on clears the core, it doesn't just grind a re-flare residual.
   const a = mk();
   a.igniteAt(cc, cc, 4, 1.0);
   const before = a.heatAt(cc, cc);
   a.douse(cc, cc, BUCKET3D.dropRadius, litres, 1);
   const centerResidual = a.heatAt(cc, cc);
   ok(
-    'suppression: dead-on hot cell is not zeroed in one pass (resist live)',
-    before > 0.9 && centerResidual > 0.2 && centerResidual < before,
+    'suppression: dead-on hot cell is EXTINGUISHED in one full pass (dousing is effective)',
+    before > 0.9 && centerResidual <= 0.05,
     `before=${before.toFixed(2)} after=${centerResidual.toFixed(2)}`,
   );
-  // (b) within ONE drop, a cell near the RIM keeps MORE heat than the center cell (radial falloff live).
+  // (b) a drop's footprint is BOUNDED — a cell well OUTSIDE the ~20u disc keeps its full heat while the
+  // centre is cleared, so a fire wider than one disc is walked pass by pass (≈1–5 buckets), not deleted map-wide.
   const b = mk();
-  b.igniteAt(cc, cc, 4, 1.0); // a wide patch so there are lit cells at center AND near the rim
+  b.igniteAt(cc, cc, 4, 1.0); // a wide patch so there are lit cells both inside AND outside the disc
   b.douse(cc, cc, BUCKET3D.dropRadius, litres, 1);
   const atCenter = b.heatAt(cc, cc);
-  const atRim = b.heatAt(cc + BUCKET3D.dropRadius * 0.85, cc); // a cell near the disc edge
+  const outside = b.heatAt(cc + 3 * cellSize, cc); // ~3 cells (≈35u) out, beyond the ~20u drop radius
   ok(
-    'suppression: a rim cell keeps more heat than the center cell (falloff live)',
-    atRim > atCenter + 0.15,
-    `rim=${atRim.toFixed(2)} center=${atCenter.toFixed(2)}`,
+    'suppression: the drop footprint is bounded — fire outside the disc survives (multi-pass)',
+    outside > 0.9 && atCenter <= 0.05,
+    `outside=${outside.toFixed(2)} center=${atCenter.toFixed(2)}`,
   );
 }
 

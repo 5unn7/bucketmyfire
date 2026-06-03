@@ -25,6 +25,9 @@ export const UI = {
   dim: 'rgba(255,255,255,0.45)',
   warn: '#ff5d4d',
   fire: '#ff7a45',
+  fireMarker: '#ff2a2a', // RADAR fire blip — a vivid RED so a fire MARKER never reads as the orange
+  // burning-front shade of the burn overlay (the two were both orange and bled together). Distinct from
+  // `warn` (the amber-red RTB / burning-structure highlight) so a fire dot ≠ a threatened building.
   warm: '#ff7a45', // Input's name for the DROP / fire accent (== fire)
   water: '#56c4ee',
   // Surfaces
