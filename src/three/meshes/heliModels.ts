@@ -17,8 +17,9 @@ import { HelicopterMesh } from './helicopter';
  *
  *   - Bell 205A-1 (uh1)  : node Object_13 = main rotor, Object_3 = tail rotor; the
  *     export is untextured (specular-glossiness clay) so we bake the fire livery on.
- *   - Bell 212 (bell212) : a SINGLE merged mesh — no separable rotor — so we keep its
- *     own textures and mount PROCEDURAL spinning main + tail rotors on top.
+ *   - Bell 212 (bell212) : a SINGLE merged mesh — no separable rotor node — so we keep its
+ *     own textures and SLICE the real main blades out of the mesh by a top-slab Y plane so
+ *     they spin; the (unseparable) tail rotor gets a small procedural one.
  *   - UH-60 Black Hawk   : separable main + tail rotor nodes; keeps its own (textured)
  *     US Army livery. NOTE: GLTFLoader sanitizes node names (whitespace → '_'), so the
  *     specs use the sanitized form ('main rotor prop_7' → 'main_rotor_prop_7').
@@ -43,8 +44,11 @@ export interface HeliModelSpec {
   tailRotorNode?: string;
   /** Untextured export → bake the white-over-red fire-bomber livery as vertex colors. */
   repaintLivery?: boolean;
-  /** Model has no separable rotor(s) → mount procedural spinning main + tail rotors. */
-  procRotors?: boolean;
+  /** Merged single-mesh model: slice the MAIN rotor out of the mesh by a geometry-local
+   *  Y plane (triangles whose centroid Y ≥ this) so the model's real blades spin. */
+  splitRotorMinY?: number;
+  /** Model has no separable/sliceable tail rotor → mount a small procedural one. */
+  procTailRotor?: boolean;
 }
 
 // Vite serves `public/` at the site root (base: './'); BASE_URL makes the path
@@ -63,14 +67,17 @@ export const HELI_MODELS: Record<string, HeliModelSpec> = {
     tailRotorNode: 'Object_3',
     repaintLivery: true,
   },
-  // Bell 212 — a single merged mesh (Bell204_0). Fore/aft runs along the model's Z,
-  // so a −90° yaw swings it onto +X. No separable rotor → procedural spinning rotors.
+  // Bell 212 — a single merged mesh (Bell204_0). Fore/aft runs along the model's Z, so a
+  // −90° yaw swings it onto +X. No separable rotor node, but the main blades sit in a clean
+  // top slab (geometry-local Y ≥ 0.77, above the cabin/fin) — slice them out so the REAL
+  // blades spin. The tail rotor isn't separable, so it gets a small procedural one.
   'bell-212': {
     url: BASE + 'models/bell212/scene.gltf',
     yaw: -Math.PI / 2,
     targetLen: 11,
     fuselageNode: 'Bell204_0',
-    procRotors: true,
+    splitRotorMinY: 0.77,
+    procTailRotor: true,
   },
   // UH-60M Black Hawk (low poly). Nose at +Z (the tail rotor sits at −Z), so a +90°
   // yaw points it down +X. Both rotors are separable and keep the model's own livery.
@@ -165,25 +172,27 @@ export function swapInModel(heli: HelicopterMesh, heliId?: string): void {
       group.add(model, rotor);
 
       // --- Main rotor -------------------------------------------------------
-      // Separable node → re-parent it (spins about the mast). Otherwise mount a procedural
-      // rotor on top. setFromObject yields WORLD centers, but the handles parent under
-      // `group`, whose matrix is non-identity by the time this async load resolves (the heli
-      // has spawned at altitude and is being flown). Map into group-local so the pivots ride
-      // with the airframe instead of orbiting a stale world point.
+      // Either a separable node, or — for a merged single-mesh model — the blades sliced
+      // out of the mesh by a top-slab Y plane. Either way we spin the model's REAL geometry.
+      // setFromObject yields WORLD centers, but the handles parent under `group`, whose matrix
+      // is non-identity by the time this async load resolves (the heli has spawned at altitude
+      // and is being flown). Map into group-local so the pivot rides with the airframe instead
+      // of orbiting a stale world point. The blade slab is symmetric about the mast, so its
+      // bbox center IS the hub — the same pivot logic serves both cases.
       model.updateWorldMatrix(true, true);
-      const rotorMesh = spec.mainRotorNode ? model.getObjectByName(spec.mainRotorNode) : null;
+      const rotorMesh =
+        (spec.mainRotorNode ? model.getObjectByName(spec.mainRotorNode) : null) ??
+        (spec.splitRotorMinY !== undefined ? sliceRotorMesh(model, spec.splitRotorMinY) : null);
       if (rotorMesh) {
+        model.updateWorldMatrix(true, true); // a sliced mesh was just added — refresh matrices
         const rc = new THREE.Box3().setFromObject(rotorMesh).getCenter(new THREE.Vector3());
         rotor.position.copy(group.worldToLocal(rc));
         rotor.attach(rotorMesh); // keeps world transform; now spins about the mast axis
-      } else if (spec.procRotors) {
-        rotor.position.set(0, height, 0); // group-local top of the model
-        addProcMainRotor(rotor, spec.targetLen * 0.55);
       }
 
       // --- Tail rotor -------------------------------------------------------
-      // Separable node → re-parent it; otherwise a procedural tail rotor at the boom tip.
-      // Either way it hangs off a −90°-yawed mount so the caller's tailRotor.rotation.x
+      // Separable node → re-parent it; otherwise a small procedural tail rotor at the boom
+      // tip. Either way it hangs off a −90°-yawed mount so the caller's tailRotor.rotation.x
       // sweeps the world X-Y plane (a sideways-facing anti-torque disc).
       model.updateWorldMatrix(true, true);
       const tailMesh = spec.tailRotorNode ? model.getObjectByName(spec.tailRotorNode) : null;
@@ -191,7 +200,7 @@ export function swapInModel(heli: HelicopterMesh, heliId?: string): void {
         const hc = new THREE.Box3().setFromObject(tailMesh).getCenter(new THREE.Vector3());
         mountTailRotor(group, tailRotor, group.worldToLocal(hc));
         tailRotor.attach(tailMesh); // keeps world transform; now spins about the hub
-      } else if (spec.procRotors) {
+      } else if (spec.procTailRotor) {
         // Nose points +X, so the tail tip is at −X; seat the rotor up at boom height.
         const tailX = whole.min.x - fc.x; // group-local boom tip after the centering shift
         mountTailRotor(group, tailRotor, new THREE.Vector3(tailX + spec.targetLen * 0.05, height * 0.66, 0));
@@ -224,22 +233,56 @@ function mountTailRotor(group: THREE.Object3D, tailRotor: THREE.Object3D, posLoc
   tailRotor.rotation.set(0, 0, 0);
 }
 
-/** Hub + crossed blade pair + faint disc, centered at the parent origin; spins about Y. */
-function addProcMainRotor(parent: THREE.Object3D, radius: number): void {
-  const hub = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.07, radius * 0.09, radius * 0.14, 8), PROC_HUB);
-  hub.castShadow = true;
-  parent.add(hub);
-  for (let i = 0; i < 2; i++) {
-    const b = new THREE.Mesh(new THREE.BoxGeometry(radius * 2, radius * 0.02, radius * 0.085), PROC_BLADE);
-    b.castShadow = true;
-    b.rotation.y = (i * Math.PI) / 2; // crossed pair → reads as a disc blur when spinning
-    parent.add(b);
+/**
+ * Slice the MAIN-ROTOR triangles out of a merged single-mesh model into their own mesh so
+ * the model's REAL blades can spin. Rotor triangles are those whose centroid sits in the top
+ * slab (geometry-local Y ≥ minY) — above the cabin and fin. The new mesh SHARES the source
+ * attribute buffers (just a different index), so it's cheap and pixel-identical in place; the
+ * source mesh keeps the body triangles. Returns the rotor mesh (added as a sibling so it
+ * inherits the model transform), or null if nothing qualified.
+ */
+function sliceRotorMesh(model: THREE.Object3D, minY: number): THREE.Mesh | null {
+  let src: THREE.Mesh | null = null;
+  model.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (m.isMesh && !src) src = m;
+  });
+  if (!src) return null;
+  const mesh = src as THREE.Mesh;
+  const geo = mesh.geometry;
+  const pos = geo.attributes.position;
+  const index = geo.index;
+  const triCount = index ? index.count / 3 : pos.count / 3;
+  const vi = (t: number, k: number): number => (index ? index.getX(t * 3 + k) : t * 3 + k);
+
+  const bodyIdx: number[] = [];
+  const rotorIdx: number[] = [];
+  for (let t = 0; t < triCount; t++) {
+    const a = vi(t, 0);
+    const b = vi(t, 1);
+    const c = vi(t, 2);
+    const cy = (pos.getY(a) + pos.getY(b) + pos.getY(c)) / 3;
+    (cy >= minY ? rotorIdx : bodyIdx).push(a, b, c);
   }
-  const disc = new THREE.Mesh(
-    new THREE.CylinderGeometry(radius, radius, 0.02, 24),
-    new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.9, metalness: 0, transparent: true, opacity: 0.06, side: THREE.DoubleSide }),
-  );
-  parent.add(disc);
+  if (!rotorIdx.length) return null;
+
+  // Two sub-geometries over the SAME attribute buffers, distinguished only by index.
+  const sub = (idx: number[]): THREE.BufferGeometry => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', pos);
+    if (geo.attributes.normal) g.setAttribute('normal', geo.attributes.normal);
+    if (geo.attributes.uv) g.setAttribute('uv', geo.attributes.uv);
+    g.setIndex(idx);
+    g.computeBoundingSphere();
+    return g;
+  };
+  mesh.geometry = sub(bodyIdx); // the source mesh now draws only the body
+  const rotorMesh = new THREE.Mesh(sub(rotorIdx), mesh.material);
+  rotorMesh.name = 'mainRotorSliced';
+  rotorMesh.castShadow = true;
+  rotorMesh.receiveShadow = true;
+  (mesh.parent ?? model).add(rotorMesh); // sibling → same transform, renders in place
+  return rotorMesh;
 }
 
 /** Small hub + crossed blade pair built in the local Y-Z plane so it spins about X. */
