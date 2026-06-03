@@ -63,9 +63,9 @@ export const CAMPAIGN: MissionDef[] = [
     id: 'crew-insertion',
     index: 2,
     name: 'Crew Insertion',
-    brief: 'Sling three fire crews from the base out to the landing zones on the ridge before the front builds. Fly low and slow over each LZ to set them down.',
+    brief: 'Ferry three fire crews from the base out to the landing zones on the ridge before the front builds. Land at each LZ, let the crew off, then go back for the next.',
     intel:
-      'No fire to fight today — yet. Three initial-attack crews need inserting on the ridge before the front builds. Sling each crew from base out to its landing zone — Alpha, Bravo, Charlie — and fly low and slow over the pad to set them down.',
+      'No fire to fight today — yet. Three initial-attack crews need inserting on the ridge before the front builds. Pick a crew up at base, fly out to its landing zone — Alpha, Bravo, Charlie — and SET DOWN on the cleared pad to let them off. One crew at a time; mind the narrow clearing.',
     difficulty: 2,
     seed: 55,
     payload: 'crew',
@@ -172,9 +172,9 @@ export const CAMPAIGN: MissionDef[] = [
     id: 'evacuation',
     index: 6,
     name: 'Evacuation',
-    brief: 'No time to fight this one. Pick up the families from three cut-off cabins and fly them back to base before the fire reaches them.',
+    brief: 'No time to fight this one. Land at three cut-off cabins, get the families aboard, and fly them back to base before the fire reaches them.',
     intel:
-      'No time to fight this one — the fire is already at the doorsteps. Three families are cut off in cabins on the lakeshore. Sling them out to the base one at a time, and beat the flames to the last door.',
+      'No time to fight this one — the fire is already at the doorsteps. Three families are cut off in cabins on the lakeshore. Set down at each cabin, get them aboard, and fly them back to base one at a time — beat the flames to the last door.',
     difficulty: 3,
     seed: 377,
     payload: 'crew',

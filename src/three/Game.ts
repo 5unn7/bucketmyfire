@@ -731,7 +731,6 @@ export class Game {
         this.crew.update(dt, this.heliSim.position.x, this.heliSim.position.z, this.heliSim.agl, this.heliSim.speed);
       }
       const views = this.crew.views;
-      const carrying = this.crew.carrying;
       const delivered = this.crew.delivered;
       const total = this.crew.total;
       for (let i = 0; i < this.lzMeshes.length; i++) {

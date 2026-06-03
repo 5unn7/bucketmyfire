@@ -295,7 +295,8 @@ export const BUCKET3D = {
   type: 'bambi' as 'bambi' | 'valve',
   dumpRate: 200, // litres/sec while a latched 'bambi' dump runs — full tank gone in ~0.5s
   dropRate: 120, // litres/sec while a 'valve' bucket is held open — a tank lasts ~0.8s
-  dropRadius: 26, // world units a drop douses around the bucket
+  dropRadius: 15, // world units a drop douses around the bucket — a tight, realistic bucket footprint
+  // (was 26; the predicted-impact ring mirrors this, so the ring shrank with it)
   dipThreshold: 1.2, // bucket counts as "in the water" within this of the surface
   // Physical scoop tip: while the bucket is submerged it eases a forward tilt and a
   // small downward dip offset, then levels out when it lifts clear. Vertical follow
@@ -336,8 +337,8 @@ export const DROP_PHYSICS = {
   bandHi: 70, // top of the sweet spot — at/below: density=1, radius≈dropRadius // a low water-bomber run
   ceilAGL: 200, // at/above here the load is mist: min density, max spread // ~900ft — you SEE it drift, it does ~nothing
   // Footprint growth with height (multipliers on BUCKET3D.dropRadius).
-  tightRadiusMul: 0.85, // radius mult on the deck — still a USABLE footprint (0.85·26≈22u ≈ today), not a pinhole
-  wideRadiusMul: 2.2, // radius mult at/above ceilAGL — a wide thin veil (2.2·26≈57u) // spread thin
+  tightRadiusMul: 0.9, // radius mult on the deck — a tight, dense splash (0.9·15≈13.5u)
+  wideRadiusMul: 1.7, // radius mult at/above ceilAGL — a wider thin veil (1.7·15≈25.5u), but still realistic
   // Effectiveness (per-litre density) above the band.
   minDensityMul: 0.12, // density at ceilAGL — mist does ~12% per-litre work // the "too high = useless" cap
   areaFalloff: 1.0, // 0 = density-only high penalty, 1 = full 1/areaRatio per-cell dilution as the disc widens

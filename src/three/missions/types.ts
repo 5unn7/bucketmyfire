@@ -57,7 +57,7 @@ export interface StructureSpec {
   extraCabins?: number; // lone bush cabins via World.placement.fireSite
 }
 
-/** A crew/cargo sling endpoint. `load` = pick up here; `unload` = drop off here. */
+/** A crew transport endpoint (land here to work it). `load` = pick up here; `unload` = drop off here. */
 export type ZoneRole = 'load' | 'unload';
 export interface ZonePlacement {
   role: ZoneRole;
@@ -149,7 +149,7 @@ export interface MissionDef {
   // "spread according to the mission" is dialled, mirroring `wind.strengthScale`. (FireSystem reads it.)
   fire?: { spreadScale?: number };
   bucket?: 'bambi' | 'valve';
-  payload?: 'water' | 'crew'; // crew → bucket hidden, the rope slings a crew basket; scoop/drop off
+  payload?: 'water' | 'crew'; // crew → no bucket/longline; the heli LANDS at zones to board/unload crew
   fuel?: boolean; // enable the FuelSim range model
   fires: FirePlacement[];
   structures?: StructureSpec;
