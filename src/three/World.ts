@@ -162,6 +162,14 @@ export class World {
   }
 
   /**
+   * Every lakeside BASE (refuel/repair pad). The FIRST is "home" — the largest lake's shore, where
+   * the player cold-starts — and `getCommunity('base')` resolves to it; the rest are forward bases.
+   */
+  bases(): CommunitySite[] {
+    return this.communities.filter((c) => c.kind === 'base');
+  }
+
+  /**
    * Scatter lakes across the world, seeded + deterministic. Count scales with area
    * (keeping the same per-area water density the 600-unit map had), centers are biased
    * to lowlands (so lakes sit in valleys, not on peaks), kept apart so basins don't
@@ -375,15 +383,16 @@ export class World {
   // --- Settlements + highways (A5) ---------------------------------------------
 
   /**
-   * Seed the named communities: one lakeside BASE (the depot site) on the largest lake's
-   * dry shore, plus a handful of forest HAMLETS on moderate dry ground, spaced apart and
-   * off the player's spawn. Deterministic. Structures.ts later fills these with buildings.
+   * Seed the named communities: up to `COMMUNITIES.baseCount` lakeside BASES (refuel/repair pads —
+   * the first is "home", on the largest lake's dry shore, where the player cold-starts), plus a
+   * handful of forest HAMLETS on moderate dry ground, spaced apart and off the player's spawn.
+   * Deterministic. Structures.ts fills the HOME base with a depot; the forward bases are refuel
+   * infrastructure (helipad/dock/label), placed by Game, not damageable Structures.
    */
   private makeCommunities(): CommunitySite[] {
     const out: CommunitySite[] = [];
 
-    const base = this.pickLakesideSite();
-    if (base) out.push(base);
+    for (const base of this.pickLakesideSites(COMMUNITIES.baseCount)) out.push(base);
 
     const bound = this.size / 2 - 80;
     let towns = 0;
@@ -420,17 +429,34 @@ export class World {
     return out;
   }
 
-  /** Find a dry shore point just past the largest lake's edge — the lakeside base site. */
-  private pickLakesideSite(): CommunitySite | null {
-    let lake: LakeRuntime | null = null;
-    let bestR = -1;
-    for (const l of this.lakes) {
-      if (l.r > bestR) {
-        bestR = l.r;
-        lake = l;
-      }
+  /**
+   * Pick up to `count` lakeside BASE sites, one per lake, biggest-lake-first so "home" lands on the
+   * largest lake's shore. A lake whose shore sits within `COMMUNITIES.baseSpacing` of a base already
+   * chosen is skipped, so the bases spread across the map rather than clumping on neighbouring lakes.
+   * Returns fewer than `count` only on a cramped map (always ≥1 home when any lake exists). Deterministic.
+   */
+  private pickLakesideSites(count: number): CommunitySite[] {
+    const lakesByR = [...this.lakes].sort((a, b) => b.r - a.r);
+    const sites: CommunitySite[] = [];
+    for (const lake of lakesByR) {
+      if (sites.length >= count) break;
+      const shore = this.lakeShorePoint(lake);
+      if (!shore) continue;
+      if (sites.some((s) => Math.hypot(s.x - shore.x, s.z - shore.z) < COMMUNITIES.baseSpacing)) continue;
+      sites.push({
+        name: this.nameSource.community(),
+        x: shore.x,
+        z: shore.z,
+        kind: 'base',
+        radius: COMMUNITIES.clusterRadius,
+        buildings: 0,
+      });
     }
-    if (!lake) return null;
+    return sites;
+  }
+
+  /** Dry shore point just past a lake's edge (ray-march outward from the centre), or null if landlocked. */
+  private lakeShorePoint(lake: LakeRuntime): { x: number; z: number } | null {
     for (let a = 0; a < Math.PI * 2; a += Math.PI / 12) {
       const dx = Math.cos(a);
       const dz = Math.sin(a);
@@ -439,14 +465,7 @@ export class World {
         const x = lake.x + dx * m;
         const z = lake.z + dz * m;
         if (this.isOverWater(x, z)) continue;
-        return {
-          name: this.nameSource.community(),
-          x,
-          z,
-          kind: 'base',
-          radius: COMMUNITIES.clusterRadius,
-          buildings: 0,
-        };
+        return { x, z };
       }
     }
     return null;

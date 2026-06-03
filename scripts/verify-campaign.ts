@@ -82,7 +82,10 @@ function build(mission: MissionDef): Rig {
     plan: structurePlan(world, mission),
   });
   const crew = mission.zones?.length ? new CrewTransport(crewZones(world, mission)) : undefined;
-  const fuel = mission.fuel ? new FuelSim() : undefined;
+  // Fuel is now UNIVERSAL (every mission unless `fuel:false`), mirroring Game — the perfect player
+  // tops up at a base when it dips (the `play` loop keeps it ≥ 0.5). Only `fuelOut`-fail missions
+  // actually lose on a dry tank; elsewhere fuel never threatens the win.
+  const fuel = mission.fuel === false ? undefined : new FuelSim();
   const base = world.getCommunity('base');
   return {
     world,
@@ -276,7 +279,10 @@ for (const m of CAMPAIGN) {
   }
 
   // --- Informational: how the mission resolves with NO player action (natural burn-out etc.) ---
-  const passive = run(m, m.fuel ? 'starve' : 'noop');
+  // Drive the STARVE path only for missions that hard-fail on a dry tank (`fuelOut`); else a true
+  // no-op. With fuel now universal, `m.fuel` is no longer the selector — the `fuelOut` fail is.
+  const hasFuelFail = (m.fails ?? []).some((f) => f.kind === 'fuelOut');
+  const passive = run(m, hasFuelFail ? 'starve' : 'noop');
   console.log(`      (no action → ${passive.r.runtime.state} @${passive.elapsed.toFixed(0)}s)`);
 }
 

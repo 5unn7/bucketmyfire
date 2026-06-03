@@ -103,7 +103,7 @@ export const HELIS: CatalogItem[] = [
     id: 'bell-212',
     name: 'Bell 212',
     tagline: 'Twin-engine medium',
-    blurb: 'The twin-pac sister of the Huey — more power, a bigger belly, and a tougher hull. A balanced step up from the 205: faster and carries more, still steady in the gusts off the lakes.',
+    blurb: 'The Twin-Pac sister of the Huey — more power, a bigger belly, and a tougher hull. A balanced step up from the 205: faster and carries more, still steady in the gusts off the lakes.',
     available: true,
     unlockAfter: 3, // earned after the first three sorties
     accent: '#d8a12a',

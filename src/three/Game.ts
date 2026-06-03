@@ -33,6 +33,7 @@ import { Ripples } from './water/Ripples';
 import { createWaterMaterial } from './water/WaterMaterial';
 import { WaterSpray } from './vfx/WaterSpray';
 import { DropMarker } from './vfx/DropMarker';
+import { FireHeadMarkers } from './vfx/FireHeadMarkers';
 import { SmokePlume } from './vfx/SmokePlume';
 import { Embers } from './vfx/Embers';
 import { AmbientEmbers } from './vfx/AmbientEmbers';
@@ -55,7 +56,7 @@ import { cloudAutoSave } from './leaderboard/cloudSave';
 import type { MissionDef, MissionSignals, MissionAction } from './missions/types';
 import type { EndScreenHooks } from './HUD';
 import { seedFires, structurePlan, crewZones, igniteFromPlacement } from './missions/scenario';
-import { WORLD3D, FLIGHT, STARTUP, BUCKET3D, DROP_PHYSICS, DROP_FX, CAMERA, FIRE3D, WATER, WASH, SPRAY, SMOKE, EMBERS, INSTRUMENTS, ROADS, MISSIONS, COMMUNITIES, HEALTH, resolveHeliClass } from './config';
+import { WORLD3D, FLIGHT, STARTUP, BUCKET3D, DROP_PHYSICS, DROP_FX, FIREHEAD, CAMERA, FIRE3D, WATER, WASH, SPRAY, SMOKE, EMBERS, INSTRUMENTS, ROADS, MISSIONS, COMMUNITIES, resolveHeliClass } from './config';
 
 // Instrument calibration factors (world units → real-world HUD units). Derived from
 // the FLIGHT caps so the gauges stay consistent if those are retuned.
@@ -133,6 +134,7 @@ export class Game {
   private dumping = false; // 'bambi' bucket: a one-tap dump is in progress (drains to empty)
   // --- Water-drop physical model (height → footprint, wind drift) ----------------------------------
   private readonly dropMarker: DropMarker; // predicted-impact ring (built in the ctor once scene exists)
+  private readonly fireHeads: FireHeadMarkers; // hot chevrons on each fire's advancing head (where to drop)
   private bucketObstacleY = 0; // cached collision surface under the bucket (set in update) → drop AGL
   // Reused scratch for the resolved drop geometry (alloc-free): impact center, footprint, density, AGL.
   private readonly _drop = { cx: 0, cz: 0, radius: BUCKET3D.dropRadius, densityMul: 1, agl: 0, inBand: true };
@@ -186,12 +188,14 @@ export class Game {
   private readonly lzMeshes: LandingZoneMesh[] = []; // landing-zone markers (parallel to crew zones)
   private readonly crewFigures: THREE.Group[] = []; // standing crew at each zone (parallel to crew zones)
   private readonly crewZones: CrewZone[] = []; // resolved world-space crew endpoints (refined to flat landing spots)
-  private readonly landingPads: { x: number; z: number }[] = []; // where the flight floor eases to skids height (helipad + crew LZs)
-  private readonly fuelSim?: FuelSim; // range model (fuel missions only)
+  private readonly landingPads: { x: number; z: number }[] = []; // where the flight floor eases to skids height (every base helipad + crew LZs)
+  private readonly fuelSim?: FuelSim; // range model — now universal (every mission unless `fuel:false`)
+  private rtbWarned = false; // latched once Dispatch has called the low-fuel return-to-base (re-arms above the warn line)
   private readonly slung: THREE.Group; // the mesh hanging on the longline (bucket or crew basket)
   private readonly slungAnchorY: number; // its swivel-head local Y (rope attach point)
-  private readonly depotXZ: { x: number; z: number } | null; // base/depot site (refuel + crew base)
-  private readonly helipadXZ: { x: number; z: number; yaw: number } | null; // cold-start landing pad (off the depot)
+  private readonly depotXZ: { x: number; z: number } | null; // HOME base/depot site (cold-start + crew base + radar anchor)
+  private readonly baseSites: { x: number; z: number }[] = []; // ALL lakeside bases (home + forward refuel pads) — drives nearest-base refuel + RTB
+  private readonly helipadXZ: { x: number; z: number; yaw: number } | null; // home cold-start landing pad (off the home depot)
   private firesInitial = 0; // active fire count captured once the scenario is seeded
   private missionElapsed = 0; // seconds the mission has been active (stops on win/lose)
   private readonly end?: EndScreenHooks;
@@ -233,27 +237,44 @@ export class Game {
     this.wind = new Wind(mission.wind?.angle, mission.wind?.strengthScale ?? 1);
     this.fauna = new Fauna(this.scene, this.world);
     this.depotXZ = (() => {
-      const base = this.world.getCommunity('base');
+      const base = this.world.getCommunity('base'); // 'base' = the HOME base (largest lake, cold-start)
       return base ? { x: base.x, z: base.z } : null;
     })();
+    this.baseSites = this.world.bases().map((b) => ({ x: b.x, z: b.z })); // all four — refuel/repair points
 
-    // Base helipad: a flat pad on cleared ground just off the depot building (which sits AT the base
-    // XZ). Built for every mission. `landingFloorAt` eases the flight floor down to the deck around it,
-    // so a cold start sits the heli skids-down on the pad and lets it lift off without snapping up to
-    // canopy height. (For a QA skip the heli stays running/airborne at origin; the pad is just scenery.)
+    // Home cold-start helipad: a flat pad on cleared ground just off the home depot building (which sits
+    // AT the home base XZ). Resolved first because the cold start (below) parks the airframe on it.
     this.helipadXZ = this.depotXZ ? this.findHelipadSpot(this.depotXZ) : null;
-    if (this.helipadXZ) {
-      const pad = createHelipad();
-      pad.position.set(this.helipadXZ.x, this.world.groundHeightAt(this.helipadXZ.x, this.helipadXZ.z), this.helipadXZ.z);
-      this.scene.add(pad);
+
+    // Every base (home + the three forward refuel pads) gets a helipad you can set down on, registered in
+    // `landingPads` so `landingFloorAt` eases the flight floor to skids height there (a real touchdown, not
+    // a hover) and the forest clears its yard (via setClearings below — all bases are in `builtSites`).
+    // The HOME base's depot building is a damageable Structure (built later); each FORWARD base gets a
+    // decorative depot building HERE — scenery only, never a Structure, so it never pads a mission's
+    // `protect` survivor count. (For a QA skip the heli stays airborne at origin; the pads are just scenery.)
+    const bases = this.world.bases();
+    for (let i = 0; i < bases.length; i++) {
+      const b = bases[i];
+      const isHome = i === 0;
+      const pad = isHome ? this.helipadXZ : this.findHelipadSpot({ x: b.x, z: b.z });
+      if (!pad) continue;
+      const padMesh = createHelipad();
+      padMesh.position.set(pad.x, this.world.groundHeightAt(pad.x, pad.z), pad.z);
+      this.scene.add(padMesh);
+      this.landingPads.push({ x: pad.x, z: pad.z });
+      if (!isHome) {
+        const depotMesh = createStructure('depot', 7000 + i); // decorative forward-base building (NOT a Structure)
+        depotMesh.group.position.set(b.x, this.world.groundHeightAt(b.x, b.z), b.z);
+        depotMesh.group.rotation.y = i * 1.7;
+        this.scene.add(depotMesh.group);
+      }
     }
 
     // Crew landing pads (crew missions): resolve each crew endpoint to a flat dry landing spot — the
-    // base endpoint snaps to the helipad you cold-start on — then register them all in `landingPads`
+    // base endpoint snaps to the home helipad you cold-start on — then register them all in `landingPads`
     // so (a) `landingFloorAt` eases the flight floor down to skids height there (a real touchdown, not
     // a hover) and (b) the forest clears a NARROW patch around each (registered with setClearings
     // below). Resolved HERE, before the cold start queries `landingFloorAt` and before the forest builds.
-    if (this.helipadXZ) this.landingPads.push({ x: this.helipadXZ.x, z: this.helipadXZ.z });
     if (this.mission.zones?.length) {
       for (const z of this.resolveCrewZones()) {
         this.crewZones.push(z);
@@ -276,10 +297,9 @@ export class Game {
     // (below) reads these via World.clearingFactor, so resolving them here, in order, matters.
     const structPlan = structurePlan(this.world, this.mission);
     const builtSites: { name: string; x: number; z: number }[] = [];
-    if (structPlan.depot) {
-      const b = this.world.getCommunity('base');
-      if (b) builtSites.push({ name: b.name, x: b.x, z: b.z });
-    }
+    // Every base — home depot AND the forward refuel pads — gets a cleared yard + a radar place-name
+    // (they all have a helipad/building standing there now, not just the home depot).
+    for (const b of this.world.bases()) builtSites.push({ name: b.name, x: b.x, z: b.z });
     for (const g of structPlan.groups) builtSites.push({ name: g.community.name, x: g.community.x, z: g.community.z });
     // Hamlets get the full yard; crew LZs get a NARROW cleared patch (per-centre radius) so the heli
     // can set its skids down without the canopy in the way — but the bush around them stays forest.
@@ -467,10 +487,9 @@ export class Game {
       this.structureMeshes.push(m);
     });
 
-    // Dock (A5 polish): a jetty off the lakeside base, reaching out over its lake — sells the
-    // depot as a real waterfront base. Built once: find the base's nearest lake, march from the
-    // base to the shoreline, then lay the deck (local +X) out over the water at the lake level.
-    this.addBaseDock();
+    // Dock (A5 polish): a jetty off EACH lakeside base, reaching out over its lake — sells every base
+    // as a real waterfront refuel stop (and a scoop source on hand). Built once per base.
+    for (const b of this.world.bases()) this.addBaseDock(b);
 
     // Helicopter + the bucket slung beneath it on a rope. The selected model (if any)
     // swaps in behind the procedural hero; unknown ids fall back to the Bell 205A-1.
@@ -502,6 +521,7 @@ export class Game {
     if (this.payloadMode === 'crew') this.rope.visible = false; // no longline in crew missions
     this.scene.add(this.rope);
     this.dropMarker = new DropMarker(this.scene); // predicted-impact ring (adds itself to the scene)
+    this.fireHeads = new FireHeadMarkers(this.scene); // fire-head chevrons (adds itself to the scene)
     this.scene.add(this.spray.points); // pooled drop-spray particle cloud
     this.scene.add(this.smoke.points); // pooled per-fire smoke plumes
     this.scene.add(this.embers.points); // pooled per-fire sparks/embers
@@ -527,7 +547,11 @@ export class Game {
     }
 
     // Fuel/range model (Track C6) — only constructed when the mission opts in.
-    if (this.mission.fuel) this.fuelSim = new FuelSim();
+    // Fuel/range (C6) is now the UNIVERSAL pressure: every mission burns fuel and you return to a base
+    // to top up. A mission may still opt out with `fuel: false` (e.g. a pure tutorial). The `fuelOut`
+    // FAIL stays opt-in (only the "range" missions hard-fail on a dry tank); elsewhere a dry tank just
+    // cuts the engine into a forced landing — the universal RTB callout warns you long before that.
+    if (this.mission.fuel !== false) this.fuelSim = new FuelSim();
 
     this.runtime = new MissionRuntime(this.mission);
     this.director = new MissionDirector(this.mission); // reactive arc (briefing/beats/debrief)
@@ -692,12 +716,23 @@ export class Game {
       // Drain / refuel after the flight step (so speed + AGL reflect this frame).
       if (this.fuelSim) {
         const climbUp = Math.max(0, this.heliSim.vertSpeed / FLIGHT.climbSpeed);
+        const refueling = this.canRefuel();
         this.fuelSim.update(dt, {
           throttle01: Math.abs(c.throttle),
           climbUp,
           payloadRatio,
-          refueling: this.canRefuel(),
+          refueling,
         });
+        // Universal low-fuel callout: the first time you cross onto the reserve away from a base,
+        // Dispatch tells you to return to the nearest base. Re-arms once you're back above the warn
+        // line (a fresh top-up), so each genuine low-fuel run gets one call, not a per-frame spam.
+        if (this.fuelSim.low && !this.rtbWarned && !refueling) {
+          this.rtbWarned = true;
+          this.hud.pushComms('warning', 'Water-1, fuel low — set down at the nearest base to refuel.', 'warn');
+          this.audio.playSquelch('warn');
+        } else if (!this.fuelSim.low) {
+          this.rtbWarned = false;
+        }
       }
     }
 
@@ -788,23 +823,12 @@ export class Game {
         m.group.visible = false;
       }
     }
-    // --- Airframe health / damage: drain from fire-heat (a LOW pass over a blaze), bucket scrape,
-    // overspeed, and hard landings; repair grounded/slow at the depot. Zero health → crash (instant
-    // fail, any mission). Fire-heat is gated on flying low over the column — attack it from up high. ---
+    // --- Airframe health: a hard-landing IMPACT model only — a high-sink floor contact dents the hull
+    // (toughness divides it), repair grounded/slow at a base. Zero health → crash (instant fail, any
+    // mission). Flying low through fire, scraping the bucket, and overspeed no longer cook the airframe
+    // — FUEL is the resource that ticks down and forces a return to base (FuelSim). ---
     if (!frozen) {
-      let fireHeat = 0;
-      if (this.heliSim.agl < HEALTH.fireAgl) {
-        for (let i = 0; i < activeFires.length; i++) {
-          const f = activeFires[i];
-          const fall = 1 - Math.hypot(f.x - washX, f.z - washZ) / HEALTH.fireRadius;
-          if (fall > 0) fireHeat += (f.intensity / FIRE3D.maxIntensity) * fall;
-        }
-      }
-      const maxSp = this.heliSim.effectiveMaxSpeed;
       this.healthSim.update(dt, {
-        fireHeat,
-        scrapeSpeed: this.bucketSim.contact ? this.bucketSim.dragSpeed : 0,
-        overspeed: maxSp > 0 ? Math.max(0, (this.heliSim.speed - maxSp) / maxSp) : 0,
         impact: this.heliSim.landingImpact,
         repairing: this.canRefuel(),
       });
@@ -1005,6 +1029,35 @@ export class Game {
       this.dropMarker.hide();
     }
 
+    // --- Fire-HEAD chevrons: mark each active fire's advancing (downwind) head so the player can read
+    // where to drop. The chevron sits on the leading edge and POINTS the way the fire runs; opacity
+    // scales with the fire's heat relative to the strongest head (so the main head pops) and pulses. ---
+    {
+      const wl = Math.hypot(this.wind.vx, this.wind.vz);
+      const wux = wl > 1e-3 ? this.wind.vx / wl : 1;
+      const wuz = wl > 1e-3 ? this.wind.vz / wl : 0;
+      let maxHeat = 0;
+      for (let i = 0; i < activeFires.length; i++) {
+        const h = fireHeat(activeFires[i]);
+        if (h > maxHeat) maxHeat = h;
+      }
+      const pulse = 1 - FIREHEAD.pulseDepth * (0.5 + 0.5 * Math.sin(this.elapsed * FIREHEAD.pulseHz * Math.PI * 2));
+      let shown = 0;
+      for (let i = 0; i < activeFires.length; i++) {
+        const f = activeFires[i];
+        const heat = fireHeat(f);
+        if (heat < FIREHEAD.minHeat) continue;
+        const lead = FIREHEAD.lead * (0.4 + 0.6 * f.size) * (0.3 + 0.7 * Math.min(1, wl));
+        const hx = f.x + wux * lead;
+        const hz = f.z + wuz * lead;
+        const rel = maxHeat > 0 ? heat / maxHeat : 1;
+        const opacity = FIREHEAD.baseOpacity * (FIREHEAD.minOpacityFrac + (1 - FIREHEAD.minOpacityFrac) * rel) * pulse;
+        this.fireHeads.show(shown, hx, hz, this.world.groundHeightAt(hx, hz), wux, wuz, f.size, opacity);
+        shown++;
+      }
+      this.fireHeads.hideFrom(shown);
+    }
+
     this.frame.update(dt, this.wind.vx, this.wind.vz, this.sun.position, this.sun.target.position);
 
     const firesLeft = this.fireSystem.activeCount;
@@ -1046,6 +1099,8 @@ export class Game {
       worldSize: WORLD3D.size,
       // C3 stakes: structures to defend, the threat gauge, lose state + final score.
       structures: sList.map((s) => ({ x: s.x, z: s.z, kind: s.kind, health: s.health, burning: s.burning })),
+      // Refuel bases (home + forward pads) — radar markers + the low-fuel RTB cue point to the nearest.
+      bases: this.baseSites,
       threat: this.structures.threat,
       lost: this.lost,
       score: this.finalScore,
@@ -1154,11 +1209,14 @@ export class Game {
     this.audio.playSquelch('alert');
   }
 
-  /** Fuel missions: grounded + slow within the depot radius → refuelling this frame. */
+  /** Grounded + slow within refuel range of ANY base (home or a forward pad) → refuelling/repairing. */
   private canRefuel(): boolean {
-    if (!this.depotXZ) return false;
-    const d = Math.hypot(this.heliSim.position.x - this.depotXZ.x, this.heliSim.position.z - this.depotXZ.z);
-    return d <= MISSIONS.refuelRadius && this.heliSim.agl <= MISSIONS.refuelAgl && this.heliSim.speed <= MISSIONS.refuelSpeed;
+    if (this.baseSites.length === 0) return false;
+    if (this.heliSim.agl > MISSIONS.refuelAgl || this.heliSim.speed > MISSIONS.refuelSpeed) return false;
+    for (const b of this.baseSites) {
+      if (Math.hypot(this.heliSim.position.x - b.x, this.heliSim.position.z - b.z) <= MISSIONS.refuelRadius) return true;
+    }
+    return false;
   }
 
   /**
@@ -1356,14 +1414,13 @@ export class Game {
   }
 
   /**
-   * Lay the base's jetty out over its lake. Finds the base community's nearest lake, marches
-   * from the base toward that lake's centre to the shoreline, and places the dock there yawed
-   * so its deck (local +X) runs out over the water at the lake's flat surface. No-op if the
-   * map didn't grow a base or any lake (the dock is pure decoration — never gated by it).
+   * Lay one base's jetty out over its lake. Finds the base's nearest lake, marches from the base
+   * toward that lake's centre to the shoreline, and places the dock there yawed so its deck (local
+   * +X) runs out over the water at the lake's flat surface. No-op if there's no lake (the dock is
+   * pure decoration — never gated by it). Called once per base (home + forward refuel pads).
    */
-  private addBaseDock(): void {
-    const base = this.world.getCommunity('base');
-    if (!base || this.world.lakes.length === 0) return;
+  private addBaseDock(base: { x: number; z: number }): void {
+    if (this.world.lakes.length === 0) return;
     // Nearest lake to the base (it was sited on the largest lake's shore, so this is it).
     let lake = this.world.lakes[0];
     let bestD = Infinity;

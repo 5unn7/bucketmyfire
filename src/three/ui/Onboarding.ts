@@ -280,7 +280,7 @@ export function runOnboarding(): Promise<Profile> {
 
       // Card builder bound to a selection slot. `gate` decides per-item whether the card is
       // pickable and, if not, the badge text — maps gate on `available` ("Soon"), helis on
-      // campaign progress ("🔒 Sortie N"). Defaults to the available/Soon behaviour.
+      // campaign progress ("🔒 Mission N"). Defaults to the available/Soon behaviour.
       const buildCards = (
         catalog: CatalogItem[],
         getSel: () => CatalogItem,
@@ -321,7 +321,7 @@ export function runOnboarding(): Promise<Profile> {
           } else {
             card.classList.add('is-soon');
             // A locked-but-real airframe explains itself on hover; "Soon" content stays mute.
-            if (item.available && item.unlockAfter) card.title = `Unlocks after clearing Sortie ${item.unlockAfter}`;
+            if (item.available && item.unlockAfter) card.title = `Unlocks after clearing Mission ${item.unlockAfter}`;
           }
           if (item === getSel()) card.classList.add('is-selected');
           return { el: card, item };
@@ -338,7 +338,7 @@ export function runOnboarding(): Promise<Profile> {
         h('p', { className: 'bmf-label', textContent: 'Choose your helicopter' }),
         buildCards(HELIS, () => selHeli, (c) => (selHeli = c), (item) => ({
           usable: isHeliUnlocked(item, cleared),
-          lockText: item.available ? `🔒 Sortie ${item.unlockAfter}` : 'Soon',
+          lockText: item.available ? `🔒 Mission ${item.unlockAfter}` : 'Soon',
         })),
       ]);
 

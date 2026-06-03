@@ -122,7 +122,7 @@ export const CAMPAIGN: MissionDef[] = [
     id: 'long-haul',
     index: 4,
     name: 'The Long Haul',
-    brief: 'A fire deep in the backcountry, far from any water. Watch the fuel gauge — refuel at the base and don’t get caught dry.',
+    brief: "A fire deep in the backcountry, far from any water. Watch the fuel gauge — refuel at the base and don't get caught dry.",
     intel:
       'A blaze is burning deep in the backcountry, a long way from any water and farther still from fuel. Manage your tank carefully — top up at the base and do not get caught dry out there. It is a long walk home if the engine quits.',
     difficulty: 3,
@@ -208,7 +208,7 @@ export const CAMPAIGN: MissionDef[] = [
     id: 'mega-fire',
     index: 7,
     name: 'Mega-Fire',
-    brief: 'A Class-F monster has set up next to the base. One tank won’t do it — it re-flares. Work it down pass after pass and keep it off the depot.',
+    brief: "A Class-F monster has set up next to the base. One tank won't do it — it re-flares. Work it down pass after pass and keep it off the depot.",
     intel:
       'A Class-F monster has set up right next to the base. One tank will not kill it — knock it down and it flares back up out of the duff. Work it pass after pass, and whatever happens, keep it off the depot — that is your only fuel and water for the whole sector.',
     difficulty: 4,

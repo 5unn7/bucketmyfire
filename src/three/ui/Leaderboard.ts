@@ -209,14 +209,14 @@ class Leaderboard {
 
   private renderCareer(rows: CareerEntry[]): void {
     if (rows.length === 0) {
-      this.body.replaceChildren(this.note('No runs yet — fly a sortie and be the first on the board.'));
+      this.body.replaceChildren(this.note('No runs yet — fly a mission and be the first on the board.'));
       return;
     }
     const list = div({});
     rows.forEach((r, i) => {
       const mine = !!this.myName && r.pilot.toLowerCase() === this.myName.toLowerCase();
       list.appendChild(
-        this.row(i + 1, r.pilot, r.total.toLocaleString(), `${r.missions} ${r.missions === 1 ? 'sortie' : 'sorties'}`, mine),
+        this.row(i + 1, r.pilot, r.total.toLocaleString(), `${r.missions} ${r.missions === 1 ? 'mission' : 'missions'}`, mine),
       );
     });
     this.body.replaceChildren(list);
@@ -224,7 +224,7 @@ class Leaderboard {
 
   private renderMission(rows: MissionEntry[]): void {
     if (rows.length === 0) {
-      this.body.replaceChildren(this.note('No runs on this map yet — set the pace.'));
+      this.body.replaceChildren(this.note('No runs on this mission yet — set the pace.'));
       return;
     }
     const list = div({});

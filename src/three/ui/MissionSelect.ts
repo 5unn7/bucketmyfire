@@ -61,7 +61,7 @@ export class MissionSelect {
     header.appendChild(
       div(
         { fontSize: '14px', color: UI.dim, marginTop: '8px' },
-        'Northern Saskatchewan air attack — ten sorties, hardest last.',
+        'Northern Saskatchewan air attack — ten missions, hardest last.',
       ),
     );
     this.root.appendChild(header);
@@ -186,7 +186,7 @@ export class MissionSelect {
         const taken = await isNameTaken(res.value, getClientId());
         if (settled) return;
         if (taken) {
-          showMsg(`“${res.value}” is taken — pick another.`, true);
+          showMsg(`"${res.value}" is taken — pick another.`, true);
           return;
         }
         const c = loadProfile();
@@ -348,9 +348,9 @@ export class MissionSelect {
       card.appendChild(meta);
       if (!usable) {
         // A playable-but-unearned heli shows its campaign requirement; a future airframe (none
-        // yet) would show "SOON". `unlockAfter` sorties = clear that-numbered sortie to unlock.
-        const lockText = heli.available ? `🔒 Sortie ${heli.unlockAfter}` : 'SOON';
-        if (heli.available) card.title = `Unlocks after clearing Sortie ${heli.unlockAfter}`;
+        // yet) would show "SOON". `unlockAfter` missions = clear that-numbered mission to unlock.
+        const lockText = heli.available ? `🔒 Mission ${heli.unlockAfter}` : 'SOON';
+        if (heli.available) card.title = `Unlocks after clearing Mission ${heli.unlockAfter}`;
         const badge = div(
           { position: 'absolute', top: '8px', right: '8px', fontSize: '9px', letterSpacing: '0.1em', fontWeight: '700', color: UI.dim },
           lockText,
@@ -400,7 +400,7 @@ export class MissionSelect {
 
     const top = div({ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '10px' });
     top.appendChild(
-      div({ fontSize: '11px', fontWeight: '700', letterSpacing: '2px', color: UI.dim }, `SORTIE ${m.index + 1}`),
+      div({ fontSize: '11px', fontWeight: '700', letterSpacing: '2px', color: UI.dim }, `MISSION ${m.index + 1}`),
     );
     top.appendChild(div({ fontSize: '13px', color: UI.warm, letterSpacing: '1px' }, '🔥'.repeat(m.difficulty)));
     card.appendChild(top);

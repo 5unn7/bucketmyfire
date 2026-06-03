@@ -374,6 +374,23 @@ export const DROP_FX = {
   resultGaugeTintMs: 1100, // ms the water gauge flashes its result color
 } as const;
 
+// --- Fire HEAD marker ("where do I drop?") — a hot, pulsing chevron on each fire's advancing
+// (downwind) edge so a player can read the HEAD — the part worth hitting — apart from the flanks and
+// the burned-out heel. The chevron POINTS the way the fire is running, and the strongest head is the
+// brightest, so the priority drop zone reads at a glance. Pooled GPU meshes (vfx/FireHeadMarkers). ---
+export const FIREHEAD = {
+  minHeat: 0.18, // a fire must be at least this hot (intensity×size) to mark a head (skip dying embers)
+  color: 0xffd24a, // hot amber-white — distinct from the green drop ring; reads as "the live head"
+  lead: 12, // how far downwind of the fire centre the chevron sits (units) at full size + full wind
+  sizeBase: 6, // chevron size (units) at size class 0
+  sizePerSize: 11, // + this × the fire's size class — a big blaze gets a bigger head marker
+  lift: 0.5, // height above the ground (avoid z-fight on slopes)
+  baseOpacity: 0.85, // peak opacity of the STRONGEST head
+  minOpacityFrac: 0.35, // a weaker head dims to this fraction of baseOpacity, so the MAIN head pops
+  pulseHz: 2.0, // pulse rate (Hz) — a live, attention-drawing throb
+  pulseDepth: 0.35, // how deep the pulse modulates opacity (0 = steady, 1 = full blink)
+} as const;
+
 // --- Per-helicopter classes (the "feel" + payload + durability of each airframe) ----------
 // All three playable helis used to SHARE the FLIGHT/BUCKET3D tuning — selecting one only swapped
 // the mesh. A `HeliClass` gives each its own character: the base FLIGHT/BUCKET3D numbers are
@@ -424,22 +441,18 @@ export function resolveHeliClass(id?: string): HeliClass {
   return HELI_CLASSES[id ?? ''] ?? HELI_CLASSES['bell-205a1'];
 }
 
-// Airframe health / damage. A new durability mechanic on TOP of the sandbox: the heli takes damage
-// from flying low through fire, slamming down (hard landings), dragging the bucket through terrain at
-// speed, and overspeed/over-stress; at zero health it CRASHES (instant mission fail), and it REPAIRS
-// at the depot (alongside refuel). Per-heli `toughness` (HELI_CLASSES) divides the damage. Engine-
-// agnostic state lives in sim/HealthSim.ts (numbers only, like FuelSim). Tuned FORGIVING on purpose —
-// the campaign was balanced without it, so normal flying rarely crashes; you must abuse the airframe.
+// Airframe health / damage. Hull integrity is an IMPACT model only: the heli takes damage solely from
+// slamming down (a hard landing past `hardLandingSink`); at zero health it CRASHES (instant mission
+// fail), and it REPAIRS at any base (alongside refuel). Flying through fire / overspeed / scraping the
+// bucket no longer cooks the airframe — FUEL is the resource that ticks down and sends you back to base
+// (see MISSIONS + FuelSim). Per-heli `toughness` (HELI_CLASSES) divides the impact. Engine-agnostic
+// state lives in sim/HealthSim.ts (numbers only, like FuelSim). Tuned FORGIVING: normal landings and
+// every refuel touchdown cost nothing — only a genuine high-sink crash dents the hull.
 export const HEALTH = {
   lowWarn: 0.3, // health gauge flashes below this
-  fireDmgPerSec: 0.12, // health/sec at full fire-heat exposure while low over a blaze
-  fireAgl: 14, // only cooked below this radar altitude over a fire (fly the column from up high)
-  fireRadius: 24, // horizontal reach (units) a fire cooks the heli (≈ WASH.fanRadius)
-  scrapeDmgPerUnit: 0.012, // health/sec per (unit/s) of bucket scrape speed ABOVE BUCKET3D.spillDragMin
-  overspeedDmgPerSec: 0.1, // health/sec at full over-stress (a sustained dive past the speed cap)
   hardLandingSink: 14, // sink rate (units/s) a floor contact must beat to be a SAFE settle (no damage)
   impactDmgPerUnit: 0.05, // health lost per (unit/s) of sink ABOVE hardLandingSink on a hard landing
-  repairPerSec: 0.1, // health/sec restored at the depot (slower than refuel — no free instant patch)
+  repairPerSec: 0.1, // health/sec restored at a base (slower than refuel — no free instant patch)
 } as const;
 
 // Lake centers (XZ); water height is sampled from the terrain at runtime.
@@ -601,7 +614,13 @@ export const STRUCTURES = {
 // a sense of place + stakes, and they're the nodes the highway network links. Generated
 // deterministically in World (sites + names); Structures populates them with buildings.
 export const COMMUNITIES = {
-  townCount: 5, // small forest hamlets seeded across the map (the base is extra)
+  baseCount: 4, // lakeside BASES seeded across the map — refuel/repair pads (the FIRST is "home", where
+  // you cold-start; the other three are forward bases you can also set down on). Each sits on its own
+  // lake (a scoop source on hand) and they're spread apart so "nearest base" means different ones as you
+  // range across the map. Only the HOME base is a damageable depot Structure; the forward bases are pure
+  // refuel infrastructure (helipad + dock + label), so they never pad a mission's `protect` survivor count.
+  baseSpacing: 360, // min spacing between bases (units) — spreads the four across the 1500u map
+  townCount: 5, // small forest hamlets seeded across the map (the bases are extra)
   minFromOrigin: 130, // keep towns off the player's spawn (units)
   spacing: 200, // minimum spacing between community centers (units) — towns feel distinct
   clusterRadius: 26, // cabins of a hamlet scatter within this of its center (units)

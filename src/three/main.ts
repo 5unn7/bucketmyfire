@@ -32,7 +32,7 @@ if (webglAvailable()) {
   showFatalMessage(
     container,
     'Graphics not supported',
-    'bucketmyfire needs WebGL to run, and this browser/device doesn’t have it available. ' +
+    'Bucket My Fire needs WebGL to run, and this browser/device doesn\'t have it available. ' +
       'Try a different browser, enable hardware acceleration, or update your device.',
   );
 }
