@@ -98,7 +98,8 @@ the real node names. Put the asset under `public/models/<name>/` **with a `licen
   sample counts.
 - **No per-frame allocation** — pre-allocate pools and recycle (ring buffers).
 - Respect `QualityTier`: read tessellation/shadow/bloom from the current preset at construction so
-  the element scales down on weak devices. DPR is already capped globally.
+  the element scales down on weak devices. Render DPR is handled globally — an adaptive watchdog
+  scales it within `[QUALITY.dpr.floor .. 2]` (recoverable), so don't size anything off DPR yourself.
 
 ## Verify
 

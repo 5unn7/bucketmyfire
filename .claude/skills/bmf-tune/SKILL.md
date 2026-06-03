@@ -68,10 +68,11 @@ are detailed and authoritative. Map:
   fire RNG. Same seed → same world + same fire run. Don't introduce `Math.random()` into
   generation; use `world.rng`. (Per-mission seeds live in the mission def, not here — see
   **bmf-mission**.)
-- **Runtime knob vs load-time field — know which you're touching.** The adaptive watchdog only
-  moves the *cheap, recompile-free* levers at runtime (DPR, shadows on/off). **Load-time-only**
+- **Runtime knob vs load-time field — know which you're touching.** The adaptive watchdog moves
+  exactly one *recompile-free* lever at runtime: **render DPR** (scaled within
+  `[QUALITY.dpr.floor .. dprCap]`, down under load and back up under headroom). **Load-time-only**
   fields are read once at construction and changing them means a rebuild/realloc, not a live
-  tweak: `QUALITY.presets.*.{shadowMapSize, waterSegments, terrainSegments, bloom}`,
+  tweak: `QUALITY.presets.*.{shadows, shadowMapSize, waterSegments, terrainSegments, bloom, msaa, dprCap}`,
   `FIRE3D.{fireCells, blobCells, gridCells}`, `GODRAYS.samples`, and the **fixed-size pool caps**
   `RIPPLE_SLOTS`, `HAZE_SLOTS`, `SPRAY.max`, `EMBERS.max`, `SMOKE.max`, `FIRE3D.maxActive`,
   `FIRELIGHT.count`. These caps are sized once so there are **no shader recompiles or per-frame
