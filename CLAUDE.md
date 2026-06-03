@@ -25,11 +25,11 @@ generative visuals, and flight/payload physics that *feel real* (momentum, inert
 a bucket that swings and lags) — all holding 60fps on mobile browsers.
 
 > **The game pivoted from 2D Phaser to real-3D Three.js.** The live game is the
-> Three.js build under `src/three/`. The old Phaser tree (`src/main.ts`,
-> `src/scenes/`, `src/objects/`, `src/controls/`, `src/constants.ts`) is **legacy
-> fallback** — kept (not loaded). `index.html` boots `src/three/main.ts`. When working
-> on the game, assume `src/three/` unless told otherwise. See `docs/ROADMAP.md` for the
-> approved vision and phase status.
+> Three.js build under `src/three/`. The old Phaser prototype (`src/main.ts`,
+> `src/scenes/`, `src/objects/`, `src/controls/`, `src/constants.ts`) and the
+> `phaser` dependency were **removed** once the 3D build was proven — `src/` is now
+> just `three/` + `vite-env.d.ts`. `index.html` boots `src/three/main.ts`. See
+> `docs/ROADMAP.md` for the approved vision and phase status.
 
 > **This IS a git repo now** (`main` branch), and **every push to `main` auto-deploys** to
 > GitHub Pages via `.github/workflows/deploy.yml` (CI builds → publishes `dist/` to `gh-pages`;
@@ -258,8 +258,7 @@ analog stick. Touch overrides keyboard when the stick is engaged.
 (campaign mechanics + scoring), `QUALITY`/`POSTFX`/`GODRAYS`/`GRADE`/`FIRELIGHT`/`EMBERS`/`WATER`/
 `CLOUDS`/`SPRAY`/`SMOKE`/`HAZE` (visuals), `AUDIO`, `CAMERA`, `FAUNA`, `INSTRUMENTS`. Prefer
 changing values here over hard-coding them in modules — the **`bmf-tune`** skill maps "change X" to
-the right block. (Note: the legacy Phaser build has its own separate `src/constants.ts` — don't
-confuse the two.)
+the right block.
 
 ## Conventions
 
@@ -274,7 +273,8 @@ confuse the two.)
   downstream changes. See the **`bmf-asset`** skill.
 - **Additive but git-backed** — this *is* a git repo (auto-deploys on push to `main`). Prefer new
   files over risky rewrites and don't delete until a replacement is proven, but use normal git
-  hygiene (branch, commit). The legacy Phaser tree is kept as a reference fallback, not loaded.
+  hygiene (branch, commit), and don't be afraid to delete proven-dead code (the legacy Phaser tree
+  was removed this way once the 3D build was solid).
 - `Training/` and `water-b1-beauty.jpeg` hold concept/reference art — **not** game assets.
 
 ## Roadmap

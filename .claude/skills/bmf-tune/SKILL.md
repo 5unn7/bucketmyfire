@@ -17,8 +17,7 @@ description: >-
 
 `src/three/config.ts` is the **single source of gameplay + visual tuning**. Every subsystem reads
 its block once (or per-frame through `FrameContext`). **Change values in `config.ts`; do not
-hard-code them in modules** — a scattered magic number is a bug, not a tweak. (The legacy Phaser
-build has a separate `src/constants.ts`; ignore it — the live game never loads it.)
+hard-code them in modules** — a scattered magic number is a bug, not a tweak.
 
 ## "I want to change X" → which block
 

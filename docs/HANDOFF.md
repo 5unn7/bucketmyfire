@@ -10,8 +10,8 @@
 - The game is a **mobile-browser helicopter water-bomber** (fly, scoop from lakes, drop on
   forest fires). It was **pivoted from a 2D Phaser prototype to real 3D Three.js.**
 - **The active build is `src/three/`** (entry: `index.html` → `src/three/main.ts`). The old
-  Phaser code (`src/main.ts`, `src/scenes/`, `src/objects/`, `src/controls/`) is **dormant
-  but intentionally kept** as a fallback — it's no longer bundled.
+  Phaser code (`src/main.ts`, `src/scenes/`, `src/objects/`, `src/controls/`) and the `phaser`
+  dependency were **removed** once the 3D build was proven — `src/` is now `three/` + `vite-env.d.ts`.
 - The **3D gameplay loop works end-to-end**: world + chase cam, fly with momentum, manual
   altitude (collective), scoop water by descending the slung bucket into a lake, drop to
   douse fires, wind-biased fire spread, win when all out. Touch controls + keyboard both work.
@@ -22,9 +22,9 @@
 
 ## ⚠️ Critical gotchas (read before editing)
 
-- **NOT a git repo.** Deletions are permanent (no undo). Prefer additive/reversible changes;
-  don't delete a file until its replacement is proven. This is why the dormant Phaser files
-  still exist — leave them.
+- **This is a git repo now** (`main`, auto-deploys on push). Prefer additive/reversible changes
+  and don't delete a file until its replacement is proven — but proven-dead code can go (the
+  legacy Phaser tree was removed once the 3D build was solid).
 - **`npm run build` is the CI gate** (`tsc --noEmit && vite build`). TypeScript is strict
   with `noUnusedLocals`/`noUnusedParameters` ON — an unused import/var **breaks the build**.
 - **`npm run lint` is broken** — there is no ESLint config file in the repo (pre-existing,

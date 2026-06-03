@@ -32,12 +32,14 @@ npm run preview  # preview that build locally
 
 ## Tech
 
-Phaser 3 · TypeScript · Vite. Pure client-side, no backend, no binary assets
-(all textures are generated at runtime — see `src/scenes/PreloadScene.ts`).
+Three.js (WebGL) · TypeScript · Vite. Real-3D, client-side, no backend. Art is
+procedural-first (geometry + GLSL + runtime textures) with a few credited licensed
+assets under `public/`. See `src/three/` for the live build.
 
 See [CLAUDE.md](CLAUDE.md) for architecture.
 
 ## Status
 
-Early scaffold — playable core loop (fly · scoop · drop · fires spread · win).
-Placeholder procedural art stands in for the realistic style shown in `Training/`.
+Live at [bucketmyfire.com](https://bucketmyfire.com) — full flight/bucket/fire physics,
+a 10-mission campaign, and 3 playable helicopters. (The original 2D Phaser prototype was
+removed once the 3D build was proven.)

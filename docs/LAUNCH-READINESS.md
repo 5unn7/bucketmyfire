@@ -104,12 +104,12 @@ browser cache). 1M cold loads ≈ 2.2 TB egress → ~$0 on Cloudflare, ~$110–1
   and MSAA is tied to the tier — the composer target carries `samples` on high
   (`QUALITY.presets.high.msaa`), while low (no composer) AAs via the renderer's own `antialias`.
   Lowest-end devices no longer eat MSAA cost.
-- **P2.3** — Legacy Phaser is dead weight but **NOT bundled** (unreachable from the Three
-  entry; the 753 kB bundle is pure-Three-sized — confirmed). Plus a stray
-  `@dimforge/rapier3d-compat` in the lockfile, imported nowhere. Optional `node_modules`/
-  repo cleanup; not a scale blocker.
-- **P2.4** — Stale comment: `vite.config.ts:3` still says "pure client-side **Phaser**
-  game" — it's Three.js now.
+- **P2.3** — ✅ RESOLVED. The legacy Phaser tree (`src/main.ts`, `src/scenes/`, `src/objects/`,
+  `src/controls/`, `src/constants.ts`) and two orphaned early-3D files (`src/three/Fire.ts`,
+  `src/three/meshes/hueyModel.ts`) were deleted, and the `phaser` dependency dropped — so tsc
+  no longer type-checks ~1.3k dead lines. (`@dimforge/rapier3d-compat` is NOT stray — it's a
+  transitive dependency of `@types/three`, so it correctly stays.)
+- **P2.4** — ✅ RESOLVED. `vite.config.ts` no longer mentions Phaser.
 
 ---
 
