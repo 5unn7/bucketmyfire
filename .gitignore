@@ -6,3 +6,16 @@ dist/
 *.log
 .playwright-mcp/
 dogfood-chase.png
+.gstack/
+
+# Raw model sources — kept locally to regenerate optimized assets, not shipped
+model-src/
+public/animals/ultimate_3d_animal_pack_free_download/
+
+# Dev verification artifacts (screenshots + standalone preview pages)
+*.jpeg
+*.png
+!public/**/*.png
+!public/**/*.jpeg
+heli-preview.html
+icons-preview.html
