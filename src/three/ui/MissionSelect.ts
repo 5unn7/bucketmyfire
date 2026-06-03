@@ -13,10 +13,10 @@ import { isCloudLinked } from '../leaderboard/cloudSave';
  * cockpit language (matching HUD.ts / Input.ts).
  *
  * The screen reads as one guided pre-flight FLOW with three numbered steps —
- * ① callsign → ② aircraft → ③ sortie — so the eye always knows where to start and
+ * ① callsign → ② aircraft → ③ mission — so the eye always knows where to start and
  * what comes next. Utilities (leaderboard / cloud-save) sit in a slim top bar, out of
  * the flow. The accent colour is rationed: it marks only the *active* selection and the
- * primary action (the selected aircraft pill, the next-up sortie, every FLY), so it
+ * primary action (the selected aircraft pill, the next-up mission, every FLY), so it
  * guides the eye instead of flattening everything. Picking an unlocked mission calls
  * `onSelect(id)` and `main.ts` reloads into the Game (page-reload mission switching).
  *
@@ -68,14 +68,14 @@ export class MissionSelect {
     // A quiet one-line intro so the screen still announces itself without a heavy header.
     const intro = section({ margin: '4px auto 22px' });
     intro.appendChild(
-      div({ fontSize: '13px', color: UI.dim, lineHeight: '1.5' }, 'Northern Saskatchewan air attack — ten sorties, hardest last. Fly them in order.'),
+      div({ fontSize: '13px', color: UI.dim, lineHeight: '1.5' }, 'Northern Saskatchewan air attack — ten missions, hardest last. Fly them in order.'),
     );
     this.root.appendChild(intro);
 
-    // ① Callsign  ② Aircraft  ③ Sortie — the three numbered steps of the pre-flight flow.
+    // ① Callsign  ② Aircraft  ③ Mission — the three numbered steps of the pre-flight flow.
     this.root.appendChild(this.callsignStep(catalog));
     this.root.appendChild(this.aircraftStep());
-    this.root.appendChild(this.sortieStep(catalog, onSelect));
+    this.root.appendChild(this.missionStep(catalog, onSelect));
 
     this.root.appendChild(creditsFooter());
     parent.appendChild(this.root);
@@ -113,7 +113,7 @@ export class MissionSelect {
   /**
    * ① Callsign — the editable pilot name (the leaderboard submits under it). Click the
    * chip to rename; validation + async uniqueness check keep the saved profile valid. A
-   * returning pilot (cleared ≥ 1 sortie) also gets a career-record strip here.
+   * returning pilot (cleared ≥ 1 mission) also gets a career-record strip here.
    */
   private callsignStep(catalog: MissionDef[]): HTMLDivElement {
     const wrap = section({ margin: '0 auto 24px' });
@@ -351,12 +351,12 @@ export class MissionSelect {
   }
 
   /**
-   * ③ Sortie — the campaign grid. Cards are trimmed (clamped brief, clear status) so the
-   * grid scans fast; the next playable sortie is highlighted as the focal point.
+   * ③ Mission — the campaign grid. Cards are trimmed (clamped brief, clear status) so the
+   * grid scans fast; the next playable mission is highlighted as the focal point.
    */
-  private sortieStep(catalog: MissionDef[], onSelect: (id: string) => void): HTMLDivElement {
+  private missionStep(catalog: MissionDef[], onSelect: (id: string) => void): HTMLDivElement {
     const wrap = section({ margin: '0 auto' });
-    wrap.appendChild(stepHeader(3, 'Select sortie'));
+    wrap.appendChild(stepHeader(3, 'Select mission'));
 
     const completed = new Set(getProgress().completed);
     // Next-up = first unlocked mission not yet cleared — the card we accent as the focal point.
@@ -454,7 +454,7 @@ export class MissionSelect {
 
 // --- small building blocks --------------------------------------------------
 
-/** A numbered step label — the visual spine of the callsign → aircraft → sortie flow. */
+/** A numbered step label — the visual spine of the callsign → aircraft → mission flow. */
 function stepHeader(n: number, label: string, hint?: string): HTMLDivElement {
   const row = div({ display: 'flex', alignItems: 'center', gap: '10px', margin: '0 0 13px' });
   row.appendChild(
@@ -484,8 +484,8 @@ function stepHeader(n: number, label: string, hint?: string): HTMLDivElement {
 }
 
 /**
- * Career-record strip for a returning pilot — sorties cleared, career score (sum of personal
- * bests), best single sortie, and a campaign-progress bar. Returns null for a fresh pilot
+ * Career-record strip for a returning pilot — missions cleared, career score (sum of personal
+ * bests), best single mission, and a campaign-progress bar. Returns null for a fresh pilot
  * (nothing cleared) so the home screen stays clean on a first visit.
  */
 function pilotRecord(catalog: MissionDef[]): HTMLDivElement | null {
@@ -496,7 +496,7 @@ function pilotRecord(catalog: MissionDef[]): HTMLDivElement | null {
   const total = catalog.length;
   const bests = Object.values(prog.best);
   const careerScore = bests.reduce((a, b) => a + b, 0);
-  const topSortie = bests.reduce((m, b) => Math.max(m, b), 0);
+  const topMission = bests.reduce((m, b) => Math.max(m, b), 0);
   const pct = total ? Math.round((cleared / total) * 100) : 0;
 
   const panel = div({
@@ -511,9 +511,9 @@ function pilotRecord(catalog: MissionDef[]): HTMLDivElement | null {
 
   const stats = div({ display: 'flex', gap: '24px', flexWrap: 'wrap' });
   stats.append(
-    statTile('Sorties', `${cleared}/${total}`),
+    statTile('Missions', `${cleared}/${total}`),
     statTile('Career score', careerScore.toLocaleString()),
-    statTile('Best sortie', topSortie.toLocaleString()),
+    statTile('Best mission', topMission.toLocaleString()),
   );
   panel.appendChild(stats);
 

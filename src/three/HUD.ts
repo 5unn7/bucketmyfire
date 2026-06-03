@@ -70,7 +70,7 @@ export interface HudState {
 /** Campaign end-banner callbacks (set by Game from main's mission router). */
 export interface EndScreenHooks {
   hasNext: boolean; // is there a next mission to advance to?
-  onNext(): void; // ▶ Next sortie
+  onNext(): void; // ▶ Next mission
   onMenu(): void; // ◂ Mission menu
   onRetry(): void; // ↻ Retry this mission
   onLeaderboard?(): void; // 🏆 open the global leaderboard on this mission

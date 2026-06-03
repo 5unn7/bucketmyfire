@@ -12,12 +12,12 @@ import type { EndScreenHooks } from './HUD';
 /**
  * 3D entry point + campaign router. The home screen (MissionSelect) is the DEFAULT landing for
  * everyone — new and returning. A mission runs only when the URL carries `?m=<id>`: picking a
- * sortie, advancing (next), and retrying all navigate via `?m=` and reload, so a refresh resumes
+ * mission, advancing (next), and retrying all navigate via `?m=` and reload, so a refresh resumes
  * the current mission with no Three.js teardown, while a fresh visit to the bare URL always lands
  * on the home screen (we deliberately do NOT persist a "resume into last mission" across sessions —
  * returning pilots see their record on the menu and pick from there).
  *
- * `?autostart` boots straight into the first sortie (so the headless QA harness can drive
+ * `?autostart` boots straight into the first mission (so the headless QA harness can drive
  * `window.__game`); `?m=<id>` deep-links a specific mission.
  */
 const container = document.getElementById('game') as HTMLDivElement;
@@ -47,7 +47,7 @@ function routeMission(): void {
   if (selectedId) {
     bootMission(missionById(selectedId) ?? CAMPAIGN[0]);
   } else {
-    // No `?m=` → the home screen, the default landing for everyone. Picking a sortie navigates
+    // No `?m=` → the home screen, the default landing for everyone. Picking a mission navigates
     // with `?m=` (a reload, no Three.js teardown) so retry/refresh resume that mission, while the
     // bare URL always returns here. The menu mounts itself into `container`.
     new MissionSelect(container, CAMPAIGN, (id) => gotoCampaign(id));
@@ -111,7 +111,7 @@ function endHooks(mission: MissionDef): EndScreenHooks {
   return {
     hasNext: !!next,
     onNext: () => {
-      if (next) gotoCampaign(next.id); // ?m= advances and reloads into the next sortie
+      if (next) gotoCampaign(next.id); // ?m= advances and reloads into the next mission
     },
     onRetry: () => location.reload(), // same mission — the ?m= in the URL keeps the right target
     onMenu: () => gotoCampaign(null), // drop ?m= (+ autostart) so the router lands on the home screen
