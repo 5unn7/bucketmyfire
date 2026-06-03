@@ -52,22 +52,32 @@ export class WaterSpray {
         attribute float aLife;
         attribute float aSize;
         varying float vLife;
+        varying float vSize;
         void main() {
           vLife = aLife;
+          vSize = aSize;
           vec4 mv = modelViewMatrix * vec4(position, 1.0);
-          // Size attenuation: shrink with distance and as the droplet ages out.
-          gl_PointSize = aSize * aLife * (320.0 / max(-mv.z, 1.0));
+          // Size attenuation: shrink with distance; a fresh droplet is fattest, thinning
+          // as it ages (a stretching falling streak), so the sheet tapers as it descends.
+          gl_PointSize = aSize * (0.55 + 0.45 * aLife) * (340.0 / max(-mv.z, 1.0));
           gl_Position = projectionMatrix * mv;
         }`,
       fragmentShader: /* glsl */ `
         uniform vec3 uColor;
         varying float vLife;
+        varying float vSize;
         void main() {
-          // Soft round droplet: fade from solid center to transparent edge.
-          float r = length(gl_PointCoord - vec2(0.5));
+          // Vertical STREAK, not a round dot: squash x so the falloff is narrow across
+          // and long down → a curtain of falling water rather than scattered beads.
+          vec2 d = gl_PointCoord - vec2(0.5);
+          float r = length(vec2(d.x * 2.6, d.y));
           if (r > 0.5) discard;
-          float soft = smoothstep(0.5, 0.12, r);
-          gl_FragColor = vec4(uColor, soft * clamp(vLife, 0.0, 1.0));
+          float soft = smoothstep(0.5, 0.05, r);
+          // A bright specular-ish core down the spine of each streak (water catching light).
+          float core = smoothstep(0.16, 0.0, abs(d.x * 2.6)) * smoothstep(0.5, 0.1, abs(d.y));
+          vec3 col = uColor + core * 0.35;
+          float a = (soft * 0.85 + core * 0.5) * clamp(vLife, 0.0, 1.0);
+          gl_FragColor = vec4(col, clamp(a, 0.0, 1.0));
         }`,
     });
 

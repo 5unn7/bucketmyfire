@@ -9,6 +9,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
+    "verify:campaign": "esbuild scripts/verify-campaign.ts --bundle --platform=node --format=esm --outfile=scripts/.verify-campaign.mjs --log-level=warning && node scripts/.verify-campaign.mjs",
     "lint": "eslint \"src/**/*.ts\"",
     "format": "prettier --write \"src/**/*.{ts,html,css}\""
   },

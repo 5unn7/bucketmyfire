@@ -83,9 +83,11 @@ export class BucketSim {
       }
     }
 
-    // VERTICAL (Y): near-rigid follow — the rope barely stretches, so there's no
-    // up/down bounce, only the lateral swing reads (per design feedback).
-    this.position.y += (targetY - this.position.y) * BUCKET3D.verticalFollow;
+    // VERTICAL (Y): smooth lerp follow (no spring, so no bounce) whose tightness
+    // scales with load — a light bucket follows loosely so the line has give, a full
+    // bucket follows tightly so the taut, weighted line reads rigid. Per design feedback.
+    const followY = BUCKET3D.verticalFollowEmpty + (BUCKET3D.verticalFollowFull - BUCKET3D.verticalFollowEmpty) * fill;
+    this.position.y += (targetY - this.position.y) * followY;
     this.vel.y = 0;
 
     // COLLISION: the bucket can't pass through the ground or the treetops. If its

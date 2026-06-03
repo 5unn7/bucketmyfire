@@ -15,8 +15,13 @@ export class Wind {
   private static readonly STRENGTH_MIN = 0.25;
   private static readonly STRENGTH_MAX = 1.0;
 
-  constructor(seedAngle?: number) {
+  // Per-mission scale on the gusting strength: <1 calm, >1 a hard wind that drives the
+  // fire front harder (the campaign passes this; the sandbox leaves it at 1).
+  private readonly strengthScale: number;
+
+  constructor(seedAngle?: number, strengthScale = 1) {
     this._angle = seedAngle ?? Math.random() * Math.PI * 2;
+    this.strengthScale = Number.isFinite(strengthScale) && strengthScale > 0 ? strengthScale : 1;
   }
 
   update(dtMs: number): void {
@@ -40,21 +45,21 @@ export class Wind {
   }
 
   get strength(): number {
-    return this._strength;
+    return this._strength * this.strengthScale;
   }
 
   get vx(): number {
-    return Math.cos(this._angle) * this._strength;
+    return Math.cos(this._angle) * this.strength;
   }
 
   get vz(): number {
-    return Math.sin(this._angle) * this._strength;
+    return Math.sin(this._angle) * this.strength;
   }
 
   /** Nudge a base spread angle toward the wind, harder when it's blowing strong. */
   biasAngle(baseAngle: number): number {
     if (!Number.isFinite(baseAngle)) return this._angle;
-    const blend = 0.3 + 0.3 * clamp(this._strength, 0, 1);
+    const blend = 0.3 + 0.3 * clamp(this.strength, 0, 1);
     // Shortest-arc rotate from base toward the wind by up to `blend * π`.
     let d = wrapPi(this._angle - baseAngle);
     d = clamp(d, -Math.PI * blend, Math.PI * blend);

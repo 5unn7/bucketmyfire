@@ -17,6 +17,12 @@ export class FrameContext {
   readonly uWind = { value: new THREE.Vector2(0, 0) };
   /** Normalized direction TOWARD the sun — for sky/foliage shading later. */
   readonly uSunDir = { value: new THREE.Vector3(0.4, 0.8, 0.45).normalize() };
+  /**
+   * Rotor downwash disc (C4): (centerX, centerZ, radius, strength). Materials that
+   * react to the wash (foliage bend) read this same reference; `Game` refreshes it
+   * each frame from the `RotorWash` signal + the heli's XZ via `setWash`.
+   */
+  readonly uWash = { value: new THREE.Vector4(0, 0, 1, 0) };
 
   /**
    * Advance the shared clock and refresh wind/sun. `windVx/windVz` come from
@@ -26,5 +32,10 @@ export class FrameContext {
     if (Number.isFinite(dt) && dt > 0) this.uTime.value += dt;
     this.uWind.value.set(windVx, windVz);
     this.uSunDir.value.copy(sunPos).sub(targetPos).normalize();
+  }
+
+  /** Refresh the rotor-downwash disc (world center XZ, radius, 0..1 strength). */
+  setWash(x: number, z: number, radius: number, strength: number): void {
+    this.uWash.value.set(x, z, radius, strength);
   }
 }

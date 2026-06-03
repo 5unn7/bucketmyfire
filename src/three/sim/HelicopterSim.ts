@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { FLIGHT } from '../config';
+import { FLIGHT, WASH } from '../config';
 
 export interface FlightInput {
   /** Yaw: -1 turn the nose left … +1 turn right. The pilot steers directly. */
@@ -63,14 +63,30 @@ export class HelicopterSim {
     return this.vel.z;
   }
 
+  /** Vertical speed (units/s): + climbing, − descending. For the HUD's VSI. */
+  get vertSpeed(): number {
+    return this.altVel;
+  }
+
   /**
    * Step the flight model. `floorY` is the World flight floor under the heli's XZ
    * (canopy clearance on land, scoop clearance over water); the altitude band rides
    * it so a fixed-collective descent always bottoms out the same height above
    * whatever's below. `payloadRatio` (water/capacity, 0..1) makes a full bucket fly
    * heavy: less thrust, lower top speed, weaker climb — recovers as it empties.
+   * `windX/windZ` (world units/s) are the air mass moving over the ground: the
+   * craft's GROUND velocity is its airspeed plus the wind, so a headwind eats your
+   * ground speed and a tailwind adds to it (the displayed airspeed is unaffected).
    */
-  update(dt: number, input: FlightInput, floorY: number, payloadRatio = 0): void {
+  update(
+    dt: number,
+    input: FlightInput,
+    floorY: number,
+    payloadRatio = 0,
+    windX = 0,
+    windZ = 0,
+    groundEffect = 0,
+  ): void {
     if (!Number.isFinite(dt) || dt <= 0) return;
 
     const load = Number.isFinite(payloadRatio) ? THREE.MathUtils.clamp(payloadRatio, 0, 1) : 0;
@@ -99,15 +115,30 @@ export class HelicopterSim {
     if (throttle < 0) throttle *= FLIGHT.reversePower; // tail-first flight is slower
     this.vel.x += fx * throttle * enginePower * dt;
     this.vel.z += fz * throttle * enginePower * dt;
+    // Cyclic-forward: a nose-down disc tilts the thrust vector forward, so committing
+    // to a dive adds REAL speed on top of throttle (the helicopter trades height for
+    // velocity). Uses last frame's pitch — the one-frame lag is imperceptible. Pitch is
+    // negative nose-down, so `dive` is how far the nose is tucked below level.
+    const dive = Math.max(0, -this.pitch);
+    this.vel.x += fx * dive * FLIGHT.pitchThrust * dt;
+    this.vel.z += fz * dive * FLIGHT.pitchThrust * dt;
     const drag = Math.max(0, 1 - FLIGHT.linearDrag * dt);
     this.vel.x *= drag;
     this.vel.z *= drag;
+    // Speed cap — RAISED while diving so a committed nose-down run outpaces level
+    // cruise (a dive should feel like it gets away from you, then bleed off on the flare).
+    const diveFrac = THREE.MathUtils.clamp(dive / FLIGHT.maxPitch, 0, 1);
+    const speedCap = maxSpeed * (1 + FLIGHT.diveSpeedBoost * diveFrac);
     const sp = Math.hypot(this.vel.x, this.vel.z);
-    if (sp > maxSpeed) {
-      const k = maxSpeed / sp;
+    if (sp > speedCap) {
+      const k = speedCap / sp;
       this.vel.x *= k;
       this.vel.z *= k;
     }
+    // Forward speed + cruise trim (reused by the dive coupling below AND the attitude
+    // block). `cruise` is the steady nose-down a fast heli holds to fight drag.
+    const fwdSpeed = this.vel.x * fx + this.vel.z * fz;
+    const cruise = -(fwdSpeed / FLIGHT.maxSpeed) * FLIGHT.cruisePitch;
 
     // --- Vertical: collective with WEIGHT, AGL. The commanded climb/descent rate
     // EASES in (rotor inertia, framerate-independent) rather than snapping. A loaded
@@ -119,6 +150,18 @@ export class HelicopterSim {
     const downRate = FLIGHT.descendSpeed; // weight assists descent → no payload cut
     let targetAltVel = lift >= 0 ? lift * upRate : lift * downRate;
     targetAltVel -= FLIGHT.payloadSink * load; // a full bucket pulls the aircraft down
+    // Cyclic-forward DIVE: nosing over BEYOND the cruise trim trades height for speed —
+    // you sink as you surge. Steady cruise (pitch ≈ trim) does NOT drift down; only the
+    // active tuck opens a dive, and pulling UP collective arrests it. This is the vertical
+    // half of the pitch coupling whose horizontal half is the thrust boost above.
+    const diveExcess = Math.max(0, -(this.pitch - cruise));
+    targetAltVel -= FLIGHT.pitchDive * diveExcess;
+    // Ground effect (C4): close to the surface the rotor rides its own downwash cushion,
+    // a buoyant assist that floats a low hover (and helps counter the payload sink). It's
+    // GATED by collective — at full DOWN it vanishes, so descending to scoop still bottoms
+    // out on the floor; it only lifts when you ease off or pull up near the deck.
+    const ge = Number.isFinite(groundEffect) ? THREE.MathUtils.clamp(groundEffect, 0, 1) : 0;
+    targetAltVel += WASH.groundLift * ge * Math.max(0, 1 + lift);
     const resp = FLIGHT.collectiveResponse * (1 - FLIGHT.payloadResponsePenalty * load);
     const altA = 1 - Math.pow(1 - resp, dt * 60); // per-60fps factor → framerate-independent ease
     this.altVel += (targetAltVel - this.altVel) * altA;
@@ -134,9 +177,13 @@ export class HelicopterSim {
     }
     this.agl = this.altitude - floorY;
 
-    // --- Integrate position ---
-    this.position.x += this.vel.x * dt;
-    this.position.z += this.vel.z * dt;
+    // --- Integrate position: GROUND velocity = airspeed + wind (so a headwind
+    // drags you back over the ground, a tailwind pushes you along). Wind only takes
+    // hold once you're actually flying — at/near a hover it fades out so the pilot
+    // holds station and releasing the stick doesn't let the wind carry you away. ---
+    const windGain = THREE.MathUtils.clamp(sp / FLIGHT.windHoldSpeed, 0, 1);
+    this.position.x += (this.vel.x + windX * windGain) * dt;
+    this.position.z += (this.vel.z + windZ * windGain) * dt;
     this.position.y = this.altitude;
 
     // --- Body attitude from REAL acceleration (the physics polish) ---
@@ -158,9 +205,8 @@ export class HelicopterSim {
     const aRef = FLIGHT.enginePower; // normalize accel → roughly ±1 at full thrust
 
     // A fast-cruising heli sits persistently nose-down (disc tilted forward to hold
-    // speed against drag); the acceleration term then adds the dive/flare on top.
-    const fwdSpeed = this.vel.x * fx + this.vel.z * fz;
-    const cruise = -(fwdSpeed / FLIGHT.maxSpeed) * FLIGHT.cruisePitch;
+    // speed against drag — `cruise`, computed above); the acceleration term then adds
+    // the dive/flare on top.
     const targetPitch = cruise - THREE.MathUtils.clamp(fwdAcc / aRef, -1, 1) * FLIGHT.maxPitch;
     const targetBank = -THREE.MathUtils.clamp(rightAcc / aRef, -1, 1) * FLIGHT.maxBank;
     this.bank = THREE.MathUtils.lerp(this.bank, targetBank, FLIGHT.bodyEase);

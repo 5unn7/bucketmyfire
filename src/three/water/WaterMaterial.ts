@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { WATER, RIPPLE_SLOTS } from '../config';
+import { WATER, RIPPLE_SLOTS, CLOUDS } from '../config';
 import { FrameContext } from '../render/FrameContext';
 import { Ripples } from './Ripples';
 
@@ -22,8 +22,8 @@ import { Ripples } from './Ripples';
 export function createWaterMaterial(frame: FrameContext, ripples: Ripples): THREE.MeshStandardMaterial {
   const material = new THREE.MeshStandardMaterial({
     color: 0xffffff,
-    roughness: 0.18, // near-mirror so the sun glints
-    metalness: 0.15,
+    roughness: 0.32, // soft sheen (raised from near-mirror — sharp glints were streaking)
+    metalness: 0.0, // water is a dielectric; the metallic white sheen added grey smear
     transparent: true,
     opacity: WATER.opacity,
   });
@@ -40,14 +40,27 @@ export function createWaterMaterial(frame: FrameContext, ripples: Ripples): THRE
     shader.uniforms.uFoam = { value: new THREE.Color(WATER.foamColor) };
     shader.uniforms.uDepthRange = { value: WATER.depthRange };
     shader.uniforms.uFoamWidth = { value: WATER.foamWidth };
+    shader.uniforms.uFoamStrength = { value: WATER.foamStrength };
     shader.uniforms.uWaveAmp = { value: WATER.waveAmp };
     shader.uniforms.uWaveScale = { value: WATER.waveScale };
     shader.uniforms.uWaveSpeed = { value: WATER.waveSpeed };
     shader.uniforms.uNormalStrength = { value: WATER.normalStrength };
     shader.uniforms.uFresnelPower = { value: WATER.fresnelPower };
+    shader.uniforms.uFresnelTint = { value: WATER.fresnelTint };
     shader.uniforms.uRippleSpeed = { value: WATER.rippleSpeed };
     shader.uniforms.uRippleLife = { value: WATER.rippleLife };
     shader.uniforms.uRippleWidth = { value: WATER.rippleWidth };
+    // Sun glitter (shares the live sun direction) + drifting cloud shadows (shared wind/time,
+    // SAME field + tuning as the terrain so a shadow crosses seamlessly from land onto the lake).
+    shader.uniforms.uSunDir = frame.uSunDir;
+    shader.uniforms.uGlitterCol = { value: new THREE.Color(WATER.sunGlitterColor) };
+    shader.uniforms.uGlitterStrength = { value: WATER.glitterStrength };
+    shader.uniforms.uGlitterPower = { value: WATER.glitterPower };
+    shader.uniforms.uCloudScale = { value: CLOUDS.scale };
+    shader.uniforms.uCloudSpeed = { value: CLOUDS.speed };
+    shader.uniforms.uCloudLo = { value: CLOUDS.coverageLo };
+    shader.uniforms.uCloudHi = { value: CLOUDS.coverageHi };
+    shader.uniforms.uCloudDark = { value: CLOUDS.darken };
 
     // --- Vertex: gentle swell + carry world position & water depth to the fragment ---
     shader.vertexShader = shader.vertexShader
@@ -76,12 +89,24 @@ export function createWaterMaterial(frame: FrameContext, ripples: Ripples): THRE
       .replace(
         '#include <common>',
         /* glsl */ `#include <common>
-        uniform float uTime, uDepthRange, uFoamWidth, uNormalStrength, uFresnelPower;
+        uniform float uTime, uDepthRange, uFoamWidth, uFoamStrength, uNormalStrength, uFresnelPower, uFresnelTint;
         uniform float uRippleSpeed, uRippleLife, uRippleWidth;
-        uniform vec3 uShallow, uDeep, uSkyTint, uFoam;
+        uniform float uGlitterStrength, uGlitterPower, uCloudScale, uCloudSpeed, uCloudLo, uCloudHi, uCloudDark;
+        uniform vec2 uWind;
+        uniform vec3 uShallow, uDeep, uSkyTint, uFoam, uSunDir, uGlitterCol;
         uniform vec4 uRipples[${RIPPLE_SLOTS}];
         varying vec3 vWorldPos;
         varying float vWaterDepth;
+
+        // Cheap value-noise fbm (for the drifting cloud shadow — same recipe as the terrain).
+        float wh21(vec2 p){ p = fract(p * vec2(123.34, 345.45)); p += dot(p, p + 34.345); return fract(p.x * p.y); }
+        float wvnoise(vec2 p){
+          vec2 i = floor(p), f = fract(p);
+          vec2 u = f * f * (3.0 - 2.0 * f);
+          float a = wh21(i), b = wh21(i + vec2(1.0, 0.0)), c = wh21(i + vec2(0.0, 1.0)), d = wh21(i + vec2(1.0, 1.0));
+          return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+        }
+        float wfbm(vec2 p){ return wvnoise(p) * 0.6 + wvnoise(p * 2.3 + 5.1) * 0.3 + wvnoise(p * 4.7 + 9.2) * 0.1; }
 
         // Sum the ripple rings at world point p. Writes a normal-gradient into g and
         // returns the scalar foam/crest contribution.
@@ -96,7 +121,7 @@ export function createWaterMaterial(frame: FrameContext, ripples: Ripples): THRE
             float fade = 1.0 - clamp(r.z / uRippleLife, 0.0, 1.0);
             float amt = ring * fade * r.w;
             vec2 dir = normalize(p - r.xy + vec2(1e-5));
-            g += dir * amt * 3.0;
+            g += dir * amt * 2.0;
             crest += amt;
           }
           return crest;
@@ -114,14 +139,18 @@ export function createWaterMaterial(frame: FrameContext, ripples: Ripples): THRE
           // Fine, multi-octave ripples (short wavelengths ~6–12 units) so the water
           // reads as rippling texture rather than a couple of giant stripes across a
           // small lake. Each octave is gentler than the last.
+          // Wave-normal gradient. The axis-aligned terms are kept SMALL (they were the main
+          // cause of the white-grey streaking — strong single-axis cosines tilt the normal in
+          // long stripes that the fresnel sky-tint then smears); the cross/diagonal terms carry
+          // more of the texture so the surface reads as organic chop, not banding.
           vec2 p = vWorldPos.xz;
           vec2 g = vec2(0.0);
-          g.x += cos(p.x * 0.55 + uTime * 1.3) * 0.30;
-          g.y += cos(p.y * 0.62 - uTime * 1.1) * 0.30;
-          g.x += cos((p.x + p.y) * 0.90 + uTime * 1.9) * 0.16;
-          g.y += cos((p.x - p.y) * 1.05 - uTime * 1.7) * 0.16;
-          g.x += cos(p.y * 1.7 + uTime * 2.6) * 0.08;
-          g.y += cos(p.x * 1.9 - uTime * 2.3) * 0.08;
+          g.x += cos(p.x * 0.55 + uTime * 1.3) * 0.15;
+          g.y += cos(p.y * 0.62 - uTime * 1.1) * 0.15;
+          g.x += cos((p.x + p.y) * 0.90 + uTime * 1.9) * 0.13;
+          g.y += cos((p.x - p.y) * 1.05 - uTime * 1.7) * 0.13;
+          g.x += cos(p.y * 1.7 + uTime * 2.6) * 0.06;
+          g.y += cos(p.x * 1.9 - uTime * 2.3) * 0.06;
           float crest = rippleField(p, g);
 
           vec3 perturbed = normalize(vec3(-g.x, 1.0 / max(uNormalStrength, 0.001), -g.y));
@@ -134,22 +163,36 @@ export function createWaterMaterial(frame: FrameContext, ripples: Ripples): THRE
           // Fresnel sky tint — brighter, sky-toned at grazing angles (fake reflection).
           vec3 V = normalize(cameraPosition - vWorldPos);
           float fres = pow(1.0 - clamp(dot(normalize(normal), V), 0.0, 1.0), uFresnelPower);
-          wcol = mix(wcol, uSkyTint, fres * 0.6);
+          wcol = mix(wcol, uSkyTint, fres * uFresnelTint);
 
-          // Shoreline foam (shallow band) + ripple crests, with a time shimmer.
-          float foam = 1.0 - smoothstep(0.0, uFoamWidth, vWaterDepth);
-          foam = clamp(foam + crest * 0.6, 0.0, 1.0);
-          foam *= 0.6 + 0.4 * sin(uTime * 4.0 + p.x * 0.5 + p.y * 0.5);
-          wcol = mix(wcol, uFoam, clamp(foam, 0.0, 1.0));
+          // Shoreline foam (thin shallow band) + ripple crests, with a gentle time shimmer.
+          // Capped at uFoamStrength so the very edge softens to pale water rather than a
+          // hard white-grey rim along every shore and river bank.
+          float shore = 1.0 - smoothstep(0.0, uFoamWidth, vWaterDepth);
+          shore *= 0.8 + 0.2 * sin(uTime * 4.0 + p.x * 0.5 + p.y * 0.5); // subtle shimmer
+          float foam = clamp(shore * uFoamStrength + crest * 0.45, 0.0, 1.0);
+          wcol = mix(wcol, uFoam, foam);
+
+          // Sun glitter: a sharp half-vector specular toward the sun, broken into sparkly
+          // points by the wave normal (the highlights feed the bloom for a sun path on the lake).
+          vec3 H = normalize(uSunDir + V);
+          float glit = pow(max(dot(normalize(normal), H), 0.0), uGlitterPower);
+          wcol += uGlitterCol * glit * uGlitterStrength;
+
+          // Drifting cloud shadow (same field as the land) — dims the body AND the glitter,
+          // so a cloud passing over the lake reads as a real shadow crossing the water.
+          vec2 cp = (vWorldPos.xz + uWind * uTime * uCloudSpeed) * uCloudScale;
+          float cloudSh = smoothstep(uCloudLo, uCloudHi, wfbm(cp));
+          wcol *= mix(1.0, uCloudDark, cloudSh);
 
           diffuseColor.rgb = wcol;
-          diffuseColor.a = max(diffuseColor.a, clamp(foam, 0.0, 1.0)); // foam reads solid
+          diffuseColor.a = max(diffuseColor.a, foam); // foam reads a touch more solid
         }
         #include <lights_physical_fragment>`,
       );
   };
 
   // Stable cache key so the patched program compiles exactly once.
-  material.customProgramCacheKey = () => 'bmf-water-v2';
+  material.customProgramCacheKey = () => 'bmf-water-v5';
   return material;
 }

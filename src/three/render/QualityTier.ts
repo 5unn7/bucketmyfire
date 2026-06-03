@@ -18,6 +18,8 @@ export interface QualitySettings {
   readonly shadows: boolean;
   readonly shadowMapSize: number;
   readonly waterSegments: number;
+  readonly terrainSegments: number;
+  readonly bloom: number; // post-process glow render scale: 0 off, 0.5 half-res, 1 full
 }
 
 const ORDER: TierName[] = ['high', 'med', 'low'];

@@ -20,6 +20,25 @@
 import { CAMERA } from './config';
 import type { LookOffset } from './ChaseCamera';
 
+// Design tokens — mirror HUD.ts's glass-cockpit language so the touch controls
+// read as part of the same cockpit as the instruments: dark frosted glass,
+// hairline strokes, one cyan accent. (Kept local to avoid coupling Input → HUD;
+// if these ever drift, lift both into a shared theme module.)
+const UI = {
+  accent: '#67e8ff',
+  accentSoft: 'rgba(103,232,255,0.55)',
+  glass: 'rgba(12,18,25,0.42)', // frosted panel fill (a touch more opaque than the HUD chips so buttons hold up over bright terrain)
+  stroke: 'rgba(255,255,255,0.18)',
+  blur: 'blur(12px) saturate(120%)',
+  shadow: '0 6px 22px rgba(0,0,0,0.40)',
+  text: 'rgba(234,246,255,0.95)',
+  dim: 'rgba(255,255,255,0.5)',
+  warm: '#ff7a45', // the DROP / fire accent
+  warmGlass: 'rgba(44,17,13,0.46)',
+  warmStroke: 'rgba(255,138,110,0.85)',
+  font: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+};
+
 export interface ControlState {
   turn: number; // -1 turn left .. +1 turn right
   throttle: number; // -1 reverse .. +1 forward (variable along the nose)
@@ -111,34 +130,72 @@ export class Input {
       zIndex: '10',
     });
 
-    // Virtual joystick (bottom-left).
+    // Virtual joystick (bottom-left) — a frosted dish with hairline axis ticks and
+    // a glowing cyan knob, so it reads as an instrument rather than a flat blob.
     const R = 65; // base radius
     const base = div({
       position: 'fixed',
-      left: '34px',
-      bottom: '34px',
+      left: '32px',
+      bottom: '32px',
       width: `${R * 2}px`,
       height: `${R * 2}px`,
       borderRadius: '50%',
-      background: 'rgba(255,255,255,0.10)',
-      border: '2px solid rgba(255,255,255,0.25)',
+      background: 'radial-gradient(circle at 50% 42%, rgba(24,34,44,0.34), rgba(8,12,18,0.52))',
+      border: `1px solid ${UI.stroke}`,
+      boxShadow: `inset 0 1px 22px rgba(0,0,0,0.42), ${UI.shadow}`,
       pointerEvents: 'auto',
       touchAction: 'none',
     });
+    setBlur(base);
+    // Inner guide ring + four faint axis ticks (N/E/S/W) to hint the stick travel.
+    base.appendChild(
+      div({
+        position: 'absolute',
+        inset: '20px',
+        borderRadius: '50%',
+        border: '1px solid rgba(255,255,255,0.08)',
+      }),
+    );
+    for (let i = 0; i < 4; i++) {
+      base.appendChild(
+        div({
+          position: 'absolute',
+          left: '50%',
+          top: '6px',
+          width: '2px',
+          height: '8px',
+          marginLeft: '-1px',
+          borderRadius: '1px',
+          background: 'rgba(103,232,255,0.35)',
+          transformOrigin: `1px ${R - 6}px`,
+          transform: `rotate(${i * 90}deg)`,
+        }),
+      );
+    }
     const thumb = div({
       position: 'absolute',
       left: '50%',
       top: '50%',
-      width: '58px',
-      height: '58px',
-      marginLeft: '-29px',
-      marginTop: '-29px',
+      width: '60px',
+      height: '60px',
+      marginLeft: '-30px',
+      marginTop: '-30px',
       borderRadius: '50%',
-      background: 'rgba(255,255,255,0.28)',
+      background: 'radial-gradient(circle at 40% 34%, rgba(255,255,255,0.55), rgba(150,182,202,0.24))',
+      border: `1.5px solid ${UI.accentSoft}`,
+      boxShadow: '0 3px 10px rgba(0,0,0,0.45)',
+      transition: 'box-shadow 0.12s ease, border-color 0.12s ease',
       pointerEvents: 'none',
     });
     base.appendChild(thumb);
     root.appendChild(base);
+
+    const setKnobActive = (on: boolean) => {
+      thumb.style.boxShadow = on
+        ? `0 0 16px ${UI.accentSoft}, 0 3px 10px rgba(0,0,0,0.45)`
+        : '0 3px 10px rgba(0,0,0,0.45)';
+      thumb.style.borderColor = on ? UI.accent : UI.accentSoft;
+    };
 
     let stickId = -1;
     const onStick = (e: PointerEvent) => {
@@ -155,6 +212,7 @@ export class Input {
       this.stickTurn = tx / R; // push right → turn right
       this.stickThrottle = -ty / R; // push up → forward (screen-up is −y)
       this.stickActive = true;
+      setKnobActive(true);
     };
     const releaseStick = () => {
       stickId = -1;
@@ -162,6 +220,7 @@ export class Input {
       this.stickTurn = 0;
       this.stickThrottle = 0;
       thumb.style.transform = 'translate(0px, 0px)';
+      setKnobActive(false);
     };
     base.addEventListener('pointerdown', (e) => {
       stickId = e.pointerId;
@@ -174,21 +233,26 @@ export class Input {
     base.addEventListener('pointerup', releaseStick);
     base.addEventListener('pointercancel', releaseStick);
 
-    // Right-hand cluster: climb / descend + drop.
-    const climb = button('▲', { right: '120px', bottom: '120px', width: '74px', height: '74px' });
-    const descend = button('▼', { right: '120px', bottom: '34px', width: '74px', height: '74px' });
+    // Right-hand cluster: a vertical collective pair (climb / descend) sitting just
+    // left of the DROP hero, all sharing one baseline so they read as one group.
+    const climb = button('▲', { right: '148px', bottom: '100px', width: '76px', height: '76px', fontSize: '22px' });
+    const descend = button('▼', { right: '148px', bottom: '16px', width: '76px', height: '76px', fontSize: '22px' });
     const drop = button('DROP', {
-      right: '30px',
-      bottom: '46px',
-      width: '92px',
-      height: '92px',
-      background: 'rgba(178,58,46,0.35)',
-      borderColor: 'rgba(255,120,100,0.9)',
-      fontSize: '17px',
+      right: '28px',
+      bottom: '38px',
+      width: '100px',
+      height: '100px',
+      background: UI.warmGlass,
+      borderColor: UI.warmStroke,
+      color: '#ffe7df',
+      fontSize: '16px',
+      fontWeight: '700',
+      letterSpacing: '1.5px',
+      boxShadow: `0 0 18px rgba(255,90,60,0.28), ${UI.shadow}`,
     });
     holdButton(climb, (on) => (this.btnUp = on));
     holdButton(descend, (on) => (this.btnDown = on));
-    holdButton(drop, (on) => (this.btnDrop = on));
+    holdButton(drop, (on) => (this.btnDrop = on), UI.warm);
     root.appendChild(climb);
     root.appendChild(descend);
     root.appendChild(drop);
@@ -208,13 +272,11 @@ export class Input {
    *  ease-back lives in ChaseCamera; here we just zero the rates and drop `active`). */
   private buildLookUI(root: HTMLElement): void {
     const icon = button('', {
-      right: '40px',
+      right: '36px',
       top: '50%',
       transform: 'translateY(-50%)',
-      width: '60px',
-      height: '60px',
-      background: 'rgba(0,0,0,0.4)',
-      borderColor: 'rgba(255,255,255,0.55)',
+      width: '58px',
+      height: '58px',
       cursor: 'grab',
     });
     icon.innerHTML = EYE_SVG;
@@ -283,18 +345,25 @@ export class Input {
       maxWidth: '320px',
       margin: '0 18px',
       padding: '20px 24px',
-      borderRadius: '14px',
-      background: 'rgba(12,20,16,0.92)',
-      border: '1px solid rgba(255,255,255,0.2)',
-      color: '#eaf6ff',
-      fontFamily: 'system-ui, sans-serif',
+      borderRadius: '16px',
+      background: 'rgba(10,16,22,0.92)',
+      border: `1px solid ${UI.stroke}`,
+      color: UI.text,
+      fontFamily: UI.font,
       fontSize: '15px',
       lineHeight: '1.4',
-      boxShadow: '0 10px 40px rgba(0,0,0,0.5)',
+      boxShadow: '0 12px 44px rgba(0,0,0,0.55)',
     });
+    setBlur(panel);
     panel.appendChild(
       div(
-        { fontSize: '18px', fontWeight: '700', letterSpacing: '1px', marginBottom: '12px' },
+        {
+          fontSize: '13px',
+          fontWeight: '700',
+          letterSpacing: '3px',
+          marginBottom: '14px',
+          color: UI.accent,
+        },
         'CONTROLS',
       ),
     );
@@ -317,14 +386,16 @@ export class Input {
     );
     overlay.appendChild(panel);
 
+    // Bottom-center: the radar moved to the top-right, freeing this spot, and it
+    // stays clear of the joystick (bottom-left) and the climb/drop cluster (bottom-right).
     const icon = button('?', {
-      right: '18px',
-      top: '52px',
-      width: '36px',
-      height: '36px',
-      fontSize: '20px',
-      background: 'rgba(0,0,0,0.4)',
-      borderColor: 'rgba(255,255,255,0.55)',
+      left: '50%',
+      bottom: '18px',
+      transform: 'translateX(-50%)',
+      width: '38px',
+      height: '38px',
+      fontSize: '19px',
+      color: UI.dim,
     });
 
     const setOpen = (open: boolean) => {
@@ -379,9 +450,15 @@ function helpRow(parent: HTMLElement, label: string, keys: string): void {
     gap: '18px',
     padding: '3px 0',
   });
-  row.appendChild(div({ opacity: '0.85' }, label));
-  row.appendChild(div({ fontWeight: '600', whiteSpace: 'nowrap' }, keys));
+  row.appendChild(div({ color: UI.dim }, label));
+  row.appendChild(div({ fontWeight: '600', whiteSpace: 'nowrap', color: UI.text }, keys));
   parent.appendChild(row);
+}
+
+/** Add backdrop-blur (with the -webkit- prefix iOS/Safari still needs). */
+function setBlur(node: HTMLElement): void {
+  node.style.backdropFilter = UI.blur;
+  node.style.setProperty('-webkit-backdrop-filter', UI.blur);
 }
 
 function button(label: string, style: Partial<CSSStyleDeclaration>): HTMLDivElement {
@@ -391,31 +468,40 @@ function button(label: string, style: Partial<CSSStyleDeclaration>): HTMLDivElem
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: '50%',
-    background: 'rgba(255,255,255,0.12)',
-    border: '2px solid rgba(255,255,255,0.4)',
-    color: '#eaf6ff',
-    fontFamily: 'system-ui, sans-serif',
+    background: UI.glass,
+    border: `1px solid ${UI.stroke}`,
+    color: UI.text,
+    fontFamily: UI.font,
     fontSize: '24px',
     fontWeight: '600',
+    boxShadow: UI.shadow,
     userSelect: 'none',
     pointerEvents: 'auto',
     touchAction: 'none',
     ...style,
   });
+  setBlur(node);
   node.textContent = label;
   return node;
 }
 
-/** Wire a div to call `set(true)` while pressed and `set(false)` on release. */
-function holdButton(node: HTMLElement, set: (on: boolean) => void): void {
+/** Wire a div to call `set(true)` while pressed and `set(false)` on release, with
+ *  an accent ring + glow on press (warm for DROP, cyan otherwise). */
+function holdButton(node: HTMLElement, set: (on: boolean) => void, accent: string = UI.accent): void {
+  const restShadow = node.style.boxShadow;
+  const restBorder = node.style.borderColor;
   const press = (e: PointerEvent) => {
     set(true);
     node.setPointerCapture(e.pointerId);
-    node.style.filter = 'brightness(1.5)';
+    node.style.filter = 'brightness(1.25)';
+    node.style.borderColor = accent;
+    node.style.boxShadow = `0 0 18px ${accent}, inset 0 0 14px ${accent}55`;
   };
   const release = () => {
     set(false);
     node.style.filter = 'none';
+    node.style.borderColor = restBorder;
+    node.style.boxShadow = restShadow;
   };
   node.addEventListener('pointerdown', press);
   node.addEventListener('pointerup', release);

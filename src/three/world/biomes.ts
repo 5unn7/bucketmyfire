@@ -57,7 +57,17 @@ export class Biomes {
     const forestW = smoothstep(BIOMES.forestMoistLow, BIOMES.forestMoistHigh, m);
     let color = mix(COL.meadow, COL.forest, forestW);
     let density = lerp(BIOMES.densMeadow, BIOMES.densForest, forestW);
-    const tint = mix(TINT.meadow, TINT.forest, forestW);
+    let tint = mix(TINT.meadow, TINT.forest, forestW);
+
+    // Swamp / muskeg overlay: very wet, FLAT, LOW ground turns to murky peat bog with
+    // only a sparse stunted stand. Gated on all three so bogs sit in the wet lowlands.
+    const swampW =
+      smoothstep(BIOMES.swampMoist - 0.06, BIOMES.swampMoist + 0.06, m) *
+      (1 - smoothstep(BIOMES.swampMaxHeight, BIOMES.swampMaxHeight + 2, e)) *
+      (1 - smoothstep(BIOMES.swampMaxSlope, BIOMES.swampMaxSlope + 0.1, s));
+    color = mix(color, COL.swamp, swampW);
+    density = lerp(density, BIOMES.densSwamp, swampW);
+    tint = mix(tint, TINT.swamp, swampW);
 
     // Rock overlay: steep ground or high outcrops show bare granite.
     const rockW = Math.max(
@@ -83,10 +93,12 @@ const COL = {
   meadow: hexToRgb(BIOMES.colorMeadow),
   forest: hexToRgb(BIOMES.colorForest),
   rock: hexToRgb(BIOMES.colorRock),
+  swamp: hexToRgb(BIOMES.colorSwamp),
 };
 const TINT = {
   meadow: hexToRgb(BIOMES.tintMeadow),
   forest: hexToRgb(BIOMES.tintForest),
+  swamp: hexToRgb(BIOMES.tintSwamp),
 };
 
 function hexToRgb(hex: number): Rgb {

@@ -77,7 +77,10 @@ export class HeliAudio {
 
   private async loadRotor(): Promise<void> {
     try {
-      const res = await fetch(rotorLoopUrl);
+      // Fetch as a media range (like an <audio> element would) — servers/CDNs
+      // serve audio more reliably this way, and it dodges environments that
+      // short-circuit a plain fetch of a media MIME type to an empty 204.
+      const res = await fetch(rotorLoopUrl, { headers: { Range: 'bytes=0-' } });
       const raw = await res.arrayBuffer();
       const decoded = await this.ctx.decodeAudioData(raw);
       this.rotorBuffer = this.makeSeamlessLoop(decoded);

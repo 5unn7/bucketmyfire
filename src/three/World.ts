@@ -1,7 +1,8 @@
-import { WORLD3D, FLIGHT, LAKES3D, TERRAIN, LAKE_SHAPE } from './config';
+import { WORLD3D, FLIGHT, LAKES3D, TERRAIN, LAKE_SHAPE, STREAM, COMMUNITIES, ROADS } from './config';
 import { Noise2D, FbmParams } from './world/noise';
 import { Biomes } from './world/biomes';
 import { Placement } from './world/placement';
+import { createNameSource, NameSource } from './world/names';
 
 /**
  * The unified heightfield — the single source of ground/water truth for the whole
@@ -39,13 +40,53 @@ export interface LakeRuntime {
   /** Flat water-surface height — computed once from the base terrain at the center. */
   waterLevel: number;
   shape: LakeShape;
+  name: string; // boreal lake name (Track A5) — display only
+}
+
+/** A named settlement (Track A5): the lakeside base, or a small forest hamlet. */
+export interface CommunitySite {
+  name: string; // northern-Saskatchewan community name
+  x: number;
+  z: number;
+  kind: 'base' | 'town'; // 'base' = lakeside depot site; 'town' = forest hamlet
+  radius: number; // cabins of a hamlet scatter within this of the center (units)
+  buildings: number; // intended cabin count (towns); 0 for the base (depot only)
+}
+
+/** A highway (Track A5): a meandering polyline draped on the terrain between communities. */
+export interface RoadRuntime {
+  name: string; // highway designation (e.g. "Hwy 905")
+  pts: { x: number; z: number }[]; // polyline (world XZ); the mesh drapes it on the ground
+  width: number; // half-width of the asphalt ribbon
+}
+
+/** A stream / mini river: a meandering polyline whose surface descends along its run. */
+export interface RiverRuntime {
+  pts: { x: number; z: number }[]; // polyline (world)
+  width: number; // half-width of the water ribbon
+  surfStart: number; // water-surface Y at pts[0]
+  surfEnd: number; // water-surface Y at the last point
+  cum: number[]; // cumulative length at each point (for surface interpolation)
+  total: number; // total polyline length
+  minX: number; // bounding box (for cheap query rejection)
+  maxX: number;
+  minZ: number;
+  maxZ: number;
 }
 
 export class World {
   readonly size = WORLD3D.size;
   readonly lakes: LakeRuntime[];
+  /** Streams / mini rivers connecting lakes downhill + tiny tributaries (Track A4). */
+  readonly rivers: RiverRuntime[];
+  /** Named settlements (Track A5): one lakeside base + forest hamlets. */
+  readonly communities: CommunitySite[];
+  /** Highway network (Track A5): draped road ribbons linking the communities. */
+  readonly roads: RoadRuntime[];
   /** Seeded PRNG (mulberry32). One stream for all deterministic world generation. */
   readonly rng: () => number;
+  /** Deterministic boreal name source (lakes/communities/highways). */
+  private readonly nameSource: NameSource;
   /** Biome classification (A2) — elevation × moisture × slope → color/density/tint. */
   readonly biomes: Biomes;
   /** Terrain-aware placement (A3) — fuel-biased fire siting. */
@@ -55,10 +96,18 @@ export class World {
   private readonly baseFbm: FbmParams;
   private readonly ridgeFbm: FbmParams;
 
-  constructor() {
-    this.rng = mulberry32(WORLD3D.seed);
+  /**
+   * @param seed world seed — threads through noise/hydrology/placement/fire RNG so the same
+   * seed grows the same map (the determinism invariant). Defaults to `WORLD3D.seed` (the
+   * sandbox map); the mission campaign passes a per-mission seed (the "future maps" seam).
+   */
+  constructor(seed: number = WORLD3D.seed) {
+    this.rng = mulberry32(seed);
+    // Names draw from their own seeded streams (off the world seed), independent of the
+    // main rng ordering — so naming a feature never shifts the rest of world generation.
+    this.nameSource = createNameSource(seed ^ 0x27d4eb2f);
     // Offset the noise seed off the rng seed so terrain and placement RNG don't correlate.
-    this.noise = new Noise2D(WORLD3D.seed ^ 0x9e3779b9);
+    this.noise = new Noise2D(seed ^ 0x9e3779b9);
     this.baseFbm = {
       octaves: TERRAIN.octaves,
       frequency: TERRAIN.baseFrequency,
@@ -72,28 +121,84 @@ export class World {
       gain: TERRAIN.gain,
     };
 
-    // Each lake's water surface is the base terrain height at its center, sampled
-    // ONCE (so the plane stays flat). The ground is then carved into a bowl below
-    // it in groundHeightAt — water sits IN a depression, not on a hump. Each lake
-    // also gets a seeded irregular boundary (elongated + lobed) so it reads as a
-    // fracture-controlled Shield lake rather than a perfect disc.
-    this.lakes = LAKES3D.map((l) => ({
-      x: l.x,
-      z: l.z,
-      r: l.r,
-      waterLevel: this.baseHeight(l.x, l.z),
-      shape: this.makeLakeShape(),
-    }));
+    // Lakes scattered across the world, count scaled to area so water density stays
+    // constant as the map grows (the curated LAKES3D radii seed the size range). Each
+    // lake's water surface is the base terrain height at its center, sampled ONCE (so
+    // the plane stays flat); groundHeightAt then carves a bowl below it — water sits IN
+    // a depression. Each also gets a seeded irregular boundary (elongated + lobed).
+    this.lakes = this.scatterLakes();
+
+    // Streams connect the lakes downhill (A4); built after lakes so the water
+    // network exists before biomes (which read distance-to-water, now incl. rivers).
+    this.rivers = this.makeRivers();
+
+    // Settlements + highways (A5): named community sites, then a road network (MST) that
+    // links them. Built after the hydrology so the base can sit on a real lake shore and
+    // roads can drape over the finished ground/water surface.
+    this.communities = this.makeCommunities();
+    this.roads = this.makeRoads();
 
     // Biomes read elevation/slope/water-distance from this World plus their own
     // moisture noise channel (seeded off the world seed).
     this.biomes = new Biomes(
-      WORLD3D.seed ^ 0x85ebca6b,
+      seed ^ 0x85ebca6b,
       (x, z) => this.groundHeightAt(x, z),
       (x, z) => this.slopeAt(x, z),
       (x, z) => this.distanceToWater(x, z),
     );
     this.placement = new Placement(this);
+  }
+
+  /**
+   * Resolve a mission placement reference to a community site. `'base'` → the lakeside base;
+   * a number → that town (0-based among the forest hamlets), falling back to any community at
+   * that index. Returns null if the seeded map didn't grow a matching site. Used by `Game` to
+   * resolve `nearCommunity` fire/structure/zone specs against the generated world.
+   */
+  getCommunity(which: number | 'base'): CommunitySite | null {
+    if (which === 'base') return this.communities.find((c) => c.kind === 'base') ?? null;
+    const towns = this.communities.filter((c) => c.kind === 'town');
+    return towns[which] ?? this.communities[which] ?? null;
+  }
+
+  /**
+   * Scatter lakes across the world, seeded + deterministic. Count scales with area
+   * (keeping the same per-area water density the 600-unit map had), centers are biased
+   * to lowlands (so lakes sit in valleys, not on peaks), kept apart so basins don't
+   * overlap, and clear of the origin so you don't start mid-lake. Radii are drawn from
+   * the curated LAKES3D set so the size distribution still feels hand-tuned.
+   */
+  private scatterLakes(): LakeRuntime[] {
+    const lakes: LakeRuntime[] = [];
+    const density = LAKES3D.length / (600 * 600); // curated lakes per unit² at the base size
+    const count = Math.max(LAKES3D.length, Math.round(density * this.size * this.size));
+    const bound = this.size / 2 - 60;
+    const radii = LAKES3D.map((l) => l.r);
+    let guard = 0;
+    while (lakes.length < count && guard++ < count * 80) {
+      const x = (this.rng() * 2 - 1) * bound;
+      const z = (this.rng() * 2 - 1) * bound;
+      const r = radii[Math.floor(this.rng() * radii.length)];
+      if (Math.hypot(x, z) < 90) continue; // keep the start area clear
+      if (this.baseHeight(x, z) > 3) continue; // bias to lowlands (no ponds on ridgetops)
+      let ok = true;
+      for (const o of lakes) {
+        if (Math.hypot(o.x - x, o.z - z) < o.r + r + 80) {
+          ok = false; // non-overlapping basins, with breathing room between
+          break;
+        }
+      }
+      if (!ok) continue;
+      lakes.push({
+        x,
+        z,
+        r,
+        waterLevel: this.baseHeight(x, z),
+        shape: this.makeLakeShape(),
+        name: this.nameSource.lake(),
+      });
+    }
+    return lakes;
   }
 
   /** Generate one lake's seeded irregular boundary (elongation + angular lobes). */
@@ -126,6 +231,308 @@ export class World {
     let w = 1;
     for (const h of s.harmonics) w += h.amp * Math.sin(h.k * phi + h.phase);
     return lake.r * ellipse * w;
+  }
+
+  // --- Rivers / streams (A4) ---------------------------------------------------
+
+  /**
+   * Build the stream network: SOME lakes spill a mini river down to their nearest LOWER
+   * lake (a seeded coin-flip, and only when that lake is reasonably near), plus the
+   * occasional short tributary feeding a lake from uphill ground. Deliberately sparse —
+   * a boreal landscape has plenty of isolated kettle lakes, not one plumbed network.
+   * Seeded + deterministic.
+   */
+  private makeRivers(): RiverRuntime[] {
+    const rivers: RiverRuntime[] = [];
+
+    // Mini rivers: a fraction of lakes connect to their nearest strictly-lower lake.
+    for (const src of this.lakes) {
+      // Roll FIRST (per lake) so the seeded stream advances uniformly whether or not a
+      // downhill neighbour exists — keeps the sparseness stable across the map.
+      if (this.rng() > STREAM.connectChance) continue;
+      let dst: LakeRuntime | null = null;
+      let best = Infinity;
+      for (const cand of this.lakes) {
+        if (cand === src || cand.waterLevel >= src.waterLevel) continue;
+        const dd = Math.hypot(cand.x - src.x, cand.z - src.z);
+        if (dd < best) {
+          best = dd;
+          dst = cand;
+        }
+      }
+      if (!dst || best > STREAM.maxConnectDist) continue; // no neighbour, or too far to plumb
+      const ux = (dst.x - src.x) / best;
+      const uz = (dst.z - src.z) / best;
+      const aR = this.lakeRadius(src, Math.atan2(uz, ux));
+      const bR = this.lakeRadius(dst, Math.atan2(-uz, -ux));
+      rivers.push(
+        this.buildRiver(
+          src.x + ux * aR,
+          src.z + uz * aR,
+          dst.x - ux * bR,
+          dst.z - uz * bR,
+          src.waterLevel,
+          dst.waterLevel,
+          STREAM.width,
+          STREAM.meanderAmp,
+        ),
+      );
+    }
+
+    // Tiny tributaries: an occasional short feeder from uphill ground into a lake. Most
+    // lakes get none (seeded roll); the ones that do try a few seeded directions and take
+    // the first that genuinely rises above the lake (so the channel stays sunken) and
+    // doesn't run into other water.
+    for (const lake of this.lakes) {
+      if (this.rng() > STREAM.tributaryChance) continue; // most lakes have no feeder
+      for (let attempt = 0; attempt < STREAM.tinyTries; attempt++) {
+        const ang = this.rng() * Math.PI * 2;
+        const ux = Math.cos(ang);
+        const uz = Math.sin(ang);
+        const aR = this.lakeRadius(lake, ang);
+        const ex = lake.x + ux * (aR + STREAM.tinyLength);
+        const ez = lake.z + uz * (aR + STREAM.tinyLength);
+        if (this.baseHeight(ex, ez) < lake.waterLevel + STREAM.tinyRise) continue; // not uphill enough
+        if (this.lakeAt(ex, ez)) continue; // don't start inside another lake
+        rivers.push(
+          this.buildRiver(
+            ex,
+            ez,
+            lake.x + ux * aR,
+            lake.z + uz * aR,
+            lake.waterLevel + STREAM.tinyRise,
+            lake.waterLevel,
+            STREAM.tinyWidth,
+            STREAM.meanderAmp * 0.6,
+          ),
+        );
+        break; // one tributary per lake
+      }
+    }
+    return rivers;
+  }
+
+  /** Resample a straight A→B run into a meandering polyline + cached lengths/bbox. */
+  private buildRiver(
+    ax: number,
+    az: number,
+    bx: number,
+    bz: number,
+    surfStart: number,
+    surfEnd: number,
+    width: number,
+    meanderAmp: number,
+  ): RiverRuntime {
+    const L = Math.hypot(bx - ax, bz - az) || 1;
+    const nx = -(bz - az) / L; // unit perpendicular (for lateral meander)
+    const nz = (bx - ax) / L;
+    // Resample densely so the ribbon curves smoothly (the meander envelope is a
+    // continuous function of t, so more samples = a smooth, high-poly stream edge).
+    const segs = Math.max(STREAM.meander + 1, Math.ceil(L / STREAM.resample));
+    const pts: { x: number; z: number }[] = [];
+    for (let k = 0; k <= segs; k++) {
+      const t = k / segs;
+      const bxp = ax + (bx - ax) * t;
+      const bzp = az + (bz - az) * t;
+      // Lateral meander from noise, tapered to 0 at both ends so it joins cleanly.
+      const off = this.noise.simplex(bxp * 0.02 + 13, bzp * 0.02 - 7) * meanderAmp * Math.sin(Math.PI * t);
+      pts.push({ x: bxp + nx * off, z: bzp + nz * off });
+    }
+
+    const cum = [0];
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minZ = Infinity;
+    let maxZ = -Infinity;
+    for (let i = 0; i < pts.length; i++) {
+      if (i > 0) cum[i] = cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z);
+      minX = Math.min(minX, pts[i].x);
+      maxX = Math.max(maxX, pts[i].x);
+      minZ = Math.min(minZ, pts[i].z);
+      maxZ = Math.max(maxZ, pts[i].z);
+    }
+    return { pts, width, surfStart, surfEnd, cum, total: cum[cum.length - 1] || 1, minX, maxX, minZ, maxZ };
+  }
+
+  /**
+   * Nearest stream to (x, z): the closest river within its carve influence, with the
+   * perpendicular distance `d` and the interpolated water surface `surf` at that point.
+   * Null if no stream is near. Drives the channel carve and the water queries.
+   */
+  nearestRiver(x: number, z: number): { river: RiverRuntime; d: number; surf: number } | null {
+    let best: { river: RiverRuntime; d: number; surf: number } | null = null;
+    for (const r of this.rivers) {
+      const inf = r.width + STREAM.bankWidth + STREAM.blendWidth;
+      if (x < r.minX - inf || x > r.maxX + inf || z < r.minZ - inf || z > r.maxZ + inf) continue;
+      const hit = pointToRiver(x, z, r);
+      if (!best || hit.d < best.d) best = { river: r, d: hit.d, surf: hit.surf };
+    }
+    if (!best) return null;
+    const inf = best.river.width + STREAM.bankWidth + STREAM.blendWidth;
+    return best.d <= inf ? best : null;
+  }
+
+  // --- Settlements + highways (A5) ---------------------------------------------
+
+  /**
+   * Seed the named communities: one lakeside BASE (the depot site) on the largest lake's
+   * dry shore, plus a handful of forest HAMLETS on moderate dry ground, spaced apart and
+   * off the player's spawn. Deterministic. Structures.ts later fills these with buildings.
+   */
+  private makeCommunities(): CommunitySite[] {
+    const out: CommunitySite[] = [];
+
+    const base = this.pickLakesideSite();
+    if (base) out.push(base);
+
+    const bound = this.size / 2 - 80;
+    let towns = 0;
+    let guard = 0;
+    while (towns < COMMUNITIES.townCount && guard++ < 800) {
+      const x = (this.rng() * 2 - 1) * bound;
+      const z = (this.rng() * 2 - 1) * bound;
+      if (Math.hypot(x, z) < COMMUNITIES.minFromOrigin) continue; // off spawn
+      if (this.lakeAt(x, z)) continue; // not in a lake
+      if (this.nearestRiver(x, z)) continue; // not straddling a stream
+      const h = this.baseHeight(x, z);
+      if (h < 0.5 || h > 8) continue; // dry ground, but not perched on a ridge
+      let ok = true;
+      for (const c of out) {
+        if (Math.hypot(c.x - x, c.z - z) < COMMUNITIES.spacing) {
+          ok = false;
+          break;
+        }
+      }
+      if (!ok) continue;
+      const buildings =
+        COMMUNITIES.cabinsMin +
+        Math.floor(this.rng() * (COMMUNITIES.cabinsMax - COMMUNITIES.cabinsMin + 1));
+      out.push({
+        name: this.nameSource.community(),
+        x,
+        z,
+        kind: 'town',
+        radius: COMMUNITIES.clusterRadius,
+        buildings,
+      });
+      towns++;
+    }
+    return out;
+  }
+
+  /** Find a dry shore point just past the largest lake's edge — the lakeside base site. */
+  private pickLakesideSite(): CommunitySite | null {
+    let lake: LakeRuntime | null = null;
+    let bestR = -1;
+    for (const l of this.lakes) {
+      if (l.r > bestR) {
+        bestR = l.r;
+        lake = l;
+      }
+    }
+    if (!lake) return null;
+    for (let a = 0; a < Math.PI * 2; a += Math.PI / 12) {
+      const dx = Math.cos(a);
+      const dz = Math.sin(a);
+      const rr = this.lakeRadius(lake, a);
+      for (let m = rr + 6; m < rr + COMMUNITIES.baseShoreSearch; m += 3) {
+        const x = lake.x + dx * m;
+        const z = lake.z + dz * m;
+        if (this.isOverWater(x, z)) continue;
+        return {
+          name: this.nameSource.community(),
+          x,
+          z,
+          kind: 'base',
+          radius: COMMUNITIES.clusterRadius,
+          buildings: 0,
+        };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Highway network: a minimum spanning tree over the community centers (Prim's), so
+   * every settlement is reachable with no redundant loops. Each MST edge becomes one
+   * draped, gently-meandering road, named after a northern-Sask provincial highway.
+   */
+  private makeRoads(): RoadRuntime[] {
+    const nodes = this.communities;
+    if (nodes.length < 2) return [];
+    const roads: RoadRuntime[] = [];
+    const inTree = new Array(nodes.length).fill(false);
+    inTree[0] = true;
+    for (let added = 1; added < nodes.length; added++) {
+      let bi = -1;
+      let bj = -1;
+      let bd = Infinity;
+      for (let i = 0; i < nodes.length; i++) {
+        if (!inTree[i]) continue;
+        for (let j = 0; j < nodes.length; j++) {
+          if (inTree[j]) continue;
+          const dd = Math.hypot(nodes[i].x - nodes[j].x, nodes[i].z - nodes[j].z);
+          if (dd < bd) {
+            bd = dd;
+            bi = i;
+            bj = j;
+          }
+        }
+      }
+      if (bj < 0) break;
+      inTree[bj] = true;
+      roads.push(this.buildRoad(nodes[bi], nodes[bj]));
+    }
+    return roads;
+  }
+
+  /** Resample a straight A→B run into a gently-meandering road polyline (drapes at draw). */
+  private buildRoad(a: CommunitySite, b: CommunitySite): RoadRuntime {
+    const L = Math.hypot(b.x - a.x, b.z - a.z) || 1;
+    const nx = -(b.z - a.z) / L; // unit perpendicular (lateral meander)
+    const nz = (b.x - a.x) / L;
+    const segs = Math.max(4, Math.ceil(L / ROADS.resample));
+    const pts: { x: number; z: number }[] = [];
+    for (let k = 0; k <= segs; k++) {
+      const t = k / segs;
+      const px = a.x + (b.x - a.x) * t;
+      const pz = a.z + (b.z - a.z) * t;
+      // Lateral wander from noise, tapered to 0 at both ends so the road meets each town.
+      const off = this.noise.simplex(px * 0.015 - 5, pz * 0.015 + 9) * ROADS.meanderAmp * Math.sin(Math.PI * t);
+      const p = { x: px + nx * off, z: pz + nz * off };
+      // Route around lakes: if this point fell in water, slide it along the road's
+      // perpendicular until it hits land (endpoints stay put — towns sit on shore).
+      pts.push(k === 0 || k === segs ? p : this.dodgeWater(p, nx, nz));
+    }
+    return { name: this.nameSource.highway(), pts, width: ROADS.width };
+  }
+
+  /**
+   * Nudge a road point off water along the carriageway's perpendicular (nx, nz). Searches
+   * both sides in growing steps and returns the first dry spot found (clearing the road's
+   * full half-width so the deck doesn't clip the shore). Falls back to the original point if
+   * no land is found within the cap — a long causeway is better than a kinked dead end.
+   */
+  private dodgeWater(p: { x: number; z: number }, nx: number, nz: number): { x: number; z: number } {
+    if (!this.isOverWater(p.x, p.z)) return p;
+    const step = ROADS.width;
+    const maxSteps = Math.ceil(ROADS.dodgeMax / step);
+    for (let s = 1; s <= maxSteps; s++) {
+      const d = s * step;
+      for (const sign of [1, -1]) {
+        const cx = p.x + nx * d * sign;
+        const cz = p.z + nz * d * sign;
+        // Clear the full carriageway, not just the centreline, so shoulders stay dry.
+        if (
+          !this.isOverWater(cx, cz) &&
+          !this.isOverWater(cx + nx * ROADS.width, cz + nz * ROADS.width) &&
+          !this.isOverWater(cx - nx * ROADS.width, cz - nz * ROADS.width)
+        ) {
+          return { x: cx, z: cz };
+        }
+      }
+    }
+    return p;
   }
 
   // --- Base terrain ------------------------------------------------------------
@@ -166,28 +573,54 @@ export class World {
    */
   groundHeightAt(x: number, z: number): number {
     let h = this.baseHeight(x, z);
+    let nearLakeSigned = Infinity; // signed distance to the nearest lake shoreline (− inside)
     for (const lake of this.lakes) {
       const dx = x - lake.x;
       const dz = z - lake.z;
       const d = Math.hypot(dx, dz);
+      // Cheap reject: far lakes contribute nothing to the carve. Their max boundary is
+      // ~r·2.42 (elong + lobes); skip past the bank+blend ring. Keeps cost ~O(nearby)
+      // even with many lakes in a big world.
+      if (d > lake.r * 2.5 + WORLD3D.lakeBankWidth + WORLD3D.lakeBlendWidth) continue;
       const rAt = this.lakeRadius(lake, Math.atan2(dz, dx)); // irregular boundary at this angle
+      const sd = d - rAt;
+      if (sd < nearLakeSigned) nearLakeSigned = sd; // cache for the river-mouth blend below
       const w = basinWeight(d, rAt);
       if (w <= 0) continue;
       h = lerp(h, basinProfile(d, lake, rAt), w);
+    }
+    // Carve the nearest stream's shallow channel (A4) on top of the lakes.
+    const rv = this.nearestRiver(x, z);
+    if (rv) {
+      let w = channelWeight(rv.d, rv.river.width);
+      // River MOUTH polish: fade the channel carve out as it enters a lake so the stream
+      // merges smoothly into the lake basin instead of notching a hard seam across the
+      // shoreline + bank. Full carve a short way out (≥ mouthBlend), zero just inside the
+      // waterline; the basin then owns the ground under the mouth.
+      if (w > 0 && nearLakeSigned < STREAM.mouthBlend) {
+        w *= smoothstep((nearLakeSigned + 2) / (STREAM.mouthBlend + 2));
+      }
+      if (w > 0) h = lerp(h, channelProfile(rv.d, rv.river.width, rv.surf), w);
     }
     return h;
   }
 
   // --- Water -------------------------------------------------------------------
 
-  /** Flat water-surface Y if (x, z) lies within a lake's waterline, else null. */
+  /**
+   * Water-surface Y if (x, z) lies on water, else null — a lake's flat plane, or a
+   * stream's locally-interpolated surface. Generalized for A4 so scoop/flight-floor
+   * work over rivers exactly as over lakes (the keystone signature is unchanged).
+   */
   waterLevelAt(x: number, z: number): number | null {
     const lake = this.lakeAt(x, z);
-    return lake ? lake.waterLevel : null;
+    if (lake) return lake.waterLevel;
+    const rv = this.nearestRiver(x, z);
+    return rv && rv.d <= rv.river.width ? rv.surf : null;
   }
 
   isOverWater(x: number, z: number): boolean {
-    return this.lakeAt(x, z) !== null;
+    return this.waterLevelAt(x, z) !== null;
   }
 
   /** The lake whose (irregular) water disc covers (x, z), or null. */
@@ -196,6 +629,7 @@ export class World {
       const dx = x - lake.x;
       const dz = z - lake.z;
       const d = Math.hypot(dx, dz);
+      if (d > lake.r * 2.5) continue; // cheap reject — past any possible boundary
       if (d <= this.lakeRadius(lake, Math.atan2(dz, dx))) return lake;
     }
     return null;
@@ -212,8 +646,13 @@ export class World {
       const dx = x - lake.x;
       const dz = z - lake.z;
       const d = Math.hypot(dx, dz);
+      // Only lakes whose shoreline could be the nearest matter; skip clearly-distant
+      // ones (a far lake is never the closest water). Keeps this O(nearby) in a big world.
+      if (d > lake.r * 2.5 + 60) continue;
       min = Math.min(min, d - this.lakeRadius(lake, Math.atan2(dz, dx)));
     }
+    const rv = this.nearestRiver(x, z);
+    if (rv) min = Math.min(min, rv.d - rv.river.width);
     return min;
   }
 
@@ -279,6 +718,60 @@ function basinProfile(d: number, lake: LakeRuntime, r: number): number {
     return lerp(shore, bankTop, smoothstep((d - r) / WORLD3D.lakeBankWidth));
   }
   return bankTop;
+}
+
+// --- Stream channel shaping (module-pure helpers) ------------------------------
+
+/** Carve weight in [0,1] at perpendicular distance `d` from a stream of half-width `w`. */
+function channelWeight(d: number, w: number): number {
+  const bankEnd = w + STREAM.bankWidth;
+  const outer = bankEnd + STREAM.blendWidth;
+  if (d <= bankEnd) return 1;
+  if (d >= outer) return 0;
+  return 1 - smoothstep((d - bankEnd) / STREAM.blendWidth);
+}
+
+/**
+ * Target ground height in a stream channel at perpendicular distance `d` from the
+ * centerline, anchored on the local water surface `surf`: streambed (deepest at the
+ * center) → shore at the water's edge → low bank → blend back. Mirrors the lake basin.
+ */
+function channelProfile(d: number, w: number, surf: number): number {
+  const bed = surf - STREAM.depth;
+  const shore = surf - STREAM.shoreDrop;
+  const bankTop = surf + STREAM.bankHeight;
+  if (d <= w) return lerp(bed, shore, smoothstep(d / w));
+  const bankEnd = w + STREAM.bankWidth;
+  if (d <= bankEnd) return lerp(shore, bankTop, smoothstep((d - w) / STREAM.bankWidth));
+  return bankTop;
+}
+
+/**
+ * Closest approach of (x, z) to a river polyline: the perpendicular distance and the
+ * water surface interpolated by arc-length at the nearest point. Exact per-segment.
+ */
+function pointToRiver(x: number, z: number, r: RiverRuntime): { d: number; surf: number } {
+  let bestD = Infinity;
+  let bestLen = 0;
+  for (let i = 0; i < r.pts.length - 1; i++) {
+    const p0 = r.pts[i];
+    const p1 = r.pts[i + 1];
+    const vx = p1.x - p0.x;
+    const vz = p1.z - p0.z;
+    const len2 = vx * vx + vz * vz || 1;
+    let u = ((x - p0.x) * vx + (z - p0.z) * vz) / len2;
+    if (u < 0) u = 0;
+    else if (u > 1) u = 1;
+    const cx = p0.x + u * vx;
+    const cz = p0.z + u * vz;
+    const dd = Math.hypot(x - cx, z - cz);
+    if (dd < bestD) {
+      bestD = dd;
+      bestLen = r.cum[i] + u * Math.sqrt(len2);
+    }
+  }
+  const t = bestLen / r.total;
+  return { d: bestD, surf: r.surfStart + (r.surfEnd - r.surfStart) * t };
 }
 
 function smoothstep(t: number): number {

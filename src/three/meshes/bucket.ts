@@ -25,8 +25,14 @@ export interface BucketMesh {
   setFill(t: number): void; // 0..1 — internal water level (+ a touch heavier look when full)
 }
 
-// --- Dimensions (world units). The heli is ~8 units long; the bucket is small. ---
-const HEIGHT = 2.4; // body height, centered on origin → spans y ∈ [-1.2, +1.2]
+// --- Dimensions (world units). The heli fuselage is ~9.7 units long with a ~2.6-wide,
+// ~2-tall cabin; a real slung Bambi bucket is much smaller than the aircraft. The body
+// constants below are authored at a comfortable modeling size, then the whole group is
+// scaled by SCALE so the finished bucket reads correctly against the heli (body ends up
+// ~1.4 tall × ~1.1 wide — roughly half the cabin width). SCALE preserves every internal
+// proportion (rim, straps, swivel, valve) instead of fudging each hardware constant.
+const SCALE = 0.6; // uniform shrink of the assembled bucket (see TOP_ANCHOR_Y export below)
+const HEIGHT = 2.4; // body height (pre-scale), centered on origin → spans y ∈ [-1.2, +1.2]
 const TOP_RADIUS = 0.95; // open mouth at the top (+Y)
 const BOTTOM_RADIUS = 0.82; // base (−Y) — only slightly narrower (Bambi pails are near-cylindrical)
 const RADIAL_SEGMENTS = 14; // low-poly faceted look, mobile-friendly
@@ -156,7 +162,12 @@ export function createBucket(): BucketMesh {
   // Start empty.
   setFill(0);
 
-  return { group, topAnchorY: TOP_ANCHOR_Y, setFill };
+  // Shrink the whole assembly uniformly so it reads as a slung bucket against the heli.
+  // The swivel-head anchor is reported in WORLD units (TOP_ANCHOR_Y * SCALE) because the
+  // caller adds it to the bucket's world Y to land the longline on the swivel.
+  group.scale.setScalar(SCALE);
+
+  return { group, topAnchorY: TOP_ANCHOR_Y * SCALE, setFill };
 }
 
 /** A thin strap (capsule-ish cylinder) spanning two points, oriented along them. */
