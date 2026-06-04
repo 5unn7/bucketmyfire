@@ -276,6 +276,11 @@ the right block.
   hygiene (branch, commit), and don't be afraid to delete proven-dead code (the legacy Phaser tree
   was removed this way once the 3D build was solid).
 - `Training/` and `water-b1-beauty.jpeg` hold concept/reference art — **not** game assets.
+- **DOM UI = one design system.** All HUD / menu / overlay styling reads tokens from
+  `src/three/ui/theme.ts` (the single `UI` palette + shared `el`/`div`/`setBlur`/`anchor`/`frosted`
+  helpers). The prose system — colour/state semantics, type scale, motion, anti-patterns — lives in
+  **`DESIGN.md`** at the repo root; read it before any visual/UI change. Never add a second `UI`
+  token object or hard-code a colour/blur/shadow in a module; add a token to `theme.ts` instead.
 
 ## Roadmap
 

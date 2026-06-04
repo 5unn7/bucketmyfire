@@ -8,6 +8,7 @@ import {
   saveToCloud,
   loadFromCloud,
 } from '../leaderboard/cloudSave';
+import { UI, FS, FW, R, el, div, setBlur } from './theme';
 
 /**
  * Cloud-save overlay — a small frosted modal in the game's cockpit language (matching
@@ -21,19 +22,8 @@ import {
  * unlocks / best scores re-render from the freshly-merged local store.
  */
 
-const UI = {
-  accent: '#67e8ff',
-  good: '#7ee0a6',
-  warm: '#ff7a45',
-  text: 'rgba(234,246,255,0.96)',
-  dim: 'rgba(255,255,255,0.5)',
-  glass: 'rgba(16,24,32,0.62)',
-  field: 'rgba(8,13,18,0.6)',
-  stroke: 'rgba(255,255,255,0.14)',
-  blur: 'blur(14px) saturate(120%)',
-  shadow: '0 8px 30px rgba(0,0,0,0.45)',
-  font: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
-};
+// Visual tokens (UI) + `div`/`setBlur` come from ./theme — the one cockpit palette.
+// `good` → `UI.ok` (shared success green), `glass` → `UI.cardGlass`, `shadow` → `UI.shadowCard`.
 
 /** Open the cloud save/restore modal. */
 export function openCloudSave(): void {
@@ -74,10 +64,10 @@ class CloudSave {
     const panel = div({
       width: '100%',
       maxWidth: '420px',
-      background: UI.glass,
+      background: UI.cardGlass,
       border: `1px solid ${UI.stroke}`,
-      borderRadius: '18px',
-      boxShadow: UI.shadow,
+      borderRadius: R.xl,
+      boxShadow: UI.shadowCard,
       padding: '22px 20px',
       boxSizing: 'border-box',
     });
@@ -85,9 +75,9 @@ class CloudSave {
 
     // Header
     const head = div({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' });
-    head.appendChild(div({ fontSize: '20px', fontWeight: '800', letterSpacing: '0.3px' }, '☁ Cloud Save'));
+    head.appendChild(div({ fontSize: FS.hero, fontWeight: FW.heavy, letterSpacing: '0.3px' }, '☁ Cloud Save'));
     const close = div(
-      { fontSize: '12px', fontWeight: '700', letterSpacing: '1px', color: UI.dim, cursor: 'pointer', padding: '6px 10px', borderRadius: '99px', border: `1px solid ${UI.stroke}` },
+      { fontSize: FS.sm, fontWeight: FW.bold, letterSpacing: '1px', color: UI.dim, cursor: 'pointer', padding: '6px 10px', borderRadius: R.pill, border: `1px solid ${UI.stroke}` },
       '✕',
     );
     close.addEventListener('pointerdown', (e) => {
@@ -99,7 +89,7 @@ class CloudSave {
 
     panel.appendChild(
       div(
-        { fontSize: '12.5px', lineHeight: '1.5', color: UI.dim, margin: '6px 0 16px' },
+        { fontSize: FS.sm, lineHeight: '1.5', color: UI.dim, margin: '6px 0 16px' },
         'Pin your progress to an email — no password. Restore it on any device by entering the same callsign + email.',
       ),
     );
@@ -107,7 +97,7 @@ class CloudSave {
     if (!isConfigured()) {
       panel.appendChild(
         div(
-          { fontSize: '13px', lineHeight: '1.5', color: UI.warm, padding: '14px', borderRadius: '12px', border: `1px solid ${UI.stroke}`, background: UI.field },
+          { fontSize: FS.body, lineHeight: '1.5', color: UI.warm, padding: '14px', borderRadius: R.md, border: `1px solid ${UI.stroke}`, background: UI.field },
           'Cloud saves are offline right now. Your progress is still kept in this browser.',
         ),
       );
@@ -136,19 +126,19 @@ class CloudSave {
     panel.appendChild(this.email.parentElement as HTMLDivElement);
 
     // Status line (validation / progress / result).
-    this.status = div({ fontSize: '12px', fontWeight: '600', minHeight: '16px', margin: '4px 2px 12px' });
+    this.status = div({ fontSize: FS.sm, fontWeight: FW.semibold, minHeight: '16px', margin: '4px 2px 12px' });
     panel.appendChild(this.status);
 
     // Action buttons.
     const actions = div({ display: 'flex', gap: '10px' });
     this.saveBtn = this.actionBtn('⬆  Save', UI.accent, () => void this.doSave());
-    this.loadBtn = this.actionBtn('⬇  Load', UI.good, () => void this.doLoad());
+    this.loadBtn = this.actionBtn('⬇  Load', UI.ok, () => void this.doLoad());
     actions.appendChild(this.saveBtn);
     actions.appendChild(this.loadBtn);
     panel.appendChild(actions);
 
     // Linked-device footer (shown once this browser is tied to an account).
-    this.linkNote = div({ fontSize: '11.5px', color: UI.dim, marginTop: '14px', textAlign: 'center' });
+    this.linkNote = div({ fontSize: FS.meta, color: UI.dim, marginTop: '14px', textAlign: 'center' });
     panel.appendChild(this.linkNote);
     this.renderLinkNote();
 
@@ -166,7 +156,7 @@ class CloudSave {
     const res = await saveToCloud(this.callsign.value, this.email.value);
     this.setBusy(false);
     if (res.ok) {
-      this.showStatus('✓ ' + (res.detail ?? 'Saved.'), UI.good);
+      this.showStatus('✓ ' + (res.detail ?? 'Saved.'), UI.ok);
       this.renderLinkNote();
     } else {
       this.showStatus(res.reason, UI.warm);
@@ -179,7 +169,7 @@ class CloudSave {
     this.showStatus('Looking up your save…', UI.dim);
     const res = await loadFromCloud(this.callsign.value, this.email.value);
     if (res.ok) {
-      this.showStatus('✓ ' + (res.detail ?? 'Restored.') + ' Reloading…', UI.good);
+      this.showStatus('✓ ' + (res.detail ?? 'Restored.') + ' Reloading…', UI.ok);
       // Reload so unlocks / best scores / callsign re-render from the merged local store.
       window.setTimeout(() => window.location.reload(), 650);
       return; // stay busy through the reload
@@ -212,7 +202,7 @@ class CloudSave {
   private field(label: string, placeholder: string, value: string, maxLen: number): HTMLInputElement {
     const wrap = div({ marginBottom: '12px' });
     wrap.appendChild(
-      div({ fontSize: '10px', fontWeight: '700', letterSpacing: '2px', color: UI.dim, marginBottom: '5px' }, label),
+      div({ fontSize: FS.label, fontWeight: FW.bold, letterSpacing: '2px', color: UI.dim, marginBottom: '5px' }, label),
     );
     const input = document.createElement('input');
     Object.assign(input.style, {
@@ -220,11 +210,11 @@ class CloudSave {
       boxSizing: 'border-box',
       background: UI.field,
       border: `1px solid ${UI.stroke}`,
-      borderRadius: '10px',
+      borderRadius: R.md,
       padding: '11px 12px',
       color: UI.text,
       font: 'inherit',
-      fontSize: '15px',
+      fontSize: FS.lg,
       outline: 'none',
     } as Partial<CSSStyleDeclaration>);
     input.type = 'text';
@@ -245,13 +235,13 @@ class CloudSave {
       {
         flex: '1',
         textAlign: 'center',
-        fontSize: '14px',
-        fontWeight: '700',
+        fontSize: FS.md,
+        fontWeight: FW.bold,
         letterSpacing: '0.5px',
         color: accent,
         cursor: 'pointer',
         padding: '12px',
-        borderRadius: '12px',
+        borderRadius: R.md,
         border: `1px solid ${accent}66`,
         background: 'rgba(255,255,255,0.03)',
         userSelect: 'none',
@@ -291,24 +281,4 @@ class CloudSave {
   }
 }
 
-// --- local DOM helpers (kept self-contained, like the other ui/ overlays) ---
-
-function el<K extends keyof HTMLElementTagNameMap>(
-  tag: K,
-  style: Partial<CSSStyleDeclaration>,
-  text?: string,
-): HTMLElementTagNameMap[K] {
-  const node = document.createElement(tag);
-  Object.assign(node.style, style);
-  if (text !== undefined) node.textContent = text;
-  return node;
-}
-
-function div(style: Partial<CSSStyleDeclaration>, text?: string): HTMLDivElement {
-  return el('div', style, text);
-}
-
-function setBlur(node: HTMLElement): void {
-  node.style.backdropFilter = UI.blur;
-  node.style.setProperty('-webkit-backdrop-filter', UI.blur);
-}
+// `el` / `div` / `setBlur` are imported from ./theme (shared DOM helpers).

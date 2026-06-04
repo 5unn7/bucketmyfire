@@ -1,8 +1,12 @@
 /**
- * Shared cockpit theme — the one source of the glass-cockpit visual language and
- * the DOM helpers that build it. `HUD.ts` and `Input.ts` used to each carry their
- * own copy of the `UI` token object and these helpers (with a standing comment in
- * Input.ts asking to "lift both into a shared theme module"); this is that module.
+ * Shared cockpit theme — THE single source of the glass-cockpit visual language and
+ * the DOM helpers that build it. The whole DOM UI layer reads from here: the in-flight
+ * `HUD.ts`, the touch `Input.ts`, and the full-screen overlays (`MissionSelect.ts`,
+ * `Leaderboard.ts`, `CloudSave.ts`) — which used to each carry their own near-duplicate
+ * `UI` token object that had quietly drifted (different text alpha, blur, shadow, and
+ * three separate "success greens"). Those copies were folded in here so there is now
+ * one palette of record. See `DESIGN.md` at the repo root for the prose system this
+ * encodes (roles, state colours, type scale, motion).
  *
  * It also exports `anchor()` — the placement primitive that makes the HUD/controls
  * responsive and notch-safe for free. An anchor is a fixed, safe-area-aware corner
@@ -13,36 +17,98 @@
  */
 
 // --- Design tokens ----------------------------------------------------------
-// Reconciled superset of the two former copies. Where HUD and Input used slightly
-// different values for the same idea (panel vs button glass, hairline vs button
-// stroke, panel vs button shadow), BOTH are kept under distinct keys so each
-// surface renders exactly as it did before — this is a layout refactor, not a
-// restyle.
+// One palette for every DOM surface. Where two surfaces genuinely need a different
+// treatment for the same idea, that is a distinct ROLE and gets its own key (the
+// in-world HUD chip `panel` vs the full-screen overlay `cardGlass`; the subtle HUD
+// `shadow` vs the lift-off-a-busy-background `shadowCard`). Where copies had only
+// drifted by accident (text 0.94 vs 0.96, blur 12 vs 14, two menu greens), they were
+// converged to the HUD's values so the in-flight HUD is byte-identical and only the
+// overlays shift sub-perceptually onto the shared token.
 export const UI = {
+  // Accents — cyan is the one interactive/live colour; it marks only what can be
+  // acted on or what is happening right now (selection, primary action, fill bars).
   accent: '#67e8ff',
   accentSoft: 'rgba(103,232,255,0.55)',
-  text: 'rgba(255,255,255,0.94)',
-  dim: 'rgba(255,255,255,0.45)',
-  warn: '#ff5d4d',
-  fire: '#ff7a45',
+  accentFill: 'rgba(103,232,255,0.10)', // wash behind a selected card / "NEXT" pill
+  // State / semantic
+  warn: '#ff5d4d', // amber-red — RTB cue, threatened structure, critical gauge
+  fire: '#ff7a45', // orange — fire / the DROP action
   fireMarker: '#ff2a2a', // RADAR fire blip — a vivid RED so a fire MARKER never reads as the orange
   // burning-front shade of the burn overlay (the two were both orange and bled together). Distinct from
   // `warn` (the amber-red RTB / burning-structure highlight) so a fire dot ≠ a threatened building.
   warm: '#ff7a45', // Input's name for the DROP / fire accent (== fire)
-  water: '#56c4ee',
+  water: '#56c4ee', // scoop water
+  ok: '#63d68a', // success / "cleared" green (unified the menus' two greens; the in-world HULL gauge
+  // keeps a deeper #46d17a tuned to read against bright terrain — a documented exception, see DESIGN.md)
+  // Podium medals (leaderboard top three)
+  gold: '#ffd66b',
+  silver: '#cfe0ee',
+  bronze: '#e6a268',
+  // Text hierarchy
+  text: 'rgba(255,255,255,0.94)',
+  dim: 'rgba(255,255,255,0.45)',
+  faint: 'rgba(255,255,255,0.34)', // smallest labels, captions, separators
   // Surfaces
   panel: 'rgba(14,20,27,0.38)', // HUD frosted chip fill
   glass: 'rgba(12,18,25,0.42)', // touch-button fill (a touch more opaque, holds up over bright terrain)
   warmGlass: 'rgba(44,17,13,0.46)', // DROP hero fill
+  cardGlass: 'rgba(16,24,32,0.60)', // overlay card fill (menus / leaderboard / cloud-save)
+  cardSoft: 'rgba(16,24,32,0.42)', // a quieter card — leaderboard list rows
+  rowMine: 'rgba(103,232,255,0.14)', // accent-tinted row: "this one is you"
+  field: 'rgba(8,13,18,0.60)', // recessed input / text-field fill
+  track: 'rgba(255,255,255,0.10)', // recessed track / subtle white fill (progress bars, avatar bg)
+  // Strokes
   warmStroke: 'rgba(255,138,110,0.85)',
-  stroke: 'rgba(255,255,255,0.12)', // HUD panel hairline
+  stroke: 'rgba(255,255,255,0.12)', // default hairline (HUD panels, overlay cards)
   strokeStrong: 'rgba(255,255,255,0.18)', // touch-button border
+  hair: 'rgba(255,255,255,0.07)', // faintest divider between list rows
   // Effects
   blur: 'blur(12px) saturate(120%)',
-  shadow: '0 6px 28px rgba(0,0,0,0.32)', // HUD panels
+  shadow: '0 6px 28px rgba(0,0,0,0.32)', // HUD panels (subtle, in-world)
   shadowBtn: '0 6px 22px rgba(0,0,0,0.40)', // touch buttons
+  shadowCard: '0 8px 30px rgba(0,0,0,0.45)', // overlay cards — stronger, lifts off a busy backdrop
   glow: '0 0 10px rgba(103,232,255,0.45)',
   font: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+};
+
+// --- Type / weight / radius scales ------------------------------------------
+// One scale each, role-named, so a type or shape change happens in one place. Values
+// were extracted from the inline px the UI used; a few odd steps were normalised onto
+// the scale (12.5/11.5 → 12px, 19 → 18px; radii 7→8, 10/11→12, 16/20→18). The flight
+// tapes and the radar draw their own numerals on canvas and keep their own px.
+export const FS = {
+  micro: '8px', // comms speaker tag
+  tag: '9px', // micro tags, nav-group labels
+  label: '10px', // uppercase labels
+  meta: '11px', // sub-labels, metadata, comms text
+  sm: '12px', // secondary body, mission brief
+  body: '13px', // chips, tabs, card titles, intro
+  md: '14px', // body copy, button labels
+  lg: '15px', // leaderboard row name
+  xl: '16px', // callsign input
+  title: '18px', // mission name, score, big values
+  hero: '20px', // section header
+  display: '24px', // overlay title
+  banner: '32px', // end-banner headline
+  mega: '42px', // score-grade letter on the debrief
+};
+
+export const FW = {
+  medium: '500',
+  semibold: '600',
+  bold: '700',
+  heavy: '800',
+  black: '900',
+};
+
+export const R = {
+  xs: '2px', // ticks, tiny chips
+  sm: '8px', // small chips
+  md: '12px', // cards, buttons, chips (the default)
+  lg: '14px', // panels, decision surfaces
+  xl: '18px', // modals, hero cards
+  pill: '99px', // pills, fill tracks, badges
+  round: '50%', // LEDs, avatars, round buttons
 };
 
 // --- DOM helpers ------------------------------------------------------------
@@ -75,7 +141,7 @@ export function frosted(extra: Partial<CSSStyleDeclaration>): HTMLDivElement {
   const node = div({
     background: UI.panel,
     border: `1px solid ${UI.stroke}`,
-    borderRadius: '12px',
+    borderRadius: R.md,
     boxShadow: UI.shadow,
     backdropFilter: UI.blur,
     ...extra,
@@ -91,13 +157,13 @@ export function button(label: string, style: Partial<CSSStyleDeclaration>): HTML
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: '50%',
+    borderRadius: R.round,
     background: UI.glass,
     border: `1px solid ${UI.strokeStrong}`,
     color: UI.text,
     fontFamily: UI.font,
-    fontSize: '24px',
-    fontWeight: '600',
+    fontSize: FS.display,
+    fontWeight: FW.semibold,
     boxShadow: UI.shadowBtn,
     userSelect: 'none',
     pointerEvents: 'auto',

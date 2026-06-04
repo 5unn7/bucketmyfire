@@ -24,7 +24,7 @@
  */
 import { CAMERA } from './config';
 import type { LookOffset } from './ChaseCamera';
-import { UI, div, button, setBlur, anchor } from './ui/theme';
+import { UI, FW, R, div, button, setBlur, anchor } from './ui/theme';
 import { onLayout, type LayoutState } from './ui/layout';
 import { HelpModal, hasSeenHelp, markHelpSeen } from './ui/HelpModal';
 
@@ -164,9 +164,15 @@ export class Input {
     Object.assign(this.dropBtn.style, { width: `${drop}px`, height: `${drop}px`, fontSize: `${Math.round(drop * 0.16)}px` });
     this.clusterRow.style.gap = `${Math.round(set.gap * 1.7)}px`;
 
-    // Free-look eye.
+    // Free-look eye — sits in the lower-right, lifted above the collective/DROP cluster.
     const eye = Math.round(set.eyeSize * k);
-    Object.assign(this.eyeBtn.style, { width: `${eye}px`, height: `${eye}px` });
+    // The cluster's footprint above the bottom edge: the taller of the climb+descend
+    // column (2 buttons + their gap) vs the DROP hero. Float the eye that far up plus a
+    // separation gap, so it lands in the lower half and clears the buttons on any screen.
+    const colH = cb * 2 + set.gap;
+    const clusterH = Math.max(colH, drop);
+    const lift = clusterH + Math.round(set.gap * 2.5);
+    Object.assign(this.eyeBtn.style, { width: `${eye}px`, height: `${eye}px`, marginBottom: `${lift}px` });
     const glyph = Math.round(eye * 0.52);
     this.eyeSvg.setAttribute('width', `${glyph}`);
     this.eyeSvg.setAttribute('height', `${glyph}`);
@@ -200,7 +206,7 @@ export class Input {
   private buildStick(root: HTMLElement): void {
     const base = div({
       position: 'relative',
-      borderRadius: '50%',
+      borderRadius: R.round,
       background: 'radial-gradient(circle at 50% 42%, rgba(24,34,44,0.34), rgba(8,12,18,0.52))',
       border: `1px solid ${UI.strokeStrong}`,
       boxShadow: `inset 0 1px 22px rgba(0,0,0,0.42), ${UI.shadowBtn}`,
@@ -210,7 +216,7 @@ export class Input {
     setBlur(base);
     // Inner guide ring.
     base.appendChild(
-      div({ position: 'absolute', inset: '20px', borderRadius: '50%', border: '1px solid rgba(255,255,255,0.08)' }),
+      div({ position: 'absolute', inset: '20px', borderRadius: R.round, border: '1px solid rgba(255,255,255,0.08)' }),
     );
     // Four faint axis ticks (N/E/S/W) — origin set per size in applyLayout().
     for (let i = 0; i < 4; i++) {
@@ -221,7 +227,7 @@ export class Input {
         width: '2px',
         height: '8px',
         marginLeft: '-1px',
-        borderRadius: '1px',
+        borderRadius: R.xs,
         background: 'rgba(103,232,255,0.35)',
         transform: `rotate(${i * 90}deg)`,
       });
@@ -232,7 +238,7 @@ export class Input {
       position: 'absolute',
       left: '50%',
       top: '50%',
-      borderRadius: '50%',
+      borderRadius: R.round,
       background: 'radial-gradient(circle at 40% 34%, rgba(255,255,255,0.55), rgba(150,182,202,0.24))',
       border: `1.5px solid ${UI.accentSoft}`,
       boxShadow: '0 3px 10px rgba(0,0,0,0.45)',
@@ -302,7 +308,7 @@ export class Input {
       background: UI.warmGlass,
       borderColor: UI.warmStroke,
       color: '#ffe7df',
-      fontWeight: '700',
+      fontWeight: FW.bold,
       letterSpacing: '1.5px',
       boxShadow: `0 0 18px rgba(255,90,60,0.28), ${UI.shadowBtn}`,
     });
@@ -378,7 +384,10 @@ export class Input {
     icon.addEventListener('pointerup', end);
     icon.addEventListener('pointercancel', end);
 
-    const a = anchor('right-center');
+    // Lower-right, floated a clear gap ABOVE the collective/DROP cluster (the lift is
+    // computed per-breakpoint in applyLayout from the cluster's footprint, so it sits
+    // in the lower half on every screen without overlapping the buttons below it).
+    const a = anchor('bottom-right');
     a.appendChild(icon);
     root.appendChild(a);
   }
@@ -393,7 +402,7 @@ export class Input {
   private buildHelpUI(_root: HTMLElement): void {
     this.help = new HelpModal();
 
-    const icon = button('?', { position: 'relative', color: UI.dim, fontWeight: '600' });
+    const icon = button('?', { position: 'relative', color: UI.dim, fontWeight: FW.semibold });
     this.helpBtn = icon;
     icon.addEventListener('pointerdown', (e) => {
       e.stopPropagation();

@@ -7,6 +7,7 @@ import { openCloudSave } from './CloudSave';
 import { validateCallsign, MAX_CALLSIGN } from './callsign';
 import { isNameTaken, getClientId } from '../leaderboard/client';
 import { isCloudLinked } from '../leaderboard/cloudSave';
+import { UI, FS, FW, R, div, setBlur } from './theme';
 
 /**
  * Campaign mission-select menu — a full-screen DOM overlay in the game's frosted-glass
@@ -23,23 +24,9 @@ import { isCloudLinked } from '../leaderboard/cloudSave';
  * Pure DOM, zero assets. Built once at boot when no mission is selected.
  */
 
-const UI = {
-  accent: '#67e8ff',
-  accentFill: 'rgba(103,232,255,0.10)',
-  warm: '#ff7a45',
-  ok: '#63d68a',
-  text: 'rgba(234,246,255,0.96)',
-  dim: 'rgba(255,255,255,0.5)',
-  faint: 'rgba(255,255,255,0.34)',
-  glass: 'rgba(12,18,25,0.55)',
-  cardGlass: 'rgba(16,24,32,0.58)',
-  stroke: 'rgba(255,255,255,0.12)',
-  hair: 'rgba(255,255,255,0.07)',
-  blur: 'blur(14px) saturate(120%)',
-  shadow: '0 8px 30px rgba(0,0,0,0.45)',
-  font: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
-};
-
+// Visual tokens (UI) + the `div`/`setBlur` DOM helpers come from ./theme — the one
+// cockpit palette shared with the HUD and the other overlays. `UI.shadow` (HUD, subtle)
+// became `UI.shadowCard` (overlay, stronger) when the palettes merged.
 const COL = '980px'; // shared content column — everything aligns to one left edge
 
 export class MissionSelect {
@@ -68,7 +55,7 @@ export class MissionSelect {
     // A quiet one-line intro so the screen still announces itself without a heavy header.
     const intro = section({ margin: '4px auto 22px' });
     intro.appendChild(
-      div({ fontSize: '13px', color: UI.dim, lineHeight: '1.5' }, 'Northern Saskatchewan air attack — ten missions, hardest last. Fly them in order.'),
+      div({ fontSize: FS.body, color: UI.dim, lineHeight: '1.5' }, 'Northern Saskatchewan air attack — ten missions, hardest last. Fly them in order.'),
     );
     this.root.appendChild(intro);
 
@@ -97,7 +84,7 @@ export class MissionSelect {
     });
 
     const brand = div(
-      { fontSize: '13px', fontWeight: '800', letterSpacing: '4px', color: UI.text, opacity: '0.92' },
+      { fontSize: FS.body, fontWeight: FW.heavy, letterSpacing: '4px', color: UI.text, opacity: '0.92' },
       'BUCKETMYFIRE',
     );
     bar.appendChild(brand);
@@ -126,10 +113,10 @@ export class MissionSelect {
       gap: '10px',
       background: UI.cardGlass,
       border: `1px solid ${UI.stroke}`,
-      borderRadius: '12px',
+      borderRadius: R.md,
       padding: '11px 16px',
       cursor: 'pointer',
-      fontSize: '13px',
+      fontSize: FS.body,
       transition: 'border-color 0.12s ease',
     });
     setBlur(chip);
@@ -140,7 +127,7 @@ export class MissionSelect {
       if (!chip.querySelector('input')) chip.style.borderColor = UI.stroke;
     });
 
-    const msg = div({ fontSize: '11px', fontWeight: '600', minHeight: '14px', display: 'none' });
+    const msg = div({ fontSize: FS.meta, fontWeight: FW.semibold, minHeight: '14px', display: 'none' });
     const showMsg = (text: string, bad: boolean): void => {
       msg.textContent = text;
       msg.style.color = bad ? UI.warm : UI.dim;
@@ -152,9 +139,9 @@ export class MissionSelect {
       const name = loadProfile()?.name ?? 'Pilot';
       chip.style.borderColor = UI.stroke;
       chip.replaceChildren(
-        div({ fontSize: '10px', fontWeight: '700', letterSpacing: '2px', color: UI.faint }, 'PILOT'),
-        div({ fontSize: '16px', fontWeight: '700', color: UI.text, flex: '1' }, name),
-        div({ fontSize: '13px', opacity: '0.6' }, '✎'),
+        div({ fontSize: FS.label, fontWeight: FW.bold, letterSpacing: '2px', color: UI.faint }, 'PILOT'),
+        div({ fontSize: FS.xl, fontWeight: FW.bold, color: UI.text, flex: '1' }, name),
+        div({ fontSize: FS.body, opacity: '0.6' }, '✎'),
       );
     };
 
@@ -167,8 +154,8 @@ export class MissionSelect {
         outline: 'none',
         color: UI.text,
         font: 'inherit',
-        fontSize: '16px',
-        fontWeight: '700',
+        fontSize: FS.xl,
+        fontWeight: FW.bold,
         flex: '1',
         minWidth: '0',
       } as Partial<CSSStyleDeclaration>);
@@ -221,7 +208,7 @@ export class MissionSelect {
 
       chip.style.borderColor = `${UI.accent}88`;
       chip.replaceChildren(
-        div({ fontSize: '10px', fontWeight: '700', letterSpacing: '2px', color: UI.accent }, 'PILOT'),
+        div({ fontSize: FS.label, fontWeight: FW.bold, letterSpacing: '2px', color: UI.accent }, 'PILOT'),
         input,
       );
       input.focus();
@@ -297,8 +284,8 @@ export class MissionSelect {
         gap: '11px',
         background: UI.cardGlass,
         border: `1px solid ${UI.stroke}`,
-        borderRadius: '14px',
-        boxShadow: UI.shadow,
+        borderRadius: R.lg,
+        boxShadow: UI.shadowCard,
         padding: '14px',
         cursor: usable ? 'pointer' : 'default',
         opacity: usable ? '1' : '0.5',
@@ -308,7 +295,7 @@ export class MissionSelect {
 
       // Header: procedural icon on its accent halo + name / tagline.
       const head = div({ display: 'flex', alignItems: 'center', gap: '12px' });
-      const art = div({ width: '48px', height: '48px', flex: 'none', borderRadius: '10px' });
+      const art = div({ width: '48px', height: '48px', flex: 'none', borderRadius: R.md });
       art.style.background = `radial-gradient(120% 100% at 50% 30%, ${heli.accent}3a, transparent 72%)`;
       const icon = makeIcon(heli.id);
       icon.setAttribute('width', '48');
@@ -316,18 +303,20 @@ export class MissionSelect {
       art.appendChild(icon);
       const meta = div({ minWidth: '0' });
       meta.appendChild(
-        div({ fontSize: '15px', fontWeight: '700', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }, heli.name),
+        div({ fontSize: FS.lg, fontWeight: FW.bold, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }, heli.name),
       );
       meta.appendChild(
-        div({ fontSize: '10px', letterSpacing: '0.06em', textTransform: 'uppercase', color: UI.accent, opacity: '0.85', marginTop: '2px' }, heli.tagline),
+        div({ fontSize: FS.label, letterSpacing: '0.06em', textTransform: 'uppercase', color: UI.accent, opacity: '0.85', marginTop: '2px' }, heli.tagline),
       );
       head.append(art, meta);
       card.appendChild(head);
 
       // Spec meters — one row per stat, on every card now (the carousel has the room).
+      // Fills use the system cyan (these are DATA bars); the aircraft's own identity colour
+      // lives on the icon halo + tagline, so a meter never reads as a red "warning".
       if (heli.specs) {
         const meters = div({ display: 'grid', gap: '7px' });
-        for (const s of heli.specs) meters.appendChild(specMeter(s.label, s.value, heli.accent));
+        for (const s of heli.specs) meters.appendChild(specMeter(s.label, s.value));
         card.appendChild(meters);
       }
 
@@ -339,13 +328,13 @@ export class MissionSelect {
           div(
             {
               marginTop: '2px',
-              fontSize: '10px',
+              fontSize: FS.label,
               letterSpacing: '0.06em',
-              fontWeight: '700',
+              fontWeight: FW.bold,
               color: UI.text,
               textAlign: 'center',
               background: 'rgba(0,0,0,0.3)',
-              borderRadius: '8px',
+              borderRadius: R.sm,
               padding: '7px',
             },
             lockText,
@@ -356,7 +345,7 @@ export class MissionSelect {
       const setSelected = (on: boolean): void => {
         card.style.borderColor = on ? UI.accent : UI.stroke;
         card.style.background = on ? UI.accentFill : UI.cardGlass;
-        card.style.boxShadow = on ? `0 0 0 2px ${UI.accent}55, ${UI.shadow}` : UI.shadow;
+        card.style.boxShadow = on ? `0 0 0 2px ${UI.accent}55, ${UI.shadowCard}` : UI.shadowCard;
       };
       const isSel = usable && heli.id === selected.id;
       setSelected(isSel);
@@ -425,8 +414,8 @@ export class MissionSelect {
       position: 'relative',
       background: UI.cardGlass,
       border: `1px solid ${isNext ? UI.accent : UI.stroke}`,
-      borderRadius: '14px',
-      boxShadow: isNext ? `0 0 0 1px ${UI.accent}55, ${UI.shadow}` : UI.shadow,
+      borderRadius: R.lg,
+      boxShadow: isNext ? `0 0 0 1px ${UI.accent}55, ${UI.shadowCard}` : UI.shadowCard,
       padding: '15px 16px 13px',
       cursor: unlocked ? 'pointer' : 'default',
       opacity: unlocked ? '1' : '0.45',
@@ -436,23 +425,23 @@ export class MissionSelect {
 
     const top = div({ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' });
     top.appendChild(
-      div({ fontSize: '10px', fontWeight: '700', letterSpacing: '2px', color: UI.faint }, `MISSION ${m.index + 1}`),
+      div({ fontSize: FS.label, fontWeight: FW.bold, letterSpacing: '2px', color: UI.faint }, `MISSION ${m.index + 1}`),
     );
     if (isNext) {
       top.appendChild(
         div(
-          { fontSize: '9px', fontWeight: '800', letterSpacing: '1.5px', color: UI.accent, background: UI.accentFill, border: `1px solid ${UI.accent}55`, borderRadius: '99px', padding: '2px 8px' },
+          { fontSize: FS.tag, fontWeight: FW.heavy, letterSpacing: '1.5px', color: UI.accent, background: UI.accentFill, border: `1px solid ${UI.accent}55`, borderRadius: R.pill, padding: '2px 8px' },
           'NEXT',
         ),
       );
     } else {
-      top.appendChild(div({ fontSize: '12px', color: UI.warm, letterSpacing: '1px' }, '🔥'.repeat(m.difficulty)));
+      top.appendChild(div({ fontSize: FS.sm, color: UI.warm, letterSpacing: '1px' }, '🔥'.repeat(m.difficulty)));
     }
     card.appendChild(top);
 
-    card.appendChild(div({ fontSize: '18px', fontWeight: '700', margin: '7px 0 6px' }, m.name));
+    card.appendChild(div({ fontSize: FS.title, fontWeight: FW.bold, margin: '7px 0 6px' }, m.name));
 
-    const brief = div({ fontSize: '12.5px', lineHeight: '1.45', color: 'rgba(231,247,255,0.72)' }, m.brief);
+    const brief = div({ fontSize: FS.sm, lineHeight: '1.45', color: 'rgba(231,247,255,0.72)' }, m.brief);
     clamp(brief, 2);
     card.appendChild(brief);
 
@@ -461,15 +450,15 @@ export class MissionSelect {
       justifyContent: 'space-between',
       alignItems: 'center',
       marginTop: '12px',
-      fontSize: '12px',
+      fontSize: FS.sm,
     });
     const status = done
-      ? div({ color: UI.ok, fontWeight: '600' }, best !== null ? `✓ ${best.toLocaleString()}` : '✓ Cleared')
+      ? div({ color: UI.ok, fontWeight: FW.semibold }, best !== null ? `✓ ${best.toLocaleString()}` : '✓ Cleared')
       : div({ color: UI.dim }, best !== null ? `Best ${best.toLocaleString()}` : 'Not flown');
     footer.appendChild(status);
     footer.appendChild(
       div(
-        { fontWeight: '700', letterSpacing: '1px', color: unlocked ? UI.accent : UI.faint },
+        { fontWeight: FW.bold, letterSpacing: '1px', color: unlocked ? UI.accent : UI.faint },
         unlocked ? (isNext ? 'FLY ▸' : done ? 'REPLAY ▸' : 'FLY ▸') : '🔒 LOCKED',
       ),
     );
@@ -501,12 +490,12 @@ function stepHeader(n: number, label: string, hint?: string): HTMLDivElement {
         width: '22px',
         height: '22px',
         flex: 'none',
-        borderRadius: '50%',
+        borderRadius: R.round,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        fontSize: '11px',
-        fontWeight: '800',
+        fontSize: FS.meta,
+        fontWeight: FW.heavy,
         color: UI.accent,
         background: UI.accentFill,
         border: `1px solid ${UI.accent}55`,
@@ -515,9 +504,9 @@ function stepHeader(n: number, label: string, hint?: string): HTMLDivElement {
     ),
   );
   row.appendChild(
-    div({ fontSize: '12px', fontWeight: '700', letterSpacing: '2.5px', color: UI.text }, label.toUpperCase()),
+    div({ fontSize: FS.sm, fontWeight: FW.bold, letterSpacing: '2.5px', color: UI.text }, label.toUpperCase()),
   );
-  if (hint) row.appendChild(div({ fontSize: '11px', color: UI.faint, marginTop: '1px' }, hint));
+  if (hint) row.appendChild(div({ fontSize: FS.meta, color: UI.faint, marginTop: '1px' }, hint));
   return row;
 }
 
@@ -542,7 +531,7 @@ function pilotRecord(catalog: MissionDef[]): HTMLDivElement | null {
     maxWidth: '440px',
     background: UI.cardGlass,
     border: `1px solid ${UI.stroke}`,
-    borderRadius: '12px',
+    borderRadius: R.md,
     padding: '13px 16px 14px',
   });
   setBlur(panel);
@@ -555,11 +544,11 @@ function pilotRecord(catalog: MissionDef[]): HTMLDivElement | null {
   );
   panel.appendChild(stats);
 
-  const track = div({ marginTop: '13px', height: '5px', borderRadius: '99px', background: 'rgba(255,255,255,0.10)', overflow: 'hidden' });
-  track.appendChild(div({ height: '100%', width: `${pct}%`, background: UI.accent, borderRadius: '99px' }));
+  const track = div({ marginTop: '13px', height: '5px', borderRadius: R.pill, background: UI.track, overflow: 'hidden' });
+  track.appendChild(div({ height: '100%', width: `${pct}%`, background: UI.accent, borderRadius: R.pill }));
   panel.appendChild(track);
   panel.appendChild(
-    div({ marginTop: '6px', fontSize: '10px', fontWeight: '700', letterSpacing: '1.5px', color: UI.faint }, `CAMPAIGN ${pct}% COMPLETE`),
+    div({ marginTop: '6px', fontSize: FS.label, fontWeight: FW.bold, letterSpacing: '1.5px', color: UI.faint }, `CAMPAIGN ${pct}% COMPLETE`),
   );
   return panel;
 }
@@ -567,8 +556,8 @@ function pilotRecord(catalog: MissionDef[]): HTMLDivElement | null {
 /** A label-over-value stat used in the pilot record. */
 function statTile(label: string, value: string): HTMLDivElement {
   const t = div({});
-  t.appendChild(div({ fontSize: '18px', fontWeight: '800', color: UI.text, lineHeight: '1.1' }, value));
-  t.appendChild(div({ fontSize: '10px', fontWeight: '700', letterSpacing: '1.5px', color: UI.faint, marginTop: '3px' }, label.toUpperCase()));
+  t.appendChild(div({ fontSize: FS.title, fontWeight: FW.heavy, color: UI.text, lineHeight: '1.1' }, value));
+  t.appendChild(div({ fontSize: FS.label, fontWeight: FW.bold, letterSpacing: '1.5px', color: UI.faint, marginTop: '3px' }, label.toUpperCase()));
   return t;
 }
 
@@ -580,16 +569,16 @@ function utilityChip(icon: string, label: string, onClick: () => void): HTMLDivE
     gap: '6px',
     background: UI.cardGlass,
     border: `1px solid ${UI.stroke}`,
-    borderRadius: '99px',
+    borderRadius: R.pill,
     padding: '6px 12px',
     cursor: 'pointer',
-    fontSize: '12px',
-    fontWeight: '600',
+    fontSize: FS.sm,
+    fontWeight: FW.semibold,
     color: UI.dim,
     transition: 'color 0.12s ease, border-color 0.12s ease',
   });
   setBlur(chip);
-  chip.appendChild(div({ fontSize: '13px' }, icon));
+  chip.appendChild(div({ fontSize: FS.body }, icon));
   chip.appendChild(div({}, label));
   chip.addEventListener('pointerenter', () => {
     chip.style.color = UI.text;
@@ -619,14 +608,15 @@ function injectScrollStyles(): void {
   document.head.appendChild(tag);
 }
 
-/** A compact labelled meter (0..1) for an aircraft spec. */
-function specMeter(label: string, value: number, accent: string): HTMLDivElement {
+/** A compact labelled meter (0..1) for an aircraft spec. Fill is the system accent
+ *  (cyan) — it conveys a value, not the aircraft's identity colour. */
+function specMeter(label: string, value: number): HTMLDivElement {
   const box = div({ display: 'flex', alignItems: 'center', gap: '8px' });
   box.appendChild(
-    div({ fontSize: '10px', fontWeight: '700', letterSpacing: '1px', color: UI.faint, width: '52px', flex: 'none' }, label.toUpperCase()),
+    div({ fontSize: FS.label, fontWeight: FW.bold, letterSpacing: '1px', color: UI.faint, width: '52px', flex: 'none' }, label.toUpperCase()),
   );
-  const track = div({ flex: '1', height: '5px', borderRadius: '99px', background: 'rgba(255,255,255,0.10)', overflow: 'hidden' });
-  const fill = div({ height: '100%', width: `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`, background: accent, borderRadius: '99px' });
+  const track = div({ flex: '1', height: '5px', borderRadius: R.pill, background: UI.track, overflow: 'hidden' });
+  const fill = div({ height: '100%', width: `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`, background: UI.accent, borderRadius: R.pill });
   track.appendChild(fill);
   box.appendChild(track);
   return box;
@@ -654,7 +644,7 @@ function creditsFooter(): HTMLDetailsElement {
   Object.assign(wrap.style, {
     maxWidth: COL,
     margin: '34px auto 0',
-    fontSize: '12px',
+    fontSize: FS.sm,
     color: UI.dim,
     lineHeight: '1.6',
   } as Partial<CSSStyleDeclaration>);
@@ -663,7 +653,7 @@ function creditsFooter(): HTMLDetailsElement {
   Object.assign(summary.style, {
     cursor: 'pointer',
     letterSpacing: '2px',
-    fontWeight: '700',
+    fontWeight: FW.bold,
     color: UI.faint,
     listStyle: 'none',
   } as Partial<CSSStyleDeclaration>);
@@ -691,14 +681,4 @@ function creditsFooter(): HTMLDetailsElement {
   return wrap;
 }
 
-function div(style: Partial<CSSStyleDeclaration>, text?: string): HTMLDivElement {
-  const node = document.createElement('div');
-  Object.assign(node.style, style);
-  if (text !== undefined) node.textContent = text;
-  return node;
-}
-
-function setBlur(node: HTMLElement): void {
-  node.style.backdropFilter = UI.blur;
-  node.style.setProperty('-webkit-backdrop-filter', UI.blur);
-}
+// `div` and `setBlur` are imported from ./theme (shared DOM helpers).
