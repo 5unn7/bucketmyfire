@@ -1,0 +1,5 @@
+# bucketmyfire — public client-side game, crawl freely.
+User-agent: *
+Allow: /
+
+Sitemap: https://bucketmyfire.com/sitemap.xml

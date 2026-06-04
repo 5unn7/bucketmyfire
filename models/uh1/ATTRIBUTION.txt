@@ -1,0 +1,5 @@
+"Bell UH-1 Iroquois (Huey)" by helijah — https://sketchfab.com/helijah
+Source: https://sketchfab.com/3d-models/bell-uh-1-iroquois-huey-f3ca0e7bfcd5479d900e76438be0d76f
+License: Sketchfab Standard (commercial use permitted WITH credit).
+Shipped as huey-opt.glb (gltf-transform: weld+simplify+prune+webp; materials re-skinned in code).
+Credit must appear in the game's credits/about screen.

@@ -1,0 +1,11 @@
+Model Information:
+* title:	Bell212
+* source:	https://sketchfab.com/3d-models/bell212-037101e0cbe04917aa1ef80814f66865
+* author:	Vahid Heidari (https://sketchfab.com/VahidHeidari)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Bell212" (https://sketchfab.com/3d-models/bell212-037101e0cbe04917aa1ef80814f66865) by Vahid Heidari (https://sketchfab.com/VahidHeidari) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
