@@ -1,12 +1,15 @@
 import * as THREE from 'three';
+import type { TimeOfDay } from '../missions/types';
 
 /**
  * Time-of-day atmosphere presets (Track B2). One preset bundles everything that sets
- * the scene's mood — the sky-dome gradient + sun halo, the directional sun, the
- * sky/ground hemisphere fill, and the aerial-perspective fog — so a single object
- * keeps them all coherent (the fog color matches the sky horizon, the hemisphere sky
- * matches the zenith, etc). `applyAtmosphere` pushes a preset onto the live lights/fog;
- * `createSkyDome` reads the sky colors. Swapping presets re-skies the whole world.
+ * the scene's mood — the sky-dome gradient + sun halo, the directional sun (colour AND
+ * elevation/azimuth), the sky/ground hemisphere fill, and the aerial-perspective fog — so a
+ * single object keeps them all coherent (the fog color matches the sky horizon, the hemisphere
+ * sky matches the zenith, the sun sits where the light comes from). `applyAtmosphere` pushes a
+ * preset onto the live lights/fog; `createSkyDome` reads the sky colors; `Game` reads `sunDir`
+ * to place the sun. Swapping presets re-skies the whole world — a mission picks one by name
+ * (`SKY_PRESETS`) so not every sortie is golden hour.
  */
 export interface SkyPreset {
   name: string;
@@ -20,9 +23,17 @@ export interface SkyPreset {
   hemiIntensity: number;
   fogNear: number; // distance where aerial haze starts
   fogFar: number; // distance where terrain fully fades into the horizon
+  // Unit vector pointing TOWARD the sun (world space). Its Y is the sun ELEVATION — low for
+  // dawn/dusk (long raking shadows, halo on the horizon), high for noon (short shadows). Game
+  // multiplies it by SUN_DISTANCE and offsets it from the heli each frame so shadows + god-rays
+  // read the right time of day.
+  sunDir: THREE.Vector3;
 }
 
-/** Bright clear boreal day (default). */
+/** World-units the directional sun sits from the aircraft (shadow framing distance). */
+export const SUN_DISTANCE = 188;
+
+/** Bright clear boreal day — a crisp blue sky with a mid-high sun (~45°). */
 export const DAY: SkyPreset = {
   name: 'day',
   zenith: 0x4f8fd6,
@@ -35,6 +46,58 @@ export const DAY: SkyPreset = {
   hemiIntensity: 0.7,
   fogNear: 130,
   fogFar: 520,
+  sunDir: new THREE.Vector3(0.5, 0.707, 0.5).normalize(),
+};
+
+/** Harsh clear NOON — a high overhead sun, deep blue zenith, short shadows, the air at its
+ *  clearest (fog pushed far out). The bright contrast to golden hour. */
+export const NOON: SkyPreset = {
+  name: 'noon',
+  zenith: 0x3f7fd0,
+  horizon: 0xc8def0,
+  sunHalo: 0xffffff,
+  sunColor: 0xfffaf0,
+  sunIntensity: 1.75,
+  hemiSky: 0xcfe6fb,
+  hemiGround: 0x49592f,
+  hemiIntensity: 0.82,
+  fogNear: 205,
+  fogFar: 780,
+  sunDir: new THREE.Vector3(0.2, 0.95, 0.26).normalize(), // nearly overhead
+};
+
+/** Cool misty DAWN — soft morning light, a pale mauve-pink haze on the horizon, a low sun just
+ *  off the deck. Calm and quiet — the tutorial morning. */
+export const DAWN: SkyPreset = {
+  name: 'dawn',
+  zenith: 0x6b8fc4,
+  horizon: 0xd9c3c9, // pale mauve-pink mist band
+  sunHalo: 0xffe4cf,
+  sunColor: 0xffe2cb, // soft warm-pale morning light
+  sunIntensity: 1.18,
+  hemiSky: 0xbcd0e8,
+  hemiGround: 0x4b5340,
+  hemiIntensity: 0.64,
+  fogNear: 110, // a little misty near the ground
+  fogFar: 500,
+  sunDir: new THREE.Vector3(0.42, 0.25, -0.86).normalize(), // low, raking from the NE
+};
+
+/** Flat smoke-grey OVERCAST — a diffuse sky with no hard sun disk, faint shadows, desaturated.
+ *  The grim, socked-in look for a heavy-fire day (and it tames into-sun smoke backlighting). */
+export const OVERCAST: SkyPreset = {
+  name: 'overcast',
+  zenith: 0x8a96a2,
+  horizon: 0xb9c0c6,
+  sunHalo: 0xccd2d7, // barely-there veiled sun
+  sunColor: 0xc6cdd5, // weak, cool, diffuse key
+  sunIntensity: 0.9,
+  hemiSky: 0xb3bcc4,
+  hemiGround: 0x555c4a,
+  hemiIntensity: 0.98, // the diffuse hemisphere fill carries the lighting, not the sun
+  fogNear: 120,
+  fogFar: 520,
+  sunDir: new THREE.Vector3(0.22, 0.78, 0.58).normalize(), // high but soft (shadows stay faint)
 };
 
 /**
@@ -55,6 +118,38 @@ export const GOLDEN: SkyPreset = {
   hemiIntensity: 0.6,
   fogNear: 175, // pushed out so the near + mid ground stays CRISP (was a milky wash at 120) —
   fogFar: 720, // only the far ridgelines dissolve into the amber haze (true aerial perspective)
+  // ~18° elevation low sun — preserves the original hard-coded look (normalize(150, 58, 95)).
+  sunDir: new THREE.Vector3(150, 58, 95).normalize(),
+};
+
+/** Deep ominous DUSK — the sun on the deck behind a deep ember-orange horizon under an indigo
+ *  sky. Darker and redder than golden — the apocalyptic, fire-at-the-doorstep climax look. */
+export const DUSK: SkyPreset = {
+  name: 'dusk',
+  zenith: 0x3a3a6b, // deep dusk indigo overhead
+  horizon: 0xc9663b, // deep ember orange the terrain dissolves into
+  sunHalo: 0xff8a3d,
+  sunColor: 0xff9b54, // warm-red raking light
+  sunIntensity: 1.2,
+  hemiSky: 0xb98a86,
+  hemiGround: 0x3a3326,
+  hemiIntensity: 0.5,
+  fogNear: 150,
+  fogFar: 680,
+  sunDir: new THREE.Vector3(0.8, 0.15, 0.58).normalize(), // ~9° — right on the deck
+};
+
+/**
+ * The mood registry: a mission's `timeOfDay` key → its preset. Game resolves
+ * `SKY_PRESETS[mission.timeOfDay ?? 'golden']` once at load. Keys mirror the `TimeOfDay` union.
+ */
+export const SKY_PRESETS: Record<TimeOfDay, SkyPreset> = {
+  dawn: DAWN,
+  day: DAY,
+  noon: NOON,
+  overcast: OVERCAST,
+  golden: GOLDEN,
+  dusk: DUSK,
 };
 
 /** Push a preset onto the live sun, hemisphere light, scene fog + background. */

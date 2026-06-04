@@ -38,7 +38,7 @@ import { SmokePlume } from './vfx/SmokePlume';
 import { Embers } from './vfx/Embers';
 import { AmbientEmbers } from './vfx/AmbientEmbers';
 import { createSkyDome } from './sky/SkyDome';
-import { applyAtmosphere, GOLDEN } from './sky/TimeOfDay';
+import { applyAtmosphere, SKY_PRESETS, SUN_DISTANCE } from './sky/TimeOfDay';
 import { HeroFireLights } from './lighting/HeroFireLights';
 import type { HazeSource } from './postfx/Composer';
 import { HeliAudio } from './audio/HeliAudio';
@@ -87,6 +87,9 @@ export class Game {
   readonly scene = new THREE.Scene();
   private readonly chase: ChaseCamera;
   private readonly sun: THREE.DirectionalLight;
+  // The sun's world offset from the heli (preset.sunDir × SUN_DISTANCE) — set once from the
+  // mission's time-of-day preset, re-added to the heli each frame so shadows + god-rays track it.
+  private readonly sunOffset = new THREE.Vector3();
   private readonly skyDome: THREE.Object3D; // gradient sky (B2) — follows the camera
   private readonly input: Input;
   private readonly hud: HUD;
@@ -200,6 +203,7 @@ export class Game {
   private readonly crewFigures: CrewFigures[] = []; // animated crew at each zone (parallel to crew zones)
   private readonly crewZones: CrewZone[] = []; // resolved world-space crew endpoints (refined to flat landing spots)
   private readonly landingPads: { x: number; z: number }[] = []; // where the flight floor eases to skids height (every base helipad + crew LZs)
+  private readonly homeBeacons: { zone: LandingZoneMesh; x: number; z: number }[] = []; // green home columns to dim while the heli is parked on the pad
   private readonly fuelSim?: FuelSim; // range model — now universal (every mission unless `fuel:false`)
   private rtbWarned = false; // latched once Dispatch has called the low-fuel return-to-base (re-arms above the warn line)
   private readonly slung: THREE.Group; // the mesh hanging on the longline (bucket or crew basket)
@@ -304,6 +308,7 @@ export class Game {
         const home = createLandingZone(true);
         home.group.position.set(p.x, this.world.groundHeightAt(p.x, p.z), p.z);
         this.scene.add(home.group);
+        this.homeBeacons.push({ zone: home, x: p.x, z: p.z });
       }
     }
 
@@ -354,8 +359,12 @@ export class Game {
     cam.bottom = -90;
     this.scene.add(this.sun);
     this.scene.add(this.sun.target); // shadow follows the heli via this target
-    applyAtmosphere(this.scene, this.sun, hemi, GOLDEN);
-    this.skyDome = createSkyDome(this.frame, GOLDEN);
+    // Per-mission time of day (default golden hour). The preset carries the sun's elevation/
+    // azimuth too, so dawn rakes low, noon sits overhead — cache the world offset once.
+    const sky = SKY_PRESETS[mission.timeOfDay ?? 'golden'];
+    this.sunOffset.copy(sky.sunDir).multiplyScalar(SUN_DISTANCE);
+    applyAtmosphere(this.scene, this.sun, hemi, sky);
+    this.skyDome = createSkyDome(this.frame, sky);
     this.scene.add(this.skyDome); // follows the camera each frame (see update)
 
     // Terrain (vertices displaced from the World heightfield, basins carved in) +
@@ -568,6 +577,7 @@ export class Game {
         lz.group.position.set(z.x, gy, z.z);
         this.scene.add(lz.group);
         this.lzMeshes.push(lz);
+        if (!z.single) this.homeBeacons.push({ zone: lz, x: z.x, z: z.z }); // the green HOME column — dim it while parked on the pad
         const figs = createCrewFigures();
         figs.group.position.set(z.x, gy, z.z);
         this.scene.add(figs.group);
@@ -827,6 +837,22 @@ export class Game {
       }
     }
 
+    // Dim the green HOME beacon column while the heli is parked on (or in a low hover right over) its
+    // pad — the additive marker otherwise fires straight up through the parked airframe at cold-start
+    // and clutters the view. It pops back as soon as you climb away, so it still guides you home. The
+    // painted ring/pad always stay. (Only the green home zones are registered here — the cyan crew LZs
+    // keep their beacon so the active target still reads while you set down on it.)
+    if (this.homeBeacons.length) {
+      const hx = this.heliSim.position.x;
+      const hz = this.heliSim.position.z;
+      const low = this.heliSim.agl < 15; // still on the deck / a low hover, not overflying home at altitude
+      for (let i = 0; i < this.homeBeacons.length; i++) {
+        const b = this.homeBeacons[i];
+        const onPad = low && Math.hypot(hx - b.x, hz - b.z) < MISSIONS.lzRadius;
+        b.zone.setBeaconVisible(!onPad);
+      }
+    }
+
     // --- C3 fire dynamics: burn + fuel depletion + wind/slope spread; fires damage any
     // structures they reach. The MISSION decides win/lose (below), not these directly. ---
     if (!frozen) {
@@ -958,10 +984,10 @@ export class Game {
 
     // --- Sun shadow follows the aircraft; camera trails it; HUD reflects state ---
     const hp = this.heliSim.position;
-    // Low golden-hour sun (~18° elevation): a long, warm raking light that throws long shadows
-    // and sits the sun halo near the horizon — the reference "fire at dusk" look. The god-ray
-    // pass reads this direction (via frame.uSunDir) so the shafts emanate from the low sun.
-    this.sun.position.set(hp.x + 150, hp.y + 58, hp.z + 95);
+    // The sun rides at the mission's time-of-day offset (set once from the preset's sunDir):
+    // low + raking for dawn/golden/dusk, high overhead for noon. The god-ray pass reads this
+    // direction (via frame.uSunDir) so the shafts emanate from wherever the sun actually sits.
+    this.sun.position.copy(hp).add(this.sunOffset);
     this.sun.target.position.set(hp.x, hp.y, hp.z);
     // Bombing-run assist (portrait readability, concern 6): when lining up a drop — low, slow, carrying
     // water near a fire — arm the camera's gentle look-down so the impact zone shows. ChaseCamera eases

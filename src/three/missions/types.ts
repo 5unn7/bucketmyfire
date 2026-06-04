@@ -15,6 +15,14 @@
 /** Fire size class → ignition disc radius + starting heat (resolved in Game.igniteAt). */
 export type SizeClass = 'spot' | 'small' | 'medium' | 'large' | 'mega';
 
+/**
+ * Time-of-day atmosphere a mission flies under (the sky/sun/fog mood). A pure string key — the
+ * actual colour/sun-direction preset lives in `sky/TimeOfDay.ts` (`SKY_PRESETS`), keeping this
+ * data contract engine-free. Omit → the campaign's default golden hour. Not every mission is
+ * golden hour: a tutorial dawn, a harsh clear noon, a smoke-choked overcast, an ominous dusk.
+ */
+export type TimeOfDay = 'dawn' | 'day' | 'noon' | 'overcast' | 'golden' | 'dusk';
+
 /** Where a mission seeds a fire (or a cluster of `count` fires). */
 export type FirePlacement =
   | { at: 'point'; x: number; z: number; size: SizeClass }
@@ -142,6 +150,7 @@ export interface MissionDef {
   intel?: string; // longer pre-flight briefing paragraph (the briefing card body; falls back to brief)
   difficulty: 1 | 2 | 3 | 4 | 5;
   seed: number; // world seed — each mission grows its own boreal map
+  timeOfDay?: TimeOfDay; // sky/sun/fog mood (sky/TimeOfDay.ts SKY_PRESETS); omit → golden hour
   wind?: { angle?: number; strengthScale?: number };
   // Per-mission fire-spread pacing. `spreadScale` multiplies the calm `FIRE3D` baseline spread
   // (pre-heat creep + ember spotting), so the SAME fire model reads as a near-static tutorial spot

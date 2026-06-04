@@ -16,6 +16,10 @@ export type ZoneState = 'home' | 'active' | 'inactive' | 'done';
 export interface LandingZoneMesh {
   group: THREE.Group;
   setState(state: ZoneState): void;
+  /** External override for the vertical beacon column (the ring/pad stay put). `Game` hides it while
+   * the heli is parked on the pad — the green home column otherwise shoots straight up through the
+   * parked airframe. Independent of `setState`, so ordering between the two never matters. */
+  setBeaconVisible(visible: boolean): void;
 }
 
 // Pass `home: true` for the reusable BASE pad — it then renders a distinct green, ALWAYS lit, so
@@ -63,6 +67,15 @@ export function createLandingZone(home = false): LandingZoneMesh {
   beacon.position.y = 30;
   group.add(beacon);
 
+  // The beacon's lit-state is the AND of what the current zone state wants (off only on `done`) and
+  // the external override (`Game` hides it while the heli is parked on the pad). Tracked separately so
+  // a per-frame `setState('home')` can't stomp the override and vice-versa.
+  let beaconWanted = true;
+  let beaconShown = true;
+  const applyBeacon = (): void => {
+    beacon.visible = beaconWanted && beaconShown;
+  };
+
   function setState(state: ZoneState): void {
     if (state === 'home') {
       // The base: a distinct green, always lit and beaconed — your home reference all mission long.
@@ -71,7 +84,7 @@ export function createLandingZone(home = false): LandingZoneMesh {
       ringMat.emissive.copy(green);
       ringMat.emissiveIntensity = 1.5;
       ringMat.opacity = 0.9;
-      beacon.visible = true;
+      beaconWanted = true;
       beaconMat.color.copy(green);
       beaconMat.opacity = 0.3;
     } else if (state === 'done') {
@@ -80,7 +93,7 @@ export function createLandingZone(home = false): LandingZoneMesh {
       ringMat.emissive.copy(grey);
       ringMat.emissiveIntensity = 0.3;
       ringMat.opacity = 0.5;
-      beacon.visible = false;
+      beaconWanted = false;
     } else {
       const tint = new THREE.Color(MISSIONS.zoneSmoke);
       ringMat.color.copy(tint);
@@ -88,11 +101,17 @@ export function createLandingZone(home = false): LandingZoneMesh {
       const on = state === 'active';
       ringMat.emissiveIntensity = on ? 1.6 : 0.6;
       ringMat.opacity = on ? 0.9 : 0.5;
-      beacon.visible = true;
+      beaconWanted = true;
       beaconMat.opacity = on ? 0.32 : 0.12;
     }
+    applyBeacon();
+  }
+
+  function setBeaconVisible(visible: boolean): void {
+    beaconShown = visible;
+    applyBeacon();
   }
 
   setState(home ? 'home' : 'inactive');
-  return { group, setState };
+  return { group, setState, setBeaconVisible };
 }

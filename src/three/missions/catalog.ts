@@ -23,6 +23,7 @@ export const CAMPAIGN: MissionDef[] = [
       'Welcome aboard, Water-1. First things first — hold the START dial to bring the rotors up to speed, then ease her off the deck. Three spot fires are smouldering in the bush beside the lake to the north. Fly low over open water to fill the Bambi bucket, then hit DROP to release it over the flames. Winds are light today — a good morning to get the feel of the aircraft.',
     difficulty: 1,
     seed: 21,
+    timeOfDay: 'dawn', // calm misty morning — "a good morning to get the feel of the aircraft"
     wind: { strengthScale: 0.4 },
     fire: { spreadScale: 0.25 }, // near-static spots — the tutorial: practice the bucket, no race
     bucket: 'bambi',
@@ -45,6 +46,7 @@ export const CAMPAIGN: MissionDef[] = [
       'A ground fire is working through black spruce toward the McKay trapline — five cabins in a clearing. It is slow now, but it is heading straight for them. Get water on it before it reaches the treeline by the hamlet.',
     difficulty: 1,
     seed: 34,
+    timeOfDay: 'day', // clear bright boreal day
     wind: { strengthScale: 0.6 },
     fire: { spreadScale: 0.4 }, // a slow ground fire creeping at the cabins — time to read it and act
     bucket: 'bambi',
@@ -68,6 +70,7 @@ export const CAMPAIGN: MissionDef[] = [
       'No fire to fight today — yet. Three initial-attack crews need inserting on the ridge before the front builds. Your first crew is already strapped in, so head straight out to LZ Alpha and SET DOWN on the cleared pad to let them off. Then run back to base for Bravo and Charlie. One crew at a time; mind the narrow clearing.',
     difficulty: 2,
     seed: 55,
+    timeOfDay: 'noon', // bright high sun — a clear midday window before the wind turns
     payload: 'crew',
     startLoaded: true, // crew 1 is buckled in at spawn — the player flies straight to the first LZ
     fires: [],
@@ -95,6 +98,7 @@ export const CAMPAIGN: MissionDef[] = [
       'A head fire is running on the Sproule hamlet, pushed by a stiff westerly. Hit it upwind and on the flanks while you can — and watch the sky. The wind is forecast to back hard. When it turns, the fire turns with it.',
     difficulty: 2,
     seed: 89,
+    timeOfDay: 'overcast', // grey, gusty, socked-in — "watch the sky"
     // Fixed opening wind so the head-fire line + the scripted shift read consistently every run.
     wind: { angle: -2.4, strengthScale: 1.6 },
     fire: { spreadScale: 0.8 }, // a real wind-driven head, but readable — hit it upwind before it arrives
@@ -128,6 +132,7 @@ export const CAMPAIGN: MissionDef[] = [
       'A blaze is burning deep in the backcountry, a long way from any water and farther still from fuel. Manage your tank carefully — top up at the base and do not get caught dry out there. It is a long walk home if the engine quits.',
     difficulty: 3,
     seed: 144,
+    timeOfDay: 'golden', // late-afternoon raking light over the vast backcountry — racing the daylight
     fire: { spreadScale: 0.6 }, // backcountry fire spreads slowly — the challenge is range/fuel, not the race
     bucket: 'bambi',
     fuel: true,
@@ -154,6 +159,7 @@ export const CAMPAIGN: MissionDef[] = [
       'Ground crews are three minutes out. Until they arrive, you are the only thing between this fire and the town of Birchbank. Hold the line — your valve bucket can split a load across several passes, so make each one count.',
     difficulty: 3,
     seed: 233,
+    timeOfDay: 'day', // clear, tense daylight hold
     wind: { strengthScale: 1.3 },
     fire: { spreadScale: 0.9 }, // pushes hard toward the town — you're holding a real advancing line
     bucket: 'valve',
@@ -178,6 +184,7 @@ export const CAMPAIGN: MissionDef[] = [
       'No time to fight this one — the fire is already at the doorsteps. Three families are cut off in cabins on the lakeshore. Set down at each cabin, get them aboard, and fly them back to base one at a time — beat the flames to the last door.',
     difficulty: 3,
     seed: 377,
+    timeOfDay: 'dusk', // ominous, fire-at-the-doorstep — the families are racing the dark
     payload: 'crew',
     wind: { strengthScale: 1.0 },
     fire: { spreadScale: 0.85 }, // the fire is closing on the cabins — beat it to the last door
@@ -214,6 +221,7 @@ export const CAMPAIGN: MissionDef[] = [
       'A Class-F monster has set up right next to the base. One tank will not kill it — knock it down and it flares back up out of the duff. Work it pass after pass, and whatever happens, keep it off the depot — that is your only fuel and water for the whole sector.',
     difficulty: 4,
     seed: 610,
+    timeOfDay: 'overcast', // smoke-choked sky beside the base — grim, and tames into-sun smoke glare
     wind: { strengthScale: 1.1 },
     fire: { spreadScale: 1.0 }, // full baseline pace — a Class-F monster that re-flares out of the duff
     bucket: 'valve',
@@ -238,6 +246,9 @@ export const CAMPAIGN: MissionDef[] = [
       'Two fires, two communities, one helicopter — Cedar and Willow. You cannot be both places at once, so triage. Knock down what you can on one front, then swing to the other before either hamlet is overrun.',
     difficulty: 4,
     seed: 987,
+    timeOfDay: 'noon', // high overhead sun lights the heavy twin-front smoke grey from above (not
+    // backlit into black silhouettes) and keeps the low sun out of your eyes — the cleanest read
+    // for this dense-smoke triage mission
     wind: { strengthScale: 1.2 },
     fire: { spreadScale: 1.0 }, // two fronts running at baseline pace — you can't be both places at once
     bucket: 'bambi',
@@ -270,6 +281,7 @@ export const CAMPAIGN: MissionDef[] = [
       'This is the big one. Multiple blazes, a screaming wind, the town of Ash Lake squarely in the path, and a finite tank of fuel. Everything you have learned, all at once. Read the wind, protect the town, watch your fuel — and bring it home.',
     difficulty: 5,
     seed: 1597,
+    timeOfDay: 'golden', // the signature cinematic "wildfire at dusk" look for the campaign climax
     wind: { strengthScale: 1.7 },
     fire: { spreadScale: 1.3 }, // the big one — fronts run hard; the fastest spread in the campaign
     bucket: 'valve',
