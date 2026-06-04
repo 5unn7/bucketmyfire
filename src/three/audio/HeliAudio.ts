@@ -41,7 +41,18 @@ const CROSSFADE_SEC = 0.35; // seam crossfade length
 // not in config, to match the other rotor constants here.)
 const ROTOR_TRIM_SEC = 0.25;
 const COMMS_GAIN = 0.16; // radio-squelch blip level (the "kshh" before a dispatch line)
-const START_GAIN = 0.9; // engine-start crank one-shot level
+const START_GAIN = 0.9; // engine-start crank one-shot level (peak, before it dissolves into the loop)
+// Two-clip handoff: the recorded crank and the flying loop are different recordings, so a hard cut
+// from one to the other steps in level/timbre. Instead we CROSSFADE — duck the crank toward silence as
+// the rotor spools up, back-loaded past this RPM so the crank stays dominant through most of the start,
+// then dissolves into the swelling loop over the last stretch, landing silent exactly at full RPM.
+const START_DISSOLVE_RPM = 0.6; // spool fraction past which the crank begins crossfading into the loop
+
+/** Hermite ease 0→1 across [e0, e1] (flat outside) — shapes the back-loaded crank→loop crossfade. */
+function smoothstep(e0: number, e1: number, x: number): number {
+  const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
+  return t * t * (3 - 2 * t);
+}
 
 // The mute preference persists across sessions (an on-screen button + the 'M' key both drive it),
 // so a player who silenced the rotor stays silenced next visit.
@@ -243,6 +254,15 @@ export class HeliAudio {
     if (!this.engineStartFired && holding && rpm > 0 && rpm < 1) this.playEngineStart();
     else if (this.engineStartFired && !holding && rpm < 1) this.abortEngineStart();
 
+    // Smooth the two-clip handoff: while the recorded crank is still sounding, DUCK it as the rotor
+    // nears full RPM so it dissolves INTO the swelling flying loop instead of hard-cutting at the clip's
+    // end. Back-loaded (START_DISSOLVE_RPM) so the crank stays dominant through most of the spool, then
+    // crossfades out over the last stretch — landing silent exactly as the loop reaches the full drone.
+    if (this.startSrc && this.startGain && rpm < 1) {
+      const dissolve = 1 - smoothstep(START_DISSOLVE_RPM, 1, rpm);
+      this.startGain.gain.setTargetAtTime(START_GAIN * dissolve, now, ease);
+    }
+
     const speedN = Math.min(1, p.speed / p.maxSpeed);
     const effort = Math.min(
       1,
@@ -280,7 +300,9 @@ export class HeliAudio {
     const src = this.ctx.createBufferSource();
     src.buffer = this.startBuffer;
     const g = this.ctx.createGain();
-    g.gain.value = START_GAIN;
+    // Start near-silent; the per-frame dissolve (in update) ramps it in and back out, so the crank both
+    // eases ON from silence (no onset click) and crossfades OFF into the loop — one envelope, no hard cut.
+    g.gain.value = 0.0001;
     src.connect(g).connect(this.master);
     src.start();
     // Self-clear when it ends naturally (a hold held to full RPM), so a stale handle isn't aborted.
