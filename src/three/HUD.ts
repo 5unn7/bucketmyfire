@@ -54,7 +54,7 @@ export interface HudState {
   objectives?: readonly TrackerItem[];
   fuel?: number; // 0..1 tank fraction (undefined → no FuelSim → fuel gauge hidden)
   fuelLow?: boolean; // gauge flashes (below reserve)
-  zones?: { x: number; z: number; active: boolean; done: boolean }[]; // crew landing zones (radar blips)
+  zones?: { x: number; z: number; active: boolean; done: boolean; home: boolean }[]; // crew landing zones (radar blips); `home` = the always-marked base
   // Debrief summary for the end banner (what the run achieved) — built once at outcome.
   debrief?: {
     firesOut: number;
@@ -1339,25 +1339,35 @@ export class HUD {
       }
     }
 
-    // Crew landing zones (campaign): a hollow diamond — active = cyan, done = grey.
+    // Crew landing zones (campaign): a hollow diamond. The reusable BASE is the always-marked HOME
+    // pad (green, glowing, a touch larger — unmistakable); the LZs are active = cyan, done = grey.
+    // With sequential targeting, exactly ONE LZ is ever cyan at a time (the guide the player follows).
     if (s.zones) {
+      const HOME = '#5fe0a0'; // green = home base (matches the refuel-pad tint)
       for (const zn of s.zones) {
         const p = local(zn.x, zn.z);
         const ox = p.x - R;
         const oy = p.y - R;
         if (Math.hypot(ox, oy) > reach) continue;
-        const col = zn.done ? 'rgba(150,160,165,0.55)' : zn.active ? UI.accent : 'rgba(103,232,255,0.4)';
+        const r = zn.home ? 5.5 : 4.5;
+        const col = zn.home
+          ? HOME
+          : zn.done
+            ? 'rgba(150,160,165,0.55)'
+            : zn.active
+              ? UI.accent
+              : 'rgba(103,232,255,0.4)';
         ctx.strokeStyle = col;
-        ctx.lineWidth = 1.6;
-        if (zn.active) {
-          ctx.shadowColor = UI.accent;
+        ctx.lineWidth = zn.home ? 2 : 1.6;
+        if (zn.home || zn.active) {
+          ctx.shadowColor = col;
           ctx.shadowBlur = 8;
         }
         ctx.beginPath();
-        ctx.moveTo(p.x, p.y - 4.5);
-        ctx.lineTo(p.x + 4.5, p.y);
-        ctx.lineTo(p.x, p.y + 4.5);
-        ctx.lineTo(p.x - 4.5, p.y);
+        ctx.moveTo(p.x, p.y - r);
+        ctx.lineTo(p.x + r, p.y);
+        ctx.lineTo(p.x, p.y + r);
+        ctx.lineTo(p.x - r, p.y);
         ctx.closePath();
         ctx.stroke();
         ctx.shadowBlur = 0;

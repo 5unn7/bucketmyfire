@@ -31,7 +31,8 @@ export interface CrewZone {
 /** A zone as the renderer/HUD sees it — with live done/active flags for marker tinting. */
 export interface CrewZoneView extends CrewZone {
   done: boolean; // a single zone that's been satisfied (greyed out)
-  active: boolean; // a valid next target given the current carry state (highlighted)
+  active: boolean; // THE single next target given the carry state (highlighted) — one at a time
+  home: boolean; // the reusable base endpoint — always marked uniquely (persistent home beacon)
 }
 
 export class CrewTransport {
@@ -73,12 +74,18 @@ export class CrewTransport {
     return this.active >= 0;
   }
 
+  /** Index of the zone currently being worked (loading/unloading), or -1 — drives the board/disembark animation. */
+  get activeZone(): number {
+    return this.active;
+  }
+
   /** Zones with live flags for the markers + radar. */
   get views(): CrewZoneView[] {
     return this.zones.map((z, i) => ({
       ...z,
       done: this.done[i],
       active: this.isTargetable(i),
+      home: !z.single, // the reusable base — always the "home" endpoint
     }));
   }
 
@@ -142,10 +149,25 @@ export class CrewTransport {
     }
   }
 
-  /** Is zone `i` a valid next target given the current carry state (and not already done)? */
+  /**
+   * Is zone `i` THE next target given the current carry state? Single-use endpoints light ONE AT A
+   * TIME, in array order (so a pickup leaves exactly one LZ lit — the guidance the player follows);
+   * the reusable base is always available for its role (and is marked separately as "home").
+   */
   private isTargetable(i: number): boolean {
     const zn = this.zones[i];
     if (zn.single && this.done[i]) return false;
-    return this._carrying ? zn.role === 'unload' : zn.role === 'load';
+    const need: 'load' | 'unload' = this._carrying ? 'unload' : 'load';
+    if (zn.role !== need) return false;
+    if (!zn.single) return true; // the reusable base is always a valid endpoint for its role
+    return i === this.nextSingleIndex(need); // single endpoints are sequential — only the next one
+  }
+
+  /** Array index of the first not-done single-use zone of `role` (the next in sequence), or -1. */
+  private nextSingleIndex(role: 'load' | 'unload'): number {
+    for (let i = 0; i < this.zones.length; i++) {
+      if (this.zones[i].single && this.zones[i].role === role && !this.done[i]) return i;
+    }
+    return -1;
   }
 }

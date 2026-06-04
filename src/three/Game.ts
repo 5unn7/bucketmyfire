@@ -43,7 +43,7 @@ import { HeroFireLights } from './lighting/HeroFireLights';
 import type { HazeSource } from './postfx/Composer';
 import { HeliAudio } from './audio/HeliAudio';
 import { Profile } from './ui/profile';
-import { createCrewFigures } from './meshes/crewFigures';
+import { createCrewFigures, CrewFigures } from './meshes/crewFigures';
 import { createLandingZone, LandingZoneMesh } from './meshes/landingZone';
 import { CrewTransport, CrewZone } from './sim/CrewTransport';
 import { FuelSim } from './sim/FuelSim';
@@ -186,7 +186,7 @@ export class Game {
   private readonly bucketType: 'bambi' | 'valve';
   private readonly crew?: CrewTransport; // crew land-and-board transport (crew payload missions)
   private readonly lzMeshes: LandingZoneMesh[] = []; // landing-zone markers (parallel to crew zones)
-  private readonly crewFigures: THREE.Group[] = []; // standing crew at each zone (parallel to crew zones)
+  private readonly crewFigures: CrewFigures[] = []; // animated crew at each zone (parallel to crew zones)
   private readonly crewZones: CrewZone[] = []; // resolved world-space crew endpoints (refined to flat landing spots)
   private readonly landingPads: { x: number; z: number }[] = []; // where the flight floor eases to skids height (every base helipad + crew LZs)
   private readonly fuelSim?: FuelSim; // range model — now universal (every mission unless `fuel:false`)
@@ -279,6 +279,20 @@ export class Game {
       for (const z of this.resolveCrewZones()) {
         this.crewZones.push(z);
         this.landingPads.push({ x: z.x, z: z.z });
+      }
+    }
+
+    // HOME beacon: a persistent green marker over the home helipad in EVERY mission, so "where's
+    // home / the fuel pump" is always obvious from the air. Crew missions already render this via the
+    // base crew zone (the always-lit `home` LandingZone), so only add a standalone one when no crew
+    // zone sits on the pad — avoids a doubled beacon. Static (always `home` state), no per-frame cost.
+    if (this.helipadXZ) {
+      const p = this.helipadXZ;
+      const crewAtHome = this.crewZones.some((z) => Math.hypot(z.x - p.x, z.z - p.z) < 4);
+      if (!crewAtHome) {
+        const home = createLandingZone(true);
+        home.group.position.set(p.x, this.world.groundHeightAt(p.x, p.z), p.z);
+        this.scene.add(home.group);
       }
     }
 
@@ -534,13 +548,13 @@ export class Game {
     if (this.crewZones.length) {
       for (const z of this.crewZones) {
         const gy = this.world.groundHeightAt(z.x, z.z);
-        const lz = createLandingZone();
+        const lz = createLandingZone(!z.single); // the reusable base renders as the always-lit HOME pad
         lz.group.position.set(z.x, gy, z.z);
         this.scene.add(lz.group);
         this.lzMeshes.push(lz);
         const figs = createCrewFigures();
-        figs.position.set(z.x, gy, z.z);
-        this.scene.add(figs);
+        figs.group.position.set(z.x, gy, z.z);
+        this.scene.add(figs.group);
         this.crewFigures.push(figs);
       }
       this.crew = new CrewTransport(this.crewZones);
@@ -768,16 +782,32 @@ export class Game {
       const views = this.crew.views;
       const delivered = this.crew.delivered;
       const total = this.crew.total;
+      const activeZone = this.crew.activeZone; // the zone currently being worked (or -1)
+      const prog = this.crew.progress; // 0..1 dwell on that zone — drives the walk in/out
       for (let i = 0; i < this.lzMeshes.length; i++) {
         const v = views[i];
-        this.lzMeshes[i].setState(v.done ? 'done' : v.active ? 'active' : 'inactive');
+        // The reusable base is the always-lit HOME pad; everything else cycles active/inactive/done.
+        this.lzMeshes[i].setState(v.home ? 'home' : v.done ? 'done' : v.active ? 'active' : 'inactive');
         const figs = this.crewFigures[i];
         if (!figs) continue;
-        // A LOAD zone shows the crew WAITING until we land and board it (vanish while carried / once
-        // the run is delivered). An UNLOAD zone shows the crew once they're SET DOWN there (single
-        // zone done; the reusable base shows the rescued once any have been brought in).
-        figs.visible =
-          v.role === 'load' ? v.active && delivered < total : v.single ? v.done : delivered > 0;
+        if (i === activeZone) {
+          // Crew on the move: walk INTO the heli at a LOAD zone, OUT of it at an UNLOAD zone.
+          figs.setMode(v.role === 'load' ? 'boarding' : 'disembarking', prog);
+        } else {
+          // Idle figures, decoupled from which zone is the single LIT target (so an evac shows ALL
+          // the waiting families, not just the next one). A LOAD zone shows crew while it still has
+          // someone to give — a single cabin until it's picked up, the reusable base while crews
+          // remain. An UNLOAD zone shows them once SET DOWN (single done; the base once any are in).
+          const show =
+            v.role === 'load'
+              ? v.single
+                ? !v.done
+                : delivered < total
+              : v.single
+                ? v.done
+                : delivered > 0;
+          figs.setMode(show ? 'standing' : 'hidden');
+        }
       }
     }
 
@@ -1108,7 +1138,7 @@ export class Game {
       objectives: this.runtime.tracker,
       fuel: this.fuelSim ? this.fuelSim.fuel : undefined,
       fuelLow: this.fuelSim ? this.fuelSim.low : undefined,
-      zones: this.crew ? this.crew.views.map((v) => ({ x: v.x, z: v.z, active: v.active, done: v.done })) : undefined,
+      zones: this.crew ? this.crew.views.map((v) => ({ x: v.x, z: v.z, active: v.active, done: v.done, home: v.home })) : undefined,
       // Debrief summary (only meaningful at outcome; the banner reads it when it shows).
       debrief:
         this.won || this.lost

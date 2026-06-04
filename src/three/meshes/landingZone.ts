@@ -11,14 +11,16 @@ import { MISSIONS } from '../config';
  *   - `done`     — satisfied (greyed, beacon dropped to a stub)
  */
 
-export type ZoneState = 'active' | 'inactive' | 'done';
+export type ZoneState = 'home' | 'active' | 'inactive' | 'done';
 
 export interface LandingZoneMesh {
   group: THREE.Group;
   setState(state: ZoneState): void;
 }
 
-export function createLandingZone(): LandingZoneMesh {
+// Pass `home: true` for the reusable BASE pad — it then renders a distinct green, ALWAYS lit, so
+// home is unmistakable regardless of the carry state (the player always knows where to return).
+export function createLandingZone(home = false): LandingZoneMesh {
   const group = new THREE.Group();
   group.name = 'landingZone';
 
@@ -62,7 +64,17 @@ export function createLandingZone(): LandingZoneMesh {
   group.add(beacon);
 
   function setState(state: ZoneState): void {
-    if (state === 'done') {
+    if (state === 'home') {
+      // The base: a distinct green, always lit and beaconed — your home reference all mission long.
+      const green = new THREE.Color(MISSIONS.zoneHome);
+      ringMat.color.copy(green);
+      ringMat.emissive.copy(green);
+      ringMat.emissiveIntensity = 1.5;
+      ringMat.opacity = 0.9;
+      beacon.visible = true;
+      beaconMat.color.copy(green);
+      beaconMat.opacity = 0.3;
+    } else if (state === 'done') {
       const grey = new THREE.Color(MISSIONS.zoneSmokeDone);
       ringMat.color.copy(grey);
       ringMat.emissive.copy(grey);
@@ -81,6 +93,6 @@ export function createLandingZone(): LandingZoneMesh {
     }
   }
 
-  setState('inactive');
+  setState(home ? 'home' : 'inactive');
   return { group, setState };
 }
