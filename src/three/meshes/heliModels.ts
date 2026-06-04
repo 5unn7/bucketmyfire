@@ -19,7 +19,11 @@ import { HelicopterMesh } from './helicopter';
  *     export is untextured (specular-glossiness clay) so we bake the fire livery on.
  *   - Bell 212 (bell212) : a SINGLE merged mesh — no separable rotor node — so we keep its
  *     own textures and SLICE the real main blades out of the mesh by a top-slab Y plane so
- *     they spin; the (unseparable) tail rotor gets a small procedural one.
+ *     they spin; the (unseparable) tail rotor gets a small procedural one. The slab plane is
+ *     tuned to grab ONLY the two blades and EXCLUDE the rotor-head stabilizer/flybar (the
+ *     perpendicular weighted bar that sits one band below the blades): sliced in, the flybar
+ *     spins too and sweeps as a short second rotor — reading as duplicate / half-extra blades.
+ *     Left in the body it stays static at the hub, like real rotor-head hardware.
  *   - UH-60 Black Hawk   : separable main + tail rotor nodes; keeps its own (textured)
  *     US Army livery. NOTE: GLTFLoader sanitizes node names (whitespace → '_'), so the
  *     specs use the sanitized form ('main rotor prop_7' → 'main_rotor_prop_7').
@@ -69,14 +73,17 @@ export const HELI_MODELS: Record<string, HeliModelSpec> = {
   },
   // Bell 212 — a single merged mesh (Bell204_0). Fore/aft runs along the model's Z, so a
   // −90° yaw swings it onto +X. No separable rotor node, but the main blades sit in a clean
-  // top slab (geometry-local Y ≥ 0.77, above the cabin/fin) — slice them out so the REAL
-  // blades spin. The tail rotor isn't separable, so it gets a small procedural one.
+  // top slab (geometry-local Y ≥ 0.80) — slice them out so the REAL blades spin. The plane is
+  // 0.80, NOT lower: the rotor-head stabilizer/flybar bar lives in the band just below (Y ≈
+  // 0.775–0.80) and, if sliced in, spins with the blades as a perpendicular short second rotor
+  // (the "duplicate / half-extra blade" bug). At 0.80 it stays static in the body at the hub.
+  // The tail rotor isn't separable, so it gets a small procedural one.
   'bell-212': {
     url: BASE + 'models/bell212/scene.gltf',
     yaw: -Math.PI / 2,
     targetLen: 11,
     fuselageNode: 'Bell204_0',
-    splitRotorMinY: 0.77,
+    splitRotorMinY: 0.8,
     procTailRotor: true,
   },
   // UH-60M Black Hawk (low poly). Nose at +Z (the tail rotor sits at −Z), so a +90°
