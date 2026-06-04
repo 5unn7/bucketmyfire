@@ -133,6 +133,15 @@ const FRAG = /* glsl */ `
     // Modulate the shape's coverage by the scrolled flicker so the edges lick + the crown breaks up.
     float a = fl.a * (0.34 + 0.9 * slow) * (0.7 + 0.5 * fast) * uIntensity;
     a *= smoothstep(1.0, 0.12, uv.y); // starve the crown so the dark smoke behind takes over
+    // Densify the SEAT (body sheets only): the lower flame is a near-solid wall of fire so you
+    // can't see the ground straight through the hot root when you fly in close, relaxing back
+    // into translucent licking tongues toward the crown. The additive core glow (uMode 1) is
+    // left a pure HDR highlight.
+    if (uMode < 0.5) {
+      float seat = 1.0 - smoothstep(0.0, 0.45, uv.y); // 1 at the base → 0 by ~45% up
+      float solid = fl.a * uIntensity * (0.6 + 0.4 * fast); // the sprite's tongue, kept lively
+      a = mix(a, max(a, solid), seat);
+    }
     if (a <= 0.01) discard;
 
     vec3 col = fl.rgb;
@@ -143,6 +152,47 @@ const FRAG = /* glsl */ `
       col = col * col * 2.8;
     }
     gl_FragColor = vec4(col, a);
+  }`;
+
+// A ground-hugging bed of glowing COALS at the fire's root. Real fire has an incandescent base —
+// burning fuel and embers on the ground — so without it the flame billboards read as floating over
+// orange-tinted dirt when you fly in close. This is a flat ADDITIVE disc lying on the terrain at
+// the fire base: a radial incandescence (deep-red rim → orange → near-white heart) broken into
+// discrete breathing coals by the shared flicker noise, with the hot heart pushed into HDR so the
+// bloom pass haloes the seat. Pooled with the FireMesh (one disc per fire, never added/removed).
+const BED_VERT = /* glsl */ `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }`;
+
+const BED_FRAG = /* glsl */ `
+  precision highp float;
+  uniform sampler2D uNoise;  // shared tiling flicker noise
+  uniform float uTime;
+  uniform float uIntensity;  // 0..1 — fades the whole bed with the fire
+  uniform float uSeed;
+  varying vec2 vUv;
+  void main() {
+    float r = length(vUv - 0.5) * 2.0;        // 0 at centre → 1 at the rim
+    if (r >= 1.0) discard;
+    float fall = pow(1.0 - r, 1.6);           // hot, dense heart easing to a soft ember rim
+    // Discrete coals: two noise lattices crawling out of phase so the bed glints like live
+    // embers instead of reading as one flat disc.
+    float c1 = texture2D(uNoise, vUv * 3.5 + vec2(uSeed, uTime * 0.05)).r;
+    float c2 = texture2D(uNoise, vUv * 7.0 - vec2(uSeed * 2.0, uTime * 0.09)).r;
+    float coals = 0.4 + 0.6 * (0.6 * c1 + 0.5 * c2);
+    float breathe = 0.85 + 0.15 * sin(uTime * 3.0 + uSeed * 6.28); // slow pulse with the fire
+    float glow = fall * coals * breathe * uIntensity;
+    // Blackbody ramp: deep-red rim → orange → near-white heart; hottest coals pushed past 1 (HDR).
+    vec3 cool = vec3(0.7, 0.12, 0.02);
+    vec3 mid  = vec3(1.0, 0.42, 0.10);
+    vec3 hot  = vec3(1.0, 0.85, 0.55);
+    vec3 col = mix(cool, mid, smoothstep(0.0, 0.55, fall));
+    col = mix(col, hot, smoothstep(0.55, 1.0, fall * coals));
+    col *= 1.0 + fall * fall * 2.2;           // HDR heart → the bloom pass haloes the seat
+    gl_FragColor = vec4(col * glow, 1.0);     // additive: alpha is ignored, rgb is what's added
   }`;
 
 // --- Baked procedural textures (generated ONCE, shared by every FireMesh) -------------------
@@ -308,6 +358,32 @@ export function createFire(): FireMesh {
     sheets.push({ mesh, material, baseW: spec.w, baseH: spec.h, ox: spec.ox, oz: spec.oz, seed: spec.seed });
   });
 
+  // The glowing coal bed at the fire's root (see BED_FRAG): a flat additive disc lying a hair
+  // above the terrain. apply() scales it to the footprint + brightens it with intensity; flicker()
+  // advances it. A unit plane (half-extent 0.5) → scale = 2·radius gives a disc of that radius.
+  const bedMat = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uIntensity: { value: 1 },
+      uSeed: { value: 0.37 },
+      uNoise: { value: noise },
+    },
+    vertexShader: BED_VERT,
+    fragmentShader: BED_FRAG,
+    transparent: true,
+    depthWrite: false, // sits on the ground; never writes depth (no z-fight, doesn't occlude flames)
+    depthTest: true, // but a hill between the camera and the fire still hides it
+    blending: THREE.AdditiveBlending,
+  });
+  const bed = new THREE.Mesh(new THREE.PlaneGeometry(1, 1, 1, 1), bedMat);
+  bed.rotation.x = -Math.PI / 2; // lie flat in the XZ plane
+  bed.position.y = 0.2; // a hair above the terrain to avoid z-fighting
+  bed.renderOrder = -1; // draw under the flame sheets
+  bed.castShadow = false;
+  bed.receiveShadow = false;
+  bed.frustumCulled = false; // scaled per frame; the source AABB is meaningless
+  group.add(bed);
+
   // Warm orange point light, lifted off the base. (Game hides this — the fixed pool of
   // HeroFireLights does the ground lighting — but it's kept for API compatibility.)
   const light = new THREE.PointLight(0xff7a18, LIGHT_MAX_INTENSITY, LIGHT_MAX_DISTANCE, 2);
@@ -336,6 +412,12 @@ export function createFire(): FireMesh {
       s.material.uniforms.uWidth.value = s.baseW * sw * wI;
       s.material.uniforms.uIntensity.value = intensity;
     }
+    // Coal bed: underlie the whole flame fan (a touch past the outermost sheet) so the ground the
+    // sheets root in glows rather than showing dirt; brighten with intensity (a roaring fire sits on
+    // a blazing bed, a dying one on cooling embers). Never fully dark while the fire lives.
+    const bedRadius = footprint * 1.1 + 3;
+    bed.scale.set(bedRadius * 2, bedRadius * 2, 1);
+    bedMat.uniforms.uIntensity.value = 0.35 + 0.65 * intensity;
   }
 
   function setIntensity(t: number): void {
@@ -364,6 +446,7 @@ export function createFire(): FireMesh {
     for (const s of sheets) {
       s.material.uniforms.uTime.value = elapsedSeconds + s.seed * 5.0;
     }
+    bedMat.uniforms.uTime.value = elapsedSeconds;
     const lightWobble = 1 + 0.2 * fnoise(elapsedSeconds * 1.3 + 0.5) * intensity;
     light.intensity = LIGHT_MAX_INTENSITY * intensity * lightWobble;
   }
