@@ -17,12 +17,12 @@ import { World } from '../src/three/World';
 import { Wind } from '../src/three/sim/Wind';
 import { FireSystem } from '../src/three/sim/FireSystem';
 import { Structures } from '../src/three/sim/Structures';
-import { CrewTransport } from '../src/three/sim/CrewTransport';
+import { CrewTransport, CrewZone } from '../src/three/sim/CrewTransport';
 import { FuelSim } from '../src/three/sim/FuelSim';
 import { MissionRuntime } from '../src/three/missions/MissionRuntime';
 import { MissionDirector } from '../src/three/missions/MissionDirector';
 import { CAMPAIGN } from '../src/three/missions/catalog';
-import { seedFires, structurePlan, crewZones, igniteFromPlacement } from '../src/three/missions/scenario';
+import { seedFires, structurePlan, crewZones, resolveCrewZone, igniteFromPlacement } from '../src/three/missions/scenario';
 import type { MissionDef, MissionSignals } from '../src/three/missions/types';
 import { WORLD3D, BUCKET3D, DROP_PHYSICS, SCORE } from '../src/three/config';
 
@@ -48,6 +48,12 @@ interface Rig {
   fire: FireSystem;
   structures: Structures;
   crew?: CrewTransport;
+  // The SAME array Game holds (`Game.crewZones`) and feeds into CrewTransport — held here so the
+  // verifier mirrors Game's exact crew-array handling: on an `addZone` beat it pushes to BOTH this
+  // and `crew.addZone`, just like Game. With CrewTransport's defensive copy this is correct; if that
+  // copy were ever removed (re-aliasing the arrays), the double-append would inflate `crew.views`
+  // and trip the post-run consistency assertion below — so this whole bug CLASS is caught headlessly.
+  crewZonesRef?: CrewZone[];
   fuel?: FuelSim;
   runtime: MissionRuntime;
   director: MissionDirector;
@@ -81,7 +87,10 @@ function build(mission: MissionDef): Rig {
     communities: world.communities,
     plan: structurePlan(world, mission),
   });
-  const crew = mission.zones?.length ? new CrewTransport(crewZones(world, mission), mission.startLoaded ?? false) : undefined;
+  // Hold the resolved crew-zone array (as Game holds `this.crewZones`) and feed THE SAME array into
+  // CrewTransport — mirroring Game's exact handling so the addZone path is faithfully modelled.
+  const crewZonesRef = mission.zones?.length ? crewZones(world, mission) : undefined;
+  const crew = crewZonesRef ? new CrewTransport(crewZonesRef, mission.startLoaded ?? false) : undefined;
   // Fuel is now UNIVERSAL (every mission unless `fuel:false`), mirroring Game — the perfect player
   // tops up at a base when it dips (the `play` loop keeps it ≥ 0.5). Only `fuelOut`-fail missions
   // actually lose on a dry tank; elsewhere fuel never threatens the win.
@@ -93,6 +102,7 @@ function build(mission: MissionDef): Rig {
     fire,
     structures,
     crew,
+    crewZonesRef,
     fuel,
     runtime: new MissionRuntime(mission),
     director: new MissionDirector(mission),
@@ -146,20 +156,29 @@ function signals(r: Rig, elapsed: number): MissionSignals {
 type Mode = 'play' | 'noop' | 'starve';
 
 /** Step the rig to a terminal state (or the cap). `mode` picks the player's behaviour. */
-function run(mission: MissionDef, mode: Mode): { r: Rig; elapsed: number } {
+function run(mission: MissionDef, mode: Mode): { r: Rig; elapsed: number; addedZones: number } {
   const r = build(mission);
-  const isCrew = mission.payload === 'crew';
+  // Whether the pilot can put water on fire this mission: a pure-crew sortie carries NO bucket, so
+  // the perfect player must NOT douse (its fires can only be outrun / threaten structures). A mixed
+  // crew+water sortie lists 'water' among its loadouts → the player re-rigs and can douse.
+  const loadouts = mission.loadouts?.length ? mission.loadouts : [mission.payload ?? 'water'];
+  const canWater = loadouts.includes('water');
   let elapsed = 0;
+  let addedZones = 0; // count of pop-up rescue zones actually applied (for the consistency assertion)
   for (let step = 0; step < MAX_SEC / DT && r.runtime.state === 'active'; step++) {
     r.wind.update(DT * 1000);
 
     if (mode === 'play') {
-      // Crew missions: ferry to the active zone and LAND on it (skids down, stopped). Fire missions:
-      // suppress aggressively. (agl/speed = 0 → satisfies MISSIONS.landAgl/landSpeed, the landed gate.)
-      if (isCrew && r.crew) {
+      // The perfect player does BOTH jobs the mission demands (a MIXED crew+water sortie re-rigs at
+      // base; here we idealise the swap away and prove the objectives are jointly satisfiable in time):
+      // ferry any pending crew by LANDING on the active zone (skids down, stopped → the landed gate),
+      // AND suppress fires with discrete bucket passes. Pure-crew missions have no fires; pure-water
+      // missions have no crew — so each half no-ops where it doesn't apply.
+      if (r.crew) {
         const z = r.crew.views.find((v) => v.active);
         if (z) r.crew.update(DT, z.x, z.z, 0, 0);
-      } else if (step % PASS_INTERVAL === 0) {
+      }
+      if (canWater && r.fire.activeCount > 0 && step % PASS_INTERVAL === 0) {
         // A competent pilot's bucket pass: aim at the HOTTEST flames (not a cluster centroid — that can
         // be a doused-out hole), in-band, aimed UPWIND so the drifted load lands on the cell. One drop
         // per active front, re-querying the hottest point after each (so a multi-front map gets cycled,
@@ -189,16 +208,33 @@ function run(mission: MissionDef, mode: Mode): { r: Rig; elapsed: number } {
     r.fire.update(DT * 1000, r.wind);
     r.structures.update(DT * 1000, r.fire.active());
     elapsed += DT;
-    const sig = signals(r, elapsed);
+    let sig = signals(r, elapsed);
+    // Run the REACTIVE layer and execute its world actions (flare-ups / wind shifts / pop-up rescues)
+    // BEFORE the runtime's win-check. Game douses GRADUALLY, so a `firesDoused`-gated rescue is added
+    // while its extinguish goal is still far off; here the idealised instant-douse would leap PAST the
+    // trigger and "win" before the rescue ever appeared. Applying the director first — then re-reading
+    // the signals — keeps the pop-up REQUIRED for the win, so the gate actually proves its path.
+    // Wind shifts first so a same-beat ignite orients to the new wind (matches Game's ordering).
+    if (!r.director.spent) {
+      const acts = r.director.update(sig, r.runtime);
+      for (const a of acts) if (a.do === 'wind') r.wind.shiftTo(a.angle, a.strengthScale, a.ease);
+      for (const a of acts) if (a.do === 'ignite') igniteFromPlacement(r.world, r.fire, a.place, { vx: r.wind.intendedVx, vz: r.wind.intendedVz }, r.fireBound);
+      for (const a of acts) if (a.do === 'addObjective') r.runtime.addObjective(a.objective);
+      for (const a of acts)
+        if (a.do === 'addZone' && r.crew && r.crewZonesRef) {
+          // Mirror Game EXACTLY: push to the held array AND tell the sim. With CrewTransport's
+          // defensive copy these are independent (one net append); if that copy regressed, the shared
+          // array would double-append and the post-run views.length assertion would catch it.
+          const z = resolveCrewZone(r.world, a.zone);
+          r.crewZonesRef.push(z);
+          r.crew.addZone(z);
+          addedZones++;
+        }
+      if (acts.length) sig = signals(r, elapsed); // re-snapshot: ignites / new zones changed the counts
+    }
     r.runtime.update(sig);
-    // Run the REACTIVE layer too and execute its world actions (flare-ups / wind shifts), so the
-    // gate proves every mission still completes with its authored beats live. Comms are no-ops here.
-    // Wind shifts FIRST so a same-beat ignite orients to the new wind (matches Game).
-    const acts = r.director.update(sig, r.runtime);
-    for (const a of acts) if (a.do === 'wind') r.wind.shiftTo(a.angle, a.strengthScale, a.ease);
-    for (const a of acts) if (a.do === 'ignite') igniteFromPlacement(r.world, r.fire, a.place, { vx: r.wind.intendedVx, vz: r.wind.intendedVz }, r.fireBound);
   }
-  return { r, elapsed };
+  return { r, elapsed, addedZones };
 }
 
 let pass = 0;
@@ -300,7 +336,7 @@ function trippingSignals(elapsed: number): MissionSignals {
 console.log('Campaign playthrough verification\n');
 for (const m of CAMPAIGN) {
   // --- Positive: a perfect player drives every goal to completion ---
-  const { r, elapsed } = run(m, 'play');
+  const { r, elapsed, addedZones } = run(m, 'play');
   const goals = r.runtime.tasks.filter((t) => t.kind === 'goal');
   const allGoalsDone = goals.every((t) => t.status === 'done' && t.completedAt !== undefined);
   const events = r.runtime.events;
@@ -312,6 +348,12 @@ for (const m of CAMPAIGN) {
   ok(`${m.id}: event log ends 'won' and is time-ordered`, lastWon && ordered);
   ok(`${m.id}: score > 0`, r.runtime.score > 0);
   ok(`${m.id}: completion record complete`, r.runtime.completion().subtasks.length === r.runtime.tasks.length && r.runtime.completion().wonAt >= 0);
+  // Crew-zone consistency: the sim's zone list must be EXACTLY the opening zones plus the pop-up
+  // rescue zones applied — no runtime double-append. Catches the Game-side array-aliasing bug class.
+  if (r.crew) {
+    const expectedZones = (m.zones?.length ?? 0) + addedZones;
+    ok(`${m.id}: crew zones consistent (no runtime double-append)`, r.crew.views.length === expectedZones, `views=${r.crew.views.length} expected=${expectedZones}`);
+  }
 
   const goalSummary = goals.map((t) => `${t.label}=${t.status}@${t.completedAt?.toFixed(0) ?? '-'}s`).join(', ');
   console.log(`  ${r.runtime.state === 'won' ? '✓' : '✗'} ${m.name.padEnd(16)} won@${elapsed.toFixed(0)}s score ${String(r.runtime.score).padStart(6)} | ${goalSummary}`);

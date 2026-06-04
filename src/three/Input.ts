@@ -24,7 +24,7 @@
  */
 import { CAMERA } from './config';
 import type { LookOffset } from './ChaseCamera';
-import { UI, FW, R, div, button, setBlur, anchor } from './ui/theme';
+import { UI, FW, FS, R, div, button, setBlur, anchor } from './ui/theme';
 import { onLayout, type LayoutState } from './ui/layout';
 import { HelpModal, hasSeenHelp, markHelpSeen } from './ui/HelpModal';
 
@@ -34,6 +34,7 @@ export interface ControlState {
   lift: number; // -1 descend .. +1 climb
   drop: boolean; // DROP held this frame (the 'valve' bucket pours while held)
   dropPressed: boolean; // DROP went down THIS frame (edge) — a one-tap 'bambi' dump trigger
+  swapPressed: boolean; // SWAP went down THIS frame (edge) — re-rig bucket↔crew at base (mixed missions)
 }
 
 /** Stick travel below this fraction reads as zero, then rescales smoothly. */
@@ -56,6 +57,8 @@ export class Input {
   private btnDown = false;
   private btnDrop = false;
   private prevDrop = false; // last frame's drop level, for press-edge detection
+  private btnSwap = false;
+  private prevSwap = false; // last frame's swap level, for press-edge detection
 
   // Free-look ("eye" button): drag sets orbit VELOCITY, release eases back.
   private lookActive = false;
@@ -73,6 +76,7 @@ export class Input {
   private climbBtn!: HTMLDivElement;
   private descendBtn!: HTMLDivElement;
   private dropBtn!: HTMLDivElement;
+  private swapBtn!: HTMLDivElement;
   private clusterRow!: HTMLDivElement;
   private eyeBtn!: HTMLDivElement;
   private eyeSvg!: SVGElement;
@@ -116,7 +120,18 @@ export class Input {
     const dropPressed = drop && !this.prevDrop; // rising edge → one-tap dump trigger
     this.prevDrop = drop;
 
-    return { turn, throttle, lift, drop, dropPressed };
+    // Swap loadout (G, or the contextual SWAP button) — edge-detected, one re-rig per press.
+    const swap = this.btnSwap || k.has('KeyG');
+    const swapPressed = swap && !this.prevSwap;
+    this.prevSwap = swap;
+
+    return { turn, throttle, lift, drop, dropPressed, swapPressed };
+  }
+
+  /** Show/hide the contextual SWAP-loadout button. Game calls this each frame: it's only
+   *  visible on a mixed crew+water mission while the heli is set down at the home base. */
+  setSwapVisible(on: boolean): void {
+    if (this.swapBtn) this.swapBtn.style.display = on ? 'flex' : 'none';
   }
 
   /** Free-look orbit for the chase camera, driven by the "eye" button drag.
@@ -195,10 +210,36 @@ export class Input {
 
     this.buildStick(root);
     this.buildCluster(root);
+    this.buildSwapUI(root);
     this.buildLookUI(root);
     this.buildHelpUI(root);
 
     parent.appendChild(root);
+  }
+
+  /** Contextual SWAP-loadout button (bottom-centre, hidden until Game enables it). On a mixed
+   *  crew+water mission, set down at the home base re-rigs the slung load bucket↔crew. */
+  private buildSwapUI(root: HTMLElement): void {
+    const swap = button('⇄ SWAP', {
+      position: 'relative',
+      display: 'none', // shown only when Game.setSwapVisible(true) — at base, on a mixed mission
+      padding: '0 18px',
+      height: '46px',
+      borderRadius: R.pill,
+      fontSize: FS.body,
+      fontWeight: FW.bold,
+      letterSpacing: '1.5px',
+      color: UI.text,
+      borderColor: UI.accentSoft,
+      boxShadow: `0 0 16px ${UI.accent}33, ${UI.shadowBtn}`,
+      marginBottom: '14px',
+    });
+    this.swapBtn = swap;
+    holdButton(swap, (on) => (this.btnSwap = on));
+
+    const a = anchor('bottom-center');
+    a.appendChild(swap);
+    root.appendChild(a);
   }
 
   /** Virtual joystick (bottom-left) — a frosted dish with hairline axis ticks and a

@@ -1,5 +1,5 @@
 import type { MissionDef } from '../missions/types';
-import { bestScore, isUnlocked, getProgress } from '../missions/progress';
+import { bestScore, bestStars, isUnlocked, getProgress } from '../missions/progress';
 import { HELIS, MAPS, CatalogItem, firstAvailable, findItem, loadProfile, saveProfile, isHeliUnlocked, missionsCleared } from './profile';
 import { makeIcon } from './icons';
 import { openLeaderboard } from './Leaderboard';
@@ -55,7 +55,7 @@ export class MissionSelect {
     // A quiet one-line intro so the screen still announces itself without a heavy header.
     const intro = section({ margin: '4px auto 22px' });
     intro.appendChild(
-      div({ fontSize: FS.body, color: UI.dim, lineHeight: '1.5' }, 'Northern Saskatchewan air attack — ten missions, hardest last. Fly them in order.'),
+      div({ fontSize: FS.body, color: UI.dim, lineHeight: '1.5' }, 'Northern Saskatchewan air attack — six missions, hardest last. Fly them in order.'),
     );
     this.root.appendChild(intro);
 
@@ -395,6 +395,9 @@ export class MissionSelect {
       gap: '14px',
     });
     for (const m of catalog) grid.appendChild(this.card(m, catalog, completed, m.id === nextId, onSelect));
+    // A 7th slot teasing the co-op finale — not playable yet, but a real promise (the bell opens the
+    // cloud-save email capture so we can reach you when it lands). No netcode shipped; pure UI.
+    grid.appendChild(coopTeaserCard(catalog.length + 1));
     wrap.appendChild(grid);
     return wrap;
   }
@@ -455,7 +458,12 @@ export class MissionSelect {
     const status = done
       ? div({ color: UI.ok, fontWeight: FW.semibold }, best !== null ? `✓ ${best.toLocaleString()}` : '✓ Cleared')
       : div({ color: UI.dim }, best !== null ? `Best ${best.toLocaleString()}` : 'Not flown');
-    footer.appendChild(status);
+    // Star medal for a cleared mission (1..3, best run) — sits beside the score so the grid shows
+    // at a glance which sorties you've truly mastered, not just finished.
+    const left = div({ display: 'flex', alignItems: 'center', gap: '8px' });
+    left.appendChild(status);
+    if (done) left.appendChild(starPips(bestStars(m.id)));
+    footer.appendChild(left);
     footer.appendChild(
       div(
         { fontWeight: FW.bold, letterSpacing: '1px', color: unlocked ? UI.accent : UI.faint },
@@ -480,6 +488,53 @@ export class MissionSelect {
 }
 
 // --- small building blocks --------------------------------------------------
+
+/**
+ * The co-op "coming soon" teaser — a 7th card after the six solo sorties. Not selectable; the bell
+ * opens the cloud-save email capture so a player can be notified when multiplayer ships. Dashed
+ * border + "SOON" pill distinguish it from a locked-but-real mission. No netcode exists yet.
+ */
+function coopTeaserCard(number: number): HTMLDivElement {
+  const card = div({
+    position: 'relative',
+    display: 'flex',
+    flexDirection: 'column',
+    background: UI.cardGlass,
+    border: `1px dashed ${UI.accentSoft}`,
+    borderRadius: R.lg,
+    boxShadow: UI.shadowCard,
+    padding: '15px 16px 13px',
+    opacity: '0.92',
+  });
+  setBlur(card);
+
+  const top = div({ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' });
+  top.appendChild(div({ fontSize: FS.label, fontWeight: FW.bold, letterSpacing: '2px', color: UI.faint }, `MISSION ${number}`));
+  top.appendChild(
+    div(
+      { fontSize: FS.tag, fontWeight: FW.heavy, letterSpacing: '1.5px', color: UI.accent, background: UI.accentFill, border: `1px solid ${UI.accent}55`, borderRadius: R.pill, padding: '2px 8px' },
+      'SOON',
+    ),
+  );
+  card.appendChild(top);
+
+  card.appendChild(div({ fontSize: FS.title, fontWeight: FW.bold, margin: '7px 0 6px' }, '🤝 Co-op'));
+  const blurb = div(
+    { fontSize: FS.sm, lineHeight: '1.45', color: 'rgba(231,247,255,0.72)' },
+    '2–4 players. Thirty fires, three towns, eight crew drops, four rescues — one fire too big to fly alone. Bring friends.',
+  );
+  clamp(blurb, 2);
+  card.appendChild(blurb);
+
+  const footer = div({ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px', fontSize: FS.sm });
+  footer.appendChild(div({ color: UI.dim }, 'In development'));
+  const notify = div({ fontWeight: FW.bold, letterSpacing: '1px', color: UI.accent, cursor: 'pointer' }, '🔔 NOTIFY ME');
+  notify.title = 'Get an email when co-op lands';
+  notify.addEventListener('pointerdown', () => openCloudSave());
+  footer.appendChild(notify);
+  card.appendChild(footer);
+  return card;
+}
 
 /** A numbered step label — the visual spine of the callsign → aircraft → mission flow. */
 function stepHeader(n: number, label: string, hint?: string): HTMLDivElement {
@@ -551,6 +606,17 @@ function pilotRecord(catalog: MissionDef[]): HTMLDivElement | null {
     div({ marginTop: '6px', fontSize: FS.label, fontWeight: FW.bold, letterSpacing: '1.5px', color: UI.faint }, `CAMPAIGN ${pct}% COMPLETE`),
   );
   return panel;
+}
+
+/** Three star pips (1..3 filled) — a cleared mission's best-run medal. Filled = warm gold,
+ *  empty = faint, reusing the cockpit palette (no hard-coded colour). */
+function starPips(stars: number): HTMLDivElement {
+  const row = div({ display: 'inline-flex', gap: '1px', fontSize: FS.sm, lineHeight: '1' });
+  row.title = `${stars} / 3 stars`;
+  for (let i = 1; i <= 3; i++) {
+    row.appendChild(div({ color: i <= stars ? UI.warm : UI.faint }, i <= stars ? '★' : '☆'));
+  }
+  return row;
 }
 
 /** A label-over-value stat used in the pilot record. */

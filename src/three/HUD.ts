@@ -724,9 +724,11 @@ export class HUD {
       el('div', { fontSize: FS.banner, fontWeight: FW.heavy, letterSpacing: '0.5px', color: s.lost ? UI.warn : UI.accent }, headline),
     );
     const d = s.debrief;
-    // Run grade — the headline accolade. A big letter badge in its rank colour (S gold → D red).
+    // Run grade — the headline accolade. A big letter badge in its rank colour (S gold → D red),
+    // with the 1..3 star medal beneath it (same baseline ratio, so they always agree).
     const grade = s.won ? d?.breakdown?.grade ?? null : null;
-    if (grade) this.banner.appendChild(gradeBadge(grade));
+    const stars = s.won ? d?.breakdown?.stars ?? null : null;
+    if (grade) this.banner.appendChild(gradeBadge(grade, stars));
     // Reactive closing line — reads the outcome, not a canned string.
     let sub: string;
     if (s.won) {
@@ -1829,13 +1831,21 @@ const GRADE_COLORS: Record<ScoreGrade, string> = {
   D: UI.warn,
 };
 
-/** The big rank-letter badge under the headline (win only) — the run's headline accolade. */
-function gradeBadge(grade: ScoreGrade): HTMLDivElement {
+/** The big rank-letter badge under the headline (win only) — the run's headline accolade, with
+ *  the star medal (1..3) beneath it. */
+function gradeBadge(grade: ScoreGrade, stars: number | null): HTMLDivElement {
   const c = GRADE_COLORS[grade];
-  const wrap = el('div', { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginTop: '10px' });
+  const col = el('div', { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '7px', marginTop: '10px' });
+  const wrap = el('div', { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' });
   wrap.appendChild(el('div', { fontSize: FS.sm, letterSpacing: '3px', color: UI.dim, fontWeight: FW.bold }, 'RANK'));
   wrap.appendChild(el('div', { fontSize: FS.mega, fontWeight: FW.black, lineHeight: '1', color: c, textShadow: `0 0 18px ${c}66` }, grade));
-  return wrap;
+  col.appendChild(wrap);
+  if (stars) {
+    const row = el('div', { display: 'flex', gap: '3px', fontSize: FS.lg, lineHeight: '1' });
+    for (let i = 1; i <= 3; i++) row.appendChild(el('div', { color: i <= stars ? UI.warm : UI.faint }, i <= stars ? '★' : '☆'));
+    col.appendChild(row);
+  }
+  return col;
 }
 
 /**

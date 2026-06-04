@@ -9,7 +9,7 @@
  * `available: false` placeholders ("Coming soon"). All THREE helicopters are
  * playable, but the campaign GATES them — they are not all unlocked at the start:
  * the Bell 205A-1 is open from sortie one, the Bell 212 unlocks once you've cleared
- * `unlockAfter` sorties, and the UH-60 unlocks for the last three. `isHeliUnlocked()`
+ * `unlockAfter` sorties, and the UH-60 unlocks for the last two. `isHeliUnlocked()`
  * resolves that gate against `missions/progress`; the pickers (Onboarding +
  * MissionSelect) render a locked card with the requirement until it's met.
  */
@@ -81,8 +81,8 @@ export const MAPS: CatalogItem[] = [
 //
 // They are GATED by campaign progress (`unlockAfter` = sorties to clear), so a new pilot
 // starts on the trainer and earns the heavier ships: the 205 is open, the 212 unlocks after
-// the first three sorties, and the Black Hawk unlocks for the last three. (Additive — clearing
-// a tier never takes an earlier airframe away.)
+// the first two sorties (in time for the first real wall), and the Black Hawk for the last two
+// (the set-piece + finale). (Additive — clearing a tier never takes an earlier airframe away.)
 export const HELIS: CatalogItem[] = [
   {
     id: 'bell-205a1',
@@ -105,7 +105,7 @@ export const HELIS: CatalogItem[] = [
     tagline: 'Twin-engine medium',
     blurb: 'The Twin-Pac sister of the Huey — more power, a bigger belly, and a tougher hull. A balanced step up from the 205: faster and carries more, still steady in the gusts off the lakes.',
     available: true,
-    unlockAfter: 3, // earned after the first three sorties
+    unlockAfter: 2, // earned at Mission 3 — the first real wall (Hold the Line)
     accent: '#d8a12a',
     glyph: '🚁',
     specs: [
@@ -121,7 +121,7 @@ export const HELIS: CatalogItem[] = [
     tagline: 'Supreme — a handful',
     blurb: 'A big four-blade utility ship: the fastest, biggest tank (double the 205), and toughest hull. But heavy and twitchy down low — all that momentum overshoots, so it takes a confident hand. Supreme range and payload for an experienced pilot.',
     available: true,
-    unlockAfter: 7, // unlocks for the last three sorties
+    unlockAfter: 4, // unlocks for Missions 5 & 6 — the set-piece + the finale
     accent: '#5b6b50',
     glyph: '🚁',
     specs: [

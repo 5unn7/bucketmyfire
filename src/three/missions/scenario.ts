@@ -76,12 +76,16 @@ function zonePoint(world: World, z: ZonePlacement): { x: number; z: number } {
   return communityPoint(world, z.community ?? 0);
 }
 
+/** Resolve ONE crew/cargo endpoint to a world-space `CrewZone`. Shared by the opening `crewZones`
+ *  resolution AND the `addZone` beat, so a mid-mission pop-up rescue lands with the same vocabulary. */
+export function resolveCrewZone(world: World, z: ZonePlacement): CrewZone {
+  const pt = zonePoint(world, z);
+  return { x: pt.x, z: pt.z, role: z.role, single: z.single, label: z.label ?? z.role };
+}
+
 /** Resolve the mission's crew/cargo endpoints to world-space `CrewZone`s. */
 export function crewZones(world: World, mission: MissionDef): CrewZone[] {
-  return (mission.zones ?? []).map((z) => {
-    const pt = zonePoint(world, z);
-    return { x: pt.x, z: pt.z, role: z.role, single: z.single, label: z.label ?? z.role };
-  });
+  return (mission.zones ?? []).map((z) => resolveCrewZone(world, z));
 }
 
 /** Seed every fire in the mission def at its resolved site + size class onto `fire`. */

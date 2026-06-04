@@ -88,6 +88,9 @@ export class SmokePlume {
         uDarkHi: { value: SMOKE.darkHi },
         uDarkStrength: { value: SMOKE.darkStrength },
         uPaleRise: { value: SMOKE.paleRise },
+        uMaxScreenSize: { value: SMOKE.maxScreenSize },
+        uNearFadeLo: { value: SMOKE.nearFadeLo },
+        uNearFadeHi: { value: SMOKE.nearFadeHi },
       },
       transparent: true,
       depthWrite: false, // smoke doesn't occlude the depth buffer; blends (darkens) over the scene
@@ -101,9 +104,11 @@ export class SmokePlume {
         varying float vSeed;
         varying float vHeat;
         varying float vRise;   // world units this puff has climbed above its crown
+        varying float vViewZ;  // distance in FRONT of the camera (for the near-camera fade)
         uniform float uStartSize;
         uniform float uEndSize;
         uniform float uHeatSize;
+        uniform float uMaxScreenSize;
         void main() {
           vLife = aLife;
           vSeed = aSeed;
@@ -113,9 +118,11 @@ export class SmokePlume {
           float size = mix(uStartSize, uEndSize, age); // billows out as it ages
           size *= 1.0 + uHeatSize * aHeat;              // a hot fire's puffs are much bigger
           vec4 mv = modelViewMatrix * vec4(position, 1.0);
-          // Clamp the on-screen size so a puff you fly INTO fills the view (occlusion) without
-          // tripping the driver's hard point-size ceiling.
-          gl_PointSize = clamp(size * (300.0 / max(-mv.z, 1.0)), 1.0, 1800.0);
+          vViewZ = -mv.z;
+          // Cap the on-screen size so no single puff can fill the whole frame (which would slam it
+          // to a solid near-black) — many overlapping puffs build the volume, the fragment near-fade
+          // dissolves the one you fly into.
+          gl_PointSize = clamp(size * (300.0 / max(-mv.z, 1.0)), 1.0, uMaxScreenSize);
           gl_Position = projectionMatrix * mv;
         }`,
       fragmentShader: /* glsl */ `
@@ -133,10 +140,13 @@ export class SmokePlume {
         uniform float uDarkHi;
         uniform float uDarkStrength;
         uniform float uPaleRise;
+        uniform float uNearFadeLo;
+        uniform float uNearFadeHi;
         varying float vLife;
         varying float vSeed;
         varying float vHeat;
         varying float vRise;
+        varying float vViewZ;
 
         void main() {
           // Rotate each puff's UV by a per-puff angle so the same sprite never reads as a tiled grid.
@@ -167,7 +177,10 @@ export class SmokePlume {
           float warm = smoothstep(uWarmRise, 0.0, rise) * vHeat * smoothstep(0.45, 0.0, age);
           col += uWarm * warm * uWarmStrength;
 
-          float alpha = cover * uOpacity * (1.0 + uHeatOpacity * vHeat) * fadeIn * vLife;
+          // Soft-particle NEAR fade: a puff you fly into dissolves as it nears the eye instead of
+          // slamming the frame to solid near-black (the source of the into-smoke black flicker).
+          float nearFade = smoothstep(uNearFadeLo, uNearFadeHi, vViewZ);
+          float alpha = cover * uOpacity * (1.0 + uHeatOpacity * vHeat) * fadeIn * vLife * nearFade;
           gl_FragColor = vec4(col, clamp(alpha, 0.0, 1.0));
         }`,
     });

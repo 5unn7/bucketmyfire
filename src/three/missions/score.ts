@@ -109,14 +109,18 @@ export function computeScore(def: MissionDef, state: MissionState, elapsed: numb
 
   // Grade is the UNCLAMPED total ÷ a baseline (a bonus-free competent win at this hardship), so the
   // ceiling can't demote an S. Clearing the mission with nothing extra sits near 1.0 (a C); skill +
-  // coordination push toward S, penalties drag down.
+  // coordination push toward S, penalties drag down. Stars read off the SAME ratio so they can never
+  // disagree with the letter (1★ = cleared, 2★ = clean win, 3★ = excellent).
   let grade: ScoreGrade | null = null;
+  let stars: 1 | 2 | 3 | null = null;
   if (won) {
     const baseline = Math.max(1, outcome * mul);
-    grade = gradeFor(raw / baseline);
+    const ratio = raw / baseline;
+    grade = gradeFor(ratio);
+    stars = starsFor(ratio);
   }
 
-  return { lines, total, grade };
+  return { lines, total, grade, stars };
 }
 
 /** Score ÷ baseline → letter grade (win only). */
@@ -126,6 +130,16 @@ export function gradeFor(ratio: number): ScoreGrade {
   if (ratio >= SCORE.gradeB) return 'B';
   if (ratio >= SCORE.gradeC) return 'C';
   return 'D';
+}
+
+/**
+ * Score ÷ baseline → 1..3 stars (win only). 1★ is GUARANTEED on any clear (finishing is the gate);
+ * the 2nd/3rd stars reward a clean / excellent run off the same baseline ratio as the letter grade.
+ */
+export function starsFor(ratio: number): 1 | 2 | 3 {
+  if (ratio >= SCORE.starThree) return 3;
+  if (ratio >= SCORE.starTwo) return 2;
+  return 1;
 }
 
 /** Fuel is a real constraint when the mission opts in (`fuel:true`) or can lose on a dry tank. */

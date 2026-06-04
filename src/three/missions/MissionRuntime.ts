@@ -106,6 +106,19 @@ export class MissionRuntime {
     else if (this.subtasks.some((t) => t.status === 'failed')) this.end('lost', now, s);
   }
 
+  /**
+   * Append a GOAL objective at runtime — a mid-mission rescue/task that "pops up" (the `addObjective`
+   * beat). It enters PENDING, so `verified` (and the win) now also waits on it. No-op once the run is
+   * over, so a beat firing on the same frame the mission would otherwise end can't resurrect it — fire
+   * the beat on a trigger that holds while other goals are still pending.
+   */
+  addObjective(o: Objective): void {
+    if (this._state !== 'active') return;
+    const t = mk(`g${this.subtasks.length}`, 'goal', this.objectiveLabel(o)); // monotonic id → unique
+    this.subtasks.push(t);
+    this.objs.push(o);
+  }
+
   /** Build a persistable record of this run (call after a win). */
   completion(): CompletionRecord {
     const won = this._events.find((e) => e.type === 'won');
@@ -113,6 +126,7 @@ export class MissionRuntime {
       wonAt: won?.at ?? 0,
       score: this._score,
       grade: this._breakdown?.grade ?? null,
+      stars: this._breakdown?.stars ?? null,
       subtasks: this.subtasks.map((t) => ({ label: t.label, completedAt: t.completedAt ?? null })),
     };
   }

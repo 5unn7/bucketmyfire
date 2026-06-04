@@ -53,9 +53,9 @@ import { MissionDirector } from './missions/MissionDirector';
 import { recordWin } from './missions/progress';
 import { submitScore } from './leaderboard/client';
 import { cloudAutoSave } from './leaderboard/cloudSave';
-import type { MissionDef, MissionSignals, MissionAction, ScoreTally } from './missions/types';
+import type { MissionDef, MissionSignals, MissionAction, ZonePlacement, ScoreTally } from './missions/types';
 import type { EndScreenHooks } from './HUD';
-import { seedFires, structurePlan, crewZones, igniteFromPlacement } from './missions/scenario';
+import { seedFires, structurePlan, crewZones, resolveCrewZone, igniteFromPlacement } from './missions/scenario';
 import { WORLD3D, FLIGHT, STARTUP, BUCKET3D, DROP_PHYSICS, DROP_FX, FIREHEAD, CAMERA, FIRE3D, WATER, WASH, SPRAY, SMOKE, EMBERS, INSTRUMENTS, ROADS, MISSIONS, COMMUNITIES, SCORE, resolveHeliClass } from './config';
 
 // Instrument calibration factors (world units → real-world HUD units). Derived from
@@ -196,7 +196,9 @@ export class Game {
   private readonly director: MissionDirector; // reactive beats: comms / flare-ups / wind shifts
   private readonly fireBound = WORLD3D.size / 2 - 40; // valid-fire-site radius (matches scenario seeding)
   private inBriefing = true; // pre-flight briefing card up → sim + clock paused until BEGIN
-  private readonly payloadMode: 'water' | 'crew';
+  private payloadMode: 'water' | 'crew'; // CURRENT slung loadout (mutable: mixed missions re-rig at base)
+  private readonly loadouts: ('water' | 'crew')[]; // loadouts the pilot can re-rig between; >1 → swap enabled
+  private loadoutIdx = 0; // index into `loadouts` of the current payload
   private readonly bucketType: 'bambi' | 'valve';
   private readonly crew?: CrewTransport; // crew land-and-board transport (crew payload missions)
   private readonly lzMeshes: LandingZoneMesh[] = []; // landing-zone markers (parallel to crew zones)
@@ -230,7 +232,13 @@ export class Game {
     // and screenshots work unchanged.
     this.engineStarted = opts.skipColdStart ?? false;
     this.rotorRpm = this.engineStarted ? 1 : 0;
-    this.payloadMode = mission.payload ?? 'water';
+    // Mixed missions list the loadouts the pilot can re-rig between (bucket↔crew) at the home base;
+    // a normal mission omits `loadouts` → a single fixed loadout, exactly as before. `payload` is the
+    // STARTING loadout; keep `payloadMode` derived from the cycle so the two never disagree.
+    this.loadouts = mission.loadouts?.length ? mission.loadouts : [mission.payload ?? 'water'];
+    const startIdx = this.loadouts.indexOf(mission.payload ?? this.loadouts[0]);
+    this.loadoutIdx = startIdx >= 0 ? startIdx : 0;
+    this.payloadMode = this.loadouts[this.loadoutIdx];
     this.bucketType = mission.bucket ?? (BUCKET3D.type as 'bambi' | 'valve');
     this.pilotName = profile?.name;
     this.mapId = profile?.mapId;
@@ -728,6 +736,15 @@ export class Game {
     // run before the pilot hits BEGIN and brings the rotors up to speed.
     const frozen = this.won || this.lost || this.inBriefing || !this.engineStarted;
 
+    // Loadout re-rig (mixed crew+water missions): set down at the home base to SWAP the slung load
+    // bucket↔crew. Only a >1-loadout mission shows the button / accepts G; everyone else: button hidden,
+    // swap inert — zero behaviour change for normal sorties.
+    if (this.loadouts.length > 1) {
+      const canSwap = !frozen && this.atHomeBaseLanded();
+      this.input.setSwapVisible(canSwap);
+      if (canSwap && c.swapPressed) this.swapLoadout();
+    }
+
     if (!frozen) {
       this.missionElapsed += dt; // mission clock (drives survive/timeout; stops on win/lose)
       this.wind.update(dtMs);
@@ -802,7 +819,9 @@ export class Game {
     // --- Crew transport (delivery/evac missions): advance the LAND-and-board ferry, recolor the
     // landing-zone markers, and show/hide the standing crew at each zone so a pickup/drop reads. ---
     if (this.crew) {
-      if (!frozen) {
+      // The ferry only advances while the CREW sling is the rigged loadout — on a mixed mission the
+      // crew sit tight (markers still drawn below, greyed) until the pilot re-rigs from the bucket.
+      if (!frozen && this.payloadMode === 'crew') {
         this.crew.update(dt, this.heliSim.position.x, this.heliSim.position.z, this.heliSim.agl, this.heliSim.speed);
       }
       const views = this.crew.views;
@@ -1145,14 +1164,21 @@ export class Game {
     this.frame.update(dt, this.wind.vx, this.wind.vz, this.sun.position, this.sun.target.position);
 
     const firesLeft = this.fireSystem.activeCount;
-    // Crew missions guide to the next zone; water missions warn on scrape, else guide the scoop.
-    const hint = this.crew
-      ? this.crew.hint()
-      : scraping
-        ? this.water > 0
-          ? 'Bucket dragging — climb! (spilling water)'
-          : 'Bucket dragging — climb!'
-        : this.scoopHint(overWater, scooping);
+    // Crew missions guide to the next zone; water missions warn on scrape, else guide the scoop. On a
+    // mixed mission the hint follows the RIGGED loadout, and a "re-rig at base" cue shows once set down.
+    const swapHint =
+      this.loadouts.length > 1 && this.atHomeBaseLanded()
+        ? `⇄ SWAP / G → re-rig to the ${this.loadouts[(this.loadoutIdx + 1) % this.loadouts.length] === 'water' ? 'bucket' : 'crew sling'}`
+        : null;
+    const hint =
+      swapHint ??
+      (this.crew && this.payloadMode === 'crew'
+        ? this.crew.hint()
+        : scraping
+          ? this.water > 0
+            ? 'Bucket dragging — climb! (spilling water)'
+            : 'Bucket dragging — climb!'
+          : this.scoopHint(overWater, scooping));
     this.hud.update({
       water: this.water,
       waterMax: this.capacity,
@@ -1248,7 +1274,51 @@ export class Game {
       igniteFromPlacement(this.world, this.fireSystem, a.place, { vx: this.wind.intendedVx, vz: this.wind.intendedVz }, this.fireBound);
     } else if (a.do === 'wind') {
       this.wind.shiftTo(a.angle, a.strengthScale, a.ease);
+    } else if (a.do === 'addObjective') {
+      // A crew objective with no transport can never be delivered → it would softlock the mission.
+      // Warn loud (authoring guardrail) rather than fail silently; the catalog always pairs these.
+      if ((a.objective.kind === 'deliver' || a.objective.kind === 'evacuate') && !this.crew)
+        console.warn('[mission] addObjective added a crew goal but this mission has no crew transport — give it a base `zones` endpoint or it cannot be completed.');
+      this.runtime.addObjective(a.objective); // a rescue/task pops up mid-mission
+    } else if (a.do === 'addZone') {
+      this.addCrewZoneRuntime(a.zone); // its cabin/family appears in the world
     }
+  }
+
+  /**
+   * Spawn a pop-up rescue endpoint at runtime (the `addZone` beat): resolve + refine to a flat
+   * landable spot like the opening zones, drop its marker + waiting crew, register it as a landing pad
+   * (so the flight floor eases for a touchdown), then hand it to the live transport. Requires the
+   * mission to be crew-capable from the start (CrewTransport already built); otherwise a no-op.
+   */
+  private addCrewZoneRuntime(spec: ZonePlacement): void {
+    if (!this.crew) {
+      console.warn('[mission] addZone fired but this mission has no crew transport — give it a base `zones` endpoint to enable pop-up rescues.');
+      return;
+    }
+    const base = resolveCrewZone(this.world, spec);
+    const depot = this.depotXZ;
+    const pad = this.helipadXZ;
+    let refined: CrewZone;
+    if (depot && pad && Math.hypot(base.x - depot.x, base.z - depot.z) < 2) {
+      refined = { ...base, x: pad.x, z: pad.z }; // a base endpoint boards on the cold-start helipad
+    } else {
+      const spot = this.findFlatSpotNear(base.x, base.z, 10);
+      refined = { ...base, x: spot.x, z: spot.z };
+    }
+    const gy = this.world.groundHeightAt(refined.x, refined.z);
+    const lz = createLandingZone(!refined.single);
+    lz.group.position.set(refined.x, gy, refined.z);
+    this.scene.add(lz.group);
+    this.lzMeshes.push(lz);
+    if (!refined.single) this.homeBeacons.push({ zone: lz, x: refined.x, z: refined.z });
+    const figs = createCrewFigures();
+    figs.group.position.set(refined.x, gy, refined.z);
+    this.scene.add(figs.group);
+    this.crewFigures.push(figs);
+    this.crewZones.push(refined);
+    this.landingPads.push({ x: refined.x, z: refined.z }); // ease the flight floor so the skids meet ground here
+    this.crew.addZone(refined);
   }
 
   /** Build the per-frame snapshot the mission evaluator reads (Game already tracks all of it). */
@@ -1505,6 +1575,40 @@ export class Game {
       }
     }
     return best ?? { x: depot.x, z: depot.z, yaw: 0 };
+  }
+
+  /** True when the heli is set DOWN (skids down, stopped) on the home-base pad — the re-rig spot. */
+  private atHomeBaseLanded(): boolean {
+    if (!this.depotXZ) return false;
+    const p = this.heliSim.position;
+    return (
+      this.heliSim.agl <= MISSIONS.landAgl &&
+      this.heliSim.speed <= MISSIONS.landSpeed &&
+      Math.hypot(p.x - this.depotXZ.x, p.z - this.depotXZ.z) <= MISSIONS.lzRadius
+    );
+  }
+
+  /**
+   * Re-rig the slung load to the next loadout in the cycle (bucket↔crew). The fresh rig is EMPTY (you
+   * scoop after re-rigging; a crew sling carries no water), so this zeroes the tank + fill latches and
+   * toggles the bucket/longline visibility. Crew progress is gated on `payloadMode` elsewhere, so the
+   * ferry simply pauses while the bucket is rigged and resumes on the swap back. Radios the change.
+   */
+  private swapLoadout(): void {
+    this.loadoutIdx = (this.loadoutIdx + 1) % this.loadouts.length;
+    this.payloadMode = this.loadouts[this.loadoutIdx];
+    const water = this.payloadMode === 'water';
+    this.bucket.group.visible = water;
+    this.rope.visible = water;
+    this.water = 0;
+    this.bucketFull = false;
+    this.dumping = false;
+    // Discard any pour that was in flight when we re-rigged — otherwise `dropActive` is stranded true
+    // (the water/drop block is payloadMode-gated and never closes it), surfacing a phantom "Direct hit"
+    // readout + a stale score increment on the swap BACK to the bucket.
+    this.dropActive = false;
+    this.beginDropTally();
+    this.hud.pushComms('dispatch', water ? 'Bucket rigged — fill from the lake.' : 'Crew sling rigged — go bring them out.', 'info');
   }
 
   /**

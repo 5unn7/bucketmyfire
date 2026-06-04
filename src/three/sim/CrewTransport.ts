@@ -42,11 +42,14 @@ export class CrewTransport {
   private _delivered = 0;
   private _dwell = 0; // seconds held on the current zone
   private active = -1; // index of the zone currently being worked, or -1
-  private readonly _total: number;
+  private _total: number; // single-use endpoint count — grows if a pop-up rescue zone is added
 
   constructor(zones: CrewZone[], startCarrying = false) {
-    this.zones = zones;
-    this.done = zones.map(() => false);
+    // Own a COPY — never alias the caller's array. Game passes its own `crewZones` in and also keeps
+    // pushing pop-up rescue zones onto it; sharing the reference would double-append here (the sim
+    // would see every runtime zone twice and desync `done`/markers). The sim owns its zone list.
+    this.zones = [...zones];
+    this.done = this.zones.map(() => false);
     this._total = zones.filter((z) => z.single).length;
     // Some missions begin with the first crew already aboard (skip the opening base pickup) — the
     // first targetable zone is then an UNLOAD, so the player flies straight out to set them down.
@@ -63,6 +66,17 @@ export class CrewTransport {
 
   get total(): number {
     return this._total;
+  }
+
+  /**
+   * Append a crew endpoint at runtime — a mid-mission pop-up rescue (its cabin + the family). A
+   * single-use endpoint bumps `total` (so an `evacuate n` objective added alongside has somewhere to
+   * be satisfied). The renderer keeps its marker/figure arrays parallel by appending in lock-step.
+   */
+  addZone(zone: CrewZone): void {
+    this.zones.push(zone);
+    this.done.push(false);
+    if (zone.single) this._total++;
   }
 
   /** 0..1 progress of the dwell on the zone being worked (drives a "loading…" readout). */

@@ -749,6 +749,14 @@ export const SCORE = {
   gradeA: 1.35,
   gradeB: 1.15,
   gradeC: 0.9,
+
+  // --- Stars (cosmetic, per-mission 1..3) ---------------------------------------------------
+  // Stars reuse the SAME baseline ratio that drives the letter grade (scale-invariant, difficulty-
+  // normalized) so they can never contradict it on the debrief: 1★ = mission cleared (any win),
+  // 2★ = a clean competent win, 3★ = an excellent run. These TRACK gradeB / gradeS by design — keep
+  // them equal unless you deliberately want stars to read differently from the letter.
+  starTwo: 1.15, // ratio for the 2nd star (mirrors gradeB)
+  starThree: 1.6, // ratio for the 3rd star (mirrors gradeS)
 } as const;
 
 // Mission MECHANICS tuning (the campaign layer). This is the single tuning source for the
@@ -1052,6 +1060,14 @@ export const SMOKE = {
   startSize: 20, // point size when fresh (a fat, dense textured puff)
   endSize: 150, // point size when fully aged — huge billows up high (pyrocumulus anvil)
   opacity: 0.92, // peak alpha (per puff, before sprite + soft falloff) — thick, view-blocking column
+  // Anti-FLICKER guards (a billboard you fly INTO must not slam the whole frame to black). The
+  // on-screen point size is capped so no single puff can fill the view, and puffs within the
+  // near band fade out as they approach the eye — so flying through a column dissolves the puffs
+  // smoothly (the DOM smoke veil, FIRE3D.smokeBlind*, handles the actual in-column blinding)
+  // instead of popping near-black sprites, especially when backlit by a low sun in heavy smoke.
+  maxScreenSize: 680, // hard ceiling on a puff's on-screen pixel size (was an effectively full-screen 1800)
+  nearFadeLo: 4, // closer than this (view-space units) a puff is fully faded (you've flown into it)
+  nearFadeHi: 17, // by this distance it's back to full opacity — the soft-particle near fade band
   minIntensity: 0.1, // fires dimmer than this don't smoke
   // Heat reactivity (C3.1): heat = fire intensity × size. A big, hot fire throws a taller, bigger,
   // DENSER column that obscures the seat of the fire (read the wind, run in upwind). Scales per puff.

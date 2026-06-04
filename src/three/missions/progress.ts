@@ -58,6 +58,16 @@ export function getCompletion(id: string): CompletionRecord | null {
   return load().completions[id] ?? null;
 }
 
+/**
+ * Clear ALL campaign progress — unlocks, best scores, and completion ledgers. Used by the one-time
+ * storage reset when the campaign itself is RESTRUCTURED (mission ids changed), so stale ids can't
+ * leave a returning pilot half-unlocked (locked missions but an inflated heli-unlock count). The
+ * pilot profile / cloud link live under separate keys and are untouched.
+ */
+export function clearCampaign(): void {
+  save({ completed: [], best: {}, completions: {} });
+}
+
 /** The full progress snapshot (for cloud-save upload). Same shape `recordWin` maintains. */
 export function exportProgress(): Progress {
   return load();
@@ -108,4 +118,15 @@ export function isUnlocked(def: MissionDef, catalog: MissionDef[]): boolean {
 export function bestScore(id: string): number | null {
   const b = load().best[id];
   return b ?? null;
+}
+
+/**
+ * Best-run star medal for a mission: 0 if never cleared, else 1..3. A completion persisted before
+ * the `stars` field existed has no count — but any persisted completion means the mission was WON,
+ * so it backfills to 1★ (cleared) until the player replays for a fresh rating.
+ */
+export function bestStars(id: string): number {
+  const rec = load().completions[id];
+  if (!rec) return 0;
+  return rec.stars ?? 1;
 }

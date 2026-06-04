@@ -125,7 +125,7 @@ export type MissionTrigger =
   | { at: 'won' }
   | { at: 'lost' };
 
-/** What a beat does. `comms` always; `ignite`/`wind` are the world REACTIONS (decided: scripted beats). */
+/** What a beat does. `comms` always; `ignite`/`wind`/`addObjective`/`addZone` are the world REACTIONS. */
 export type MissionAction =
   | { do: 'comms'; speaker: CommsSpeaker; text: string; urgency?: CommsUrgency }
   // A flare-up / new spot fire / re-spread. Reuses the FirePlacement vocabulary + scenario resolution,
@@ -133,7 +133,16 @@ export type MissionAction =
   | { do: 'ignite'; place: FirePlacement }
   // Shift the wind (the "wind-shift" beat): ease the heading toward `angle` and/or the gust strength
   // toward `strengthScale×` over `ease` seconds. Either is optional.
-  | { do: 'wind'; angle?: number; strengthScale?: number; ease?: number };
+  | { do: 'wind'; angle?: number; strengthScale?: number; ease?: number }
+  // Spawn a NEW goal mid-mission — a rescue/task that "pops up". The runtime appends it as a pending
+  // sub-task, so the mission can't be WON until it's also met. Fire it on a trigger that holds WHILE
+  // other goals are still pending (the runtime finalizes a win the frame all goals latch). Pair with
+  // `addZone` so the new objective has somewhere to work.
+  | { do: 'addObjective'; objective: Objective }
+  // Reveal a NEW crew endpoint mid-mission (the pop-up rescue's cabin, or its drop-off). Appended to
+  // the live CrewTransport; a single load/unload bumps the crew total + draws its marker. Requires the
+  // mission to be crew-CAPABLE from the start (a `zones` base endpoint present) so the transport exists.
+  | { do: 'addZone'; zone: ZonePlacement };
 
 /** One authored beat: when it fires (once) and what it does. */
 export interface MissionBeat {
@@ -159,6 +168,11 @@ export interface MissionDef {
   fire?: { spreadScale?: number };
   bucket?: 'bambi' | 'valve';
   payload?: 'water' | 'crew'; // crew → no bucket/longline; the heli LANDS at zones to board/unload crew
+  // Available loadouts for a MIXED mission (ferry crew AND fight fire in one sortie). When >1, the
+  // pilot RE-RIGS the slung load bucket↔crew while set down at the home base (a deliberate swap, so
+  // the control scheme is never both at once). `payload` is the STARTING loadout; omit `loadouts`
+  // (or give one) → a single-loadout mission, exactly as before. Order is the swap cycle order.
+  loadouts?: ('water' | 'crew')[];
   startLoaded?: boolean; // crew payload: spawn with the FIRST crew already aboard (skip the opening base pickup → fly straight to the first LZ)
   fuel?: boolean; // enable the FuelSim range model
   fires: FirePlacement[];
@@ -233,6 +247,7 @@ export interface ScoreBreakdown {
   lines: ScoreLine[];
   total: number; // the final score (floored at 0)
   grade: ScoreGrade | null; // null on a loss (no grade for a failed mission)
+  stars: 1 | 2 | 3 | null; // cosmetic medal: 1=cleared, 2=clean, 3=excellent; null on a loss
 }
 
 export type MissionState = 'active' | 'won' | 'lost';
@@ -280,5 +295,6 @@ export interface CompletionRecord {
   wonAt: number; // mission-elapsed seconds at the win
   score: number;
   grade: ScoreGrade | null; // run rank (null on a loss)
+  stars?: 1 | 2 | 3 | null; // cosmetic 1..3 medal for the best run (optional: pre-field records default to 1)
   subtasks: { label: string; completedAt: number | null }[];
 }
