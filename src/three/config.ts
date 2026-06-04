@@ -370,6 +370,10 @@ export const DROP_PHYSICS = {
 
 // --- Drop feedback (predicted-impact ring + post-drop readout) — VISUAL/UX only, never feeds the sim.
 export const DROP_FX = {
+  ringScale: 0.65, // the predicted-impact RING is drawn at this fraction of the douse footprint radius — a tighter,
+  // less cluttered reticle that marks the DENSE CORE of the splash (where coverage peaks). Water still lands across
+  // the full, wider footprint, tapering to the rim (DROP_PHYSICS.edgeFloor) — so the ring under-shows the splash
+  // (the forgiving direction: you always soak at least the ring). VISUAL ONLY — never feeds the douse.
   markerShowAGL: 110, // show the predicted ring only below this bucket AGL (raised with the wider in-band window) // above = cruising, no clutter
   markerColorInBand: 0x49e0a0, // green-cyan: this drop will bite
   markerColorTooHigh: 0xffb24a, // amber: weak/dispersed (matches the existing crew-toast amber)

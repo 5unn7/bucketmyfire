@@ -1053,7 +1053,7 @@ export class Game {
           color = DROP_FX.markerColorInBand; // dead on — this drop bites
           opacity = DROP_FX.markerMaxOpacity;
         }
-        this.dropMarker.show(pm.cx, pm.cz, pm.radius, color, opacity, this.world.groundHeightAt(pm.cx, pm.cz));
+        this.dropMarker.show(pm.cx, pm.cz, pm.radius * DROP_FX.ringScale, color, opacity, this.world.groundHeightAt(pm.cx, pm.cz));
       }
     } else {
       this.dropMarker.hide();
