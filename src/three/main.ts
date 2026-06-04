@@ -2,9 +2,8 @@ import * as THREE from 'three';
 import { Game } from './Game';
 import { QualityTier } from './render/QualityTier';
 import { Composer } from './postfx/Composer';
-import { shouldAutostart, defaultProfile, runWelcome } from './ui/Onboarding';
-import { hasNamedProfile } from './ui/profile';
-import { MissionSelect } from './ui/MissionSelect';
+import { shouldAutostart, defaultProfile } from './ui/Onboarding';
+import { MenuFlow } from './ui/flow/MenuFlow';
 import { CAMPAIGN, missionById } from './missions/catalog';
 import { openLeaderboard } from './ui/Leaderboard';
 import { resetStaleStorage } from './storage/reset';
@@ -13,8 +12,8 @@ import type { MissionDef } from './missions/types';
 import type { EndScreenHooks } from './HUD';
 
 /**
- * 3D entry point + campaign router. The home screen (MissionSelect) is the DEFAULT landing for
- * everyone — new and returning. A mission runs only when the URL carries `?m=<id>`: picking a
+ * 3D entry point + campaign router. The home screen (the MenuFlow pre-flight wizard) is the DEFAULT
+ * landing for everyone — new and returning. A mission runs only when the URL carries `?m=<id>`: picking a
  * mission, advancing (next), and retrying all navigate via `?m=` and reload, so a refresh resumes
  * the current mission with no Three.js teardown, while a fresh visit to the bare URL always lands
  * on the home screen (we deliberately do NOT persist a "resume into last mission" across sessions —
@@ -44,7 +43,7 @@ const params = new URLSearchParams(location.search);
 // just absent. Constructing the renderer then throws and the player gets a silent blank screen. A
 // capability check up front lets us show a friendly message instead of a black void.
 if (webglAvailable()) {
-  void routeMission();
+  routeMission();
 } else {
   showFatalMessage(
     container,
@@ -55,27 +54,20 @@ if (webglAvailable()) {
 }
 
 /** Campaign router: a chosen mission (URL `?m=` / saved / autostart) boots the Game; otherwise we
- *  show the menu. Pulled into a function so the WebGL guard above can gate it cleanly. */
-async function routeMission(): Promise<void> {
+ *  show the home-screen wizard. Pulled into a function so the WebGL guard above can gate it cleanly. */
+function routeMission(): void {
   let selectedId = params.get('m');
   if (!selectedId && shouldAutostart()) selectedId = CAMPAIGN[0].id;
-
-  // Identity gate (launch requirement): every player must have a callsign before they can begin.
-  // First-run players (no named profile) get the welcome screen — required callsign + optional email
-  // for cloud-saved scores — before either a deep-linked mission or the menu. Headless QA
-  // (?qa / ?autostart) and returning pilots skip straight through.
-  const headless = params.has('qa') || params.has('autostart');
-  if (!headless && !hasNamedProfile()) {
-    await runWelcome();
-  }
 
   if (selectedId) {
     bootMission(missionById(selectedId) ?? CAMPAIGN[0]);
   } else {
-    // No `?m=` → the home screen, the default landing for everyone. Picking a mission navigates
-    // with `?m=` (a reload, no Three.js teardown) so retry/refresh resume that mission, while the
-    // bare URL always returns here. The menu mounts itself into `container`.
-    new MissionSelect(container, CAMPAIGN, (id) => gotoCampaign(id));
+    // No `?m=` → the home screen: the guided pre-flight wizard (MenuFlow). Its Screen 1 IS the
+    // identity gate (a required callsign — launch requirement), so first-run players can't reach a
+    // mission without a name; returning pilots get a "Skip to missions →". Picking a mission
+    // navigates with `?m=` (a reload, no Three.js teardown). Headless/deep-link (?m= / ?autostart /
+    // ?qa) bypasses this branch entirely and boots straight into the game.
+    new MenuFlow(container, CAMPAIGN, (id) => gotoCampaign(id));
   }
 }
 
@@ -132,7 +124,8 @@ function gotoCampaign(missionId: string | null): void {
 
 /** End-banner + in-game buttons: advance / retry / back to menu. */
 function endHooks(mission: MissionDef): EndScreenHooks {
-  const next = CAMPAIGN.find((m) => m.index === mission.index + 1);
+  // Advance stays within the SAME map (each map owns its own campaign), so per-map indices are honoured.
+  const next = CAMPAIGN.find((m) => (m.map ?? '') === (mission.map ?? '') && m.index === mission.index + 1);
   return {
     hasNext: !!next,
     onNext: () => {

@@ -1,8 +1,10 @@
-import { WORLD3D, FLIGHT, LAKES3D, TERRAIN, LAKE_SHAPE, STREAM, COMMUNITIES, ROADS } from './config';
+import { WORLD3D, FLIGHT, LAKES3D, LAKE_SHAPE, STREAM, COMMUNITIES, ROADS } from './config';
 import { Noise2D, FbmParams } from './world/noise';
 import { Biomes } from './world/biomes';
 import { Placement } from './world/placement';
 import { createNameSource, NameSource } from './world/names';
+import { getRegion } from './world/regions';
+import { getTerrainProfile, TerrainProfile } from './world/terrainProfile';
 
 /**
  * The unified heightfield — the single source of ground/water truth for the whole
@@ -74,6 +76,18 @@ export interface RiverRuntime {
   maxZ: number;
 }
 
+/** Authored place names PINNED onto a world so a mission's briefing matches its radar (A5). */
+export interface PlacePins {
+  base?: string; // rename the home depot/base
+  communities?: string[]; // communities[i] renames the i-th TOWN the mission references
+}
+
+/** Per-world generation options: which MAP/region to grow, and any authored name pins. */
+export interface WorldOptions {
+  regionId?: string; // region/map id (see world/regions.ts); omit → the default Saskatchewan map
+  pins?: PlacePins; // mission-authored names laid over the seeded ones
+}
+
 export class World {
   readonly size = WORLD3D.size;
   readonly lakes: LakeRuntime[];
@@ -93,33 +107,53 @@ export class World {
   readonly placement: Placement;
   /** Seeded noise field that shapes the base terrain (Track A1). */
   private readonly noise: Noise2D;
+  /** Per-map terrain parameters (world/terrainProfile.ts) — boreal shield vs mountains, behind one generator. */
+  private readonly profile: TerrainProfile;
   private readonly baseFbm: FbmParams;
   private readonly ridgeFbm: FbmParams;
+  /** Optional high-relief massif layer; null on low-relief maps (so baseHeight skips it entirely). */
+  private readonly mountainFbm: FbmParams | null;
 
   /**
    * @param seed world seed — threads through noise/hydrology/placement/fire RNG so the same
    * seed grows the same map (the determinism invariant). Defaults to `WORLD3D.seed` (the
    * sandbox map); the mission campaign passes a per-mission seed (the "future maps" seam).
+   * @param opts which MAP/region to grow (drives the place-name pools) + any authored name pins.
    */
-  constructor(seed: number = WORLD3D.seed) {
+  constructor(seed: number = WORLD3D.seed, opts: WorldOptions = {}) {
     this.rng = mulberry32(seed);
-    // Names draw from their own seeded streams (off the world seed), independent of the
-    // main rng ordering — so naming a feature never shifts the rest of world generation.
-    this.nameSource = createNameSource(seed ^ 0x27d4eb2f);
+    // Names draw from their own seeded streams (off the world seed) over the chosen region's pools
+    // (world/regions.ts), independent of the main rng ordering — so picking a map and naming a
+    // feature never shifts the rest of world generation.
+    this.nameSource = createNameSource(seed ^ 0x27d4eb2f, getRegion(opts.regionId).names);
     // Offset the noise seed off the rng seed so terrain and placement RNG don't correlate.
     this.noise = new Noise2D(seed ^ 0x9e3779b9);
+    // The per-map terrain profile (world/terrainProfile.ts): every heightfield parameter lives here so
+    // ONE generator grows the SK boreal shield or the BC mountains. Default → Saskatchewan (the values
+    // are config TERRAIN verbatim), so this seam is byte-identical for the live map.
+    this.profile = getTerrainProfile(opts.regionId);
     this.baseFbm = {
-      octaves: TERRAIN.octaves,
-      frequency: TERRAIN.baseFrequency,
-      lacunarity: TERRAIN.lacunarity,
-      gain: TERRAIN.gain,
+      octaves: this.profile.octaves,
+      frequency: this.profile.baseFrequency,
+      lacunarity: this.profile.lacunarity,
+      gain: this.profile.gain,
     };
     this.ridgeFbm = {
-      octaves: TERRAIN.ridgeOctaves,
-      frequency: TERRAIN.ridgeFrequency,
-      lacunarity: TERRAIN.lacunarity,
-      gain: TERRAIN.gain,
+      octaves: this.profile.ridgeOctaves,
+      frequency: this.profile.ridgeFrequency,
+      lacunarity: this.profile.lacunarity,
+      gain: this.profile.gain,
     };
+    // Optional MOUNTAIN layer (BC and the like): a sharp ridged massif stacked on the base. null on
+    // low-relief maps (SK) → the baseHeight branch never runs, adding zero noise samples there.
+    this.mountainFbm = this.profile.mountainAmplitude
+      ? {
+          octaves: this.profile.mountainOctaves ?? 5,
+          frequency: this.profile.mountainFrequency ?? 0.0017,
+          lacunarity: this.profile.lacunarity,
+          gain: this.profile.mountainGain ?? 0.5,
+        }
+      : null;
 
     // Lakes scattered across the world, count scaled to area so water density stays
     // constant as the map grows (the curated LAKES3D radii seed the size range). Each
@@ -136,6 +170,7 @@ export class World {
     // links them. Built after the hydrology so the base can sit on a real lake shore and
     // roads can drape over the finished ground/water surface.
     this.communities = this.makeCommunities();
+    if (opts.pins) this.applyPins(opts.pins); // lay any mission-authored names over the seeded ones
     this.roads = this.makeRoads();
 
     // Biomes read elevation/slope/water-distance from this World plus their own
@@ -145,8 +180,38 @@ export class World {
       (x, z) => this.groundHeightAt(x, z),
       (x, z) => this.slopeAt(x, z),
       (x, z) => this.distanceToWater(x, z),
+      // Alpine banding (treeline → scree → snow) only on maps that declare a treeline (BC). undefined
+      // on SK, so biome samples stay byte-identical there.
+      this.profile.treeline !== undefined
+        ? {
+            treeline: this.profile.treeline,
+            snowline: this.profile.snowline ?? this.profile.treeline + 28,
+            blend: this.profile.bandBlend ?? 6,
+            scree: this.profile.colorScree ?? 0x8a8782,
+            snow: this.profile.colorSnow ?? 0xf2f5fb,
+          }
+        : undefined,
     );
     this.placement = new Placement(this);
+  }
+
+  /**
+   * Lay mission-authored names over the seeded ones (A5): rename the home base and/or the towns the
+   * mission references, so a briefing that says "hold the line at La Ronge" labels that very town
+   * "La Ronge" on the radar. Pins index the TOWNS in `getCommunity()` order; anything left unpinned
+   * keeps its seeded region name. Display-only — names never feed generation, so this is pure mutation.
+   */
+  private applyPins(pins: PlacePins): void {
+    if (pins.base) {
+      const home = this.communities.find((c) => c.kind === 'base');
+      if (home) home.name = pins.base;
+    }
+    if (pins.communities) {
+      const towns = this.communities.filter((c) => c.kind === 'town');
+      pins.communities.forEach((name, i) => {
+        if (name && towns[i]) towns[i].name = name;
+      });
+    }
   }
 
   /**
@@ -181,7 +246,7 @@ export class World {
   private scatterLakes(): LakeRuntime[] {
     const lakes: LakeRuntime[] = [];
     const density = LAKES3D.length / (600 * 600); // curated lakes per unit² at the base size
-    const count = Math.max(LAKES3D.length, Math.round(density * this.size * this.size));
+    const count = Math.max(LAKES3D.length, Math.round(density * this.size * this.size * this.profile.lakeDensityScale));
     const bound = this.size / 2 - 60;
     const radii = LAKES3D.map((l) => l.r);
     let guard = 0;
@@ -190,7 +255,7 @@ export class World {
       const z = (this.rng() * 2 - 1) * bound;
       const r = radii[Math.floor(this.rng() * radii.length)];
       if (Math.hypot(x, z) < 90) continue; // keep the start area clear
-      if (this.baseHeight(x, z) > 3) continue; // bias to lowlands (no ponds on ridgetops)
+      if (this.baseHeight(x, z) > this.profile.lakeMaxHeight) continue; // bias to lowlands/valleys (no ponds on ridgetops)
       let ok = true;
       for (const o of lakes) {
         if (Math.hypot(o.x - x, o.z - z) < o.r + r + 80) {
@@ -566,20 +631,29 @@ export class World {
    * Pure + deterministic, so the mesh and every height query stay in lockstep.
    */
   private baseHeight(x: number, z: number): number {
-    const [wx, wz] = this.noise.warp(x, z, TERRAIN.warpStrength, TERRAIN.warpFrequency);
+    const p = this.profile;
+    const [wx, wz] = this.noise.warp(x, z, p.warpStrength, p.warpFrequency);
 
     // Rolling base (low relief). fbm is ~[-1,1].
-    let h = this.noise.fbm(wx, wz, this.baseFbm) * TERRAIN.baseAmplitude;
+    let h = this.noise.fbm(wx, wz, this.baseFbm) * p.baseAmplitude;
 
     // Rocky outcrops: ridged crests above a threshold poke up through the soil.
     const ridge = this.noise.ridged(wx, wz, this.ridgeFbm); // ~[0,1]
-    if (ridge > TERRAIN.ridgeThreshold) {
-      const t = (ridge - TERRAIN.ridgeThreshold) / (1 - TERRAIN.ridgeThreshold);
-      h += t * t * TERRAIN.ridgeAmplitude;
+    if (ridge > p.ridgeThreshold) {
+      const t = (ridge - p.ridgeThreshold) / (1 - p.ridgeThreshold);
+      h += t * t * p.ridgeAmplitude;
+    }
+
+    // Mountain layer (gated): profiles with a mountainAmplitude (BC) grow a sharp ridged massif on
+    // top, sharing the same warped coords so ranges follow the winding valleys. null on SK → this
+    // branch never runs, so SK draws the exact same noise in the same order (determinism invariant).
+    if (this.mountainFbm) {
+      const r = this.noise.ridged(wx, wz, this.mountainFbm); // ~[0,1] sharp crests
+      h += Math.pow(r, p.mountainExponent ?? 2.0) * (p.mountainAmplitude as number);
     }
 
     // Muskeg: pull lowlands flatter so wet basins read level rather than as deep bowls.
-    if (h < 0) h *= 1 - TERRAIN.lowlandFlatten;
+    if (h < 0) h *= 1 - p.lowlandFlatten;
     return h;
   }
 

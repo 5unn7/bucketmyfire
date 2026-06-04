@@ -261,7 +261,9 @@ export class Game {
     // Build the seeded world FIRST (every mesh/sim below reads from it), the mission wind,
     // and the wildlife that depends on the world. (These were field initializers; they move
     // into the ctor now that they take the per-mission seed / wind override.)
-    this.world = new World(mission.seed);
+    // Grow the mission's MAP (its authored region, else the player's chosen map, else the default)
+    // and lay any authored place-name pins over the seeded ones so briefings match the radar.
+    this.world = new World(mission.seed, { regionId: mission.map ?? this.mapId, pins: mission.places });
     this.wind = new Wind(mission.wind?.angle, mission.wind?.strengthScale ?? 1);
     this.fauna = new Fauna(this.scene, this.world);
     this.depotXZ = (() => {
@@ -1956,7 +1958,7 @@ export class Game {
       urgency = 'info';
       color = DROP_FX.markerColorTooHigh;
     } else {
-      text = 'Light dampening';
+      text = 'Grazing hit — light dampening';
       urgency = 'info';
       color = DROP_FX.markerColorInBand;
     }

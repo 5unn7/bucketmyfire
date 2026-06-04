@@ -20,16 +20,34 @@ export interface BiomeSample {
   treeTint: Rgb; // foliage color
 }
 
+/** Alpine banding for mountain maps: forest below the treeline, bare scree above, snow on the peaks. */
+export interface AlpineBand {
+  treeline: number; // elevation (units) above which trees vanish and ground turns to scree
+  snowline: number; // elevation above which ground turns to snow
+  blend: number; // smoothstep half-width (units) for the band transitions
+  scree: number; // bare alpine rock/scree (hex)
+  snow: number; // snow (hex)
+}
+
 export class Biomes {
   private readonly moisture: Noise2D;
+  private readonly alpine?: AlpineBand;
+  private readonly screeRgb?: Rgb; // parsed once when an alpine band is present
+  private readonly snowRgb?: Rgb;
 
   constructor(
     seed: number,
     private readonly heightAt: (x: number, z: number) => number,
     private readonly slopeAt: (x: number, z: number) => number,
     private readonly distanceToWater: (x: number, z: number) => number,
+    alpine?: AlpineBand,
   ) {
     this.moisture = new Noise2D(seed);
+    if (alpine) {
+      this.alpine = alpine;
+      this.screeRgb = hexToRgb(alpine.scree);
+      this.snowRgb = hexToRgb(alpine.snow);
+    }
   }
 
   /** Moisture in 0..1: low-frequency noise, wetter in lowlands, drier on heights. */
@@ -82,6 +100,19 @@ export class Biomes {
     color = mix(color, COL.shore, shoreW);
     density = lerp(density, BIOMES.densShore, shoreW);
     if (dw <= 0) density = 0; // never scatter trees on the water itself
+
+    // Alpine banding (mountain maps only): above the treeline the ground turns to bare scree and
+    // trees thin to zero; above the snowline it caps with snow. Gated on `this.alpine` → a no-op on
+    // maps without it (SK), so those biome samples are byte-identical. Reuses the elevation `e`
+    // already sampled above — no new field reads, no rng.
+    if (this.alpine) {
+      const a = this.alpine;
+      const screeW = smoothstep(a.treeline - a.blend, a.treeline + a.blend, e);
+      color = mix(color, this.screeRgb!, screeW);
+      const snowW = smoothstep(a.snowline - a.blend, a.snowline + a.blend, e);
+      color = mix(color, this.snowRgb!, snowW);
+      density *= 1 - screeW; // trees stop at the treeline
+    }
 
     return { color, treeDensity: clamp01(density), treeTint: tint };
   }

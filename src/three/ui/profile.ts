@@ -34,6 +34,10 @@ export interface CatalogItem {
   available: boolean; // false → rendered dimmed with a "SOON" badge, not selectable
   accent: string; // CSS color for the card's procedural art (zero binary assets)
   glyph: string; // a single emoji/glyph standing in for cover art
+  /** Optional real cover art (served from public/, BASE_URL-prefixed). When set, the 3D card shows
+   *  this floating over the accent halo instead of the procedural fallback — the data-only seam for
+   *  dropping in heli / map renders (e.g. the isometric Saskatchewan map). */
+  imageUrl?: string;
   /** Optional spec bars (helis) — value is 0..1, drives a little meter on the card. */
   specs?: { label: string; value: number }[];
   /** Campaign gate (helis): sorties that must be CLEARED before this airframe is
@@ -43,15 +47,19 @@ export interface CatalogItem {
 
 // --- Maps -------------------------------------------------------------------
 // The first entry is the live world; the rest are placeholders for FUTURE MAPS.
+// These ids are the COSMETIC picker side of a map; the WORLD-GENERATION side (place-name pools,
+// and later terrain/biome profile) lives under the SAME id in `world/regions.ts` (REGIONS). Keep
+// the ids in sync when adding a map: a card here + a region there.
 export const MAPS: CatalogItem[] = [
   {
-    id: 'boreal-shield',
-    name: 'Northern Shield',
-    tagline: 'Boreal · Saskatchewan',
-    blurb: 'Glacier-scoured granite, meandering eskers, and a chain of cold kettle lakes. The starting country.',
+    id: 'saskatchewan',
+    name: 'Saskatchewan',
+    tagline: 'Boreal north · 6 missions',
+    blurb: 'Northern Saskatchewan: glacier-scoured granite, the Churchill River chain, and cold kettle lakes from La Ronge to the Athabasca. The full campaign flies here.',
     available: true,
     accent: '#3f7d4a',
     glyph: '🌲',
+    imageUrl: import.meta.env.BASE_URL + 'maps/Saskatchewan.png',
   },
   {
     id: 'ember-flats',

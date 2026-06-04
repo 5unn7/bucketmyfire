@@ -155,10 +155,24 @@ export interface MissionDef {
   id: string;
   index: number; // campaign order (drives linear unlock)
   name: string;
-  brief: string; // 1–2 line briefing shown in the menu + start card
+  brief: string; // 1–2 line briefing shown in the start/briefing card (the in-game voice)
+  tagline?: string; // ONE punchy line for the mission-select CARD (marketing voice); falls back to brief
   intel?: string; // longer pre-flight briefing paragraph (the briefing card body; falls back to brief)
   difficulty: 1 | 2 | 3 | 4 | 5;
   seed: number; // world seed — each mission grows its own boreal map
+  // Which MAP/region this mission is set in (see world/regions.ts REGIONS; shares ids with the
+  // ui/profile.ts MAPS picker). Drives the place-name pools. Omit → the default Saskatchewan map.
+  map?: string;
+  // Which fire BASE the sortie spawns / refuels from — a MapAnchor id in the `map` region
+  // (see world/regions.ts ANCHORS: 'la-ronge', 'denare-beach', 'buffalo-narrows', …). The home
+  // depot is NAMED from this anchor today; Phase 1 (docs/MAPS.md) will also POSITION it there.
+  // Distinct from `places.communities`, which name the towns you PROTECT. Omit → the region's
+  // `home` anchor (La Ronge on saskatchewan), else the seeded largest-lake base.
+  homeBase?: string;
+  // Authored place names PINNED onto the world so the briefing matches the radar (A5). `communities[i]`
+  // names the i-th town the mission references; `base` names the home depot. Everything left unpinned
+  // keeps its seeded region name. See World.PlacePins.
+  places?: { base?: string; communities?: string[] };
   timeOfDay?: TimeOfDay; // sky/sun/fog mood (sky/TimeOfDay.ts SKY_PRESETS); omit → golden hour
   wind?: { angle?: number; strengthScale?: number };
   // Per-mission fire-spread pacing. `spreadScale` multiplies the calm `FIRE3D` baseline spread

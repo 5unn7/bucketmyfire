@@ -205,7 +205,7 @@ function heliHawk(): string {
 }
 
 const BUILDERS: Record<string, () => string> = {
-  'boreal-shield': mapBoreal,
+  saskatchewan: mapBoreal,
   'ember-flats': mapEmber,
   'glacier-coast': mapGlacier,
   'bell-205a1': heliBell,

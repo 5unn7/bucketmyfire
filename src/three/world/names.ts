@@ -1,94 +1,16 @@
 /**
- * Boreal place-name registry (Track A5). The world is a northern boreal wilderness, so its
- * lakes, communities, and highways carry evocative (fictional) boreal names instead of
- * "Lake 3" — chosen to suit the rolling Shield-and-hills terrain rather than any real map.
- * Pure data + a deterministic drawer: a seeded Fisher–Yates shuffle of each pool, popped
- * in order so the same world seed always names the same feature, with no repeats until the
- * pool is exhausted (then it falls back to a numbered name so generation never starves).
+ * Place-name drawer (Track A5). A thin, deterministic naming MECHANISM: it takes a region's
+ * name pools (see `world/regions.ts`, where the per-map lists live) and draws from them with a
+ * seeded Fisher–Yates shuffle popped in order, so the same world seed always names the same
+ * feature, with no repeats until a pool is exhausted (then a numbered fallback keeps generation
+ * from starving).
  *
- * This is a thin, swappable naming layer — World assigns names at generation time; nothing
- * downstream depends on the specific strings. Add or reorder names here freely.
+ * The DATA (which names belong to which map) lives in `regions.ts`; this file is just the
+ * shuffle-and-pop. World assigns names at generation time and nothing downstream depends on the
+ * specific strings — so a mission can also PIN authored names over the top (see World pins).
  */
 
-// Fictional boreal lakes — Shield-and-hills water country.
-const LAKE_NAMES = [
-  'Blackpine Lake',
-  'Cinder Lake',
-  'Ravenmoor Lake',
-  'Frostwater Lake',
-  'Elkhorn Lake',
-  'Birchfall Lake',
-  'Greywolf Lake',
-  'Mistmere',
-  'Loon Hollow Lake',
-  'Stillwater Lake',
-  'Coldspring Lake',
-  'Tamarack Lake',
-  'Ironwood Lake',
-  'Moosehead Lake',
-  'Granite Lake',
-  'Otterstone Lake',
-  'Pinewatch Lake',
-  'Emberlake',
-  'Northwind Lake',
-  'Snowshoe Lake',
-  'Driftwood Lake',
-  'Whitepine Lake',
-  'Echo Lake',
-  'Aspenglow Lake',
-  'Foxfire Lake',
-  'Caribou Lake',
-  'Wolfden Lake',
-  'Marshlight Lake',
-  'Hollowreed Lake',
-  'Slatewater Lake',
-];
-
-// Fictional boreal communities — small hamlets and outposts of the north.
-const COMMUNITY_NAMES = [
-  'Kettle Lake',
-  'Pine Hollow',
-  'Cedar Crossing',
-  'Elkridge',
-  'Bracken Falls',
-  'Stoneferry',
-  'Frostpine',
-  'Mooseford',
-  'Birchbark',
-  'Greywater',
-  'Larchwood',
-  'Hollowmere',
-  'Ashfall',
-  'Coldridge',
-  'Thornhaven',
-  'Spruceton',
-  'Caribou Crossing',
-  'Lantern Bay',
-  'Wolfsbridge',
-  'Tamarack Bend',
-  'Mistport',
-  'Ironpine',
-  'Snowgate',
-  'Driftpine',
-];
-
-// Fictional bush routes (the long gravel highways linking the outposts).
-const HIGHWAY_NAMES = [
-  'Route 4',
-  'Route 7',
-  'Route 9',
-  'Route 11',
-  'Route 12',
-  'Route 17',
-  'Route 21',
-  'Route 28',
-  'Route 33',
-  'Route 38',
-  'Route 40',
-  'Route 55',
-  'Route 60',
-  'Route 72',
-];
+import type { RegionNames } from './regions';
 
 /** A no-repeat name drawer over one pool: a seeded shuffle, popped in order. */
 class NameDrawer {
@@ -116,13 +38,13 @@ export interface NameSource {
 }
 
 /**
- * Build a deterministic name source from a seed. Each pool gets its own seeded drawer
- * (offset seeds so lakes/communities/highways don't shuffle in lockstep).
+ * Build a deterministic name source from a seed + a region's name pools. Each pool gets its own
+ * seeded drawer (offset seeds so lakes/communities/highways don't shuffle in lockstep).
  */
-export function createNameSource(seed: number): NameSource {
-  const lakes = new NameDrawer(LAKE_NAMES, mulberry32(seed ^ 0x1a2b3c4d), 'Lake');
-  const towns = new NameDrawer(COMMUNITY_NAMES, mulberry32(seed ^ 0x5e6f7a8b), 'Settlement');
-  const hwys = new NameDrawer(HIGHWAY_NAMES, mulberry32(seed ^ 0x9c0d1e2f), 'Route');
+export function createNameSource(seed: number, names: RegionNames): NameSource {
+  const lakes = new NameDrawer(names.lakes, mulberry32(seed ^ 0x1a2b3c4d), 'Lake');
+  const towns = new NameDrawer(names.communities, mulberry32(seed ^ 0x5e6f7a8b), 'Settlement');
+  const hwys = new NameDrawer(names.highways, mulberry32(seed ^ 0x9c0d1e2f), 'Route');
   return {
     lake: () => lakes.next(),
     community: () => towns.next(),
