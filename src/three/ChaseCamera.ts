@@ -35,10 +35,26 @@ export class ChaseCamera {
   private wasLooking = false;
   private aspect = 1; // viewport aspect (w/h); drives the portrait Hor+ FOV compensation
   private engage = 0; // 0..1 eased "bombing-run" look-down factor (lifts + tilts the cam over a drop)
+  // Cold-start fly-in: 1 = normal trailing framing, 0 = full close-up on the parked heli. Defaults to 1
+  // (no intro — the QA skip and any post-spool frame stay at flight framing); `beginIntro()` arms it to 0
+  // when the engine-start ritual starts, and `update`'s `spool` pulls it back to 1 as the rotor tops out.
+  // Monotonic toward 1 so a released START dial that bleeds RPM never pushes the camera back in.
+  private introT = 1;
 
   constructor(aspect: number, private readonly world: World) {
     this.camera = new THREE.PerspectiveCamera(CAMERA.fov, aspect, 0.1, 2000);
     this.setAspect(aspect);
+  }
+
+  /**
+   * Arm the cold-start fly-in: snap the camera CLOSE to the heli, to pull out to the normal trail as
+   * the rotor spools (see `update`'s `spool`). Call once when the engine-start ritual begins — the QA
+   * skip never calls it, so the camera stays at flight framing. `initialized = false` re-snaps so the
+   * close-up is the OPENING pose (no sweep-in from wherever the cam sat during the briefing).
+   */
+  beginIntro(): void {
+    this.introT = 0;
+    this.initialized = false;
   }
 
   /**
@@ -69,7 +85,7 @@ export class ChaseCamera {
    * gentle "bombing-run" look-down (Game arms it when low + slow + carrying water near a fire); it's
    * ignored while free-looking and — when `bombingPortraitOnly` — in landscape, and always eases in/out.
    */
-  update(dt: number, pos: THREE.Vector3, yaw: number, look?: LookOffset, arm = 0): void {
+  update(dt: number, pos: THREE.Vector3, yaw: number, look?: LookOffset, arm = 0, spool = 1): void {
     // Free-look: while active, INTEGRATE the drag rate so a held stick spins the
     // camera continuously (a full 360° and beyond — yaw is unbounded, trig wraps it).
     // On release, fold any accumulated spins into (-π, π] so the ease takes the SHORT
@@ -98,6 +114,16 @@ export class ChaseCamera {
     // The effective pitch lifts + tilts the cam down by the engage factor (on top of any free-look pitch).
     const pitch = clampN(this.curPitch + CAMERA.bombingExtraPitch * this.engage, CAMERA.lookPitchMin, CAMERA.lookPitchMax);
 
+    // Cold-start fly-in: pull the framing OUT from the close-up toward the normal trail as the rotor
+    // spools, back-loaded (introPullStart) so the close-up holds through most of the start and only
+    // settles into the trail as RPM tops out — landing on flight framing exactly when the engine is up.
+    // Monotonic: introT only ever rises toward 1, so a released dial bleeding RPM never re-closes the cam.
+    const pull = smoothstep(CAMERA.introPullStart, 1, spool);
+    if (pull > this.introT) this.introT = pull;
+    const distance = lerpN(CAMERA.introDistance, CAMERA.distance, this.introT);
+    const height = lerpN(CAMERA.introHeight, CAMERA.height, this.introT);
+    const lookAheadBase = lerpN(CAMERA.introLookAhead, CAMERA.lookAhead, this.introT);
+
     // World-forward for this heading (matches the sim's convention).
     const fx = Math.cos(yaw);
     const fz = -Math.sin(yaw);
@@ -109,9 +135,9 @@ export class ChaseCamera {
     const ang = Math.atan2(-fz, -fx) + this.curYaw;
     const horiz = Math.cos(pitch);
     this.desiredPos.set(
-      pos.x + Math.cos(ang) * CAMERA.distance * horiz,
-      pos.y + CAMERA.height + CAMERA.bombingExtraHeight * this.engage + Math.sin(pitch) * CAMERA.distance,
-      pos.z + Math.sin(ang) * CAMERA.distance * horiz,
+      pos.x + Math.cos(ang) * distance * horiz,
+      pos.y + height + CAMERA.bombingExtraHeight * this.engage + Math.sin(pitch) * distance,
+      pos.z + Math.sin(ang) * distance * horiz,
     );
     // Ground-clearance guard: never let the cam sink below the terrain at its own
     // XZ (the trail point can be over a hill higher than the heli). Lift it to a
@@ -121,7 +147,7 @@ export class ChaseCamera {
     // Aim ahead of the nose normally; as the orbit swings round the side/front, fade
     // the lead to 0 so the camera keeps looking right at the heli instead of past it.
     const ahead =
-      (CAMERA.lookAhead + CAMERA.bombingExtraLookAhead * this.engage) *
+      (lookAheadBase + CAMERA.bombingExtraLookAhead * this.engage) *
       Math.max(0, 1 - Math.abs(this.curYaw) / (Math.PI * 0.5));
     this.desiredLook.set(pos.x + fx * ahead, pos.y, pos.z + fz * ahead);
 
@@ -144,6 +170,16 @@ export class ChaseCamera {
 
 function clampN(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
+}
+
+function lerpN(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
+/** Hermite ease from 0→1 across [edge0, edge1] (flat outside) — the back-loaded fly-in pull-out curve. */
+function smoothstep(edge0: number, edge1: number, x: number): number {
+  const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
 }
 
 /** Fold an angle into (-π, π] so easing back from a multi-turn spin goes the short way. */

@@ -1161,6 +1161,15 @@ export const CAMERA = {
   posLerp: 0.08, // position smoothing (per 60fps frame)
   lookLerp: 0.12, // aim smoothing
   minGroundClearance: 8, // never let the cam dip below the ground at its XZ + this
+  // --- Cold-start fly-in: every mission opens with the camera tucked CLOSE to the parked heli (a low
+  // hero shot of the rotor spooling up), then pulls OUT to the normal trail as the engine tops out, so
+  // the view "settles into" flight by the time the start cycle completes. Driven by spool RPM (0..1),
+  // back-loaded (intro*PullStart) so it holds the close-up through most of the start. ChaseCamera eases
+  // it MONOTONICALLY — a released START dial that bleeds RPM never yanks the camera back in. ---
+  introDistance: 12, // how far behind the heli at full close-up (vs `distance` 28)
+  introHeight: 6, // how far above at full close-up (vs `height` 15) — a low, close, cinematic angle
+  introLookAhead: 3, // aim point ahead of the nose at full close-up (vs `lookAhead` 10) — frames the airframe, not past it
+  introPullStart: 0.55, // spool fraction (0..1) at which the pull-out BEGINS — the transition lands exactly at full RPM
   // Free-look ("eye" button): drag = orbit VELOCITY (not distance), so holding it
   // spins the camera continuously — a full 360° either way — and a tiny drag is
   // enough (the button can sit near the screen edge). Release eases back to default.

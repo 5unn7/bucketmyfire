@@ -640,8 +640,13 @@ export class Game {
     this.hud.showBriefing(this.mission, () => {
       this.inBriefing = false;
       // Cold start: the briefing hands off to the engine-start dial — hold it to spool the rotors
-      // before the aircraft will fly. (Already running under a QA skip → straight to flight.)
-      if (!this.engineStarted) this.hud.showEngineStart();
+      // before the aircraft will fly. (Already running under a QA skip → straight to flight.) Arm the
+      // cinematic fly-in here too: the camera snaps CLOSE to the parked heli and pulls out to the normal
+      // trail as the rotor spools, so the view settles into flight as the start cycle completes.
+      if (!this.engineStarted) {
+        this.hud.showEngineStart();
+        this.chase.beginIntro();
+      }
       // First-time pilots now get the quick-start HERE — after the briefing, layered over the
       // engine-start dial — so the tutorial no longer stacks on top of the briefing card.
       this.input.openHelpFirstTime();
@@ -1033,7 +1038,10 @@ export class Game {
       this.nearestFireDist(hp.x, hp.z, activeFires) < CAMERA.bombingArmFireDist
         ? 1
         : 0;
-    this.chase.update(dt, this.heliSim.position, this.heliSim.yaw, this.input.look, armBombing);
+    // Spool progress (0..1) drives the cold-start fly-in pull-out; 1 once the engine is up (or under a
+    // QA skip) so the camera holds the normal flight trail thereafter.
+    const spool = this.engineStarted ? 1 : this.rotorRpm;
+    this.chase.update(dt, this.heliSim.position, this.heliSim.yaw, this.input.look, armBombing, spool);
     this.skyDome.position.copy(this.chase.camera.position); // keep the sky centered on the eye
     // Ambient amber motes drift in the air around the eye and thicken near a blaze (atmosphere).
     const cam = this.chase.camera.position;
