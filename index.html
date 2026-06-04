@@ -15,38 +15,40 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="theme-color" content="#1b2a1f" />
-    <title>Bucket My Fire — Helicopter Wildfire Simulator</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icon.svg" />
+    <title>Bucket My Fire — Helicopter Firefighting Simulator</title>
 
     <!-- SEO + social share. Open Graph / Twitter cards make the link unfurl with a
          title, blurb, and preview image on X / Discord / iMessage / Slack — which is
          how shared links actually pull in visitors. og:image MUST be an absolute URL. -->
     <meta
       name="description"
-      content="Fly a water-bomber helicopter over the northern Saskatchewan wilderness — scoop from lakes, drop on wildfires, and save the forest before it spreads. A free real-3D flight game that runs right in your browser, phone or desktop."
+      content="Fly a helicopter over the northern Saskatchewan wilderness — scoop from lakes, drop on wildfires, and save the forest before it spreads. A free real-3D flight game that runs right in your browser, phone or desktop."
     />
     <link rel="canonical" href="https://bucketmyfire.com/" />
 
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Bucket My Fire" />
     <meta property="og:url" content="https://bucketmyfire.com/" />
-    <meta property="og:title" content="Bucket My Fire — Helicopter Wildfire Simulator" />
+    <meta property="og:title" content="Bucket My Fire — Helicopter Firefighting Simulator" />
     <meta
       property="og:description"
-      content="Fly a water-bomber over northern Saskatchewan: scoop from lakes, bomb wildfires, save the forest. Free real-3D flight game in your browser."
+      content="Fly a helicopter over northern Saskatchewan: scoop from lakes, drop on wildfires, save the forest. Free real-3D flight game in your browser."
     />
     <meta property="og:image" content="https://bucketmyfire.com/og-image.jpg" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta
       property="og:image:alt"
-      content="A water-bomber helicopter with a slung Bambi bucket flying over a burning Saskatchewan forest."
+      content="A helicopter with a slung water bucket flying over a burning Saskatchewan forest."
     />
 
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Bucket My Fire — Helicopter Wildfire Simulator" />
+    <meta name="twitter:title" content="Bucket My Fire — Helicopter Firefighting Simulator" />
     <meta
       name="twitter:description"
-      content="Fly a water-bomber over northern Saskatchewan: scoop from lakes, bomb wildfires, save the forest. Free real-3D flight game in your browser."
+      content="Fly a helicopter over northern Saskatchewan: scoop from lakes, drop on wildfires, save the forest. Free real-3D flight game in your browser."
     />
     <meta name="twitter:image" content="https://bucketmyfire.com/og-image.jpg" />
     <style>
@@ -87,10 +89,137 @@
           scroll-behavior: auto !important;
         }
       }
+
+      /* Cold-start splash. Lives in the static HTML so it paints on the FIRST frame —
+         before ~1MB of game JS parses — turning the old black-void load into a branded
+         beat. Removed by the inline observer below as soon as the renderer canvas mounts. */
+      #bmf-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+        background: radial-gradient(120% 90% at 50% 38%, #16241a 0%, #0e160f 70%);
+        color: #f4ead9;
+        transition: opacity 0.45s ease;
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      #bmf-splash.bmf-hide {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #bmf-splash .bmf-heli {
+        font-size: 54px;
+        line-height: 1;
+        filter: drop-shadow(0 0 14px rgba(232, 90, 26, 0.55));
+        animation: bmf-hover 1.6s ease-in-out infinite;
+      }
+      #bmf-splash .bmf-word {
+        font-weight: 800;
+        letter-spacing: 0.16em;
+        font-size: 19px;
+        text-transform: uppercase;
+      }
+      #bmf-splash .bmf-word b {
+        color: #ff7a2f;
+      }
+      #bmf-splash .bmf-bar {
+        width: 132px;
+        height: 3px;
+        border-radius: 3px;
+        background: rgba(255, 255, 255, 0.12);
+        overflow: hidden;
+      }
+      #bmf-splash .bmf-bar::after {
+        content: "";
+        display: block;
+        height: 100%;
+        width: 40%;
+        border-radius: 3px;
+        background: linear-gradient(90deg, #ff7a2f, #ffd27a);
+        animation: bmf-slide 1.1s ease-in-out infinite;
+      }
+      @keyframes bmf-hover {
+        0%,
+        100% {
+          transform: translateY(0);
+        }
+        50% {
+          transform: translateY(-7px);
+        }
+      }
+      @keyframes bmf-slide {
+        0% {
+          transform: translateX(-130%);
+        }
+        100% {
+          transform: translateX(380%);
+        }
+      }
     </style>
   </head>
   <body>
+    <!-- Instant-paint cold-start splash (see #bmf-splash in <style>). Static markup so the
+         first tap on a shared link shows a branded screen, not a black void, while the game
+         JS downloads. The script below removes it the moment the WebGL canvas appears. -->
+    <div id="bmf-splash" role="status" aria-label="Loading Bucket My Fire">
+      <div class="bmf-heli" aria-hidden="true">🚁</div>
+      <div class="bmf-word">Bucket<b>My</b>Fire</div>
+      <div class="bmf-bar" aria-hidden="true"></div>
+    </div>
+    <noscript>
+      <div
+        style="
+          position: fixed;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: #0e160f;
+          color: #f4ead9;
+          font-family: system-ui, sans-serif;
+          text-align: center;
+          padding: 24px;
+        "
+      >
+        <div>
+          <h1 style="color: #ff7a2f; margin: 0 0 8px">Bucket My Fire</h1>
+          <p style="opacity: 0.85; max-width: 30em">
+            This 3D helicopter firefighting game needs JavaScript. Please enable JavaScript and
+            reload to fly.
+          </p>
+        </div>
+      </div>
+    </noscript>
     <div id="game"></div>
+    <script>
+      /* Remove the splash as soon as the renderer mounts a <canvas>. No game-code coupling:
+         a MutationObserver watches for the first canvas; a hard 12s fallback guarantees the
+         splash can never strand a visitor on the loading screen. */
+      (function () {
+        var splash = document.getElementById('bmf-splash');
+        if (!splash) return;
+        var done = false;
+        function hide() {
+          if (done) return;
+          done = true;
+          splash.classList.add('bmf-hide');
+          setTimeout(function () {
+            if (splash && splash.parentNode) splash.parentNode.removeChild(splash);
+          }, 500);
+          if (obs) obs.disconnect();
+        }
+        var obs = new MutationObserver(function () {
+          if (document.querySelector('canvas')) hide();
+        });
+        obs.observe(document.body, { childList: true, subtree: true });
+        if (document.querySelector('canvas')) hide();
+        setTimeout(hide, 12000); // safety net
+      })();
+    </script>
     <script type="module" src="/src/three/main.ts"></script>
 
     <!-- Visitor analytics: NONE here on purpose. The domain is proxied through Cloudflare

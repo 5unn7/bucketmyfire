@@ -1,7 +1,7 @@
 # 🚁 Bucket My Fire
 
-A mobile-browser helicopter sim. Fly a water-bomber over northern Saskatchewan,
-scoop water from lakes with a Bambi bucket, and drop it on the forest fires
+A mobile-browser helicopter firefighting sim. Fly over northern Saskatchewan,
+scoop water from lakes with a slung bucket, and drop it on the forest fires
 before they spread.
 
 ## Play / develop
@@ -15,13 +15,13 @@ npm run dev      # open the printed URL — on the same Wi-Fi you can open it on
 
 | Action | Touch | Keyboard |
 | --- | --- | --- |
-| Fly | left-thumb joystick | WASD / arrow keys |
-| Scoop water (descend over a lake) | **SCOOP** button | Shift |
+| Fly (steer + throttle) | left-thumb joystick | WASD / arrow keys |
+| Climb / descend | ▲ / ▼ buttons | I / J |
 | Drop water | **DROP** button | Space |
 
-Get the bucket low over a lake and hold **SCOOP** to fill (watch the water bar),
-then fly over a fire and hold **DROP**. Fires regrow and spread if you ignore
-them — put them all out to win.
+Scooping has no button: fly low over a lake until the slung bucket dips in and it
+fills on its own. Then line up over a fire and hit **DROP**. Fires spread if you
+ignore them — clear each mission's objectives to win.
 
 ## Build
 
@@ -41,5 +41,5 @@ See [CLAUDE.md](CLAUDE.md) for architecture.
 ## Status
 
 Live at [bucketmyfire.com](https://bucketmyfire.com) — full flight/bucket/fire physics,
-a 10-mission campaign, and 3 playable helicopters. (The original 2D Phaser prototype was
+a 6-mission campaign, and 3 playable helicopters. (The original 2D Phaser prototype was
 removed once the 3D build was proven.)

@@ -14,10 +14,10 @@
 
 ## Product Context
 
-- **What this is:** a mobile-browser helicopter wildfire simulator. Fly a water-bomber over
+- **What this is:** a mobile-browser helicopter wildfire simulator. Fly over
   northern Saskatchewan, scoop from lakes, drop on fires before they spread.
 - **Who it's for:** a phone-first player who wants a real flight *feel* in a browser, plus a
-  10-mission campaign and a global leaderboard.
+  6-mission campaign and a global leaderboard.
 - **Project type:** real-3D Three.js game with a DOM heads-up display and full-screen menus.
 - **The one thing to remember:** *this feels like flying a real aircraft, in a browser.* The UI
   exists to sell that — instruments, not chrome. If a screen feels like a web app instead of a

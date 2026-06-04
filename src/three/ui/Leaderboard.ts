@@ -15,7 +15,7 @@ import { UI, FS, FW, R, div, setBlur } from './theme';
 
 /**
  * Global leaderboard overlay — a full-screen frosted-glass panel in the game's cockpit language
- * (matching MissionSelect.ts / HUD.ts). A tab strip switches between the overall CAREER board (sum
+ * (matching the pre-flight menu / HUD.ts). A tab strip switches between the overall CAREER board (sum
  * of each pilot's best-per-mission score) and one board per mission (each pilot's best run there).
  *
  * The redesign over the old flat list:
@@ -98,7 +98,7 @@ class Leaderboard {
     panel.appendChild(head);
 
     panel.appendChild(
-      div({ fontSize: FS.body, color: UI.dim, marginBottom: '14px' }, 'Global standings — top water bombers of the boreal.'),
+      div({ fontSize: FS.body, color: UI.dim, marginBottom: '14px' }, 'Global standings — top helicopter pilots of the boreal.'),
     );
 
     panel.appendChild(this.tabStrip());

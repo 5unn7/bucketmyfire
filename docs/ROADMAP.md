@@ -354,7 +354,7 @@ value the design doesn't use. Streaming stays possible later behind the same `Wo
 
 ## TRACK D — Missions & campaign — ✅ DONE (2026-06-03)
 
-A data-driven **mission framework** + a **10-mission linear-unlock campaign** on top of the
+A data-driven **mission framework** + a **6-mission linear-unlock campaign** on top of the
 sandbox. A `MissionDef` (`missions/types.ts`, `missions/catalog.ts`) is pure SCENARIO data
 (seed, where the fires/crews/structures sit, win/lose) — `config.ts` stays the single TUNING
 source (new `MISSIONS` block holds only mechanic values: LZ radius, crew dwell, fuel burn).

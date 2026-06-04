@@ -75,7 +75,7 @@ export function buildIdentityScreen(ctx: FlowCtx): HTMLElement {
   hero.appendChild(createGridTitle('BUCKET MY FIRE'));
   root.appendChild(hero);
   root.appendChild(
-    div({ textAlign: 'center', fontSize: FS.meta, letterSpacing: '0.22em', textTransform: 'uppercase', color: UI.dim, margin: '0 0 28px' }, 'Water-bomber flight sim'),
+    div({ textAlign: 'center', fontSize: FS.meta, letterSpacing: '0.22em', textTransform: 'uppercase', color: UI.dim, margin: '0 0 28px' }, 'Helicopter firefighting sim'),
   );
 
   // Callsign (required).
@@ -113,6 +113,19 @@ export function buildIdentityScreen(ctx: FlowCtx): HTMLElement {
     ),
   );
   root.appendChild(emailSection);
+
+  // Plain-language consent + the legally-required policy links. Email is OPTIONAL and play is never
+  // gated on it (COPPA-safe); this affirmation covers the cloud-save email and the general terms.
+  const legal = div({ textAlign: 'center', fontSize: FS.sm, lineHeight: '1.5', color: UI.dim, margin: '24px 2px 4px' });
+  const policyLink = (label: string, href: string): HTMLAnchorElement => {
+    const a = el('a', { color: UI.accent, textDecoration: 'underline', cursor: 'pointer', whiteSpace: 'nowrap' }, label) as HTMLAnchorElement;
+    a.href = href;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    return a;
+  };
+  legal.append('By continuing you agree to our ', policyLink('Terms', '/terms.html'), ' and ', policyLink('Privacy Policy', '/privacy.html'), '.');
+  root.appendChild(legal);
 
   const setMsg = (t: string, bad: boolean): void => {
     nameMsg.textContent = t;

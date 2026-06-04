@@ -40,7 +40,7 @@ export function buildAircraftScreen(ctx: FlowCtx): HTMLElement {
     const handle = buildHeliCard3D(heli, {
       usable,
       selected: usable && heli.id === ctx.currentHeli().id,
-      lockText: heli.available ? `🔒 Mission ${heli.unlockAfter}` : '🔒 Coming soon',
+      lockText: heli.available ? `🔒 Clear ${heli.unlockAfter} missions` : '🔒 Coming soon',
       onSelect: () => {
         ctx.selectHeli(heli);
         for (const c of cards) c.setSelected(c.id === heli.id);

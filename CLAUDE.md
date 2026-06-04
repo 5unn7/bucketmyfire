@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-**bucketmyfire** is a mobile-browser helicopter simulator: fly a water-bomber over
+**bucketmyfire** is a mobile-browser helicopter simulator: fly over
 northern Saskatchewan, scoop water into a slung Bambi bucket from lakes, and drop it
 on forest fires before they spread. It runs entirely client-side — no backend. Art is
 **procedural-first** (geometry + GLSL + runtime textures), with a **few licensed downloaded
@@ -227,7 +227,7 @@ PBR material struct is built before the latter, so patching there renders white.
 
 ### Missions & campaign (see the `bmf-mission` skill)
 
-A **10-mission linear-unlock campaign** sits on top of the sandbox. A `MissionDef`
+A **6-mission linear-unlock campaign** sits on top of the sandbox. A `MissionDef`
 (`missions/types.ts`, `missions/catalog.ts`) is **pure SCENARIO data** (seed, where the fires/
 crews/structures sit, win/lose) — `config.ts` `MISSIONS` holds the mechanic VALUES. `Game` resolves
 a def's placement specs against the seeded `World` (`missions/scenario.ts`) and feeds a per-frame
@@ -287,7 +287,7 @@ the right block.
 `docs/ROADMAP.md` is the approved plan and is **largely shipped**: Phase 1 (unified `World` + AGL
 flight), Track **A** (noise → biomes → placement → rivers), Track **B** (water, atmosphere, bloom,
 smoke/embers, terrain shading, models/foliage + tree LOD), Track **C** (fire dynamics + stakes,
-fire size classes, rotor wash + ground effect), and Track **D** (the 10-mission campaign, which
+fire size classes, rotor wash + ground effect), and Track **D** (the 6-mission campaign, which
 also realized the C6 fuel/range model) are all marked **done**. Remaining/optional: C5 assists,
 C6 forward fuel caches, SSAO, and a few polish items — check the roadmap's status markers before
 starting. World scale is **decided: bounded ~1500u, streaming-ready behind the `World` API.**

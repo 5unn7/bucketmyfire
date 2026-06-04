@@ -56,8 +56,8 @@ interface Step {
 const STEPS: Step[] = [
   { glyph: '🚁', title: 'Fly the nose', body: 'Steer where the nose points and add throttle along it. She carries real momentum — ease off early to stop.', tone: 'cyan' },
   { glyph: '💧', title: 'Scoop water', body: 'Descend low over a lake until the slung bucket dips in. It fills on its own (see below).', tone: 'water' },
-  { glyph: '🔥', title: 'Bomb the fire', body: 'Line up over the flames and hit DROP. Fly straight and level so the water lands true.', tone: 'fire' },
-  { glyph: '🏠', title: 'Protect & win', body: 'Refuel at base when low and keep fires off the cabins. Put every fire out to clear the sortie.', tone: 'cyan' },
+  { glyph: '🔥', title: 'Drop on the fire', body: 'Line up over the flames and hit DROP. Fly straight and level so the water lands true.', tone: 'fire' },
+  { glyph: '🏠', title: 'Protect & win', body: 'Keep fires off the cabins and finish each mission’s objectives (top-left). When a FUEL gauge shows, land at a base before it runs dry.', tone: 'cyan' },
 ];
 
 /** A control row: an action and the touch + keyboard ways to do it. */
@@ -83,7 +83,7 @@ interface Leg {
   desc: string;
 }
 const HUD_LEGEND: Leg[] = [
-  { n: '1', tone: 'cyan', label: 'Gauges', desc: 'water · fuel · fires-left · wind · heading' },
+  { n: '1', tone: 'cyan', label: 'Gauges', desc: 'water · hull · fires-left · wind · heading' },
   { n: '2', tone: 'water', label: 'Radar', desc: 'fires (red), lakes (blue), your base — tap to zoom' },
   { n: '3', tone: 'cyan', label: 'Fly stick', desc: 'steer the nose + throttle' },
   { n: '4', tone: 'fire', label: 'Cluster', desc: 'climb ▲ · descend ▼ · DROP' },
@@ -384,7 +384,7 @@ export class HelpModal {
       h('p', { className: 'bmf-help-kicker', textContent: 'Quick start' }),
       ((): HTMLElement => {
         const t = h('h2', { className: 'bmf-help-title' });
-        t.innerHTML = 'How to fly the <span class="em">water-bomber</span>';
+        t.innerHTML = 'How to fly the <span class="em">helicopter</span>';
         return t;
       })(),
     ]);
@@ -512,7 +512,7 @@ export class HelpModal {
       );
     }
     const note = h('div', { className: 'bmf-help-note' });
-    note.innerHTML = 'Watch your <b>FUEL</b> — head back to a base before it runs dry. <b>FIRES LEFT</b> is your win condition: put them all out to clear the sortie.';
+    note.innerHTML = 'Your <b>OBJECTIVES</b> (top-left) are the win condition — finish them to clear the sortie. Some missions add a <b>FUEL</b> gauge; land at a base before it runs dry.';
 
     const rows = CONTROLS.map((c) => {
       const ctrls = h('div', { className: 'bmf-help-ctrls' }, [h('span', { className: 'bmf-help-touch', textContent: c.touch })]);

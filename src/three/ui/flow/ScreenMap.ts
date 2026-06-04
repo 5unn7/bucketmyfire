@@ -1,7 +1,7 @@
 /**
  * Screen 3 — Choose map. A snap carousel of the map cards (MapCard3D). The live Saskatchewan map is
  * selectable and shows its mission count ("6 MISSIONS", counted from the campaign by `map` id); the
- * two future maps render as locked "Coming soon" teasers. The choice persists via `ctx.selectMap`.
+ * three future maps render as locked "Coming soon" teasers. The choice persists via `ctx.selectMap`.
  * Footer advances with "Confirm map".
  */
 
@@ -15,7 +15,7 @@ import type { FlowCtx } from './types';
 export function buildMapScreen(ctx: FlowCtx): HTMLElement {
   injectScrollStyles();
   const root = section({});
-  root.appendChild(screenHeading('Choose your theatre', 'One map flies today — the full northern-Saskatchewan campaign. More are inbound.'));
+  root.appendChild(screenHeading('Choose your map', 'One map flies today — the full northern-Saskatchewan campaign. More are inbound.'));
 
   const scroller = div({ display: 'flex', gap: '14px', overflowX: 'auto', scrollSnapType: 'x mandatory', paddingBottom: '10px', margin: '0 -2px' });
   scroller.className = 'bmf-hscroll';

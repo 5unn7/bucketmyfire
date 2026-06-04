@@ -5,7 +5,7 @@ import type { MissionDef } from './types';
  * `Game` resolves each def's placement specs against the seeded `World`, hands it to a
  * `MissionRuntime` (objectives/fails) AND a `MissionDirector` (the reactive `script` — the briefing,
  * live radio comms, and world beats that make each mission talk + react). The arc teaches one idea at
- * a time — fight → ferry → defend → everything-at-once → scale-up → finale — and ramps from a calm
+ * a time — fight → ferry → defend → rescue-under-fire → scale-up → finale — and ramps from a calm
  * checkout flight to a re-flaring Class-F monster under a screaming, shifting wind.
  *
  * SETTING: northern Saskatchewan. Each mission flies out of a real place — Weyakwin, Missinipe,
@@ -33,7 +33,7 @@ export const CAMPAIGN: MissionDef[] = [
     brief: 'Your first flight out of Weyakwin. Scoop from the lake and knock down the ground fire creeping at the cabins. Calm air — learn the aircraft.',
     tagline: 'Dawn over Weyakwin. Learn to fly, and save the cabins.',
     intel:
-      'Welcome aboard, Water-1. Bring the rotors up and ease her off the deck. A slow ground fire is working out of the bush toward the cabins at Weyakwin, on the lake’s south shore. Fly low over open water to fill the Bambi bucket, then pour it on the flames. Winds are light — a good morning to get the feel of her. Remember: a fire only dies when you put water on it.',
+      'Welcome aboard, Water-1. Bring the rotors up and ease her off the deck. A slow ground fire is working out of the bush toward the cabins at Weyakwin, on the lake’s south shore. Fly low over open water to fill the bucket, then pour it on the flames. Winds are light — a good morning to get the feel of her. Remember: a fire only dies when you put water on it.',
     difficulty: 1,
     seed: 34,
     map: 'saskatchewan',
@@ -64,7 +64,7 @@ export const CAMPAIGN: MissionDef[] = [
     brief: 'Ferry two initial-attack crews to the highway by Missinipe, then re-rig to the bucket and knock down the fire astride it. Set down at base to swap the sling for the bucket.',
     tagline: 'Ferry the crews to Highway 102, then turn the bucket on the fire.',
     intel:
-      'Two IA crews need setting down on the cleared pads flanking Highway 102, by Missinipe, before they can work the fire on it. You start rigged for the crews — run both teams out to the landing zones. Then return to base, re-rig to the Bambi bucket, and put water on the three heads on the road. A medium wind is building, so mind your approach.',
+      'Two IA crews need setting down on the cleared pads flanking Highway 102, by Missinipe, before they can work the fire on it. You start rigged for the crews — run both teams out to the landing zones. Then return to base, re-rig to the water bucket, and put water on the three heads on the road. A medium wind is building, so mind your approach.',
     difficulty: 2,
     seed: 987,
     map: 'saskatchewan',
@@ -100,7 +100,7 @@ export const CAMPAIGN: MissionDef[] = [
     id: 'hold-the-line',
     index: 2,
     name: 'Hold the Line',
-    brief: 'Heavy wind, extreme risk. Ground crews are 3:20 out — keep this fire off Denare Beach until they arrive. Your valve bucket splits a load across passes.',
+    brief: 'Heavy wind, extreme risk. Ground crews are 3 minutes out — keep this fire off Denare Beach until they arrive. Your valve bucket splits a load across passes.',
     tagline: 'Screaming wind. Hold the front off Denare Beach till the crews land.',
     intel:
       'Ground crews are three minutes out. Until they land, you are the only thing between an advancing front and the town of Denare Beach, on the shore of Amisk Lake. Hold the line — the wind is screaming and the fire keeps flanking you, so triage which head threatens a home and split your valve load across passes. You cannot win by clearing it; you win by ENDURING until the crews are down.',
@@ -114,17 +114,17 @@ export const CAMPAIGN: MissionDef[] = [
     bucket: 'valve',
     fires: [{ at: 'nearCommunity', community: 'denare-beach', offset: 70, size: 'medium', count: 3 }],
     structures: { depot: true, groups: [{ community: 'denare-beach', cabins: 6 }] },
-    objectives: [{ kind: 'survive', seconds: 200, label: 'Hold for 3:20' }],
+    objectives: [{ kind: 'survive', seconds: 180, label: 'Hold for 3:00' }],
     fails: [{ kind: 'protect', min: 4, label: 'Defend Denare Beach' }],
     script: [
-      { id: 'start', trigger: { at: 'start' }, actions: [{ do: 'comms', speaker: 'dispatch', text: "Water-1, crews are 3:20 out. Keep the fire off Denare Beach until they're on the ground. It's blowing hard — hold the line." }] },
+      { id: 'start', trigger: { at: 'start' }, actions: [{ do: 'comms', speaker: 'dispatch', text: "Water-1, crews are 3 minutes out. Keep the fire off Denare Beach until they're on the ground. It's blowing hard — hold the line." }] },
       { id: 'flank1', trigger: { at: 'time', seconds: 50 }, actions: [{ do: 'ignite', place: { at: 'nearCommunity', community: 'denare-beach', offset: 55, size: 'small' } }, { do: 'comms', speaker: 'warning', urgency: 'warn', text: 'Flare-up on the north flank — get on it before it runs.' }] },
       // Encouragement at the halfway mark — the grind is working, crews are closing.
-      { id: 'holding', trigger: { at: 'time', seconds: 100 }, actions: [{ do: 'comms', speaker: 'dispatch', text: "You're holding her, Water-1. Halfway there — crews are closing." }] },
+      { id: 'holding', trigger: { at: 'time', seconds: 90 }, actions: [{ do: 'comms', speaker: 'dispatch', text: "You're holding her, Water-1. Halfway there — crews are closing." }] },
       { id: 'flank2', trigger: { at: 'time', seconds: 120 }, actions: [{ do: 'ignite', place: { at: 'nearCommunity', community: 'denare-beach', offset: 60, size: 'small', count: 2 } }, { do: 'comms', speaker: 'warning', urgency: 'alert', text: "She's pushing hard on the south side — don't let her reach the homes!" }] },
       // Threat-gated: only fires if the town is actually in danger, so a strong pilot may never hear it.
       { id: 'fence', trigger: { at: 'threat', min: 0.6 }, actions: [{ do: 'comms', speaker: 'warning', urgency: 'alert', text: "Fire's at the fenceline — push it back NOW!" }] },
-      { id: 'inbound', trigger: { at: 'time', seconds: 170 }, actions: [{ do: 'comms', speaker: 'dispatch', text: 'Crews inbound — thirty seconds. Hold what you have.' }] },
+      { id: 'inbound', trigger: { at: 'time', seconds: 150 }, actions: [{ do: 'comms', speaker: 'dispatch', text: 'Crews inbound — thirty seconds. Hold what you have.' }] },
       { id: 'won', trigger: { at: 'won' }, actions: [{ do: 'comms', speaker: 'dispatch', text: "Crews are on the ground — they've got it. You held the line, Water-1." }] },
     ],
   },

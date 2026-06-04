@@ -1,6 +1,6 @@
 /**
  * Callsign hygiene — shared sanitize + validation for the pilot name (the string the
- * leaderboard submits under). Used by the MissionSelect callsign editor (blocks bad names
+ * leaderboard submits under). Used by the pre-flight identity screen (blocks bad names
  * before saving) and by the leaderboard client (a final clean on the auto-submit path).
  *
  * Four layers, all "basic" by design (a casual arcade board, not a moderation system):

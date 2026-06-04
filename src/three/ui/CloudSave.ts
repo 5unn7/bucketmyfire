@@ -12,7 +12,7 @@ import { UI, FS, FW, R, el, div, setBlur } from './theme';
 
 /**
  * Cloud-save overlay — a small frosted modal in the game's cockpit language (matching
- * MissionSelect.ts / Leaderboard.ts). Lets a pilot SAVE their campaign progress to an email and
+ * the pre-flight menu / Leaderboard.ts). Lets a pilot SAVE their campaign progress to an email and
  * RESTORE it on another device or after clearing their browser, by entering pilot name + email.
  * No passwords; the email is hashed in the browser before it's sent (see leaderboard/cloudSave.ts).
  *
