@@ -1695,21 +1695,28 @@ export class Game {
   /** Flattest dry spot in a small ring around (cx,cz) — keeps a crew LZ near its nominal point but
    *  off slopes/water so a touchdown sits level. Falls back to the nominal point. */
   private findFlatSpotNear(cx: number, cz: number, R: number): { x: number; z: number } {
+    const roadClear = 9; // keep the touchdown + painted ring off the carriageway, but still roadside
+    // Score a candidate: flat, dry, near the nominal point, and off the road. `rr` is its offset from
+    // the nominal point (0 for the nominal itself) — so the nominal is judged on the SAME terms and a
+    // nominal that landed ON a road loses to a shoulder spot instead of winning the tie by default.
+    const score = (x: number, z: number, rr: number): number => {
+      if (this.world.isOverWater(x, z)) return -Infinity;
+      const dRoad = this.world.distanceToRoad(x, z);
+      const roadPenalty = dRoad < roadClear ? (roadClear - dRoad) * 8 : 0; // steep inside the keep-clear band
+      return -this.world.slopeAt(x, z) * 40 - rr * 0.1 - roadPenalty; // flat, near nominal, off-road
+    };
     let best = { x: cx, z: cz };
-    let bestScore = this.world.isOverWater(cx, cz) ? -Infinity : -this.world.slopeAt(cx, cz) * 40;
+    let bestScore = score(cx, cz, 0);
     for (let i = 0; i < 12; i++) {
       const a = (i / 12) * Math.PI * 2;
-      for (const rr of [R * 0.5, R]) {
+      // A third, wider ring gives the search room to actually clear a road running through the nominal
+      // point (the inner rings can all still be on the carriageway when the LZ is sited right on it).
+      for (const rr of [R * 0.5, R, R * 1.6]) {
         const x = cx + Math.cos(a) * rr;
         const z = cz + Math.sin(a) * rr;
-        if (this.world.isOverWater(x, z)) continue;
-        // Gentle nudge off the road centreline so the touchdown spot doesn't sit ON the carriageway —
-        // light enough that a "roadside LZ" still hugs the road, just beside it rather than on it.
-        const dRoad = this.world.distanceToRoad(x, z);
-        const roadPenalty = dRoad < 6 ? (6 - dRoad) * 6 : 0;
-        const score = -this.world.slopeAt(x, z) * 40 - rr * 0.1 - roadPenalty; // flat, near nominal, off-road
-        if (score > bestScore) {
-          bestScore = score;
+        const s = score(x, z, rr);
+        if (s > bestScore) {
+          bestScore = s;
           best = { x, z };
         }
       }
