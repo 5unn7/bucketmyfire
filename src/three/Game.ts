@@ -151,6 +151,8 @@ export class Game {
   private won = false;
   private lost = false; // C3: every structure destroyed → mission failed (latches the sim off)
   private crashed = false; // health hit zero → airframe destroyed (a Game-level loss, any mission)
+  private hullHitCd = 0; // cooldown (s) so one hard landing fires ONE damage warning, not a per-frame burst
+  private bucketFull = false; // latched once a scoop tops off — one "bucket full" cue per fill, re-armed on release
   private finalScore = 0; // computed once when the mission ends (win or loss)
   private elapsed = 0; // total seconds, drives fire flicker
   private rippleTimer = 0; // throttles ripple-ring spawns while scooping/dropping
@@ -858,10 +860,21 @@ export class Game {
     // mission). Flying low through fire, scraping the bucket, and overspeed no longer cook the airframe
     // — FUEL is the resource that ticks down and forces a return to base (FuelSim). ---
     if (!frozen) {
+      const hpBefore = this.healthSim.health;
       this.healthSim.update(dt, {
         impact: this.heliSim.landingImpact,
         repairing: this.canRefuel(),
       });
+      // A hard landing dents the hull SILENTLY in the model — players never noticed the number drop.
+      // Detect the loss here (delta > 0 only on a damage frame; repair raises it) and FIRE feedback:
+      // a red impact flash + a severity-scaled Dispatch warning + a squelch. A short cooldown means a
+      // touchdown that bottoms out over a couple frames reads as one hit, not a burst.
+      if (this.hullHitCd > 0) this.hullHitCd -= dt;
+      const hpLost = hpBefore - this.healthSim.health;
+      if (hpLost > 0.001 && this.hullHitCd <= 0 && !this.healthSim.dead) {
+        this.hullHitCd = 0.8;
+        this.reportHullHit(hpLost);
+      }
       if (this.healthSim.dead && !this.won && !this.lost) this.crashLoss();
     }
     // Sync the structure meshes: char + collapse with damage, ember while burning.
@@ -1102,6 +1115,7 @@ export class Game {
     this.hud.update({
       water: this.water,
       waterMax: this.capacity,
+      scooping, // bucket actively filling → the HUD glows the water bar so "keep dipping" reads
       health: this.healthSim.health,
       healthLow: this.healthSim.low,
       firesLeft,
@@ -1240,6 +1254,26 @@ export class Game {
     this.audio.playSquelch('alert');
   }
 
+  /**
+   * Hard-landing feedback: the hull number quietly dropping went unnoticed, so a dent now FIRES a
+   * red impact flash + a severity-scaled Dispatch warning + a squelch. `lost` is the health fraction
+   * shed this touchdown; once the hull crosses the warn line it escalates to a critical alert. The
+   * HEALTH bar in the strip visibly drops alongside (animated). crashLoss owns the mayday at zero.
+   */
+  private reportHullHit(lost: number): void {
+    const critical = this.healthSim.low; // hull now in the warning band
+    const sev = Math.min(1, lost / 0.25); // a ~quarter-bar loss reads as a full-strength flash
+    this.hud.flashDamage(critical ? Math.max(sev, 0.7) : sev);
+    if (critical) {
+      this.hud.pushComms('warning', 'Hard impact — hull critical! Set down at a base to repair.', 'alert');
+      this.audio.playSquelch('alert');
+    } else {
+      const text = lost > 0.15 ? 'Heavy landing — hull damage taken.' : 'Hard landing — ease the descent on touchdown.';
+      this.hud.pushComms('warning', text, 'warn');
+      this.audio.playSquelch('warn');
+    }
+  }
+
   /** Grounded + slow within refuel range of ANY base (home or a forward pad) → refuelling/repairing. */
   private canRefuel(): boolean {
     if (this.baseSites.length === 0) return false;
@@ -1334,7 +1368,15 @@ export class Game {
     if (!frozen && dipping && this.water < this.capacity) {
       this.water = Math.min(this.capacity, this.water + this.fillRate * (dtMs / 1000));
       scooping = true;
+      // Topped-off cue on the rising edge to full — tells the pilot to STOP dipping and go (re-armed
+      // below once the load is released). Pairs with the live "Filling… N%" hint + the water bar.
+      if (this.water >= this.capacity && !this.bucketFull) {
+        this.bucketFull = true;
+        this.hud.pushComms('dispatch', 'Bucket full — go work the fire.', 'info');
+        this.audio.playSquelch('info');
+      }
     }
+    if (this.water < this.capacity) this.bucketFull = false; // re-arm after any release (drop / spill)
 
     // --- Scrape: the bucket is dragging on terrain/treetops (the sim clamps + drags it). Drag fast
     // enough and a loaded bucket slops water out the top — the cost of flying too low. ---
@@ -1489,11 +1531,16 @@ export class Game {
     this.scene.add(dock);
   }
 
-  /** Status line: guide the player to dip, or show the fill in progress. */
+  /**
+   * Status line: guide the player to dip, then show the live fill % while scooping. The percentage
+   * changes the string each frame, so the hint STAYS up the whole scoop (it re-arms the flash) — the
+   * fix for "I didn't know I had to hold the bucket in the water longer". Clears at full (the bucket-
+   * full cue + the topped-off bar take over).
+   */
   private scoopHint(overWater: boolean, scooping: boolean): string | null {
     if (this.water >= this.capacity) return null;
-    if (scooping) return 'Scooping…';
-    if (overWater) return 'Descend (▼ / J) to fill the bucket';
+    if (scooping) return `Filling bucket… ${Math.round((this.water / this.capacity) * 100)}% — hold low`;
+    if (overWater) return 'Descend (▼ / J) to dip the bucket in';
     return null;
   }
 

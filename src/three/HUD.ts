@@ -26,6 +26,7 @@ import { onLayout, type LayoutState } from './ui/layout';
 export interface HudState {
   water: number;
   waterMax: number;
+  scooping?: boolean; // bucket is actively filling — the water fill-bar glows so "keep dipping" reads
   health?: number; // 0..1 airframe health (always supplied; drives the HEALTH gauge)
   healthLow?: boolean; // gauge flashes red below the warn line
   firesLeft: number;
@@ -92,6 +93,7 @@ const TAPE_H = 188; // jet tape canvas height (the scrolling window)
 const LOW_AGL_FT = 250; // altimeter reads LOW (red) below this AGL in feet
 const RANGE_NEAR = 160; // world units to the radar edge when collapsed (zoomed-in local map)
 const HINT_VISIBLE_MS = 3600; // status hint flashes on, then auto-fades after this (no permanent nag)
+const HULL_OK = '#46d17a'; // healthy-hull bar green (matches the engine-ready green); turns red when low
 
 export class HUD {
   private readonly root: HTMLDivElement;
@@ -124,6 +126,8 @@ export class HUD {
   private portraitMessages = false; // the hint drops below the band (phone/portrait) vs rides at the top (wide)
   private bandClear = 0; // floor px the hint is dropped by when portraitMessages
   private readonly smoke: HTMLDivElement; // C5: blinding-smoke veil when the camera is in a plume
+  private readonly hitFlash: HTMLDivElement; // red impact vignette pulsed on a hard-landing hull dent
+  private hitFlashTimer = 0; // setTimeout id: fade the impact flash back out
   private banner?: HTMLDivElement;
   private readonly commsWrap: HTMLDivElement; // radio comms log (DISPATCH/CREW/WARNING toasts)
   // Cold-start engine dial (hold to spool the rotors) — present only between BEGIN and full RPM.
@@ -200,6 +204,20 @@ export class HUD {
     });
     this.root.appendChild(this.smoke);
 
+    // --- Damage impact flash — a red edge-vignette pulsed when the hull takes a hard-landing dent.
+    // The quiet health NUMBER ticking down went unnoticed, so this is the unmissable "you just took a
+    // hit" cue. Appended behind the gauges (like the smoke veil) so instruments stay readable; driven
+    // event-only by flashDamage() (fast in, slow out), so it costs nothing while flying clean. ---
+    this.hitFlash = el('div', {
+      position: 'absolute',
+      inset: '0',
+      pointerEvents: 'none',
+      opacity: '0',
+      background: 'radial-gradient(ellipse at 50% 50%, rgba(255,40,30,0) 42%, rgba(255,38,28,0.7) 100%)',
+      transition: 'opacity 0.55s ease',
+    });
+    this.root.appendChild(this.hitFlash);
+
     // --- Left instrument column. Stacked in a flex column (was three absolutely-positioned
     // chips) so the campaign's optional FUEL gauge and OBJECTIVE checklist can slot in without
     // colliding. Water → fuel → fires → threat → objectives, top to bottom. ---
@@ -228,12 +246,15 @@ export class HUD {
       this.menuCell = makeMenuCell(this.end.onMenu);
       this.spine.appendChild(this.menuCell);
     }
-    this.waterPod = makePod(WATER_SVG); // % of bucket capacity
+    // Resource gauges (water / hull / fuel / threat) carry a thin animated fill BAR at the cell's
+    // base — the glanceable "how full / how healthy" cue the bare number didn't convey. Count + units
+    // cells (fires / compass / wind) stay number-only.
+    this.waterPod = makePod(WATER_SVG, true); // % of bucket capacity
     this.waterNumBg = this.waterPod.num.style.color; // baseline readout color, restored after a drop-result flash
-    this.hullPod = makePod(HEALTH_SVG); // airframe %
-    this.fuelPod = makePod(FUEL_SVG); // tank %
+    this.hullPod = makePod(HEALTH_SVG, true); // airframe %
+    this.fuelPod = makePod(FUEL_SVG, true); // tank %
     this.firesPod = makePod(FIRES_SVG); // fires remaining (count)
-    this.threatPod = makePod(THREAT_SVG); // most-endangered structure %
+    this.threatPod = makePod(THREAT_SVG, true); // most-endangered structure %
     this.compassPod = makePod(COMPASS_SVG); // heading °
     this.windPod = makePod(WIND_SVG); // wind kt (icon rotates to the heading-relative gust)
     this.pods = [
@@ -480,13 +501,19 @@ export class HUD {
   update(s: HudState): void {
     // --- Instrument strip: one text write per cell (O(1)); colour flips/glows only when flagged. ---
     // Gauges read as whole-percent numbers (no bars); fires is a raw count; compass/wind are units.
-    this.waterPod.num.textContent = `${Math.round(clamp01(s.water / s.waterMax) * 100)}`;
-    this.hullPod.num.textContent = `${Math.round(clamp01(s.health ?? 1) * 100)}`;
+    const waterFrac = clamp01(s.water / s.waterMax);
+    this.waterPod.num.textContent = `${Math.round(waterFrac * 100)}`;
+    setPodBar(this.waterPod, waterFrac, UI.accent, !!s.scooping); // glow while actively filling → "keep dipping"
+    const hp = clamp01(s.health ?? 1);
+    this.hullPod.num.textContent = `${Math.round(hp * 100)}`;
     setNumWarn(this.hullPod, !!s.healthLow); // critical → red + pulse (sin only runs when low)
+    setPodBar(this.hullPod, hp, s.healthLow ? UI.warn : HULL_OK, !!s.healthLow); // visible HP — drops on a hit
     if (s.fuel !== undefined) {
       setPodHidden(this.fuelPod, false);
-      this.fuelPod.num.textContent = `${Math.round(clamp01(s.fuel) * 100)}`;
+      const fuelFrac = clamp01(s.fuel);
+      this.fuelPod.num.textContent = `${Math.round(fuelFrac * 100)}`;
       setNumWarn(this.fuelPod, !!s.fuelLow);
+      setPodBar(this.fuelPod, fuelFrac, s.fuelLow ? UI.warn : UI.accent, !!s.fuelLow);
     } else {
       setPodHidden(this.fuelPod, true); // sandbox / non-fuel mission → drop the cell entirely
     }
@@ -504,6 +531,7 @@ export class HUD {
       this.threatPod.svg.setAttribute('stroke', threatHot ? UI.warn : '#eaf6ff'); // one attribute flip, gated
       this.threatPod.num.style.color = threatHot ? UI.warn : UI.text;
       this.threatPod.cell.style.textShadow = threatHot ? `0 0 8px ${UI.warn}` : 'none';
+      setPodBar(this.threatPod, threat, threatHot ? UI.warn : '#ffb24a', threatHot); // fills toward red as the fire closes in
     }
     // Compass: numeric heading (replaces the old scrolling tape). Wind: knots, with the icon
     // rotated to the heading-relative gust direction (the radar wind-arrow, folded in here).
@@ -681,6 +709,24 @@ export class HUD {
       this.waterPod.num.style.textShadow = 'none';
       this.gaugeFlashTimer = 0;
     }, ms);
+  }
+
+  /**
+   * Pulse the red impact vignette over the whole view — the unmissable "you just took a hit" cue for
+   * a hard-landing hull dent (the quiet HEALTH number ticking down went unnoticed). `severity` 0..1
+   * scales the flash strength; a fast snap in, slow fade out. Event-driven (one call per impact), so
+   * it costs nothing while flying clean. The HEALTH bar visibly drops alongside it (animated scaleX).
+   */
+  flashDamage(severity: number): void {
+    const peak = 0.32 + 0.46 * clamp01(severity);
+    if (this.hitFlashTimer) window.clearTimeout(this.hitFlashTimer);
+    this.hitFlash.style.transition = 'opacity 0.05s ease-out'; // snap to peak…
+    this.hitFlash.style.opacity = `${peak}`;
+    this.hitFlashTimer = window.setTimeout(() => {
+      this.hitFlash.style.transition = 'opacity 0.55s ease'; // …then bleed back out
+      this.hitFlash.style.opacity = '0';
+      this.hitFlashTimer = 0;
+    }, 60);
   }
 
   // --- Radio comms + pre-flight briefing (the mission "experience" layer) ----
@@ -1521,18 +1567,21 @@ interface Pod {
   cell: HTMLDivElement; // the icon + number row (hidden/pulsed as a unit)
   svg: SVGElement; // stroked glyph (recoloured / rotated per state)
   num: HTMLDivElement; // the live numeric readout
+  barFill?: HTMLDivElement; // optional fill bar (resource gauges only) — scaleX 0..1, animated
 }
 
 /** Build one strip cell: a stroked icon + a bold numeric readout, with a hairline divider on
  *  its left so the readouts read as one cluster (the pill supplies the glass; the cell is
- *  transparent). No bars — function = icon + number. */
-function makePod(iconSvg: string): Pod {
+ *  transparent). `withBar` adds a thin animated fill track across the cell's base for the 0..1
+ *  resource gauges (water/hull/fuel/threat) — function = icon + number, plus a glanceable bar. */
+function makePod(iconSvg: string, withBar = false): Pod {
   const cell = el('div', {
     display: 'flex',
     alignItems: 'center',
     gap: '6px',
     padding: '0 9px',
     lineHeight: '1',
+    position: 'relative', // anchor the optional fill bar
     boxShadow: `inset 1px 0 0 ${UI.stroke}`, // hairline divider on the left edge (free, layout-neutral)
   });
   const box = el('div', { flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center' });
@@ -1546,7 +1595,45 @@ function makePod(iconSvg: string): Pod {
   });
   num.style.setProperty('font-variant-numeric', 'tabular-nums');
   cell.append(box, num);
-  return { cell, svg, num };
+
+  let barFill: HTMLDivElement | undefined;
+  if (withBar) {
+    // A hairline progress track pinned across the cell's base. Absolutely placed so it never
+    // disturbs the icon+number flex row; the fill scales on the X axis (GPU transform, no layout)
+    // with a short transition so a change in level reads as smooth motion, not a jump.
+    const track = el('div', {
+      position: 'absolute',
+      left: '8px',
+      right: '8px',
+      bottom: '2px',
+      height: '2.5px',
+      borderRadius: '2px',
+      background: 'rgba(255,255,255,0.13)',
+      overflow: 'hidden',
+    });
+    barFill = el('div', {
+      width: '100%',
+      height: '100%',
+      borderRadius: '2px',
+      background: UI.accent,
+      transformOrigin: 'left center',
+      transform: 'scaleX(1)',
+      transition: 'transform 0.18s ease, background-color 0.2s ease, box-shadow 0.2s ease',
+    });
+    track.appendChild(barFill);
+    cell.appendChild(track);
+  }
+  return { cell, svg, num, barFill };
+}
+
+/** Drive a gauge pod's base fill bar: `frac` 0..1 (scaleX), `color`, and an optional glow that
+ *  draws the eye (used while actively scooping, or when a gauge is in its warning band). No-op on
+ *  pods built without a bar. */
+function setPodBar(p: Pod, frac: number, color: string, glow = false): void {
+  if (!p.barFill) return;
+  p.barFill.style.transform = `scaleX(${clamp01(frac)})`;
+  p.barFill.style.background = color;
+  p.barFill.style.boxShadow = glow ? `0 0 7px ${color}` : 'none';
 }
 
 /** The ☰ menu control, styled as the first cell of the strip (no left divider — it heads
