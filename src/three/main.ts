@@ -2,11 +2,13 @@ import * as THREE from 'three';
 import { Game } from './Game';
 import { QualityTier } from './render/QualityTier';
 import { Composer } from './postfx/Composer';
-import { shouldAutostart, defaultProfile } from './ui/Onboarding';
+import { shouldAutostart, defaultProfile, runWelcome } from './ui/Onboarding';
+import { hasNamedProfile } from './ui/profile';
 import { MissionSelect } from './ui/MissionSelect';
 import { CAMPAIGN, missionById } from './missions/catalog';
 import { openLeaderboard } from './ui/Leaderboard';
 import { resetStaleStorage } from './storage/reset';
+import { installErrorBeacon } from './telemetry/errorBeacon';
 import type { MissionDef } from './missions/types';
 import type { EndScreenHooks } from './HUD';
 
@@ -23,6 +25,15 @@ import type { EndScreenHooks } from './HUD';
  */
 const container = document.getElementById('game') as HTMLDivElement;
 
+// Crash/error beacon FIRST, so a failure during storage reset / renderer / world construction is
+// reported too. Env-gated sink (VITE_ERROR_BEACON_URL); console-only when unset. PII-free.
+installErrorBeacon(() => ({
+  webgl2: typeof window.WebGL2RenderingContext !== 'undefined',
+  dpr: window.devicePixelRatio,
+  vw: window.innerWidth,
+  vh: window.innerHeight,
+}));
+
 // Clean-slate switch: wipe all local game data once if the data epoch was bumped (e.g. after the
 // scoring rescale). Runs before anything reads storage (Onboarding/profile/progress/menu).
 resetStaleStorage();
@@ -33,7 +44,7 @@ const params = new URLSearchParams(location.search);
 // just absent. Constructing the renderer then throws and the player gets a silent blank screen. A
 // capability check up front lets us show a friendly message instead of a black void.
 if (webglAvailable()) {
-  routeMission();
+  void routeMission();
 } else {
   showFatalMessage(
     container,
@@ -45,9 +56,18 @@ if (webglAvailable()) {
 
 /** Campaign router: a chosen mission (URL `?m=` / saved / autostart) boots the Game; otherwise we
  *  show the menu. Pulled into a function so the WebGL guard above can gate it cleanly. */
-function routeMission(): void {
+async function routeMission(): Promise<void> {
   let selectedId = params.get('m');
   if (!selectedId && shouldAutostart()) selectedId = CAMPAIGN[0].id;
+
+  // Identity gate (launch requirement): every player must have a callsign before they can begin.
+  // First-run players (no named profile) get the welcome screen — required callsign + optional email
+  // for cloud-saved scores — before either a deep-linked mission or the menu. Headless QA
+  // (?qa / ?autostart) and returning pilots skip straight through.
+  const headless = params.has('qa') || params.has('autostart');
+  if (!headless && !hasNamedProfile()) {
+    await runWelcome();
+  }
 
   if (selectedId) {
     bootMission(missionById(selectedId) ?? CAMPAIGN[0]);
@@ -195,10 +215,23 @@ function bootMission(mission: MissionDef): void {
   // portrait framing immediately on rotate, not just on a width 'resize'.
   window.addEventListener('orientationchange', resize);
 
+  // Tab-blur pause (launch-readiness): a hidden tab keeps Web Audio playing through a throttled rAF —
+  // i.e. the rotor drone blares on in the background. Suspend audio + skip stepping while hidden, and
+  // reseed the clock on return so a single resume frame can't lurch the sim.
+  let hidden = document.hidden;
+  document.addEventListener('visibilitychange', () => {
+    hidden = document.hidden;
+    game.setActive(!hidden);
+  });
+
   // dt is derived from the rAF timestamp Three hands the loop. The first frame only seeds the
   // clock and bails: dt must be > 0 or the sim's acceleration term (Δvel / dt) divides by zero.
   let prevTime = 0;
   renderer.setAnimationLoop((time: number) => {
+    if (hidden) {
+      prevTime = 0; // tab backgrounded — skip stepping; reseed the clock so resume doesn't lurch
+      return;
+    }
     if (prevTime === 0) {
       prevTime = time;
       return;

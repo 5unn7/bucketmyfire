@@ -99,10 +99,13 @@ export function createLandingZone(home = false): LandingZoneMesh {
       ringMat.color.copy(tint);
       ringMat.emissive.copy(tint);
       const on = state === 'active';
-      ringMat.emissiveIntensity = on ? 1.6 : 0.6;
-      ringMat.opacity = on ? 0.9 : 0.5;
-      beaconWanted = true;
-      beaconMat.opacity = on ? 0.32 : 0.12;
+      // ONLY the active target throws the tall beacon column — an inactive (next-in-line) crew zone
+      // keeps just a faint painted ground ring, so exactly ONE place "lights up" and the player is
+      // never torn between two cyan markers. The beacon re-lights on this zone once it's the target.
+      ringMat.emissiveIntensity = on ? 1.6 : 0.35;
+      ringMat.opacity = on ? 0.9 : 0.32;
+      beaconWanted = on;
+      beaconMat.opacity = on ? 0.34 : 0;
     }
     applyBeacon();
   }

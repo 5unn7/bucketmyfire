@@ -50,9 +50,11 @@ import { FuelSim } from './sim/FuelSim';
 import { HealthSim } from './sim/HealthSim';
 import { MissionRuntime } from './missions/MissionRuntime';
 import { MissionDirector } from './missions/MissionDirector';
-import { recordWin } from './missions/progress';
+import { recordWin, getProgress } from './missions/progress';
+import { newlyUnlockedHelis } from './ui/profile';
 import { submitScore } from './leaderboard/client';
 import { cloudAutoSave } from './leaderboard/cloudSave';
+import { button, UI, FW } from './ui/theme';
 import type { MissionDef, MissionSignals, MissionAction, ZonePlacement, ScoreTally } from './missions/types';
 import type { EndScreenHooks } from './HUD';
 import { seedFires, structurePlan, crewZones, resolveCrewZone, igniteFromPlacement } from './missions/scenario';
@@ -185,6 +187,9 @@ export class Game {
   private hazeCount = 0;
 
   private readonly pilotName?: string; // callsign from onboarding (display only)
+  // Aircraft whose campaign gate this win just crossed — computed once at latchOutcome, shown on the
+  // end screen as a "NEW AIRCRAFT UNLOCKED" callout. Empty on a loss / replay / non-threshold win.
+  private newlyUnlocked: { name: string; tagline: string }[] = [];
   private readonly mapId?: string; // selected map id (v1: nominal — one playable map)
   private readonly heliId?: string; // selected helicopter id (v1: nominal — one playable heli)
   private readonly capacity: number; // this heli's bucket capacity (litres) — from HELI_CLASSES
@@ -623,6 +628,9 @@ export class Game {
     // Tuck the controls "?" button into the radar's corner (top-right, under the minimap) so it
     // shares the map column and reflows down when the radar is expanded.
     this.hud.mountUnderRadar(this.input.helpButton);
+    // On-screen mute toggle, beside the "?" under the radar — the only way to silence the rotor on
+    // touch (the 'M' key is desktop-only). Persisted; stays in sync if 'M' flips it.
+    this.hud.mountUnderRadar(this.buildMuteButton());
     // C5: hand the radar the live fire field so it shades the burnt area (and the live front).
     this.hud.setBurnField(this.fireSystem.fieldView());
     // The reactive arc opens with a pre-flight DISPATCH briefing card; the sim + mission clock stay
@@ -632,6 +640,9 @@ export class Game {
       // Cold start: the briefing hands off to the engine-start dial — hold it to spool the rotors
       // before the aircraft will fly. (Already running under a QA skip → straight to flight.)
       if (!this.engineStarted) this.hud.showEngineStart();
+      // First-time pilots now get the quick-start HERE — after the briefing, layered over the
+      // engine-start dial — so the tutorial no longer stacks on top of the briefing card.
+      this.input.openHelpFirstTime();
     });
   }
 
@@ -1244,6 +1255,8 @@ export class Game {
               breakdown: this.runtime.breakdown ?? undefined, // line-itemed score + grade (null on a crash)
             }
           : undefined,
+      // Aircraft just unlocked by this win → the end screen's celebratory callout (empty otherwise).
+      unlocked: this.won && this.newlyUnlocked.length ? this.newlyUnlocked : undefined,
     });
 
     // --- Audio: constant rotor drone whose blade-slap swells with effort, plus
@@ -1369,6 +1382,41 @@ export class Game {
     };
   }
 
+  /** Build the on-screen mute toggle (mounted under the radar). A round glass button that flips the
+   *  rotor audio + reflects state; subscribes to HeliAudio so the 'M' key keeps the glyph in sync. */
+  private buildMuteButton(): HTMLDivElement {
+    const btn = button(this.audio.isMuted ? '🔇' : '🔊', {
+      position: 'relative',
+      width: '40px',
+      height: '40px',
+      fontSize: '18px',
+      color: UI.dim,
+      fontWeight: FW.semibold,
+    });
+    btn.title = 'Mute / unmute sound (M)';
+    btn.setAttribute('aria-label', 'Mute or unmute sound');
+    const sync = (m: boolean): void => {
+      btn.textContent = m ? '🔇' : '🔊';
+      btn.style.color = m ? UI.warn : UI.dim;
+    };
+    btn.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      this.audio.toggleMute();
+    });
+    this.audio.onMuteChange(sync);
+    sync(this.audio.isMuted);
+    return btn;
+  }
+
+  /**
+   * Active/background toggle (driven by main.ts off `visibilitychange`): when the tab is hidden we
+   * suspend the audio graph so a backgrounded game goes silent and stops draining battery, restoring
+   * the exact prior level (muted or not) on return. The render loop is gated separately in main.ts.
+   */
+  setActive(active: boolean): void {
+    this.audio.setSuspended(!active);
+  }
+
   /** Latch the mission outcome from the runtime once (freezes the sim, persists a win). */
   private latchOutcome(): void {
     if (this.won || this.lost) return;
@@ -1376,7 +1424,13 @@ export class Game {
     this.lost = this.runtime.state === 'lost';
     this.finalScore = this.runtime.score;
     if (this.won) {
+      // Heli unlocks gate on the COUNT of cleared sorties, so sample it either side of recording the
+      // win: an airframe whose `unlockAfter` lands in that gap just opened → celebrate it on the end
+      // screen. (recordWin only grows the count on a FIRST clear, so a replay announces nothing.)
+      const clearedBefore = getProgress().completed.length;
       recordWin(this.mission.id, this.finalScore, this.runtime.completion());
+      const clearedAfter = getProgress().completed.length;
+      this.newlyUnlocked = newlyUnlockedHelis(clearedBefore, clearedAfter).map((h) => ({ name: h.name, tagline: h.tagline }));
       // Global leaderboard (optional): fire-and-forget — submitScore never throws and no-ops
       // when Supabase isn't configured, so the win flow is unaffected if the network/board is down.
       void submitScore({
@@ -1559,19 +1613,28 @@ export class Game {
    * so the parked bucket lays out over open deck and the chase camera frames the base behind it.
    */
   private findHelipadSpot(depot: { x: number; z: number }): { x: number; z: number; yaw: number } {
-    const R = 16; // offset from the depot, well inside the 34u cleared yard (fully clear to ~17u)
+    const roadClear = 10; // keep the ~7u-radius deck this far off a road centreline
     let best: { x: number; z: number; yaw: number } | null = null;
     let bestScore = -Infinity;
-    for (let i = 0; i < 12; i++) {
-      const a = (i / 12) * Math.PI * 2;
-      const x = depot.x + Math.cos(a) * R;
-      const z = depot.z + Math.sin(a) * R;
-      if (this.world.isOverWater(x, z)) continue; // a pad in the lake is no good
-      const score = -this.world.slopeAt(x, z) * 40 - Math.hypot(x, z) * 0.04; // flat + toward interior
-      if (score > bestScore) {
-        bestScore = score;
-        // world-forward (cos yaw, -sin yaw) should point from the depot OUT to this spot (and beyond).
-        best = { x, z, yaw: Math.atan2(-(z - depot.z), x - depot.x) };
+    // Two rings inside the 34u cleared yard: the outer is the nominal offset, the inner gives the
+    // search room to step OFF a road that grazes the yard (the home base is the road network's root,
+    // so a highway leaves right past it — without this the deck can land square on the carriageway).
+    for (const R of [16, 12]) {
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * Math.PI * 2;
+        const x = depot.x + Math.cos(a) * R;
+        const z = depot.z + Math.sin(a) * R;
+        if (this.world.isOverWater(x, z)) continue; // a pad in the lake is no good
+        // Keep the deck clear of the carriageway: a strong penalty inside `roadClear` so a truly
+        // clear candidate always wins, but if a road hugs the whole yard we still pick the least-bad.
+        const dRoad = this.world.distanceToRoad(x, z);
+        const roadPenalty = dRoad < roadClear ? (roadClear - dRoad) * 12 : 0;
+        const score = -this.world.slopeAt(x, z) * 40 - Math.hypot(x, z) * 0.04 - roadPenalty; // flat + interior + off-road
+        if (score > bestScore) {
+          bestScore = score;
+          // world-forward (cos yaw, -sin yaw) should point from the depot OUT to this spot (and beyond).
+          best = { x, z, yaw: Math.atan2(-(z - depot.z), x - depot.x) };
+        }
       }
     }
     return best ?? { x: depot.x, z: depot.z, yaw: 0 };
@@ -1640,7 +1703,11 @@ export class Game {
         const x = cx + Math.cos(a) * rr;
         const z = cz + Math.sin(a) * rr;
         if (this.world.isOverWater(x, z)) continue;
-        const score = -this.world.slopeAt(x, z) * 40 - rr * 0.1; // flat, and as close to nominal as it can be
+        // Gentle nudge off the road centreline so the touchdown spot doesn't sit ON the carriageway —
+        // light enough that a "roadside LZ" still hugs the road, just beside it rather than on it.
+        const dRoad = this.world.distanceToRoad(x, z);
+        const roadPenalty = dRoad < 6 ? (6 - dRoad) * 6 : 0;
+        const score = -this.world.slopeAt(x, z) * 40 - rr * 0.1 - roadPenalty; // flat, near nominal, off-road
         if (score > bestScore) {
           bestScore = score;
           best = { x, z };

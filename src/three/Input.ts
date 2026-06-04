@@ -449,12 +449,17 @@ export class Input {
       e.stopPropagation();
       this.help.toggle();
     });
+    // NB: the first-run auto-open is deliberately NOT here — it used to stack the quick-start ON TOP
+    // OF the pre-flight briefing card. Game calls openHelpFirstTime() AFTER the briefing's BEGIN.
+  }
 
-    // First-time pilots get the quick-start automatically, exactly once.
-    if (!hasSeenHelp()) {
-      this.help.open();
-      markHelpSeen();
-    }
+  /** Open the quick-start ONCE for a first-time pilot (gated in localStorage), then never auto-again
+   *  (the "?" button still reopens it anytime). Game calls this after the briefing is dismissed, so
+   *  the tutorial follows the mission brief instead of stacking on top of it. */
+  openHelpFirstTime(): void {
+    if (hasSeenHelp()) return;
+    markHelpSeen();
+    this.help.open();
   }
 }
 

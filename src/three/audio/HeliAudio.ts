@@ -43,6 +43,17 @@ const ROTOR_TRIM_SEC = 0.25;
 const COMMS_GAIN = 0.16; // radio-squelch blip level (the "kshh" before a dispatch line)
 const START_GAIN = 0.9; // engine-start crank one-shot level
 
+// The mute preference persists across sessions (an on-screen button + the 'M' key both drive it),
+// so a player who silenced the rotor stays silenced next visit.
+const MUTE_KEY = 'bmf.audio.muted.v1';
+function loadMuted(): boolean {
+  try {
+    return localStorage.getItem(MUTE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
 export class HeliAudio {
   private readonly ctx: AudioContext;
   private readonly master: GainNode;
@@ -55,7 +66,9 @@ export class HeliAudio {
 
   private started = false; // a user gesture has unlocked + nodes are running
   private pendingStart = false; // unlock happened before the clip finished loading
-  private muted = false;
+  private muted = loadMuted(); // persisted mute preference (button + 'M' key)
+  private suspended = false; // tab hidden → AudioContext suspended (independent of user mute)
+  private readonly muteListeners = new Set<(m: boolean) => void>(); // notify the on-screen toggle
 
   // Cold-start crank: fired ONCE the first frame the rotor begins spooling (rpm enters 0..1).
   // Latched so a release/re-hold of the START dial doesn't replay it, and so the headless
@@ -135,7 +148,8 @@ export class HeliAudio {
     this.started = true;
     const t = this.ctx.currentTime;
     this.master.gain.setValueAtTime(0, t);
-    this.master.gain.linearRampToValueAtTime(AUDIO.masterVolume, t + AUDIO.fadeInSec);
+    // Ramp in to the user's level — straight to silent if they arrived already muted.
+    this.master.gain.linearRampToValueAtTime(this.muted ? 0 : AUDIO.masterVolume, t + AUDIO.fadeInSec);
     if (this.rotorBuffer) this.startRotor();
     else this.pendingStart = true;
     for (const ev of ['pointerdown', 'keydown', 'touchstart'] as const) {
@@ -153,13 +167,47 @@ export class HeliAudio {
     this.rotorSrc = src;
   }
 
+  /** Current mute state — the on-screen toggle reads this to pick its glyph. */
+  get isMuted(): boolean {
+    return this.muted;
+  }
+
+  /** Subscribe to mute changes (so the on-screen button stays in sync when 'M' flips it too). */
+  onMuteChange(cb: (muted: boolean) => void): void {
+    this.muteListeners.add(cb);
+  }
+
   toggleMute(): void {
-    this.muted = !this.muted;
-    this.master.gain.setTargetAtTime(
-      this.muted ? 0 : AUDIO.masterVolume,
-      this.ctx.currentTime,
-      0.05,
-    );
+    this.setMuted(!this.muted);
+  }
+
+  /** Set + persist the mute state, ramp the master bus, and notify any on-screen toggle. */
+  setMuted(muted: boolean): void {
+    this.muted = muted;
+    try {
+      localStorage.setItem(MUTE_KEY, muted ? '1' : '0');
+    } catch {
+      /* storage blocked — mute still works this session, just won't persist */
+    }
+    this.master.gain.setTargetAtTime(muted ? 0 : AUDIO.masterVolume, this.ctx.currentTime, 0.05);
+    for (const cb of this.muteListeners) cb(muted);
+  }
+
+  /**
+   * Suspend/resume the whole audio graph for a backgrounded tab (driven by Game off visibilitychange).
+   * Uses the AudioContext's own suspend/resume so a hidden tab goes truly silent (Web Audio keeps
+   * playing through a throttled rAF otherwise) WITHOUT touching the user's mute state — coming back to
+   * the tab restores exactly the level they left, muted or not.
+   */
+  setSuspended(suspended: boolean): void {
+    if (suspended === this.suspended) return;
+    this.suspended = suspended;
+    try {
+      if (suspended) void this.ctx.suspend();
+      else if (this.started) void this.ctx.resume();
+    } catch {
+      /* suspend/resume is best-effort */
+    }
   }
 
   /**

@@ -136,6 +136,45 @@ export function setBlur(node: HTMLElement): void {
   node.style.setProperty('-webkit-backdrop-filter', UI.blur);
 }
 
+/** Modal-backdrop blur — heavier than the in-world HUD blur (`UI.blur`) so a full-screen
+ *  overlay reads as a focused layer that visibly pushes the frozen game behind it out of focus. */
+export const SCRIM_BLUR = 'blur(9px) saturate(108%)';
+
+/**
+ * A full-screen blurred backdrop that lifts a modal off the (frozen) game behind it — the shared
+ * "dim + blur the world so the dialog is the focus" primitive overlays use (the end-of-mission
+ * banner, the pre-flight briefing). Centers its content and CAPTURES pointer events so taps don't
+ * leak through to the game underneath. Mount the card inside it.
+ */
+export function scrim(extra?: Partial<CSSStyleDeclaration>): HTMLDivElement {
+  const node = div({
+    position: 'absolute',
+    inset: '0',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '20px',
+    boxSizing: 'border-box',
+    background: 'radial-gradient(120% 90% at 50% 42%, rgba(6,12,18,0.46), rgba(3,6,10,0.74))',
+    backdropFilter: SCRIM_BLUR,
+    pointerEvents: 'auto',
+    zIndex: '40',
+    ...extra,
+  });
+  node.style.setProperty('-webkit-backdrop-filter', SCRIM_BLUR);
+  return node;
+}
+
+/** Respect the OS "reduce motion" setting — gate non-essential entrance animations on this so
+ *  motion-sensitive players skip rise/scale transitions. Defaults to false where unsupported. */
+export function prefersReducedMotion(): boolean {
+  try {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  } catch {
+    return false;
+  }
+}
+
 /** A frosted-glass panel: translucent fill, hairline border, backdrop blur. */
 export function frosted(extra: Partial<CSSStyleDeclaration>): HTMLDivElement {
   const node = div({

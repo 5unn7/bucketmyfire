@@ -7,6 +7,9 @@
 interface ImportMetaEnv {
   readonly VITE_SUPABASE_URL?: string;
   readonly VITE_SUPABASE_ANON_KEY?: string;
+  // Optional crash/error beacon sink. When set, uncaught errors + unhandled rejections are POSTed
+  // (navigator.sendBeacon) here as compact, PII-free JSON. Absent → errors log to the console only.
+  readonly VITE_ERROR_BEACON_URL?: string;
 }
 
 interface ImportMeta {

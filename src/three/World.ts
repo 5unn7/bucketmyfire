@@ -703,6 +703,31 @@ export class World {
   }
 
   /**
+   * Distance from world (x, z) to the nearest road CENTRELINE (units), or Infinity when there are
+   * no roads. Pure point-to-segment geometry over the road polylines — lets placement code keep
+   * pads/LZs off the carriageway (a road's painted half-width is `RoadRuntime.width`). Cheap: the
+   * MST has only a handful of short, coarsely-resampled roads.
+   */
+  distanceToRoad(x: number, z: number): number {
+    let best = Infinity;
+    for (const road of this.roads) {
+      const pts = road.pts;
+      for (let i = 1; i < pts.length; i++) {
+        const ax = pts[i - 1].x;
+        const az = pts[i - 1].z;
+        const dx = pts[i].x - ax;
+        const dz = pts[i].z - az;
+        const len2 = dx * dx + dz * dz || 1;
+        let t = ((x - ax) * dx + (z - az) * dz) / len2;
+        t = t < 0 ? 0 : t > 1 ? 1 : t; // clamp to the segment
+        const d = Math.hypot(x - (ax + dx * t), z - (az + dz * t));
+        if (d < best) best = d;
+      }
+    }
+    return best;
+  }
+
+  /**
    * Register the centres that get a cleared yard (where buildings actually stand). Set by
    * `Game` from the resolved structure plan, so empty named-but-unbuilt community sites don't
    * grow phantom clearings in the forest. Falls back to all communities until set.

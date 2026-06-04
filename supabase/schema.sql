@@ -181,3 +181,55 @@ revoke all on function public.save_cloud_progress(text, text, jsonb) from public
 revoke all on function public.load_cloud_progress(text, text)        from public;
 grant execute on function public.save_cloud_progress(text, text, jsonb) to anon;
 grant execute on function public.load_cloud_progress(text, text)        to anon;
+
+-- ===========================================================================
+-- Crash / error telemetry — locked table, written ONLY by the `report-error`
+-- Edge Function (supabase/functions/report-error). See src/three/telemetry/errorBeacon.ts.
+-- ===========================================================================
+-- The game POSTs uncaught errors + unhandled rejections (PII-free: error name/message, a trimmed
+-- stack, the path, WebGL availability, viewport, user-agent) to the Edge Function, which inserts
+-- here using the service role. The table is fully locked to anon/authenticated — like cloud_saves,
+-- the only door is the function — so error rows can't be enumerated or written through the REST API.
+
+create table if not exists public.client_errors (
+  id          bigint generated always as identity primary key,
+  kind        text        not null,                  -- 'error' | 'unhandledrejection'
+  name        text        not null,                  -- error constructor name
+  message     text        not null,
+  stack       text,                                  -- first few frames, trimmed
+  path        text,                                  -- location.pathname (never the query string)
+  ua          text,                                  -- navigator.userAgent
+  meta        jsonb,                                 -- { webgl2, dpr, vw, vh }
+  created_at  timestamptz not null default now(),
+
+  constraint client_errors_kind_len    check (char_length(kind) <= 40),
+  constraint client_errors_name_len    check (char_length(name) <= 120),
+  constraint client_errors_message_len check (char_length(message) <= 500),
+  constraint client_errors_stack_len   check (stack is null or char_length(stack) <= 2000),
+  constraint client_errors_path_len    check (path  is null or char_length(path)  <= 200),
+  constraint client_errors_ua_len      check (ua    is null or char_length(ua)    <= 400)
+);
+
+create index if not exists client_errors_created_idx on public.client_errors (created_at desc);
+
+alter table public.client_errors enable row level security;
+-- No policies + revoke = anon/authenticated have NO direct access. The Edge Function (service role)
+-- is the only writer; the project owner reads it from the dashboard.
+revoke all on public.client_errors from anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Hardening (security advisor 0028/0029): the rls_auto_enable() event-trigger function (it
+-- auto-enables RLS on newly created public tables) was reachable by the anon/authenticated roles
+-- via PostgREST RPC. An event-trigger function is invoked by the trigger mechanism, never by a
+-- direct EXECUTE, so revoke the API roles' grant to drop it from the public API (no behavior change).
+-- Guarded so this file still runs cleanly on a project where that function was never created.
+-- ---------------------------------------------------------------------------
+do $$
+begin
+  if exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'rls_auto_enable'
+  ) then
+    execute 'revoke execute on function public.rls_auto_enable() from anon, authenticated, public';
+  end if;
+end $$;

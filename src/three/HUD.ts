@@ -20,7 +20,7 @@
 
 import type { TrackerItem, CommsSpeaker, CommsUrgency, MissionDef, ScoreBreakdown, ScoreGrade } from './missions/types';
 import type { FireFieldView } from './sim/FireSystem';
-import { UI, FS, FW, R, el, frosted, makeCanvas, clamp01, anchor, setBlur } from './ui/theme';
+import { UI, FS, FW, R, el, frosted, makeCanvas, clamp01, anchor, setBlur, scrim, prefersReducedMotion } from './ui/theme';
 import { onLayout, type LayoutState } from './ui/layout';
 
 export interface HudState {
@@ -77,6 +77,10 @@ export interface HudState {
     timeSec: number;
     breakdown?: ScoreBreakdown; // line-itemed score + grade (absent on a crash → plain score shown)
   };
+  // Aircraft whose campaign gate this WIN just crossed — drives the end-screen "NEW AIRCRAFT
+  // UNLOCKED" callout (the progression payoff, otherwise invisible until the menu). Empty/undefined
+  // when nothing new opened (a loss, a replay, or a mission that doesn't cross a threshold).
+  unlocked?: { name: string; tagline: string }[];
 }
 
 /** Campaign end-banner callbacks (set by Game from main's mission router). */
@@ -147,6 +151,7 @@ export class HUD {
   private readonly hitFlash: HTMLDivElement; // red impact vignette pulsed on a hard-landing hull dent
   private hitFlashTimer = 0; // setTimeout id: fade the impact flash back out
   private banner?: HTMLDivElement;
+  private missionName = ''; // captured from the briefing → used in the end-screen Share text
   private readonly commsWrap: HTMLDivElement; // radio comms log (DISPATCH/CREW/WARNING toasts)
   // Cold-start engine dial (hold to spool the rotors) — present only between BEGIN and full RPM.
   private engineHoldState = false; // the START dial is pressed (pointer or Space/Enter) this frame
@@ -704,23 +709,34 @@ export class HUD {
     this.crewBarFill.style.transform = `scaleX(${clamp01(crew.progress)})`;
   }
 
-  /** Mission end banner: outcome headline + score + Next/Retry/Menu (campaign) buttons. */
+  /**
+   * Mission end screen: outcome headline + grade + itemised score + Next/Retry/Menu/Leaderboard/Share.
+   * Now mounted in a full-screen BLURRED SCRIM (the frozen world is dimmed + pushed out of focus) so
+   * the highest-visibility moment reads as one polished results screen instead of a chip floating over
+   * live 3D. A win that crossed a campaign unlock also celebrates the newly-earned aircraft here.
+   */
   private showBanner(s: HudState): void {
-    this.banner = frosted({
-      position: 'absolute',
-      left: '50%',
-      top: '50%',
-      transform: 'translate(-50%,-50%)',
+    const reduce = prefersReducedMotion();
+    // Blurred backdrop — captures pointer events (taps don't leak to the game) and centers the card.
+    const back = scrim({ opacity: reduce ? '1' : '0', transition: reduce ? 'none' : 'opacity 0.3s ease' });
+    this.banner = back; // the `!this.banner` guard in update() keys off this
+
+    const card = frosted({
       textAlign: 'center',
-      padding: '26px 36px 22px',
+      padding: '26px 30px 22px',
       borderRadius: R.xl,
       pointerEvents: 'auto',
-      maxWidth: 'min(92vw, 360px)',
+      width: '100%',
+      maxWidth: 'min(92vw, 380px)',
+      maxHeight: 'calc(100% - 8px)',
+      overflowY: 'auto',
+      boxShadow: UI.shadowCard,
       boxSizing: 'border-box',
     });
+
     const who = this.pilotName ?? 'pilot';
     const headline = s.won ? 'MISSION COMPLETE' : 'MISSION FAILED';
-    this.banner.appendChild(
+    card.appendChild(
       el('div', { fontSize: FS.banner, fontWeight: FW.heavy, letterSpacing: '0.5px', color: s.lost ? UI.warn : UI.accent }, headline),
     );
     const d = s.debrief;
@@ -728,7 +744,7 @@ export class HUD {
     // with the 1..3 star medal beneath it (same baseline ratio, so they always agree).
     const grade = s.won ? d?.breakdown?.grade ?? null : null;
     const stars = s.won ? d?.breakdown?.stars ?? null : null;
-    if (grade) this.banner.appendChild(gradeBadge(grade, stars));
+    if (grade) card.appendChild(gradeBadge(grade, stars));
     // Reactive closing line — reads the outcome, not a canned string.
     let sub: string;
     if (s.won) {
@@ -740,13 +756,13 @@ export class HUD {
     } else {
       sub = 'The fire won this time.';
     }
-    this.banner.appendChild(el('div', { fontSize: FS.lg, marginTop: '8px', color: 'rgba(231,247,255,0.82)' }, sub));
+    card.appendChild(el('div', { fontSize: FS.lg, marginTop: '8px', color: 'rgba(231,247,255,0.82)' }, sub));
 
     // Score readout. With a breakdown (every non-crash outcome) we show the itemised math so the player
     // SEES where the points came from — hardship, precision, defense, penalties — then the total. On a
     // crash (no breakdown) we fall back to the plain "what you did" summary + a single score line.
     if (d?.breakdown) {
-      this.banner.appendChild(scoreBreakdownBlock(d.breakdown, d.timeSec));
+      card.appendChild(scoreBreakdownBlock(d.breakdown, d.timeSec));
     } else if (d) {
       const stats = el('div', {
         marginTop: '14px',
@@ -770,25 +786,69 @@ export class HUD {
       if (d.structTotal > 0) row('Structures saved', `${d.structSaved}/${d.structTotal}`);
       if (d.crewTotal > 0) row('Crews delivered', `${d.crewDone}/${d.crewTotal}`);
       row('Time', fmtTime(d.timeSec));
-      this.banner.appendChild(stats);
-      this.banner.appendChild(el('div', { fontSize: FS.title, fontWeight: FW.bold, marginTop: '12px' }, `Score ${s.score.toLocaleString()}`));
+      card.appendChild(stats);
+      card.appendChild(el('div', { fontSize: FS.title, fontWeight: FW.bold, marginTop: '12px' }, `Score ${s.score.toLocaleString()}`));
     } else {
-      this.banner.appendChild(el('div', { fontSize: FS.title, fontWeight: FW.bold, marginTop: '12px' }, `Score ${s.score.toLocaleString()}`));
+      card.appendChild(el('div', { fontSize: FS.title, fontWeight: FW.bold, marginTop: '12px' }, `Score ${s.score.toLocaleString()}`));
     }
 
+    // Progression payoff: a win that just crossed a heli's campaign gate celebrates it here, so the
+    // reward isn't invisible until the player wanders back to the aircraft carousel.
+    if (s.won && s.unlocked && s.unlocked.length) card.appendChild(unlockCallout(s.unlocked));
+
     if (this.end) {
+      // Primary action row — the obvious next move (advance / retry) + back to the menu.
       const row = el('div', { display: 'flex', gap: '10px', justifyContent: 'center', marginTop: '20px', flexWrap: 'wrap' });
       if (s.won && this.end.hasNext) row.appendChild(bannerButton('NEXT ▸', UI.accent, this.end.onNext));
       if (!s.won) row.appendChild(bannerButton('↻ RETRY', UI.fire, this.end.onRetry));
       row.appendChild(bannerButton('MENU', UI.dim, this.end.onMenu));
-      this.banner.appendChild(row);
-      if (this.end.onLeaderboard) {
-        const lbRow = el('div', { display: 'flex', justifyContent: 'center', marginTop: '10px' });
-        lbRow.appendChild(bannerButton('🏆 LEADERBOARD', UI.accent, this.end.onLeaderboard));
-        this.banner.appendChild(lbRow);
-      }
+      card.appendChild(row);
+      // Secondary row — leaderboard + share (the free viral loop; OG tags already unfurl the link).
+      const row2 = el('div', { display: 'flex', gap: '10px', justifyContent: 'center', marginTop: '10px', flexWrap: 'wrap' });
+      if (this.end.onLeaderboard) row2.appendChild(bannerButton('🏆 LEADERBOARD', UI.accent, this.end.onLeaderboard));
+      row2.appendChild(this.shareButton(s));
+      card.appendChild(row2);
     }
-    this.root.appendChild(this.banner);
+
+    back.appendChild(card);
+    this.root.appendChild(back);
+    if (!reduce) {
+      void back.offsetWidth; // force reflow so the fade runs from opacity 0
+      back.style.opacity = '1';
+    }
+  }
+
+  /** A Share button for the end screen: Web Share API where available (the native mobile sheet),
+   *  else copy a link to the clipboard with an inline "✓ COPIED" confirmation. */
+  private shareButton(s: HudState): HTMLDivElement {
+    const btn = bannerButton('↗ SHARE', UI.water, () => void this.shareRun(s, btn));
+    return btn;
+  }
+
+  private async shareRun(s: HudState, btn: HTMLDivElement): Promise<void> {
+    const url = 'https://bucketmyfire.com';
+    const mission = this.missionName || 'a wildfire';
+    const did = s.won ? `cleared "${mission}"` : `fought "${mission}"`;
+    const text = `I ${did} and scored ${s.score.toLocaleString()} in Bucket My Fire 🚁🔥`;
+    const nav = navigator as Navigator & { share?: (d: { title?: string; text?: string; url?: string }) => Promise<void> };
+    if (nav.share) {
+      try {
+        await nav.share({ title: 'Bucket My Fire', text, url });
+      } catch {
+        /* user dismissed the share sheet — no fallback needed */
+      }
+      return;
+    }
+    try {
+      await navigator.clipboard?.writeText(`${text} — play free at ${url}`);
+    } catch {
+      /* clipboard blocked — nothing more we can do quietly */
+    }
+    const orig = btn.textContent;
+    btn.textContent = '✓ COPIED';
+    window.setTimeout(() => {
+      btn.textContent = orig;
+    }, 1600);
   }
 
   /**
@@ -875,6 +935,7 @@ export class HUD {
    * until `onBegin` fires. Dismissed on BEGIN or a tap on the scrim.
    */
   showBriefing(def: MissionDef, onBegin: () => void): void {
+    this.missionName = def.name; // remember for the end-screen Share text
     const scrim = el('div', {
       position: 'fixed',
       inset: '0',
@@ -882,9 +943,11 @@ export class HUD {
       alignItems: 'center',
       justifyContent: 'center',
       background: 'rgba(4,8,12,0.55)',
+      backdropFilter: 'blur(6px) saturate(108%)', // blur the world so the briefing reads as the focus
       zIndex: '30',
       pointerEvents: 'auto',
     });
+    scrim.style.setProperty('-webkit-backdrop-filter', 'blur(6px) saturate(108%)');
     const card = frosted({ maxWidth: '440px', margin: '0 20px', padding: '24px 26px 20px', borderRadius: R.xl });
     card.appendChild(
       el('div', { fontSize: FS.meta, fontWeight: FW.bold, letterSpacing: '3px', color: UI.accent, marginBottom: '4px' }, 'DISPATCH BRIEFING'),
@@ -1820,6 +1883,31 @@ function bannerButton(text: string, accent: string, onClick: () => void): HTMLDi
     onClick();
   });
   return b;
+}
+
+/** The "NEW AIRCRAFT UNLOCKED" celebration strip on the end screen — one accent-framed panel listing
+ *  each airframe whose campaign gate this win just crossed (name + tagline). */
+function unlockCallout(items: { name: string; tagline: string }[]): HTMLDivElement {
+  const box = el('div', {
+    marginTop: '16px',
+    padding: '12px 16px',
+    borderRadius: R.md,
+    border: `1px solid ${UI.accent}66`,
+    background: UI.accentFill,
+    boxShadow: `0 0 16px ${UI.accent}33`,
+    textAlign: 'center',
+  });
+  box.appendChild(
+    el('div', { fontSize: FS.label, fontWeight: FW.heavy, letterSpacing: '2px', color: UI.accent }, '🎉 NEW AIRCRAFT UNLOCKED'),
+  );
+  for (const it of items) {
+    box.appendChild(el('div', { fontSize: FS.title, fontWeight: FW.bold, marginTop: '6px' }, `🚁 ${it.name}`));
+    box.appendChild(el('div', { fontSize: FS.meta, color: 'rgba(231,247,255,0.7)', marginTop: '1px' }, it.tagline));
+  }
+  box.appendChild(
+    el('div', { fontSize: FS.meta, color: UI.dim, marginTop: '8px' }, 'Choose it from the aircraft carousel on the menu.'),
+  );
+  return box;
 }
 
 /** Rank-letter colours: S gold (mastery) → A green → B cyan → C neutral → D red (a sloppy win). */

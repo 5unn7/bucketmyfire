@@ -75,6 +75,18 @@
       canvas {
         display: block;
       }
+      /* Accessibility: honour the OS "reduce motion" setting for all DOM UI (overlays, the
+         end-of-mission screen, menus). Near-instant instead of animated; the 3D scene is separate. */
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation-duration: 0.001ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.001ms !important;
+          scroll-behavior: auto !important;
+        }
+      }
     </style>
   </head>
   <body>

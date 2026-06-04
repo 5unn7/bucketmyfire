@@ -159,6 +159,18 @@ export function isHeliUnlocked(heli: CatalogItem, cleared: number = missionsClea
   return heli.available && cleared >= (heli.unlockAfter ?? 0);
 }
 
+/**
+ * Helicopters whose campaign gate is crossed by going from `before` to `after` cleared sorties —
+ * i.e. `unlockAfter` lands in `(before, after]`. Drives the on-win "NEW AIRCRAFT UNLOCKED" callout:
+ * Game samples the cleared count either side of recording a win and asks which airframes just opened.
+ */
+export function newlyUnlockedHelis(before: number, after: number): CatalogItem[] {
+  return HELIS.filter((h) => {
+    const at = h.unlockAfter ?? 0;
+    return h.available && at > before && at <= after;
+  });
+}
+
 const STORAGE_KEY = 'bmf.profile.v1';
 
 /**
@@ -190,6 +202,12 @@ export function loadProfile(): Profile | null {
   } catch {
     return null; // corrupt JSON — start fresh
   }
+}
+
+/** True once a pilot has a usable saved profile with a real callsign (loadProfile rejects an
+ *  empty name). The boot path uses this to gate play behind the first-run identity screen. */
+export function hasNamedProfile(): boolean {
+  return loadProfile() !== null;
 }
 
 export function saveProfile(profile: Profile): void {

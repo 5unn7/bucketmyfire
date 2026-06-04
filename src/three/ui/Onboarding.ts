@@ -11,6 +11,9 @@ import {
   missionsCleared,
 } from './profile';
 import { makeIcon } from './icons';
+import { validateCallsign, MAX_CALLSIGN } from './callsign';
+import { isNameTaken, getClientId } from '../leaderboard/client';
+import { isValidEmail, isConfigured, saveToCloud } from '../leaderboard/cloudSave';
 
 /**
  * Interactive onboarding screen (v1). A full-screen DOM overlay — same
@@ -187,6 +190,11 @@ function injectStyles(): void {
   .bmf-chip .g svg { width: 46px; height: 46px; display: block; }
   .bmf-chip .k { font-size: 9.5px; letter-spacing: 0.16em; text-transform: uppercase; color: ${ACCENT}; opacity: 0.8; }
   .bmf-chip .v { font-size: 15px; font-weight: 700; margin-top: 1px; }
+
+  /* First-run welcome (callsign required + optional email) */
+  .bmf-optional { color: rgba(255,255,255,0.4); font-weight: 500; text-transform: none; letter-spacing: 0; margin-left: 6px; }
+  .bmf-help { font-size: 12.5px; line-height: 1.5; color: rgba(255,255,255,0.48); margin: 9px 2px 0; }
+  .bmf-msg { font-size: 12.5px; font-weight: 600; min-height: 16px; margin: 8px 2px 0; color: rgba(255,255,255,0.5); }
   `;
   const tag = document.createElement('style');
   tag.textContent = css;
@@ -390,5 +398,155 @@ export function runOnboarding(): Promise<Profile> {
 
     if (saved) renderWelcome(saved);
     else renderPicker('');
+  });
+}
+
+/**
+ * First-run IDENTITY gate (launch requirement: "every player must have a name to begin"). A focused
+ * full-screen welcome shown once, before the menu, when no named profile exists yet:
+ *
+ *   - CALLSIGN (required) — validated + a best-effort duplicate-name check; START stays disabled
+ *     until it's usable. This is the name the leaderboard submits under, so we capture it up front
+ *     instead of letting a player fly anonymously as "Pilot".
+ *   - EMAIL (optional)    — if given, we pin progress to the cloud (passwordless, hashed in-browser;
+ *     see leaderboard/cloudSave.ts) so scores survive a cleared cache or a device switch. Blank is
+ *     fine — the game is fully playable without it.
+ *
+ * Resolves once the pilot starts; the profile is persisted (and optionally cloud-linked) by then, so
+ * the menu reads a real callsign. The `?autostart`/`?qa` headless paths bypass this entirely (main.ts).
+ */
+export function runWelcome(): Promise<void> {
+  injectStyles();
+
+  return new Promise<void>((resolve) => {
+    const overlay = h('div', { className: 'bmf-ob' });
+    document.body.appendChild(overlay);
+
+    const brand = h('div', { className: 'bmf-brand' }, [
+      ((): HTMLElement => {
+        const t = h('h1', { className: 'bmf-title' });
+        t.innerHTML = 'BUCKET MY <span class="em">FIRE</span>';
+        return t;
+      })(),
+      h('p', { className: 'bmf-sub', textContent: 'Water-bomber flight sim' }),
+    ]);
+
+    // Callsign (required)
+    const nameInput = h('input', {
+      className: 'bmf-input',
+      type: 'text',
+      placeholder: 'Enter your callsign',
+      maxLength: MAX_CALLSIGN,
+      autocomplete: 'off',
+      spellcheck: false,
+    });
+    nameInput.setAttribute('enterkeyhint', 'next');
+    const nameMsg = h('p', { className: 'bmf-msg' });
+    const setNameMsg = (text: string, bad: boolean): void => {
+      nameMsg.textContent = text;
+      nameMsg.style.color = bad ? '#ff7a45' : 'rgba(255,255,255,0.5)';
+    };
+    const nameSection = h('div', { className: 'bmf-section' }, [
+      h('p', { className: 'bmf-label', textContent: 'Callsign' }),
+      h('div', { className: 'bmf-namewrap' }, [h('span', { className: 'pin', textContent: '🎖️' }), nameInput]),
+      nameMsg,
+    ]);
+
+    // Email (optional)
+    const emailInput = h('input', {
+      className: 'bmf-input',
+      type: 'email',
+      placeholder: 'you@example.com',
+      maxLength: 254,
+      autocomplete: 'email',
+      spellcheck: false,
+    });
+    emailInput.inputMode = 'email';
+    emailInput.setAttribute('enterkeyhint', 'go');
+    const emailLabel = h('p', { className: 'bmf-label' });
+    emailLabel.innerHTML = 'Email <span class="bmf-optional">— optional</span>';
+    const emailHelp = isConfigured()
+      ? 'Optional — save your scores forever and restore them on any device. Your email is hashed on your device (never shared), used only to sync progress. Your callsign is public on the leaderboard.'
+      : 'Cloud save is offline right now — your progress is still kept safely in this browser.';
+    const emailSection = h('div', { className: 'bmf-section' }, [
+      emailLabel,
+      h('div', { className: 'bmf-namewrap' }, [h('span', { className: 'pin', textContent: '✉️' }), emailInput]),
+      h('p', { className: 'bmf-help', textContent: emailHelp }),
+    ]);
+
+    const startBtn = h('button', { className: 'bmf-btn', type: 'button', textContent: 'Start flying' });
+    const updateValid = (): void => {
+      startBtn.disabled = nameInput.value.trim().length < 2;
+    };
+
+    let busy = false;
+    const submit = async (): Promise<void> => {
+      if (busy) return;
+      const res = validateCallsign(nameInput.value);
+      if (!res.ok) {
+        setNameMsg(res.reason ?? 'Pick a different callsign.', true);
+        return;
+      }
+      const email = emailInput.value.trim();
+      if (email && !isValidEmail(email)) {
+        setNameMsg('Enter a valid email or leave it blank.', true);
+        return;
+      }
+      busy = true;
+      startBtn.disabled = true;
+      startBtn.textContent = 'Saving…';
+      // Best-effort, fail-open duplicate-name check (skip when the board is offline / it errors).
+      try {
+        if (await isNameTaken(res.value, getClientId())) {
+          setNameMsg(`"${res.value}" is taken — pick another.`, true);
+          busy = false;
+          startBtn.textContent = 'Start flying';
+          updateValid();
+          return;
+        }
+      } catch {
+        /* offline — allow the name through */
+      }
+      // Persist the profile first so the callsign survives even if the cloud call fails, then pin to
+      // the cloud when an email was given (best-effort — never blocks starting the game).
+      saveProfile({ name: res.value, mapId: firstAvailable(MAPS).id, heliId: firstAvailable(HELIS).id });
+      if (email && isValidEmail(email) && isConfigured()) {
+        try {
+          await saveToCloud(res.value, email);
+        } catch {
+          /* best-effort cloud link */
+        }
+      }
+      finish();
+    };
+    const finish = (): void => {
+      overlay.style.opacity = '0';
+      overlay.style.transition = 'opacity 0.3s ease';
+      window.setTimeout(() => overlay.remove(), 300);
+      resolve();
+    };
+
+    startBtn.addEventListener('click', () => void submit());
+    nameInput.addEventListener('input', () => {
+      setNameMsg('', false);
+      updateValid();
+    });
+    nameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        emailInput.focus();
+      }
+    });
+    emailInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        void submit();
+      }
+    });
+
+    overlay.append(h('div', { className: 'bmf-panel' }, [brand, nameSection, emailSection, startBtn]));
+    updateValid();
+    // Desktop only — autofocusing on touch pops the keyboard over the screen.
+    if (!('ontouchstart' in window)) nameInput.focus();
   });
 }

@@ -44,6 +44,9 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          # Crash/error beacon sink (the report-error Edge Function). Public endpoint baked into the
+          # bundle; absent → errors log to the console only. See src/three/telemetry/errorBeacon.ts.
+          VITE_ERROR_BEACON_URL: ${{ secrets.VITE_ERROR_BEACON_URL }}
 
       - name: Publish dist/ to gh-pages
         env:
