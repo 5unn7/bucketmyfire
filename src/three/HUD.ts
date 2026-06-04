@@ -893,7 +893,20 @@ export class HUD {
    * the text (one tight line, not a chunky card). Created on demand (events, not per-frame); the
    * stack is capped to a few visible lines so it never crowds the HUD.
    */
+  /**
+   * Personalize a radio/briefing line: the mission catalog + hardcoded callouts use "Water-1" as the
+   * pilot callsign placeholder (see missions/catalog.ts), so swap in the player's own callsign and
+   * Dispatch addresses them by name. No profile (e.g. headless ?autostart) → the "Water-1" default
+   * rides through unchanged.
+   */
+  private personalize(text: string): string {
+    const name = this.pilotName;
+    if (!name) return text;
+    return text.replace(/Water-1/g, () => name); // fn form: a "$"-bearing callsign can't trigger replace's special patterns
+  }
+
   pushComms(speaker: CommsSpeaker, text: string, urgency: CommsUrgency): void {
+    text = this.personalize(text);
     const color =
       speaker === 'warning' || urgency === 'alert' ? UI.warn : speaker === 'crew' ? '#ffb24a' : speaker === 'pilot' ? UI.text : UI.accent;
     const line = frosted({
@@ -960,7 +973,7 @@ export class HUD {
     }
     card.appendChild(pips);
     card.appendChild(
-      el('div', { fontSize: FS.md, lineHeight: '1.55', color: 'rgba(231,247,255,0.86)', marginBottom: '18px' }, def.intel ?? def.brief),
+      el('div', { fontSize: FS.md, lineHeight: '1.55', color: 'rgba(231,247,255,0.86)', marginBottom: '18px' }, this.personalize(def.intel ?? def.brief)),
     );
     const begin = bannerButton('BEGIN FLIGHT ▸', UI.accent, () => {
       scrim.remove();
