@@ -63,7 +63,10 @@ interface Rig {
 }
 
 function build(mission: MissionDef): Rig {
-  const world = new World(mission.seed);
+  // Build the SAME world the game builds: pass the mission's map (region) + name pins. Without the
+  // regionId the verifier would grow a NON-anchored world while the game grows the anchored one —
+  // the completability gate would test a different map than ships. (Anchored-placement parity.)
+  const world = new World(mission.seed, { regionId: mission.map, pins: mission.places, homeBase: mission.homeBase });
   const wind = new Wind(mission.wind?.angle, mission.wind?.strengthScale ?? 1);
   const fireBound = WORLD3D.size / 2 - 40;
   const fire = new FireSystem(

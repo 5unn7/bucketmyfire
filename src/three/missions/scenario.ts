@@ -1,7 +1,7 @@
 import { World, CommunitySite } from '../World';
 import type { FireSystem } from '../sim/FireSystem';
 import type { CrewZone } from '../sim/CrewTransport';
-import type { MissionDef, ZonePlacement, SizeClass, FirePlacement } from './types';
+import type { MissionDef, ZonePlacement, SizeClass, FirePlacement, CommunityRef } from './types';
 import { WORLD3D } from '../config';
 
 /**
@@ -20,8 +20,15 @@ export const SIZE_CLASS: Record<SizeClass, { radius: number; heat: number }> = {
   mega: { radius: 6, heat: 1.0 },
 };
 
-/** Resolve a `community | 'base'` reference to a world point (fallback: a fuel site off spawn). */
-export function communityPoint(world: World, which: number | 'base'): { x: number; z: number } {
+/** Tiny deterministic string→number — turns an anchor id into a stable fan-angle phase. */
+function hashStr(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return h;
+}
+
+/** Resolve a community reference (town index, `'base'`, or anchor id) to a world point (fallback: a fuel site off spawn). */
+export function communityPoint(world: World, which: CommunityRef): { x: number; z: number } {
   const c = world.getCommunity(which);
   if (c) return { x: c.x, z: c.z };
   const site = world.placement.fireSite(world.rng, WORLD3D.size / 2 - 60, 150);
@@ -122,7 +129,7 @@ export function igniteFromPlacement(
       const count = f.count ?? 1;
       // A numeric phase that's consistent whether `community` is an index or 'base' (vs the old
       // `toString().length`, where 'base' (4) fanned the ring quite differently from index 0/1).
-      const phase = f.community === 'base' ? -1 : f.community;
+      const phase = f.community === 'base' ? -1 : typeof f.community === 'number' ? f.community : hashStr(f.community);
       for (let i = 0; i < count; i++) {
         // Fan multiple fires around the community at the offset radius (deterministic angles).
         const ang = (i / count) * Math.PI * 2 + phase;

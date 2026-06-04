@@ -49,11 +49,37 @@ export interface Region {
   anchors?: readonly MapAnchor[]; // bases + communities at relative coords (placement layer, docs/MAPS.md)
 }
 
+// --- saskatchewan ANCHORS — the real fire bases + protected towns at authored RELATIVE coords -----
+// `x` west→east 0..1, `y` south→north 0..1 (World maps these into an inset rect; +y north → −Z).
+// The 7 fire bases you spawn/refuel from + the towns the campaign defends, so the map reads as a
+// faithful mini-Saskatchewan rather than random hamlets. `kind:'both'` = a base that's ALSO a
+// protected community (La Ronge / Denare Beach / Buffalo Narrows). Exactly one `home`. See docs/MAPS.md.
+const SASKATCHEWAN_ANCHORS: readonly MapAnchor[] = [
+  // 7 fire bases
+  { id: 'la-ronge', name: 'La Ronge', kind: 'both', x: 0.51, y: 0.64, home: true, scoop: { lake: 'Lac La Ronge', radius: 240 }, blurb: 'Primary tanker base — island lake, easy water.' },
+  { id: 'prince-albert', name: 'Prince Albert', kind: 'base', x: 0.44, y: 0.1, scoop: { lake: 'Candle Lake', radius: 130 }, blurb: 'Southern gateway base; river country.' },
+  { id: 'southend', name: 'Southend', kind: 'base', x: 0.82, y: 1.0, scoop: { lake: 'Reindeer Lake', radius: 260 }, blurb: 'Remote far-north outpost on a vast cold lake.' },
+  { id: 'hudson-bay', name: 'Hudson Bay', kind: 'base', x: 0.95, y: 0.0, scoop: { lake: 'Fir Lake', radius: 90 }, blurb: 'Eastern forward base — lake-poor, hard scoop.' },
+  { id: 'denare-beach', name: 'Denare Beach', kind: 'both', x: 1.0, y: 0.52, scoop: { lake: 'Amisk Lake', radius: 170 }, blurb: 'SE lakeside village near the Manitoba line.' },
+  { id: 'dorintosh', name: 'Dorintosh', kind: 'base', x: 0.0, y: 0.45, scoop: { lake: 'Greig Lake', radius: 150 }, blurb: 'SW park gateway — lakes everywhere, easy water.' },
+  { id: 'buffalo-narrows', name: 'Buffalo Narrows', kind: 'both', x: 0.02, y: 0.86, scoop: { lake: 'Peter Pond Lake', radius: 220 }, blurb: 'NW lakes-country base on the narrows.' },
+  // protected towns the missions defend
+  { id: 'weyakwin', name: 'Weyakwin', kind: 'community', x: 0.46, y: 0.55, scoop: { lake: 'Weyakwin Lake', radius: 110 } },
+  { id: 'missinipe', name: 'Missinipe', kind: 'community', x: 0.55, y: 0.73, scoop: { lake: 'Otter Lake', radius: 120 } },
+  { id: 'stanley-mission', name: 'Stanley Mission', kind: 'community', x: 0.63, y: 0.78, scoop: { lake: 'Nistowiak Lake', radius: 120 } },
+  { id: 'sucker-river', name: 'Sucker River', kind: 'community', x: 0.57, y: 0.71 }, // river-fed; shares Stanley Mission's water sector
+  { id: 'beauval', name: 'Beauval', kind: 'community', x: 0.16, y: 0.74, scoop: { lake: 'Lac la Plonge', radius: 120 } },
+  { id: 'ile-a-la-crosse', name: 'Île-à-la-Crosse', kind: 'community', x: 0.1, y: 0.8, scoop: { lake: 'Lac Île-à-la-Crosse', radius: 150 } },
+  // secondaries for the missions' unpinned references (m2 LZ South, m4 Family 3)
+  { id: 'missinipe-south', name: 'Missinipe South', kind: 'community', x: 0.55, y: 0.71 },
+  { id: 'grandmothers-bay', name: 'Grandmother’s Bay', kind: 'community', x: 0.6, y: 0.8, scoop: { lake: 'Iskwatikan Lake', radius: 110 } },
+];
+
 // --- saskatchewan — the live campaign map (holds all 6 missions) -------------------------------
 // Real northern-SK places: the Churchill River chain, the Lac La Ronge country, the Athabasca
 // basin. Communities are the real northern villages, hamlets, and First Nations the campaign
 // flies to protect; lakes and highways are the real water and gravel that thread them together.
-// Anchored real placements (La Ronge, Prince Albert, Southend, …) are the planned next layer — docs/MAPS.md.
+// `anchors` pins the real fire bases + towns at relative coords (above) — World resolves them.
 const SASKATCHEWAN: Region = {
   id: 'saskatchewan',
   label: 'Saskatchewan',
@@ -132,27 +158,165 @@ const SASKATCHEWAN: Region = {
       'Hwy 955',
     ],
   },
+  anchors: SASKATCHEWAN_ANCHORS,
 };
 
-// --- ember-flats — MUSKEG PEATLAND (future map: flat bogs, high fire load, few lakes) ----------
-const EMBER_FLATS: Region = {
-  id: 'ember-flats',
-  label: 'Muskeg peatland',
+// --- british-columbia — INTERIOR BC (future map: steep valleys, deep lakes, wind through the passes) ---
+// Real Interior-BC fire country: the Cariboo, Thompson, and Okanagan. Mountainous relief lands when the
+// terrain profile is tuned (docs/MAPS.md Phase 3); for now it's a future region with real place names.
+const BRITISH_COLUMBIA: Region = {
+  id: 'british-columbia',
+  label: 'British Columbia',
   names: {
-    lakes: ['Tannin Lake', 'Bog Mirror', 'Sedge Lake', 'Cranberry Lake', 'Peat Pond', 'Smoke Lake', 'Cinderwater', 'Marsh Lake', 'Reedwater', 'Ember Pond'],
-    communities: ['Bog End', 'Tamarack Crossing', 'Sphagnum Flats', 'Cranberry Portage', 'Peatford', 'Smoulder Creek', 'Mire Landing', 'Ashpoint', 'Duff Hollow', 'Reedmarsh'],
-    highways: ['Hwy 63', 'Hwy 686', 'Hwy 754', 'Hwy 813', 'Hwy 881', 'Hwy 902'],
+    lakes: [
+      'Okanagan Lake',
+      'Shuswap Lake',
+      'Kootenay Lake',
+      'Quesnel Lake',
+      'Babine Lake',
+      'Stuart Lake',
+      'François Lake',
+      'Adams Lake',
+      'Nicola Lake',
+      'Bowron Lake',
+      'Arrow Lakes',
+      'Chilko Lake',
+      'Williston Lake',
+      'Cariboo Lake',
+    ],
+    communities: [
+      'Kamloops',
+      'Kelowna',
+      'Williams Lake',
+      'Prince George',
+      'Vernon',
+      'Penticton',
+      'Merritt',
+      'Lytton',
+      'Lillooet',
+      'Quesnel',
+      '100 Mile House',
+      'Cache Creek',
+      'Ashcroft',
+      'Clearwater',
+      'Vanderhoof',
+      'Burns Lake',
+      'Fort St. James',
+      'Salmon Arm',
+      'Revelstoke',
+      'Princeton',
+      'Logan Lake',
+      'Barriere',
+      'Chetwynd',
+      'Mackenzie',
+    ],
+    highways: ['Hwy 1', 'Hwy 5', 'Hwy 97', 'Hwy 3', 'Hwy 16', 'Hwy 99', 'Hwy 24', 'Hwy 6', 'Hwy 33', 'Hwy 95', 'Hwy 20'],
   },
 };
 
-// --- glacier-coast — FJORD COAST (future map: steep valleys, deep inlets, funnelled wind) ------
-const GLACIER_COAST: Region = {
-  id: 'glacier-coast',
-  label: 'Fjord coast',
+// --- ontario — NORTHERN ONTARIO (future map: Canadian Shield boreal, big cold lakes) -----------
+// Real northwestern/northeastern Ontario fire country: the Shield from Thunder Bay and Kenora up to the
+// James Bay lowlands. Boreal like Saskatchewan, so it shares the low-relief default until tuned.
+const ONTARIO: Region = {
+  id: 'ontario',
+  label: 'Ontario',
   names: {
-    lakes: ['Blue Glacier Inlet', 'Deepfjord', 'Meltwater Sound', 'Iceberg Bay', 'Crevasse Lake', 'Moraine Lake', 'Calving Sound', 'Frostfjord'],
-    communities: ['Fjordgate', 'Glacier Reach', 'Cold Inlet', 'Saltspray', 'Kittiwake Cove', 'Meltwater', 'Bergen Sound', 'Cairn Point', 'Tidehaven', 'Stormridge'],
-    highways: ['Route 1', 'Route 4', 'Coast Road', 'Pass Road', 'Hwy 99'],
+    lakes: [
+      'Lake Nipigon',
+      'Lake of the Woods',
+      'Lac Seul',
+      'Rainy Lake',
+      'Wabigoon Lake',
+      'Eagle Lake',
+      'Lake Abitibi',
+      'Lake Temagami',
+      'Lake Nipissing',
+      'Lake St. Joseph',
+      'Trout Lake',
+      'Lake Superior',
+      'Lake Timiskaming',
+      'Wabakimi Lake',
+    ],
+    communities: [
+      'Thunder Bay',
+      'Kenora',
+      'Dryden',
+      'Sioux Lookout',
+      'Red Lake',
+      'Atikokan',
+      'Marathon',
+      'Wawa',
+      'Hearst',
+      'Kapuskasing',
+      'Cochrane',
+      'Timmins',
+      'Chapleau',
+      'Nipigon',
+      'Geraldton',
+      'Ear Falls',
+      'Nakina',
+      'Fort Frances',
+      'Ignace',
+      'Manitouwadge',
+      'Longlac',
+      'Moosonee',
+      'Terrace Bay',
+      'Greenstone',
+    ],
+    highways: ['Hwy 11', 'Hwy 17', 'Hwy 71', 'Hwy 72', 'Hwy 105', 'Hwy 599', 'Hwy 101', 'Hwy 144', 'Hwy 129', 'Hwy 61'],
+  },
+};
+
+// --- alberta — NORTHERN ALBERTA (future map: boreal + foothills, big-season crown fire) --------
+// Real Alberta fire country: the Fort McMurray / Slave Lake / Peace boreal and the foothills. Black
+// spruce that crowns and runs; shares the low-relief default until the foothills profile is tuned.
+const ALBERTA: Region = {
+  id: 'alberta',
+  label: 'Alberta',
+  names: {
+    lakes: [
+      'Lesser Slave Lake',
+      'Lake Athabasca',
+      'Cold Lake',
+      'Lac La Biche',
+      'Calling Lake',
+      'Utikuma Lake',
+      'Wabasca Lake',
+      'Peerless Lake',
+      'Winefred Lake',
+      'Christina Lake',
+      'Touchwood Lake',
+      'Gull Lake',
+      'Sturgeon Lake',
+      'Pigeon Lake',
+    ],
+    communities: [
+      'Fort McMurray',
+      'Slave Lake',
+      'High Level',
+      'Grande Prairie',
+      'Peace River',
+      'Fox Creek',
+      'Whitecourt',
+      'Hinton',
+      'Edson',
+      'Lac La Biche',
+      'Athabasca',
+      'Fort Chipewyan',
+      'High Prairie',
+      'Manning',
+      'Valleyview',
+      'Swan Hills',
+      'Wabasca',
+      'Conklin',
+      'Rainbow Lake',
+      'Zama City',
+      'Red Earth Creek',
+      'Cold Lake',
+      'Fort Vermilion',
+      'Janvier',
+    ],
+    highways: ['Hwy 63', 'Hwy 88', 'Hwy 35', 'Hwy 43', 'Hwy 40', 'Hwy 881', 'Hwy 686', 'Hwy 2', 'Hwy 58', 'Hwy 813'],
   },
 };
 
@@ -160,8 +324,9 @@ export const DEFAULT_REGION_ID = 'saskatchewan';
 
 const REGIONS: Record<string, Region> = {
   [SASKATCHEWAN.id]: SASKATCHEWAN,
-  [EMBER_FLATS.id]: EMBER_FLATS,
-  [GLACIER_COAST.id]: GLACIER_COAST,
+  [BRITISH_COLUMBIA.id]: BRITISH_COLUMBIA,
+  [ALBERTA.id]: ALBERTA,
+  [ONTARIO.id]: ONTARIO,
 };
 
 /** Resolve a region by id, falling back to the default Saskatchewan map for an unknown/missing id. */

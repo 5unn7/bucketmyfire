@@ -97,22 +97,6 @@ function mapBoreal(): string {
   return s;
 }
 
-function mapEmber(): string {
-  let s = tile('#4a3f30', '#332a1d');
-  // charred ground patch + logs
-  s += poly([P(0.9, 0.9, 0.51), P(2.4, 0.9, 0.51), P(2.4, 2.4, 0.51), P(0.9, 2.4, 0.51)], '#241d14');
-  s += box(0.9, 1.5, 0.5, 1.4, 0.2, 0.16, '#2c2118');
-  s += box(1.4, 0.9, 0.5, 0.2, 1.4, 0.16, '#2c2118');
-  // layered flame rising from the seat of the fire (amorphous → flat facing layers)
-  const fx = 1.55,
-    fz = 1.55;
-  s += `<ellipse cx="${(OX + (fx - fz) * U).toFixed(1)}" cy="${(OY + (fx + fz) * U * 0.5).toFixed(1)}" rx="14" ry="7" fill="rgba(255,120,40,0.22)"/>`;
-  s += poly([P(fx - 0.55, fz, 0.5), P(fx + 0.55, fz, 0.5), P(fx, fz, 2.05)], '#e0501c');
-  s += poly([P(fx - 0.38, fz, 0.5), P(fx + 0.42, fz, 0.5), P(fx + 0.05, fz, 1.65)], '#f5882a');
-  s += poly([P(fx - 0.2, fz, 0.5), P(fx + 0.24, fz, 0.5), P(fx + 0.02, fz, 1.15)], '#ffd24a');
-  return s;
-}
-
 function mapGlacier(): string {
   let s = tile('#2f6f9e', '#384a58'); // water top, rock sides
   s += poly([P(0.2, 0.2, 0.51), P(1.3, 0.2, 0.51), P(1.3, 1.3, 0.51), P(0.2, 1.3, 0.51)], '#3f86b0');
@@ -206,8 +190,9 @@ function heliHawk(): string {
 
 const BUILDERS: Record<string, () => string> = {
   saskatchewan: mapBoreal,
-  'ember-flats': mapEmber,
-  'glacier-coast': mapGlacier,
+  'british-columbia': mapGlacier,
+  alberta: mapBoreal,
+  ontario: mapBoreal,
   'bell-205a1': heliBell,
   'bell-212': heliBell212,
   'uh-60': heliHawk,

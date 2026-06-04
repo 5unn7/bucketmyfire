@@ -16,6 +16,15 @@
 export type SizeClass = 'spot' | 'small' | 'medium' | 'large' | 'mega';
 
 /**
+ * A reference to a placed site, resolved by `World.getCommunity` (see scenario.ts). One of:
+ *   • a `number` — index into the map's ambient/anchored TOWN sites (legacy index form),
+ *   • `'base'` — the mission's HOME base/depot,
+ *   • a `string` MapAnchor id ('la-ronge', 'weyakwin', …) — an authored anchored place (regions.ts).
+ * The `(string & {})` keeps `'base'` a distinct literal in autocomplete while accepting any anchor id.
+ */
+export type CommunityRef = number | 'base' | (string & {});
+
+/**
  * Time-of-day atmosphere a mission flies under (the sky/sun/fog mood). A pure string key — the
  * actual colour/sun-direction preset lives in `sky/TimeOfDay.ts` (`SKY_PRESETS`), keeping this
  * data contract engine-free. Omit → the campaign's default golden hour. Not every mission is
@@ -26,7 +35,7 @@ export type TimeOfDay = 'dawn' | 'day' | 'noon' | 'overcast' | 'golden' | 'dusk'
 /** Where a mission seeds a fire (or a cluster of `count` fires). */
 export type FirePlacement =
   | { at: 'point'; x: number; z: number; size: SizeClass }
-  | { at: 'nearCommunity'; community: number | 'base'; offset?: number; size: SizeClass; count?: number }
+  | { at: 'nearCommunity'; community: CommunityRef; offset?: number; size: SizeClass; count?: number }
   | { at: 'random'; count: number; size: SizeClass; minFromOrigin?: number }
   // An AUTHORED fire COMPLEX: `count` heads bunched within `spread` around a deterministic anchor
   // (vs `random`, which scatters independent dots map-wide). The anchor is `origin` (map centre),
@@ -35,7 +44,7 @@ export type FirePlacement =
   // anchor. Stays seed-robust: every head is snapped to dry fuel so the blaze always catches.
   | {
       at: 'cluster';
-      anchor: 'origin' | 'lake' | { community: number | 'base' };
+      anchor: 'origin' | 'lake' | { community: CommunityRef };
       bearing?: number;
       distance?: number;
       spread?: number;
@@ -54,14 +63,14 @@ export type FirePlacement =
       angle?: number;
       x?: number;
       z?: number;
-      community?: number | 'base';
+      community?: CommunityRef;
       offset?: number;
     };
 
 /** Which structures a mission places (explicit — not the sandbox auto-generation). */
 export interface StructureSpec {
   depot?: boolean; // place the lakeside base/depot (the refuel + crew base point). Default true.
-  groups?: { community: number | 'base'; cabins?: number }[]; // hamlets to populate with cabins
+  groups?: { community: CommunityRef; cabins?: number }[]; // hamlets to populate with cabins
   extraCabins?: number; // lone bush cabins via World.placement.fireSite
 }
 
@@ -73,7 +82,7 @@ export interface ZonePlacement {
   at: 'point' | 'nearCommunity' | 'depot';
   x?: number;
   z?: number;
-  community?: number | 'base';
+  community?: CommunityRef;
   label?: string; // shown on the zone marker / HUD ("LZ Alpha", "Cabin 2")
 }
 

@@ -3,7 +3,7 @@ import { Noise2D, FbmParams } from './world/noise';
 import { Biomes } from './world/biomes';
 import { Placement } from './world/placement';
 import { createNameSource, NameSource } from './world/names';
-import { getRegion } from './world/regions';
+import { getRegion, Region, MapAnchor } from './world/regions';
 import { getTerrainProfile, TerrainProfile } from './world/terrainProfile';
 
 /**
@@ -53,6 +53,18 @@ export interface CommunitySite {
   kind: 'base' | 'town'; // 'base' = lakeside depot site; 'town' = forest hamlet
   radius: number; // cabins of a hamlet scatter within this of the center (units)
   buildings: number; // intended cabin count (towns); 0 for the base (depot only)
+  anchorId?: string; // set when this site came from a region MapAnchor (links it back for getCommunity(id))
+}
+
+/** A region MapAnchor resolved to its placed world site (anchored maps). Exposed via World.anchor*(). */
+export interface ResolvedAnchor {
+  id: string;
+  name: string;
+  kind: 'base' | 'community' | 'both';
+  x: number;
+  z: number;
+  home: boolean;
+  lake: LakeRuntime | null; // the adjacent scoop lake (guaranteed for bases), or null
 }
 
 /** A highway (Track A5): a meandering polyline draped on the terrain between communities. */
@@ -86,6 +98,7 @@ export interface PlacePins {
 export interface WorldOptions {
   regionId?: string; // region/map id (see world/regions.ts); omit → the default Saskatchewan map
   pins?: PlacePins; // mission-authored names laid over the seeded ones
+  homeBase?: string; // which MapAnchor base is the operational HOME (spawn/refuel) — placed first; omit → region home
 }
 
 export class World {
@@ -113,6 +126,14 @@ export class World {
   private readonly ridgeFbm: FbmParams;
   /** Optional high-relief massif layer; null on low-relief maps (so baseHeight skips it entirely). */
   private readonly mountainFbm: FbmParams | null;
+  /** The active map's region (names + optional anchors); resolved once in the ctor. */
+  private readonly region: Region;
+  /** Which anchor base is the operational home this build (mission.homeBase); placed first. */
+  private readonly homeBaseId?: string;
+  /** Placed authored anchors (bases + towns) for anchored maps; empty on procedural maps. */
+  private resolvedAnchors: ResolvedAnchor[] = [];
+  /** Inset margin mapping normalized anchor coords into the world rect (keeps edge anchors off the border). */
+  private static readonly ANCHOR_MARGIN = 0.1;
 
   /**
    * @param seed world seed — threads through noise/hydrology/placement/fire RNG so the same
@@ -125,7 +146,9 @@ export class World {
     // Names draw from their own seeded streams (off the world seed) over the chosen region's pools
     // (world/regions.ts), independent of the main rng ordering — so picking a map and naming a
     // feature never shifts the rest of world generation.
-    this.nameSource = createNameSource(seed ^ 0x27d4eb2f, getRegion(opts.regionId).names);
+    this.region = getRegion(opts.regionId);
+    this.homeBaseId = opts.homeBase;
+    this.nameSource = createNameSource(seed ^ 0x27d4eb2f, this.region.names);
     // Offset the noise seed off the rng seed so terrain and placement RNG don't correlate.
     this.noise = new Noise2D(seed ^ 0x9e3779b9);
     // The per-map terrain profile (world/terrainProfile.ts): every heightfield parameter lives here so
@@ -220,11 +243,13 @@ export class World {
    * that index. Returns null if the seeded map didn't grow a matching site. Used by `Game` to
    * resolve `nearCommunity` fire/structure/zone specs against the generated world.
    */
-  getCommunity(which: number | 'base'): CommunitySite | null {
+  getCommunity(which: number | 'base' | string): CommunitySite | null {
     if (which === 'base') return this.communities.find((c) => c.kind === 'base') ?? null;
+    // A string anchor id ('la-ronge', 'weyakwin', …) → the placed anchored site (anchored maps).
+    if (typeof which === 'string') return this.communities.find((c) => c.anchorId === which) ?? null;
     const towns = this.communities.filter((c) => c.kind === 'town');
-    // Town index only — never fall through to a BASE slot (the array's first `baseCount` entries are
-    // bases now), so a mission's `community: N` can't accidentally resolve to a refuel base.
+    // Town index only — never fall through to a BASE slot (the array's first entries are bases),
+    // so a mission's `community: N` can't accidentally resolve to a refuel base.
     return towns[which] ?? null;
   }
 
@@ -236,6 +261,44 @@ export class World {
     return this.communities.filter((c) => c.kind === 'base');
   }
 
+  /** Map an anchor's normalized (x,y)∈[0,1] into world XZ: an inset rect (10% margin) so an edge
+   *  anchor still has airspace, with +y (north) → −Z (the radar's up). */
+  private anchorToWorld(a: MapAnchor): { x: number; z: number } {
+    const m = World.ANCHOR_MARGIN;
+    const lx = m + (1 - 2 * m) * a.x;
+    const ly = m + (1 - 2 * m) * a.y;
+    return { x: (lx - 0.5) * this.size, z: (0.5 - ly) * this.size };
+  }
+
+  /** The LakeRuntime whose centre is nearest (x,z), or null if the map has no lakes. */
+  private nearestLakeRuntime(x: number, z: number): LakeRuntime | null {
+    let best: LakeRuntime | null = null;
+    let bestD = Infinity;
+    for (const l of this.lakes) {
+      const d = (l.x - x) * (l.x - x) + (l.z - z) * (l.z - z);
+      if (d < bestD) {
+        bestD = d;
+        best = l;
+      }
+    }
+    return best;
+  }
+
+  /** Resolve an authored anchor by id to its placed world site (anchored maps only), or null. */
+  anchor(id: string): ResolvedAnchor | null {
+    return this.resolvedAnchors.find((a) => a.id === id) ?? null;
+  }
+
+  /** All placed anchors (bases + towns) for the active map; empty on procedural maps. */
+  anchors(): ResolvedAnchor[] {
+    return this.resolvedAnchors.slice();
+  }
+
+  /** The home base anchor (cold-start / default refuel), or null if the map has no anchors. */
+  homeAnchor(): ResolvedAnchor | null {
+    return this.resolvedAnchors.find((a) => a.home) ?? null;
+  }
+
   /**
    * Scatter lakes across the world, seeded + deterministic. Count scales with area
    * (keeping the same per-area water density the 600-unit map had), centers are biased
@@ -245,6 +308,20 @@ export class World {
    */
   private scatterLakes(): LakeRuntime[] {
     const lakes: LakeRuntime[] = [];
+    // Anchored maps: pin a GUARANTEED scoop lake at each scoop-bearing anchor BEFORE the random
+    // scatter, so every base/town that needs water has it on hand. They count toward `count` (below),
+    // displacing random water rather than inflating density; the random loop's overlap check skips them.
+    for (const a of this.region.anchors ?? []) {
+      if (!a.scoop) continue;
+      const r = a.scoop.radius ?? 120;
+      const p = this.anchorToWorld(a);
+      // Keep the whole lake on the map: clamp its centre so centre ± radius stays inside the terrain.
+      const lim = this.size / 2 - r - 30;
+      p.x = Math.max(-lim, Math.min(lim, p.x));
+      p.z = Math.max(-lim, Math.min(lim, p.z));
+      if (lakes.some((o) => Math.hypot(o.x - p.x, o.z - p.z) < o.r + r + 40)) continue;
+      lakes.push({ x: p.x, z: p.z, r, waterLevel: this.baseHeight(p.x, p.z), shape: this.makeLakeShape(), name: a.scoop.lake });
+    }
     const density = LAKES3D.length / (600 * 600); // curated lakes per unit² at the base size
     const count = Math.max(LAKES3D.length, Math.round(density * this.size * this.size * this.profile.lakeDensityScale));
     const bound = this.size / 2 - 60;
@@ -458,9 +535,62 @@ export class World {
    */
   private makeCommunities(): CommunitySite[] {
     const out: CommunitySite[] = [];
-
+    // Anchored maps (Saskatchewan): the real fire bases + protected towns ARE the populated map,
+    // placed at authored coords. No random ambient towns → no duplicate names, no clutter.
+    if (this.region.anchors?.length) {
+      this.placeAnchoredSites(out);
+      return out;
+    }
+    // Procedural maps (BC / Ontario / sandbox): lakeside bases biggest-lake-first, then forest hamlets.
     for (const base of this.pickLakesideSites(COMMUNITIES.baseCount)) out.push(base);
+    this.scatterAmbientTowns(out);
+    return out;
+  }
 
+  /**
+   * Place the region's authored anchors (bases + towns) at their relative coords. The HOME anchor goes
+   * FIRST so `bases()[0]` / `getCommunity('base')` resolve to it. Bases sit on the dry shore of their
+   * guaranteed scoop lake; towns sit at their coord (nudged off water if one happens to cover it). Records
+   * `resolvedAnchors` so `anchor()/homeAnchor()` and `getCommunity(id)` can look them up.
+   */
+  private placeAnchoredSites(out: CommunitySite[]): void {
+    this.resolvedAnchors = [];
+    const all = this.region.anchors ?? [];
+    // Operational HOME base: the build's homeBase (a base/both anchor) if given, else the region's
+    // `home` anchor, else the first base. Placed FIRST so bases()[0] / getCommunity('base') resolve to it.
+    const chosen =
+      (this.homeBaseId && all.find((a) => a.id === this.homeBaseId && (a.kind === 'base' || a.kind === 'both'))) ||
+      all.find((a) => a.home) ||
+      all.find((a) => a.kind === 'base' || a.kind === 'both') ||
+      null;
+    const anchors = chosen ? [chosen, ...all.filter((a) => a.id !== chosen.id)] : [...all];
+    for (const a of anchors) {
+      const p = this.anchorToWorld(a);
+      const lake = this.lakeAt(p.x, p.z) ?? this.nearestLakeRuntime(p.x, p.z);
+      const isBase = a.kind === 'base' || a.kind === 'both';
+      let site: { x: number; z: number } = p;
+      // Bases must sit on dry shore; nudge to the lake's shore on the side TOWARD map centre, so an
+      // edge anchor's base stays on the terrain (never out past the rim).
+      if ((isBase || this.isOverWater(p.x, p.z)) && lake) {
+        const s = this.lakeShorePointToward(lake, 0, 0) ?? this.lakeShorePoint(lake);
+        if (s) site = s;
+      }
+      out.push({
+        name: a.name,
+        x: site.x,
+        z: site.z,
+        kind: isBase ? 'base' : 'town',
+        radius: COMMUNITIES.clusterRadius,
+        buildings: isBase ? 0 : (COMMUNITIES.cabinsMin + COMMUNITIES.cabinsMax) >> 1,
+        anchorId: a.id,
+      });
+      this.resolvedAnchors.push({ id: a.id, name: a.name, kind: a.kind, x: site.x, z: site.z, home: a.id === chosen?.id, lake });
+    }
+  }
+
+  /** Scatter `COMMUNITIES.townCount` random forest hamlets on dry ground, off spawn + off existing
+   *  sites — the procedural-map populated layer (unused on anchored maps). */
+  private scatterAmbientTowns(out: CommunitySite[]): void {
     const bound = this.size / 2 - 80;
     let towns = 0;
     let guard = 0;
@@ -493,7 +623,6 @@ export class World {
       });
       towns++;
     }
-    return out;
   }
 
   /**
@@ -534,6 +663,21 @@ export class World {
         if (this.isOverWater(x, z)) continue;
         return { x, z };
       }
+    }
+    return null;
+  }
+
+  /** Dry shore point on the side of the lake TOWARD (tx,tz) — keeps an anchored base inward (toward
+   *  map centre) so an edge anchor never lands its base off the terrain. Falls back to null if landlocked. */
+  private lakeShorePointToward(lake: LakeRuntime, tx: number, tz: number): { x: number; z: number } | null {
+    const a0 = Math.atan2(tz - lake.z, tx - lake.x);
+    const dx = Math.cos(a0);
+    const dz = Math.sin(a0);
+    const rr = this.lakeRadius(lake, a0);
+    for (let m = rr + 6; m < rr + COMMUNITIES.baseShoreSearch; m += 3) {
+      const x = lake.x + dx * m;
+      const z = lake.z + dz * m;
+      if (!this.isOverWater(x, z)) return { x, z };
     }
     return null;
   }

@@ -263,7 +263,7 @@ export class Game {
     // into the ctor now that they take the per-mission seed / wind override.)
     // Grow the mission's MAP (its authored region, else the player's chosen map, else the default)
     // and lay any authored place-name pins over the seeded ones so briefings match the radar.
-    this.world = new World(mission.seed, { regionId: mission.map ?? this.mapId, pins: mission.places });
+    this.world = new World(mission.seed, { regionId: mission.map ?? this.mapId, pins: mission.places, homeBase: mission.homeBase });
     this.wind = new Wind(mission.wind?.angle, mission.wind?.strengthScale ?? 1);
     this.fauna = new Fauna(this.scene, this.world);
     this.depotXZ = (() => {
