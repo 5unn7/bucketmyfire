@@ -63,12 +63,13 @@ export const CAMPAIGN: MissionDef[] = [
     id: 'crew-insertion',
     index: 2,
     name: 'Crew Insertion',
-    brief: 'Ferry three fire crews from the base out to the landing zones on the ridge before the front builds. Land at each LZ, let the crew off, then go back for the next.',
+    brief: 'Ferry three fire crews from the base out to the landing zones on the ridge before the front builds. The first crew is already aboard — fly out, set them down, then go back for the next.',
     intel:
-      'No fire to fight today — yet. Three initial-attack crews need inserting on the ridge before the front builds. Pick a crew up at base, fly out to its landing zone — Alpha, Bravo, Charlie — and SET DOWN on the cleared pad to let them off. One crew at a time; mind the narrow clearing.',
+      'No fire to fight today — yet. Three initial-attack crews need inserting on the ridge before the front builds. Your first crew is already strapped in, so head straight out to LZ Alpha and SET DOWN on the cleared pad to let them off. Then run back to base for Bravo and Charlie. One crew at a time; mind the narrow clearing.',
     difficulty: 2,
     seed: 55,
     payload: 'crew',
+    startLoaded: true, // crew 1 is buckled in at spawn — the player flies straight to the first LZ
     fires: [],
     structures: { depot: true },
     zones: [
@@ -79,7 +80,7 @@ export const CAMPAIGN: MissionDef[] = [
     ],
     objectives: [{ kind: 'deliver', n: 3 }],
     script: [
-      { id: 'start', trigger: { at: 'start' }, actions: [{ do: 'comms', speaker: 'dispatch', text: "Water-1, you've got three crews for the ridge — Alpha, Bravo, Charlie. Get them in before the wind turns." }] },
+      { id: 'start', trigger: { at: 'start' }, actions: [{ do: 'comms', speaker: 'dispatch', text: "Water-1, you've got three crews for the ridge — Alpha, Bravo, Charlie. First team's already aboard, so run them out to Alpha. Get them all in before the wind turns." }] },
       { id: 'crew1', trigger: { at: 'crewDelivered', n: 1 }, actions: [{ do: 'comms', speaker: 'crew', text: "We're on the ground, thanks for the lift. Go get the others." }] },
       { id: 'crew2', trigger: { at: 'crewDelivered', n: 2 }, actions: [{ do: 'comms', speaker: 'crew', text: "Second team's set. One crew left to insert." }] },
       { id: 'won', trigger: { at: 'won' }, actions: [{ do: 'comms', speaker: 'dispatch', text: "All crews inserted. Nicely flown, Water-1 — they'll hold that ridge." }] },

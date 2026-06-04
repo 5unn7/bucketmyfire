@@ -18,9 +18,9 @@
  *                           fires red, out-of-range fires pinned to the rim)
  */
 
-import type { TrackerItem, CommsSpeaker, CommsUrgency, MissionDef } from './missions/types';
+import type { TrackerItem, CommsSpeaker, CommsUrgency, MissionDef, ScoreBreakdown, ScoreGrade } from './missions/types';
 import type { FireFieldView } from './sim/FireSystem';
-import { UI, el, frosted, makeCanvas, clamp01, anchor, setBlur } from './ui/theme';
+import { UI, FS, FW, R, el, frosted, makeCanvas, clamp01, anchor, setBlur } from './ui/theme';
 import { onLayout, type LayoutState } from './ui/layout';
 
 export interface HudState {
@@ -56,6 +56,16 @@ export interface HudState {
   fuel?: number; // 0..1 tank fraction (undefined → no FuelSim → fuel gauge hidden)
   fuelLow?: boolean; // gauge flashes (below reserve)
   zones?: { x: number; z: number; active: boolean; done: boolean; home: boolean }[]; // crew landing zones (radar blips); `home` = the always-marked base
+  // Crew transport (delivery/evac missions): how many crew are aboard + the live board/disembark dwell.
+  // Drives the strip's crew-count icon and the "CREW BOARDING / DISEMBARKING" progress bar. Undefined
+  // on water missions, so neither element renders.
+  crew?: {
+    onboard: number; // crew currently in the cabin (0 or 1)
+    delivered: number; // crews set down so far
+    total: number; // crews to deliver this mission
+    mode: 'boarding' | 'disembarking' | null; // actively working a zone (drives the bar), else null
+    progress: number; // 0..1 dwell on the worked zone
+  };
   // Debrief summary for the end banner (what the run achieved) — built once at outcome.
   debrief?: {
     firesOut: number;
@@ -65,6 +75,7 @@ export interface HudState {
     crewDone: number;
     crewTotal: number;
     timeSec: number;
+    breakdown?: ScoreBreakdown; // line-itemed score + grade (absent on a crash → plain score shown)
   };
 }
 
@@ -110,12 +121,19 @@ export class HUD {
   private readonly fuelPod: Pod;
   private readonly firesPod: Pod;
   private readonly threatPod: Pod;
+  private readonly crewPod: Pod; // crew aboard count (delivery/evac missions only — hidden otherwise)
   private readonly compassPod: Pod; // heading in degrees (replaces the scrolling heading tape)
   private readonly windPod: Pod; // wind speed in knots + a heading-relative direction arrow
   private readonly pods: Pod[];
   private menuCell?: HTMLDivElement; // ☰ tucked at the head of the strip (campaign only)
   private readonly objPanel: HTMLDivElement; // campaign objective checklist (hidden in sandbox)
   private objSig = ''; // last-rendered objective signature (skip DOM churn when unchanged)
+  // Crew board/disembark progress bar — a labelled fill that appears while landed on a zone
+  // ("CREW BOARDING" climbing in / "CREW DISEMBARKING" stepping off). Hidden when not working a zone.
+  private readonly crewBar: HTMLDivElement;
+  private readonly crewBarLabel: HTMLDivElement;
+  private readonly crewBarFill: HTMLDivElement;
+  private crewBarShown = false; // last visibility (re-seat the hint only when it toggles)
   private readonly hint: HTMLDivElement;
   private hintText: string | null = null; // last hint we acted on (skip re-trigger when unchanged)
   private hintHideTimer = 0; // setTimeout: start the fade-out
@@ -240,7 +258,7 @@ export class HUD {
       flexWrap: 'wrap',
       alignItems: 'stretch',
       padding: '0',
-      borderRadius: '11px',
+      borderRadius: R.md,
     });
     if (this.end) {
       this.menuCell = makeMenuCell(this.end.onMenu);
@@ -255,6 +273,7 @@ export class HUD {
     this.fuelPod = makePod(FUEL_SVG, true); // tank %
     this.firesPod = makePod(FIRES_SVG); // fires remaining (count)
     this.threatPod = makePod(THREAT_SVG, true); // most-endangered structure %
+    this.crewPod = makePod(CREW_SVG, true); // crew aboard (0/1) — bar reads as a filled/empty seat
     this.compassPod = makePod(COMPASS_SVG); // heading °
     this.windPod = makePod(WIND_SVG); // wind kt (icon rotates to the heading-relative gust)
     this.pods = [
@@ -263,6 +282,7 @@ export class HUD {
       this.fuelPod,
       this.firesPod,
       this.threatPod,
+      this.crewPod,
       this.compassPod,
       this.windPod,
     ];
@@ -270,11 +290,43 @@ export class HUD {
     if (!this.menuCell) this.waterPod.cell.style.boxShadow = 'none'; // no menu → no leading hairline
     setPodHidden(this.fuelPod, true); // hidden until a mission supplies fuel
     setPodHidden(this.threatPod, true); // hidden until there are structures to defend
+    setPodHidden(this.crewPod, true); // hidden until a crew-transport mission supplies a count
     leftCol.appendChild(this.spine);
 
     // Objective checklist (campaign — populated each frame from the mission tracker).
-    this.objPanel = frosted({ padding: '7px 11px 8px', borderRadius: '11px', display: 'none', minWidth: '170px' });
+    this.objPanel = frosted({ padding: '7px 11px 8px', borderRadius: R.md, display: 'none', minWidth: '170px' });
     leftCol.appendChild(this.objPanel);
+
+    // Crew board/disembark bar (delivery/evac missions): a labelled progress fill that appears while
+    // the heli is set down on a zone and the crew climb in / step off. It sits under the objective
+    // list, grouped with the rest of the mission readouts; hidden until a zone is being worked.
+    this.crewBar = frosted({ padding: '7px 11px 9px', borderRadius: R.md, display: 'none', minWidth: '170px' });
+    this.crewBarLabel = el('div', {
+      fontSize: FS.label,
+      fontWeight: FW.bold,
+      letterSpacing: '1.5px',
+      color: UI.accent,
+      marginBottom: '6px',
+    }, 'CREW BOARDING');
+    const crewTrack = el('div', {
+      position: 'relative',
+      height: '6px',
+      borderRadius: R.pill,
+      background: 'rgba(255,255,255,0.13)',
+      overflow: 'hidden',
+    });
+    this.crewBarFill = el('div', {
+      position: 'absolute',
+      inset: '0',
+      borderRadius: R.pill,
+      background: UI.accent,
+      transformOrigin: 'left center',
+      transform: 'scaleX(0)',
+      transition: 'transform 0.12s linear, background-color 0.2s ease',
+    });
+    crewTrack.appendChild(this.crewBarFill);
+    this.crewBar.append(this.crewBarLabel, crewTrack);
+    leftCol.appendChild(this.crewBar);
 
     // Radio comms log — DISPATCH/CREW/WARNING lines that drop in BELOW THE RADAR (top-right) and
     // auto-expire (the mission "talking" to the pilot). Right-aligned under the map so it never
@@ -296,11 +348,11 @@ export class HUD {
 
     // --- Status hint (the "tooltip"): top-center, dropped below the band on portrait ---
     this.hint = frosted({
-      fontSize: '12.5px',
-      fontWeight: '500',
+      fontSize: FS.sm,
+      fontWeight: FW.medium,
       color: '#dff6ff',
       padding: '5px 12px',
-      borderRadius: '99px',
+      borderRadius: R.pill,
       whiteSpace: 'nowrap',
       maxWidth: '90vw',
       boxSizing: 'border-box',
@@ -345,7 +397,7 @@ export class HUD {
 
     // --- Radar (top-right anchor, rounded square, tap to expand local ↔ whole-world) ---
     const radar = makeCanvas(this.radarBase, this.radarBase, {
-      borderRadius: '16px',
+      borderRadius: R.xl,
       background: UI.panel,
       border: `1px solid ${UI.stroke}`,
       boxShadow: UI.shadow,
@@ -533,6 +585,19 @@ export class HUD {
       this.threatPod.cell.style.textShadow = threatHot ? `0 0 8px ${UI.warn}` : 'none';
       setPodBar(this.threatPod, threat, threatHot ? UI.warn : '#ffb24a', threatHot); // fills toward red as the fire closes in
     }
+    // Crew aboard (delivery/evac missions only): an icon + the count in the cabin (0/1), with the
+    // base bar reading as a filled/empty seat. The animated BOARDING/DISEMBARKING bar lives below the
+    // objective list and is driven from the same snapshot.
+    const crew = s.crew;
+    setPodHidden(this.crewPod, !crew);
+    if (crew) {
+      this.crewPod.num.textContent = `${crew.onboard}`;
+      const aboard = crew.onboard > 0;
+      this.crewPod.num.style.color = aboard ? UI.text : UI.dim;
+      setPodBar(this.crewPod, aboard ? 1 : 0, UI.accent, aboard); // full + glowing while a crew rides
+    }
+    this.renderCrewBar(crew);
+
     // Compass: numeric heading (replaces the old scrolling tape). Wind: knots, with the icon
     // rotated to the heading-relative gust direction (the radar wind-arrow, folded in here).
     this.compassPod.num.textContent = `${Math.round(headingDeg(s.yaw))}°`;
@@ -601,20 +666,42 @@ export class HUD {
         alignItems: 'center',
         gap: '8px',
         marginTop: '5px',
-        fontSize: '12px',
+        fontSize: FS.sm,
       });
       const mark = t.failed ? '✕' : t.done ? '✓' : t.kind === 'constraint' ? '◆' : '○';
       const col = t.failed ? UI.warn : t.done ? UI.accent : 'rgba(231,247,255,0.85)';
-      row.appendChild(el('div', { color: col, fontWeight: '700', width: '12px' }, mark));
+      row.appendChild(el('div', { color: col, fontWeight: FW.bold, width: '12px' }, mark));
       row.appendChild(el('div', { color: col, flex: '1' }, t.label));
       let val = '';
       if (t.done && t.completedAt !== undefined) val = `✓ ${fmtTime(t.completedAt)}`; // latched: stamp the time
       else if (t.timeLeft !== undefined) val = fmtTime(t.timeLeft);
       else if (t.target !== undefined) val = `${t.current ?? 0}/${t.target}`;
-      if (val) row.appendChild(el('div', { color: UI.dim, fontWeight: '600' }, val));
+      if (val) row.appendChild(el('div', { color: UI.dim, fontWeight: FW.semibold }, val));
       this.objPanel.appendChild(row);
     }
     this.positionMessages(); // left column grew/changed — re-seat the hint below it
+  }
+
+  /**
+   * Drive the crew board/disembark bar: show it only while a zone is being worked, set the label
+   * (CREW BOARDING climbing in / CREW DISEMBARKING stepping off) + colour, and scale the fill to the
+   * dwell. Toggling its visibility changes the left column height, so re-seat the hint then (cheap —
+   * only on the show/hide edge, not every frame the bar fills).
+   */
+  private renderCrewBar(crew?: HudState['crew']): void {
+    const working = !!crew && crew.mode !== null;
+    if (working !== this.crewBarShown) {
+      this.crewBarShown = working;
+      this.crewBar.style.display = working ? '' : 'none';
+      this.positionMessages();
+    }
+    if (!working || !crew) return;
+    const boarding = crew.mode === 'boarding';
+    const col = boarding ? UI.accent : '#5fe0a0'; // cyan picking up / green setting down (matches the home pad)
+    this.crewBarLabel.textContent = boarding ? 'CREW BOARDING' : 'CREW DISEMBARKING';
+    this.crewBarLabel.style.color = col;
+    this.crewBarFill.style.background = col;
+    this.crewBarFill.style.transform = `scaleX(${clamp01(crew.progress)})`;
   }
 
   /** Mission end banner: outcome headline + score + Next/Retry/Menu (campaign) buttons. */
@@ -626,7 +713,7 @@ export class HUD {
       transform: 'translate(-50%,-50%)',
       textAlign: 'center',
       padding: '26px 36px 22px',
-      borderRadius: '20px',
+      borderRadius: R.xl,
       pointerEvents: 'auto',
       maxWidth: 'min(92vw, 360px)',
       boxSizing: 'border-box',
@@ -634,10 +721,13 @@ export class HUD {
     const who = this.pilotName ?? 'pilot';
     const headline = s.won ? 'MISSION COMPLETE' : 'MISSION FAILED';
     this.banner.appendChild(
-      el('div', { fontSize: '32px', fontWeight: '800', letterSpacing: '0.5px', color: s.lost ? UI.warn : UI.accent }, headline),
+      el('div', { fontSize: FS.banner, fontWeight: FW.heavy, letterSpacing: '0.5px', color: s.lost ? UI.warn : UI.accent }, headline),
     );
-    // Reactive closing line — reads the outcome, not a canned string.
     const d = s.debrief;
+    // Run grade — the headline accolade. A big letter badge in its rank colour (S gold → D red).
+    const grade = s.won ? d?.breakdown?.grade ?? null : null;
+    if (grade) this.banner.appendChild(gradeBadge(grade));
+    // Reactive closing line — reads the outcome, not a canned string.
     let sub: string;
     if (s.won) {
       if (d && d.structTotal > 0 && d.structSaved === d.structTotal && d.firesOut >= d.firesTotal) sub = `Flawless mission, ${who}. Not a structure lost.`;
@@ -648,26 +738,30 @@ export class HUD {
     } else {
       sub = 'The fire won this time.';
     }
-    this.banner.appendChild(el('div', { fontSize: '15px', marginTop: '8px', color: 'rgba(231,247,255,0.82)' }, sub));
+    this.banner.appendChild(el('div', { fontSize: FS.lg, marginTop: '8px', color: 'rgba(231,247,255,0.82)' }, sub));
 
-    // Debrief summary — what the run actually achieved (built from the latched ledger + final state).
-    if (d) {
+    // Score readout. With a breakdown (every non-crash outcome) we show the itemised math so the player
+    // SEES where the points came from — hardship, precision, defense, penalties — then the total. On a
+    // crash (no breakdown) we fall back to the plain "what you did" summary + a single score line.
+    if (d?.breakdown) {
+      this.banner.appendChild(scoreBreakdownBlock(d.breakdown, d.timeSec));
+    } else if (d) {
       const stats = el('div', {
         marginTop: '14px',
         display: 'inline-flex',
         flexDirection: 'column',
         gap: '4px',
         padding: '10px 16px',
-        borderRadius: '12px',
+        borderRadius: R.md,
         background: 'rgba(255,255,255,0.04)',
         border: `1px solid ${UI.stroke}`,
-        fontSize: '13px',
+        fontSize: FS.body,
         color: 'rgba(231,247,255,0.85)',
       });
       const row = (k: string, v: string): void => {
         const r = el('div', { display: 'flex', justifyContent: 'space-between', gap: '22px', minWidth: '180px' });
         r.appendChild(el('div', { color: UI.dim }, k));
-        r.appendChild(el('div', { fontWeight: '700' }, v));
+        r.appendChild(el('div', { fontWeight: FW.bold }, v));
         stats.appendChild(r);
       };
       row('Fires out', `${d.firesOut}/${d.firesTotal}`);
@@ -675,10 +769,10 @@ export class HUD {
       if (d.crewTotal > 0) row('Crews delivered', `${d.crewDone}/${d.crewTotal}`);
       row('Time', fmtTime(d.timeSec));
       this.banner.appendChild(stats);
+      this.banner.appendChild(el('div', { fontSize: FS.title, fontWeight: FW.bold, marginTop: '12px' }, `Score ${s.score.toLocaleString()}`));
+    } else {
+      this.banner.appendChild(el('div', { fontSize: FS.title, fontWeight: FW.bold, marginTop: '12px' }, `Score ${s.score.toLocaleString()}`));
     }
-    this.banner.appendChild(
-      el('div', { fontSize: '18px', fontWeight: '700', marginTop: '12px' }, `Score ${s.score.toLocaleString()}`),
-    );
 
     if (this.end) {
       const row = el('div', { display: 'flex', gap: '10px', justifyContent: 'center', marginTop: '20px', flexWrap: 'wrap' });
@@ -743,7 +837,7 @@ export class HUD {
     const line = frosted({
       padding: '4px 9px',
       borderLeft: `2px solid ${color}`,
-      borderRadius: '7px',
+      borderRadius: R.sm,
       maxWidth: '100%',
       display: 'flex',
       alignItems: 'baseline',
@@ -755,9 +849,9 @@ export class HUD {
     });
     if (urgency === 'alert') line.style.boxShadow = `0 0 12px ${color}66, ${UI.shadow}`;
     line.appendChild(
-      el('span', { fontSize: '8px', fontWeight: '700', letterSpacing: '1.2px', color, flex: '0 0 auto' }, speaker.toUpperCase()),
+      el('span', { fontSize: FS.micro, fontWeight: FW.bold, letterSpacing: '1.2px', color, flex: '0 0 auto' }, speaker.toUpperCase()),
     );
-    line.appendChild(el('span', { fontSize: '11px', lineHeight: '1.3', color: UI.text }, text));
+    line.appendChild(el('span', { fontSize: FS.meta, lineHeight: '1.3', color: UI.text }, text));
     this.commsWrap.appendChild(line);
     // Force a reflow so the transition runs from the initial (faded/offset) state, then reveal.
     // (A rAF-based reveal can be throttled when the tab is backgrounded; this is synchronous.)
@@ -789,19 +883,19 @@ export class HUD {
       zIndex: '30',
       pointerEvents: 'auto',
     });
-    const card = frosted({ maxWidth: '440px', margin: '0 20px', padding: '24px 26px 20px', borderRadius: '18px' });
+    const card = frosted({ maxWidth: '440px', margin: '0 20px', padding: '24px 26px 20px', borderRadius: R.xl });
     card.appendChild(
-      el('div', { fontSize: '11px', fontWeight: '700', letterSpacing: '3px', color: UI.accent, marginBottom: '4px' }, 'DISPATCH BRIEFING'),
+      el('div', { fontSize: FS.meta, fontWeight: FW.bold, letterSpacing: '3px', color: UI.accent, marginBottom: '4px' }, 'DISPATCH BRIEFING'),
     );
-    card.appendChild(el('div', { fontSize: '24px', fontWeight: '800', letterSpacing: '0.3px' }, def.name));
+    card.appendChild(el('div', { fontSize: FS.display, fontWeight: FW.heavy, letterSpacing: '0.3px' }, def.name));
     // Difficulty pips.
     const pips = el('div', { display: 'flex', gap: '4px', marginTop: '8px', marginBottom: '12px' });
     for (let i = 0; i < 5; i++) {
-      pips.appendChild(el('div', { width: '18px', height: '4px', borderRadius: '99px', background: i < def.difficulty ? UI.fire : 'rgba(255,255,255,0.14)' }));
+      pips.appendChild(el('div', { width: '18px', height: '4px', borderRadius: R.pill, background: i < def.difficulty ? UI.fire : 'rgba(255,255,255,0.14)' }));
     }
     card.appendChild(pips);
     card.appendChild(
-      el('div', { fontSize: '14px', lineHeight: '1.55', color: 'rgba(231,247,255,0.86)', marginBottom: '18px' }, def.intel ?? def.brief),
+      el('div', { fontSize: FS.md, lineHeight: '1.55', color: 'rgba(231,247,255,0.86)', marginBottom: '18px' }, def.intel ?? def.brief),
     );
     const begin = bannerButton('BEGIN FLIGHT ▸', UI.accent, () => {
       scrim.remove();
@@ -859,7 +953,7 @@ export class HUD {
       position: 'relative',
       width: `${size}px`,
       height: `${size}px`,
-      borderRadius: '50%',
+      borderRadius: R.round,
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -878,7 +972,7 @@ export class HUD {
     const ring = el('div', {
       position: 'absolute',
       inset: `-${ringPx + 1}px`,
-      borderRadius: '50%',
+      borderRadius: R.round,
       background: `conic-gradient(${UI.accent} 0deg, rgba(255,255,255,0.08) 0deg)`,
       pointerEvents: 'none',
     });
@@ -893,14 +987,14 @@ export class HUD {
       gap: '2px',
       pointerEvents: 'none',
     });
-    const label = el('div', { fontSize: '13px', fontWeight: '800', letterSpacing: '1.5px', color: UI.text }, 'START');
-    const sub = el('div', { fontSize: '10px', fontWeight: '700', letterSpacing: '1px', color: UI.dim }, '0%');
+    const label = el('div', { fontSize: FS.body, fontWeight: FW.heavy, letterSpacing: '1.5px', color: UI.text }, 'START');
+    const sub = el('div', { fontSize: FS.label, fontWeight: FW.bold, letterSpacing: '1px', color: UI.dim }, '0%');
     inner.append(label, sub);
     dial.append(ring, inner);
 
     const caption = el(
       'div',
-      { fontSize: '9px', fontWeight: '700', letterSpacing: '1.2px', color: UI.accent, textShadow: '0 1px 8px rgba(0,0,0,0.7)', whiteSpace: 'nowrap' },
+      { fontSize: FS.tag, fontWeight: FW.bold, letterSpacing: '1.2px', color: UI.accent, textShadow: '0 1px 8px rgba(0,0,0,0.7)', whiteSpace: 'nowrap' },
       'HOLD TO START',
     );
     wrap.append(dial, caption);
@@ -1394,7 +1488,29 @@ export class HUD {
         const p = local(zn.x, zn.z);
         const ox = p.x - R;
         const oy = p.y - R;
-        if (Math.hypot(ox, oy) > reach) continue;
+        if (Math.hypot(ox, oy) > reach) {
+          // Off the local radar: the ACTIVE target still gets a chevron pinned to the rim so you
+          // always know which way to fly to reach it (the hint text fades, but the pointer stays).
+          // Home direction is already carried by the green refuel-base markers, and done/inactive
+          // zones would just clutter the rim — so only the one lit LZ. Matches the fire/base chevrons.
+          if (!zn.active) continue;
+          const a = Math.atan2(oy, ox);
+          ctx.save();
+          ctx.translate(R + Math.cos(a) * reach, R + Math.sin(a) * reach);
+          ctx.rotate(a);
+          ctx.fillStyle = UI.accent;
+          ctx.shadowColor = UI.accent;
+          ctx.shadowBlur = 8;
+          ctx.beginPath();
+          ctx.moveTo(3, 0);
+          ctx.lineTo(-3, -3);
+          ctx.lineTo(-3, 3);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+          ctx.shadowBlur = 0;
+          continue;
+        }
         const r = zn.home ? 5.5 : 4.5;
         const col = zn.home
           ? HOME
@@ -1533,7 +1649,7 @@ function headingDeg(yaw: number): number {
 
 /** A small uppercase tracked caption. */
 function label(text: string): HTMLDivElement {
-  return el('div', { fontSize: '10px', fontWeight: '600', letterSpacing: '2px', color: UI.dim }, text);
+  return el('div', { fontSize: FS.label, fontWeight: FW.semibold, letterSpacing: '2px', color: UI.dim }, text);
 }
 
 // --- Instrument-strip cells -------------------------------------------------
@@ -1562,6 +1678,10 @@ const COMPASS_SVG =
 const WIND_SVG =
   '<svg viewBox="0 0 24 24" fill="none" stroke="#67e8ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
   '<path d="M3 12H17"/><path d="M13 7 18 12 13 17"/></svg>';
+// Crew aboard — a helmeted fire-crew figure (head + shoulders), the cabin-occupancy glyph.
+const CREW_SVG =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="#eaf6ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<circle cx="12" cy="8" r="3.4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0Z"/></svg>';
 
 interface Pod {
   cell: HTMLDivElement; // the icon + number row (hidden/pulsed as a unit)
@@ -1588,7 +1708,7 @@ function makePod(iconSvg: string, withBar = false): Pod {
   box.innerHTML = iconSvg;
   const svg = box.querySelector('svg') as SVGElement;
   const num = el('div', {
-    fontWeight: '600',
+    fontWeight: FW.semibold,
     color: UI.text,
     lineHeight: '1',
     textAlign: 'left',
@@ -1607,14 +1727,14 @@ function makePod(iconSvg: string, withBar = false): Pod {
       right: '8px',
       bottom: '2px',
       height: '2.5px',
-      borderRadius: '2px',
+      borderRadius: R.xs,
       background: 'rgba(255,255,255,0.13)',
       overflow: 'hidden',
     });
     barFill = el('div', {
       width: '100%',
       height: '100%',
-      borderRadius: '2px',
+      borderRadius: R.xs,
       background: UI.accent,
       transformOrigin: 'left center',
       transform: 'scaleX(1)',
@@ -1682,11 +1802,11 @@ function fmtTime(sec: number): string {
 function bannerButton(text: string, accent: string, onClick: () => void): HTMLDivElement {
   const b = el('div', {
     padding: '10px 18px',
-    borderRadius: '99px',
+    borderRadius: R.pill,
     border: `1px solid ${accent}`,
     color: accent,
-    fontSize: '14px',
-    fontWeight: '700',
+    fontSize: FS.md,
+    fontWeight: FW.bold,
     letterSpacing: '1px',
     cursor: 'pointer',
     pointerEvents: 'auto',
@@ -1698,5 +1818,70 @@ function bannerButton(text: string, accent: string, onClick: () => void): HTMLDi
     onClick();
   });
   return b;
+}
+
+/** Rank-letter colours: S gold (mastery) → A green → B cyan → C neutral → D red (a sloppy win). */
+const GRADE_COLORS: Record<ScoreGrade, string> = {
+  S: '#ffce54',
+  A: '#7cffb2',
+  B: UI.accent,
+  C: '#cfe6f2',
+  D: UI.warn,
+};
+
+/** The big rank-letter badge under the headline (win only) — the run's headline accolade. */
+function gradeBadge(grade: ScoreGrade): HTMLDivElement {
+  const c = GRADE_COLORS[grade];
+  const wrap = el('div', { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginTop: '10px' });
+  wrap.appendChild(el('div', { fontSize: FS.sm, letterSpacing: '3px', color: UI.dim, fontWeight: FW.bold }, 'RANK'));
+  wrap.appendChild(el('div', { fontSize: FS.mega, fontWeight: FW.black, lineHeight: '1', color: c, textShadow: `0 0 18px ${c}66` }, grade));
+  return wrap;
+}
+
+/**
+ * The itemised score breakdown on the end banner — the whole point of the rework: the player SEES where
+ * the points came from. Outcome / skill / coordination lines, the hardship × multiplier, red penalty
+ * lines, a divider, then the total + run time. Pure presentation over the pre-computed `ScoreBreakdown`.
+ */
+function scoreBreakdownBlock(b: ScoreBreakdown, timeSec: number): HTMLDivElement {
+  const box = el('div', {
+    marginTop: '14px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px',
+    padding: '12px 16px',
+    borderRadius: R.md,
+    background: 'rgba(255,255,255,0.04)',
+    border: `1px solid ${UI.stroke}`,
+    fontSize: FS.body,
+    minWidth: '214px',
+  });
+  for (const ln of b.lines) {
+    const row = el('div', { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '18px' });
+    const left = el('div', { display: 'flex', gap: '6px', alignItems: 'baseline', color: ln.kind === 'sub' ? UI.warn : UI.dim }, ln.label);
+    if (ln.note) left.appendChild(el('span', { color: 'rgba(231,247,255,0.4)', fontSize: FS.meta }, ln.note));
+    row.appendChild(left);
+    let text: string;
+    let color: string;
+    if (ln.kind === 'mul') {
+      text = `×${ln.value.toFixed(2)}`;
+      color = UI.accent;
+    } else if (ln.kind === 'sub') {
+      text = ln.value.toLocaleString(); // already negative
+      color = UI.warn;
+    } else {
+      text = `+${ln.value.toLocaleString()}`;
+      color = 'rgba(231,247,255,0.92)';
+    }
+    row.appendChild(el('div', { color, fontWeight: FW.bold, whiteSpace: 'nowrap' }, text));
+    box.appendChild(row);
+  }
+  box.appendChild(el('div', { height: '1px', background: UI.stroke, margin: '6px 0 2px' }));
+  const total = el('div', { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '18px' });
+  total.appendChild(el('div', { color: 'rgba(231,247,255,0.92)', fontWeight: FW.heavy, letterSpacing: '1px', fontSize: FS.md }, 'SCORE'));
+  total.appendChild(el('div', { color: UI.accent, fontWeight: FW.heavy, fontSize: FS.hero }, b.total.toLocaleString()));
+  box.appendChild(total);
+  box.appendChild(el('div', { color: UI.dim, fontSize: FS.meta, marginTop: '2px', textAlign: 'right' }, `time ${fmtTime(timeSec)}`));
+  return box;
 }
 

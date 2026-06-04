@@ -11,6 +11,7 @@ import {
   type MissionEntry,
   type CareerEntry,
 } from '../leaderboard/client';
+import { UI, FS, FW, R, div, setBlur } from './theme';
 
 /**
  * Global leaderboard overlay — a full-screen frosted-glass panel in the game's cockpit language
@@ -29,24 +30,8 @@ import {
  * leaderboard/client.ts; `openLeaderboard()` owns its own overlay, so callers don't manage lifecycle.
  */
 
-const UI = {
-  accent: '#67e8ff',
-  gold: '#ffd66b',
-  silver: '#cfe0ee',
-  bronze: '#e6a268',
-  text: 'rgba(234,246,255,0.96)',
-  dim: 'rgba(255,255,255,0.5)',
-  faint: 'rgba(255,255,255,0.34)',
-  cardGlass: 'rgba(16,24,32,0.62)',
-  cardSoft: 'rgba(16,24,32,0.42)',
-  rowMine: 'rgba(103,232,255,0.14)',
-  stroke: 'rgba(255,255,255,0.14)',
-  hair: 'rgba(255,255,255,0.07)',
-  blur: 'blur(14px) saturate(120%)',
-  shadow: '0 8px 30px rgba(0,0,0,0.45)',
-  font: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
-};
-
+// Visual tokens (UI) + `div`/`setBlur` come from ./theme — the one cockpit palette
+// (gold/silver/bronze, cardGlass, rowMine, etc. were folded in there).
 const CAREER = '__career__';
 
 /** A board row normalised for rendering — podium, list and the sticky YOU card all consume this. */
@@ -86,12 +71,15 @@ class Leaderboard {
       inset: '0',
       zIndex: '60',
       overflowY: 'auto',
-      background: 'radial-gradient(120% 90% at 50% 0%, rgba(20,32,44,0.9), rgba(4,7,11,0.96))',
+      // Near-opaque + backdrop blur so this overlay fully OCCLUDES the mission menu it opens
+      // over — the old 0.9/0.96 gradient let the busy card grid bleed through behind an empty board.
+      background: 'radial-gradient(120% 90% at 50% 0%, rgba(18,28,40,0.95), rgba(4,7,11,0.985))',
       fontFamily: UI.font,
       color: UI.text,
       padding: '34px 18px 60px',
       boxSizing: 'border-box',
     });
+    setBlur(this.root); // blur whatever sits behind so nothing reads through the board
     // Backdrop tap (outside the panel) closes.
     this.root.addEventListener('pointerdown', (e) => {
       if (e.target === this.root) this.close();
@@ -103,14 +91,14 @@ class Leaderboard {
 
     // Header: title + refresh + close.
     const head = div({ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' });
-    head.appendChild(div({ fontSize: '24px', fontWeight: '800', letterSpacing: '0.5px', flex: '1' }, '🏆 Leaderboard'));
+    head.appendChild(div({ fontSize: FS.display, fontWeight: FW.heavy, letterSpacing: '0.5px', flex: '1' }, '🏆 Leaderboard'));
     this.refreshBtn = this.iconButton('⟳', 'Refresh', () => this.load());
     head.appendChild(this.refreshBtn);
     head.appendChild(this.iconButton('✕', 'Close', () => this.close()));
     panel.appendChild(head);
 
     panel.appendChild(
-      div({ fontSize: '13px', color: UI.dim, marginBottom: '14px' }, 'Global standings — top water bombers of the boreal.'),
+      div({ fontSize: FS.body, color: UI.dim, marginBottom: '14px' }, 'Global standings — top water bombers of the boreal.'),
     );
 
     panel.appendChild(this.tabStrip());
@@ -144,13 +132,13 @@ class Leaderboard {
       const t = div(
         {
           flex: 'none',
-          fontSize: '13px',
-          fontWeight: '700',
+          fontSize: FS.body,
+          fontWeight: FW.bold,
           letterSpacing: '0.5px',
           whiteSpace: 'nowrap',
           cursor: 'pointer',
           padding: '8px 14px',
-          borderRadius: '99px',
+          borderRadius: R.pill,
           border: `1px solid ${UI.stroke}`,
           background: UI.cardGlass,
           transition: 'border-color 0.12s ease, color 0.12s ease',
@@ -282,7 +270,7 @@ class Leaderboard {
     });
     bar.appendChild(
       div(
-        { fontSize: '11px', fontWeight: '700', letterSpacing: '1.6px', color: UI.faint },
+        { fontSize: FS.meta, fontWeight: FW.bold, letterSpacing: '1.6px', color: UI.faint },
         `${total.toLocaleString()} ${total === 1 ? 'PILOT' : 'PILOTS'} COMPETING`,
       ),
     );
@@ -292,11 +280,11 @@ class Leaderboard {
         alignItems: 'center',
         gap: '7px',
         padding: '5px 11px',
-        borderRadius: '99px',
+        borderRadius: R.pill,
         background: UI.rowMine,
         border: `1px solid ${UI.accent}66`,
-        fontSize: '11px',
-        fontWeight: '800',
+        fontSize: FS.meta,
+        fontWeight: FW.heavy,
         letterSpacing: '0.4px',
         color: UI.accent,
       });
@@ -327,12 +315,12 @@ class Leaderboard {
     const av = div({
       width: first ? '58px' : '48px',
       height: first ? '58px' : '48px',
-      borderRadius: '50%',
+      borderRadius: R.round,
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
       fontSize: first ? '21px' : '17px',
-      fontWeight: '800',
+      fontWeight: FW.heavy,
       color: '#05202a',
       background: `linear-gradient(160deg, ${color}, ${color}99)`,
       border: `2px solid ${color}`,
@@ -345,20 +333,20 @@ class Leaderboard {
     const nameRow = div({ display: 'flex', alignItems: 'center', gap: '6px', maxWidth: '100%' });
     nameRow.appendChild(
       div(
-        { fontSize: first ? '14px' : '13px', fontWeight: '700', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '120px' },
+        { fontSize: first ? FS.md : FS.body, fontWeight: FW.bold, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '120px' },
         r.pilot,
       ),
     );
     if (r.mine) nameRow.appendChild(youPill());
     cell.appendChild(nameRow);
 
-    cell.appendChild(div({ fontSize: first ? '18px' : '15px', fontWeight: '800', color: r.mine ? UI.accent : UI.text }, r.value));
+    cell.appendChild(div({ fontSize: first ? FS.title : FS.lg, fontWeight: FW.heavy, color: r.mine ? UI.accent : UI.text }, r.value));
 
     const pedestal = div({
       marginTop: '4px',
       width: '100%',
       height: `${ped}px`,
-      borderRadius: '10px 10px 0 0',
+      borderRadius: `${R.md} ${R.md} 0 0`,
       background: `linear-gradient(180deg, ${color}33, ${color}0d)`,
       border: `1px solid ${color}55`,
       borderBottom: 'none',
@@ -366,8 +354,8 @@ class Leaderboard {
       justifyContent: 'center',
       paddingTop: '7px',
       boxSizing: 'border-box',
-      fontSize: '19px',
-      fontWeight: '900',
+      fontSize: FS.title,
+      fontWeight: FW.black,
       color,
     });
     pedestal.textContent = `${r.rank}`;
@@ -384,7 +372,7 @@ class Leaderboard {
       gap: '12px',
       padding: '10px 13px',
       marginBottom: '6px',
-      borderRadius: '12px',
+      borderRadius: R.md,
       background: r.mine ? UI.rowMine : UI.cardSoft,
       border: `1px solid ${r.mine ? UI.accent + '88' : UI.hair}`,
     });
@@ -392,20 +380,20 @@ class Leaderboard {
     el.style.animationDelay = `${Math.min(i * 26, 260)}ms`;
     setBlur(el);
 
-    el.appendChild(div({ flex: 'none', width: '26px', textAlign: 'center', fontSize: '14px', fontWeight: '700', color: UI.dim }, `${r.rank}`));
+    el.appendChild(div({ flex: 'none', width: '26px', textAlign: 'center', fontSize: FS.md, fontWeight: FW.bold, color: UI.dim }, `${r.rank}`));
     el.appendChild(avatarDot(r.pilot, r.mine));
 
     const who = div({ flex: '1', minWidth: '0' });
     const nameRow = div({ display: 'flex', alignItems: 'center', gap: '8px' });
     nameRow.appendChild(
-      div({ fontSize: '15px', fontWeight: '700', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }, r.pilot),
+      div({ fontSize: FS.lg, fontWeight: FW.bold, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }, r.pilot),
     );
     if (r.mine) nameRow.appendChild(youPill());
     who.appendChild(nameRow);
-    if (r.sub) who.appendChild(div({ fontSize: '11px', color: UI.dim, marginTop: '2px' }, r.sub));
+    if (r.sub) who.appendChild(div({ fontSize: FS.meta, color: UI.dim, marginTop: '2px' }, r.sub));
     el.appendChild(who);
 
-    el.appendChild(div({ flex: 'none', fontSize: '16px', fontWeight: '800', color: r.mine ? UI.accent : UI.text }, r.value));
+    el.appendChild(div({ flex: 'none', fontSize: FS.xl, fontWeight: FW.heavy, color: r.mine ? UI.accent : UI.text }, r.value));
     return el;
   }
 
@@ -419,7 +407,7 @@ class Leaderboard {
       alignItems: 'center',
       gap: '12px',
       padding: '12px 14px',
-      borderRadius: '14px',
+      borderRadius: R.lg,
       background: 'rgba(8,14,20,0.88)',
       border: `1px solid ${UI.accent}88`,
       boxShadow: `0 0 0 1px ${UI.accent}33, 0 -6px 26px rgba(0,0,0,0.5)`,
@@ -427,27 +415,27 @@ class Leaderboard {
     setBlur(card);
 
     card.appendChild(
-      div({ flex: 'none', minWidth: '34px', textAlign: 'center', fontSize: '15px', fontWeight: '800', color: UI.accent }, `#${s.rank.toLocaleString()}`),
+      div({ flex: 'none', minWidth: '34px', textAlign: 'center', fontSize: FS.lg, fontWeight: FW.heavy, color: UI.accent }, `#${s.rank.toLocaleString()}`),
     );
     card.appendChild(avatarDot(s.pilot, true));
 
     const who = div({ flex: '1', minWidth: '0' });
     const nameRow = div({ display: 'flex', alignItems: 'center', gap: '8px' });
     nameRow.appendChild(
-      div({ fontSize: '15px', fontWeight: '700', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }, s.pilot),
+      div({ fontSize: FS.lg, fontWeight: FW.bold, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }, s.pilot),
     );
     nameRow.appendChild(youPill());
     who.appendChild(nameRow);
-    who.appendChild(div({ fontSize: '11px', color: UI.dim, marginTop: '2px' }, `${pctText(s.rank, total)} of ${total.toLocaleString()} pilots`));
+    who.appendChild(div({ fontSize: FS.meta, color: UI.dim, marginTop: '2px' }, `${pctText(s.rank, total)} of ${total.toLocaleString()} pilots`));
     card.appendChild(who);
 
-    card.appendChild(div({ flex: 'none', fontSize: '16px', fontWeight: '800', color: UI.accent }, s.value));
+    card.appendChild(div({ flex: 'none', fontSize: FS.xl, fontWeight: FW.heavy, color: UI.accent }, s.value));
     return card;
   }
 
   private caption(shown: number, total: number): HTMLDivElement {
     const text = total > shown ? `Showing top ${shown} of ${total.toLocaleString()} pilots` : `${total.toLocaleString()} ${total === 1 ? 'pilot' : 'pilots'} ranked`;
-    return div({ fontSize: '11px', color: UI.faint, textAlign: 'center', marginTop: '12px', letterSpacing: '0.4px' }, text);
+    return div({ fontSize: FS.meta, color: UI.faint, textAlign: 'center', marginTop: '12px', letterSpacing: '0.4px' }, text);
   }
 
   // --- Empty / offline / loading states --------------------------------------
@@ -496,16 +484,16 @@ class Leaderboard {
       margin: '0 auto',
       background: UI.cardGlass,
       border: `1px solid ${UI.stroke}`,
-      borderRadius: '12px',
+      borderRadius: R.md,
       padding: '14px 16px',
     });
     setBlur(panel);
-    panel.appendChild(div({ fontSize: '10px', fontWeight: '700', letterSpacing: '2px', color: UI.faint, marginBottom: '11px' }, 'YOUR DEVICE'));
+    panel.appendChild(div({ fontSize: FS.label, fontWeight: FW.bold, letterSpacing: '2px', color: UI.faint, marginBottom: '11px' }, 'YOUR DEVICE'));
     const row = div({ display: 'flex', gap: '26px', flexWrap: 'wrap' });
     for (const t of tiles) {
       const tile = div({});
-      tile.appendChild(div({ fontSize: '18px', fontWeight: '800', color: UI.text, lineHeight: '1.1' }, t.value));
-      tile.appendChild(div({ fontSize: '10px', fontWeight: '700', letterSpacing: '1.2px', color: UI.faint, marginTop: '3px' }, t.label.toUpperCase()));
+      tile.appendChild(div({ fontSize: FS.title, fontWeight: FW.heavy, color: UI.text, lineHeight: '1.1' }, t.value));
+      tile.appendChild(div({ fontSize: FS.label, fontWeight: FW.bold, letterSpacing: '1.2px', color: UI.faint, marginTop: '3px' }, t.label.toUpperCase()));
       row.appendChild(tile);
     }
     panel.appendChild(row);
@@ -518,19 +506,19 @@ class Leaderboard {
     const pod = div({ display: 'flex', gap: '10px', alignItems: 'flex-end', justifyContent: 'center', margin: '4px 0 16px' });
     for (const h of [50, 70, 38]) {
       const cell = div({ flex: '1 1 0', maxWidth: '160px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' });
-      const dot = skel({ width: '50px', height: '50px', borderRadius: '50%' });
+      const dot = skel({ width: '50px', height: '50px', borderRadius: R.round });
       const bar = skel({ width: '62%', height: '12px' });
-      const ped = skel({ width: '100%', height: `${h}px`, borderRadius: '10px 10px 0 0' });
+      const ped = skel({ width: '100%', height: `${h}px`, borderRadius: `${R.md} ${R.md} 0 0` });
       cell.append(dot, bar, ped);
       pod.appendChild(cell);
     }
     wrap.appendChild(pod);
-    for (let i = 0; i < 5; i++) wrap.appendChild(skel({ height: '44px', marginBottom: '6px', borderRadius: '12px' }));
+    for (let i = 0; i < 5; i++) wrap.appendChild(skel({ height: '44px', marginBottom: '6px', borderRadius: R.md }));
     return wrap;
   }
 
   private note(text: string): HTMLDivElement {
-    return div({ fontSize: '14px', color: UI.dim, lineHeight: '1.55', textAlign: 'center', padding: '26px 16px 22px' }, text);
+    return div({ fontSize: FS.md, color: UI.dim, lineHeight: '1.55', textAlign: 'center', padding: '26px 16px 22px' }, text);
   }
 
   // --- Header buttons --------------------------------------------------------
@@ -543,11 +531,11 @@ class Leaderboard {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      fontSize: '15px',
-      fontWeight: '700',
+      fontSize: FS.lg,
+      fontWeight: FW.bold,
       color: UI.dim,
       cursor: 'pointer',
-      borderRadius: '50%',
+      borderRadius: R.round,
       border: `1px solid ${UI.stroke}`,
       background: UI.cardGlass,
       transition: 'color 0.12s ease, border-color 0.12s ease',
@@ -577,17 +565,7 @@ class Leaderboard {
 
 // --- helpers ----------------------------------------------------------------
 
-function div(style: Partial<CSSStyleDeclaration>, text?: string): HTMLDivElement {
-  const node = document.createElement('div');
-  Object.assign(node.style, style);
-  if (text !== undefined) node.textContent = text;
-  return node;
-}
-
-function setBlur(node: HTMLElement): void {
-  node.style.backdropFilter = UI.blur;
-  node.style.setProperty('-webkit-backdrop-filter', UI.blur);
-}
+// `div` and `setBlur` are imported from ./theme (shared DOM helpers).
 
 function skel(style: Partial<CSSStyleDeclaration>): HTMLDivElement {
   const node = div(style);
@@ -601,14 +579,14 @@ function avatarDot(pilot: string, mine: boolean): HTMLDivElement {
     flex: 'none',
     width: '30px',
     height: '30px',
-    borderRadius: '50%',
+    borderRadius: R.round,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: '12px',
-    fontWeight: '800',
+    fontSize: FS.sm,
+    fontWeight: FW.heavy,
     color: mine ? '#05202a' : UI.text,
-    background: mine ? UI.accent : 'rgba(255,255,255,0.10)',
+    background: mine ? UI.accent : UI.track,
     border: `1px solid ${mine ? UI.accent : UI.stroke}`,
   });
   a.textContent = initials(pilot);
@@ -619,12 +597,12 @@ function youPill(): HTMLDivElement {
   return div(
     {
       flex: 'none',
-      fontSize: '9px',
-      fontWeight: '800',
+      fontSize: FS.tag,
+      fontWeight: FW.heavy,
       letterSpacing: '0.1em',
       color: '#04222a',
       background: UI.accent,
-      borderRadius: '99px',
+      borderRadius: R.pill,
       padding: '2px 7px',
     },
     'YOU',

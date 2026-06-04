@@ -53,10 +53,10 @@ import { MissionDirector } from './missions/MissionDirector';
 import { recordWin } from './missions/progress';
 import { submitScore } from './leaderboard/client';
 import { cloudAutoSave } from './leaderboard/cloudSave';
-import type { MissionDef, MissionSignals, MissionAction } from './missions/types';
+import type { MissionDef, MissionSignals, MissionAction, ScoreTally } from './missions/types';
 import type { EndScreenHooks } from './HUD';
 import { seedFires, structurePlan, crewZones, igniteFromPlacement } from './missions/scenario';
-import { WORLD3D, FLIGHT, STARTUP, BUCKET3D, DROP_PHYSICS, DROP_FX, FIREHEAD, CAMERA, FIRE3D, WATER, WASH, SPRAY, SMOKE, EMBERS, INSTRUMENTS, ROADS, MISSIONS, COMMUNITIES, resolveHeliClass } from './config';
+import { WORLD3D, FLIGHT, STARTUP, BUCKET3D, DROP_PHYSICS, DROP_FX, FIREHEAD, CAMERA, FIRE3D, WATER, WASH, SPRAY, SMOKE, EMBERS, INSTRUMENTS, ROADS, MISSIONS, COMMUNITIES, SCORE, resolveHeliClass } from './config';
 
 // Instrument calibration factors (world units → real-world HUD units). Derived from
 // the FLIGHT caps so the gauges stay consistent if those are retuned.
@@ -154,6 +154,15 @@ export class Game {
   private hullHitCd = 0; // cooldown (s) so one hard landing fires ONE damage warning, not a per-frame burst
   private bucketFull = false; // latched once a scoop tops off — one "bucket full" cue per fill, re-armed on release
   private finalScore = 0; // computed once when the mission ends (win or loss)
+  // --- Score telemetry (feeds the reworked ScoreTally → missions/score.ts) ---------------------------
+  // Accumulated over the run: drop precision (effective vs wasted pours), the worst conditions actually
+  // faced (peak threat + peak fire load → dynamic hardship), and hull-denting hard landings (a penalty).
+  private scoreDrops = 0; // committed pours that released water
+  private scoreDropsEffective = 0; // pours that knocked down meaningful heat (a "hit")
+  private scoreDropsWasted = 0; // pours that missed or dispersed too high
+  private peakThreat = 0; // worst structure threat survived, 0..1
+  private peakFireLoad = 0; // most fires active at once
+  private hardLandings = 0; // hull-denting touchdowns
   private elapsed = 0; // total seconds, drives fire flicker
   private rippleTimer = 0; // throttles ripple-ring spawns while scooping/dropping
   private washRippleTimer = 0; // throttles the downwash ripple rings under a low heli (C4)
@@ -298,11 +307,16 @@ export class Game {
       }
     }
 
-    // Cold start: park the airframe shut-down ON the pad so the pilot spools the rotors and lifts off
-    // from home, nose pointed out to open ground.
-    if (!this.engineStarted && this.helipadXZ) {
+    // Cold start vs QA skip: in normal play we park the airframe shut-down ON the pad so the pilot
+    // spools the rotors and lifts off from home, nose pointed out to open ground. Under ?qa/?autostart
+    // (skipColdStart → engineStarted) we skip the ritual but still spawn airborne OVER HOME rather than
+    // the world origin — an origin spawn read as "mid air in the middle of nowhere", with the home pad
+    // and the crew LZs off in some random direction.
+    if (this.helipadXZ) {
       const p = this.helipadXZ;
-      this.heliSim.land(p.x, p.z, this.landingFloorAt(p.x, p.z));
+      const floorY = this.landingFloorAt(p.x, p.z);
+      if (this.engineStarted) this.heliSim.hoverAt(p.x, p.z, floorY);
+      else this.heliSim.land(p.x, p.z, floorY);
       this.heliSim.yaw = p.yaw;
     }
 
@@ -559,7 +573,7 @@ export class Game {
         this.scene.add(figs.group);
         this.crewFigures.push(figs);
       }
-      this.crew = new CrewTransport(this.crewZones);
+      this.crew = new CrewTransport(this.crewZones, this.mission.startLoaded ?? false);
     }
 
     // Fuel/range model (Track C6) — only constructed when the mission opts in.
@@ -873,6 +887,7 @@ export class Game {
       const hpLost = hpBefore - this.healthSim.health;
       if (hpLost > 0.001 && this.hullHitCd <= 0 && !this.healthSim.dead) {
         this.hullHitCd = 0.8;
+        this.hardLandings++; // score penalty: a denting touchdown
         this.reportHullHit(hpLost);
       }
       if (this.healthSim.dead && !this.won && !this.lost) this.crashLoss();
@@ -1153,6 +1168,16 @@ export class Game {
       fuel: this.fuelSim ? this.fuelSim.fuel : undefined,
       fuelLow: this.fuelSim ? this.fuelSim.low : undefined,
       zones: this.crew ? this.crew.views.map((v) => ({ x: v.x, z: v.z, active: v.active, done: v.done, home: v.home })) : undefined,
+      // Crew aboard count + live board/disembark dwell → the strip's crew icon + the BOARDING bar.
+      crew: this.crew
+        ? {
+            onboard: this.crew.onboard,
+            delivered: this.crew.delivered,
+            total: this.crew.total,
+            mode: this.crew.mode,
+            progress: this.crew.progress,
+          }
+        : undefined,
       // Debrief summary (only meaningful at outcome; the banner reads it when it shows).
       debrief:
         this.won || this.lost
@@ -1164,6 +1189,7 @@ export class Game {
               crewDone: this.crew?.delivered ?? 0,
               crewTotal: this.crew?.total ?? 0,
               timeSec: this.missionElapsed,
+              breakdown: this.runtime.breakdown ?? undefined, // line-itemed score + grade (null on a crash)
             }
           : undefined,
     });
@@ -1201,6 +1227,10 @@ export class Game {
 
   /** Build the per-frame snapshot the mission evaluator reads (Game already tracks all of it). */
   private missionSignals(): MissionSignals {
+    // Track the worst conditions actually faced — these only grow, captured up to the outcome frame
+    // (this runs only while the sim is live), and feed the dynamic-hardship score multiplier.
+    if (this.structures.threat > this.peakThreat) this.peakThreat = this.structures.threat;
+    if (this.fireSystem.activeCount > this.peakFireLoad) this.peakFireLoad = this.fireSystem.activeCount;
     return {
       firesActive: this.fireSystem.activeCount,
       firesInitial: this.firesInitial,
@@ -1214,6 +1244,32 @@ export class Game {
       starved: this.fuelSim?.starved ?? false,
       threat: this.structures.threat,
       windAngle: this.wind.angle,
+      tally: this.scoreTally(),
+    };
+  }
+
+  /** Snapshot the run aggregates the scorer reads at the win/lose frame (see missions/score.ts). */
+  private scoreTally(): ScoreTally {
+    const saved = this.structures.aliveCount;
+    const pristine = this.structures.list.reduce((n, s) => n + (s.health >= SCORE.pristineHealth ? 1 : 0), 0);
+    return {
+      firesDoused: this.fireSystem.doused,
+      firesBurnedOut: this.fireSystem.burnedOut,
+      firesInitial: this.firesInitial,
+      structuresSaved: saved,
+      structuresTotal: this.structures.total,
+      structuresLost: this.structures.total - saved,
+      structuresPristine: pristine,
+      crewsDelivered: this.crew?.delivered ?? 0,
+      crewsTotal: this.crew?.total ?? 0,
+      drops: this.scoreDrops,
+      dropsEffective: this.scoreDropsEffective,
+      dropsWasted: this.scoreDropsWasted,
+      peakThreat: this.peakThreat,
+      peakFireLoad: this.peakFireLoad,
+      fuelEnd: this.fuelSim?.fuel ?? 1,
+      hardLandings: this.hardLandings,
+      crashed: this.crashed,
     };
   }
 
@@ -1676,14 +1732,17 @@ export class Game {
     let text: string;
     let urgency: 'info' | 'warn';
     let color: number;
+    let wasted = false; // a missed / too-high pour — sloppy water (score precision + penalty)
     if (t.peakHeatPresent < 1e-2) {
       text = 'Missed — bucket swung wide';
       urgency = 'warn';
       color = DROP_FX.markerColorWide;
+      wasted = true;
     } else if (effAvg < DROP_FX.resultTooHighEff) {
       text = 'Too high — water dispersed';
       urgency = 'warn';
       color = DROP_FX.markerColorTooHigh;
+      wasted = true;
     } else if (frac >= DROP_FX.resultDirectFrac) {
       text = `Direct hit — ${Math.round(Math.min(1, frac) * 100)}% knocked down`;
       urgency = 'info';
@@ -1697,6 +1756,10 @@ export class Game {
       urgency = 'info';
       color = DROP_FX.markerColorInBand;
     }
+    // Score precision: every committed pour counts; missed/too-high ones are wasted (lower hit-rate + a penalty).
+    this.scoreDrops++;
+    if (wasted) this.scoreDropsWasted++;
+    else this.scoreDropsEffective++;
     this.hud.pushComms('dispatch', text, urgency);
     this.hud.flashGauge(cssHex(color), DROP_FX.resultGaugeTintMs);
   }

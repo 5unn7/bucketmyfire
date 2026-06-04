@@ -6,6 +6,7 @@ import { shouldAutostart, defaultProfile } from './ui/Onboarding';
 import { MissionSelect } from './ui/MissionSelect';
 import { CAMPAIGN, missionById } from './missions/catalog';
 import { openLeaderboard } from './ui/Leaderboard';
+import { resetStaleStorage } from './storage/reset';
 import type { MissionDef } from './missions/types';
 import type { EndScreenHooks } from './HUD';
 
@@ -21,6 +22,10 @@ import type { EndScreenHooks } from './HUD';
  * `window.__game`); `?m=<id>` deep-links a specific mission.
  */
 const container = document.getElementById('game') as HTMLDivElement;
+
+// Clean-slate switch: wipe all local game data once if the data epoch was bumped (e.g. after the
+// scoring rescale). Runs before anything reads storage (Onboarding/profile/progress/menu).
+resetStaleStorage();
 
 const params = new URLSearchParams(location.search);
 

@@ -44,10 +44,13 @@ export class CrewTransport {
   private active = -1; // index of the zone currently being worked, or -1
   private readonly _total: number;
 
-  constructor(zones: CrewZone[]) {
+  constructor(zones: CrewZone[], startCarrying = false) {
     this.zones = zones;
     this.done = zones.map(() => false);
     this._total = zones.filter((z) => z.single).length;
+    // Some missions begin with the first crew already aboard (skip the opening base pickup) — the
+    // first targetable zone is then an UNLOAD, so the player flies straight out to set them down.
+    this._carrying = startCarrying;
   }
 
   get carrying(): boolean {
@@ -77,6 +80,21 @@ export class CrewTransport {
   /** Index of the zone currently being worked (loading/unloading), or -1 — drives the board/disembark animation. */
   get activeZone(): number {
     return this.active;
+  }
+
+  /** Number of crew currently in the cabin (0 or 1 — one at a time). Drives the HUD crew-count icon. */
+  get onboard(): number {
+    return this._carrying ? 1 : 0;
+  }
+
+  /**
+   * What the heli is doing on the zone it's working RIGHT NOW: `boarding` (a crew is climbing in at a
+   * load zone) or `disembarking` (stepping off at an unload zone), or null when not actively working a
+   * zone. Drives the HUD "CREW BOARDING / DISEMBARKING" progress bar (paired with `progress`).
+   */
+  get mode(): 'boarding' | 'disembarking' | null {
+    if (this.active < 0) return null;
+    return this._carrying ? 'disembarking' : 'boarding';
   }
 
   /** Zones with live flags for the markers + radar. */

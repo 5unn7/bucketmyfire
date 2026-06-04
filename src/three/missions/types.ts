@@ -150,6 +150,7 @@ export interface MissionDef {
   fire?: { spreadScale?: number };
   bucket?: 'bambi' | 'valve';
   payload?: 'water' | 'crew'; // crew → no bucket/longline; the heli LANDS at zones to board/unload crew
+  startLoaded?: boolean; // crew payload: spawn with the FIRST crew already aboard (skip the opening base pickup → fly straight to the first LZ)
   fuel?: boolean; // enable the FuelSim range model
   fires: FirePlacement[];
   structures?: StructureSpec;
@@ -180,6 +181,49 @@ export interface MissionSignals {
   starved: boolean; // ran the tank dry
   threat: number; // 0..1 — most-endangered structure's danger (drives 'threat' beats); 0 when none
   windAngle: number; // current wind heading (rad) — for flavour/diagnostics in beats
+  tally: ScoreTally; // run aggregates the scorer reads at the win/lose frame (see missions/score.ts)
+}
+
+// --- Scoring (the reworked breakdown) --------------------------------------
+// The score is computed once at the win/lose transition by the pure `missions/score.ts` from a
+// `ScoreTally` Game accumulates over the run. It produces a line-itemed `ScoreBreakdown` (+ an
+// S/A/B/C grade) the HUD renders on the end banner. Engine-agnostic — numbers only, like the sims.
+
+/** The run aggregates the scorer needs — measured by Game over the mission, snapshotted each frame. */
+export interface ScoreTally {
+  firesDoused: number; // fires killed with water
+  firesBurnedOut: number; // fires that consumed their own fuel (no reward; blocks the flawless bonus)
+  firesInitial: number; // fires active at the start (par-time input)
+  structuresSaved: number; // standing at the end
+  structuresTotal: number;
+  structuresLost: number; // total − saved
+  structuresPristine: number; // saved at health ≥ SCORE.pristineHealth (the fire never reached them)
+  crewsDelivered: number;
+  crewsTotal: number;
+  drops: number; // committed water drops (pours that actually released water)
+  dropsEffective: number; // drops that knocked down meaningful heat (a "hit")
+  dropsWasted: number; // drops that missed or dispersed too high
+  peakThreat: number; // 0..1 — worst structure threat survived (dynamic hardship)
+  peakFireLoad: number; // most fires active at once (dynamic hardship)
+  fuelEnd: number; // 0..1 fuel remaining at the end (range bonus, fuel missions only)
+  hardLandings: number; // hull-denting touchdowns (penalty)
+  crashed: boolean; // airframe destroyed (terminal — the run scores 0 via Game, breakdown is null)
+}
+
+export type ScoreGrade = 'S' | 'A' | 'B' | 'C' | 'D';
+
+/** One row in the end-banner breakdown. `mul` rows render as "×1.4"; `add`/`sub` as signed points. */
+export interface ScoreLine {
+  label: string;
+  value: number; // points (signed) for add/sub; the multiplier for mul rows
+  kind: 'add' | 'sub' | 'mul';
+  note?: string; // small trailing detail ("91% hits", "beat par")
+}
+
+export interface ScoreBreakdown {
+  lines: ScoreLine[];
+  total: number; // the final score (floored at 0)
+  grade: ScoreGrade | null; // null on a loss (no grade for a failed mission)
 }
 
 export type MissionState = 'active' | 'won' | 'lost';
@@ -226,5 +270,6 @@ export interface LedgerEvent {
 export interface CompletionRecord {
   wonAt: number; // mission-elapsed seconds at the win
   score: number;
+  grade: ScoreGrade | null; // run rank (null on a loss)
   subtasks: { label: string; completedAt: number | null }[];
 }

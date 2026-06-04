@@ -121,7 +121,11 @@ export const BIOMES = {
 export const FLIGHT = {
   enginePower: 105, // horizontal thrust (units/s^2) in the input direction (lowered with maxSpeed so
   // the build-up to cruise stays weighty instead of snapping straight to the lower cap)
-  linearDrag: 1.6, // horizontal air resistance: higher = settles faster
+  linearDrag: 1.1, // horizontal air resistance — the ONLY thing decelerating the craft once you let off
+  // throttle (there's no brake), so this is the "coast on release" lever. LOWERED from 1.6: releasing
+  // forward now carries momentum and glides out (~2s to bleed off) instead of stopping quick. Higher =
+  // settles faster / less drift through turns; lower = floatier, skates more. Per-heli dragMul scales it
+  // (the Black Hawk already coasts further).
   maxSpeed: 30, // horizontal AIRSPEED cap (units/s). LOWERED from 41 so the whole game flies SLOWER:
   // at this pace you maneuver more, so the per-heli handling spread (the docile, precise 205 vs the
   // fast, slippery Black Hawk) actually READS instead of blurring together at speed. A world-diagonal
@@ -137,10 +141,12 @@ export const FLIGHT = {
   // forward/back along it (variable throttle). The nose no longer chases velocity.
   yawRate: 1, // turn rate (rad/s, ~97°/s) at full left/right stick
   reversePower: 0.5, // backward thrust fraction — flying tail-first is slower
-  // Raw turn/throttle input is eased toward (this) per-60fps factor before it drives
-  // yaw and thrust, so a key tap or stick flick ramps in and rolls out instead of
-  // snapping — the main lever for how SMOOTH the flight transitions feel. Lower =
-  // smoother/floatier, higher = snappier/more direct (1 = no smoothing).
+  // Raw turn/throttle/collective input is eased toward (this) per-60fps factor before
+  // it drives yaw, thrust and climb, so a key tap or stick flick ramps in and rolls
+  // out instead of snapping — the main lever for how SMOOTH the flight transitions
+  // feel. Lower = smoother/floatier, higher = snappier/more direct (1 = no smoothing).
+  // (The collective ALSO has its own velocity inertia below, collectiveResponse — the
+  // two cascade into a soft S-curve climb/descent rather than a single-lag jerk.)
   controlResponse: 0.16,
   // --- Body attitude (acceleration-driven, like a real airframe) ---
   // The fuselage tilts toward its acceleration: dive to speed up, flare to brake,
@@ -162,11 +168,14 @@ export const FLIGHT = {
   // descend over a lake until the slung bucket dips into the water (no scoop
   // button — the fill is physical). Vertical speed EASES in (rotor inertia) instead
   // of snapping, and the ease is now framerate-independent.
-  climbSpeed: 22, // max climb rate (units/s) at full UP collective, empty bucket. Kept as-is
-  // so a small "pop over a ridge" feels the same; the tall band just means full-ceiling
-  // climbs now take real time (you rarely go that high).
-  descendSpeed: 24, // max descent rate (units/s) at full DOWN collective (weight assists — no payload cut)
-  collectiveResponse: 0.07, // vertical inertia: lower = heavier/slower to spool up & down (per-60fps factor)
+  climbSpeed: 16, // max climb rate (units/s) at full UP collective, empty bucket. LOWERED from 22 —
+  // the old rate felt too quick/twitchy; a gentler ceiling makes holding altitude and easing
+  // over a ridge feel deliberate. Full-ceiling climbs just take a little longer (you rarely go high).
+  descendSpeed: 18, // max descent rate (units/s) at full DOWN collective (weight assists — no payload cut).
+  // LOWERED from 24 to match the calmer climb — descents settle in instead of dropping out from under you.
+  collectiveResponse: 0.06, // vertical inertia: lower = heavier/slower to spool up & down (per-60fps factor).
+  // Nudged down from 0.07 so the climb/descent rate eases in a touch more gently (pairs with the new
+  // collective input smoothing — see controlResponse above).
   startAltitude: 60, // start comfortably airborne in the taller band (was 30)
   rotorSpin: 26, // main-rotor visual spin (rad/s)
   tailRotorSpin: 42, // tail-rotor visual spin (rad/s)
@@ -682,13 +691,64 @@ export const ROADS = {
   speckleHi: 1.08, // per-vertex brightness ceiling
 } as const;
 
-// Scoring (Track C3). Shown on the end banner (win or loss). Rewards fires you put out
-// with water, structures still standing at the win, and a flat win bonus.
+// Scoring (Track C3, reworked). The score is a BREAKDOWN, computed once at the win/lose
+// transition by the pure `missions/score.ts` and shown line-by-line (+ an S/A/B/C grade) on
+// the end banner. It is built to reward the three things a good run actually demonstrates:
+//   • HARDSHIP   — harder missions + the scary moments you actually faced are worth more.
+//   • SKILL      — precise drops, a fast clean run, fuel left in the tank, no hull dents.
+//   • COORDINATION — keeping every structure pristine, juggling multiple fronts, flawless runs.
+// Outcome points + skill + coordination are summed, scaled by a hardship multiplier, then the
+// active penalties (lost structures, hard landings, wasted water) are subtracted. The total is
+// floored at 0 and CLAMPED at `maxScore`. A loss keeps only a small fraction of the outcome.
+// The whole scale is small and bounded: a flawless run on the toughest mission lands near
+// `maxScore` (1400), so scores read like a tidy rating, not a five-digit pile. The grade is a
+// RATIO (total ÷ baseline) and therefore scale-invariant — shrinking these weights changes the
+// number on the banner, never the letter.
 export const SCORE = {
-  perFireDoused: 250, // each fire you extinguish with a water drop (not burned out on its own)
-  perStructureSaved: 1000, // each structure still standing when the last fire dies
-  winBonus: 2000, // flat bonus for clearing every fire
-  perCrewDelivered: 600, // each crew inserted / evacuee flown out (mission objective)
+  maxScore: 1400, // the ceiling — every total is clamped here (reachable only on a hard, flawless run)
+
+  // --- Outcome: the base reward for what the run achieved -----------------------------------
+  perFireDoused: 9, // each fire you extinguish with a water drop (not burned out on its own)
+  perStructureSaved: 35, // each structure still standing when the last fire dies
+  perCrewMoved: 21, // each crew inserted / evacuee flown out (mission objective)
+  winBonus: 70, // flat bonus for completing the mission
+
+  // --- Hardship: harder missions + scarier runs pay more (MODERATE weighting) ---------------
+  // Difficulty multiplier = 1 + (difficulty-1)·step → diff 1 ×1.0 … diff 5 ×1.5.
+  difficultyStep: 0.125,
+  // Dynamic hardship: a small uplift for how dangerous it actually got — the worst structure
+  // threat you survived, and the most fires you faced at once. Caps at +35% on a brutal run.
+  hardshipPeakThreat: 0.2, // +20% at a full (1.0) peak threat survived
+  hardshipFireLoad: 0.15, // +15% when you faced `hardshipFireLoadRef` active fires at once
+  hardshipFireLoadRef: 6, // active-fire count that reads as "maximum load"
+
+  // --- Skill: how WELL you flew (win only) --------------------------------------------------
+  precisionMax: 42, // ×hit-rate (effective drops ÷ total drops)
+  precisionMinDrops: 3, // need ≥ this many drops before precision scores (a lucky 1/1 isn't 100%)
+  speedMax: 52, // beat par → full; decays linearly to 0 at `parSlackMul`×par
+  parBase: 40, // par seconds = parBase + parPerFire·firesInitial + parPerCrew·crewsTotal
+  parPerFire: 14,
+  parPerCrew: 22,
+  parSlackMul: 2.4, // elapsed at which the speed bonus reaches 0
+  rangeMax: 28, // ×fuel remaining at the end (fuel-pressure missions only)
+
+  // --- Coordination: holding everything together (win only) ---------------------------------
+  perPristineStructure: 14, // structure saved at near-full health — you kept the fire off it entirely
+  pristineHealth: 0.92, // health ≥ this counts as pristine
+  multiFrontBonus: 42, // ≥2 communities / fronts AND not a single structure lost
+  flawlessBonus: 88, // win + every structure pristine + every crew + zero fires left to burn out
+
+  // --- Penalties: active, subtracted after the multiplier; total floored at 0 ---------------
+  perStructureLost: 28, // each structure destroyed
+  hardLandingPenalty: 9, // each hull-denting hard landing (a crash is its own 0-score loss)
+  wastedDropPenalty: 4, // each drop that missed or dispersed too high (sloppy water)
+
+  // --- Loss handling + grade thresholds -----------------------------------------------------
+  lossMultiplier: 0.35, // a failed mission keeps this fraction of its outcome points
+  gradeS: 1.6, // grade = total ÷ baseline (baseline = a bonus-free competent win at this difficulty)
+  gradeA: 1.35,
+  gradeB: 1.15,
+  gradeC: 0.9,
 } as const;
 
 // Mission MECHANICS tuning (the campaign layer). This is the single tuning source for the

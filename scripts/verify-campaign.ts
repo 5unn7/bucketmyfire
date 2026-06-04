@@ -24,7 +24,7 @@ import { MissionDirector } from '../src/three/missions/MissionDirector';
 import { CAMPAIGN } from '../src/three/missions/catalog';
 import { seedFires, structurePlan, crewZones, igniteFromPlacement } from '../src/three/missions/scenario';
 import type { MissionDef, MissionSignals } from '../src/three/missions/types';
-import { WORLD3D, BUCKET3D, DROP_PHYSICS } from '../src/three/config';
+import { WORLD3D, BUCKET3D, DROP_PHYSICS, SCORE } from '../src/three/config';
 
 const DT = 0.1;
 const MAX_SEC = 400; // playthrough cap (survive missions need ~180s; blazes converge well under this)
@@ -81,7 +81,7 @@ function build(mission: MissionDef): Rig {
     communities: world.communities,
     plan: structurePlan(world, mission),
   });
-  const crew = mission.zones?.length ? new CrewTransport(crewZones(world, mission)) : undefined;
+  const crew = mission.zones?.length ? new CrewTransport(crewZones(world, mission), mission.startLoaded ?? false) : undefined;
   // Fuel is now UNIVERSAL (every mission unless `fuel:false`), mirroring Game — the perfect player
   // tops up at a base when it dips (the `play` loop keeps it ≥ 0.5). Only `fuelOut`-fail missions
   // actually lose on a dry tank; elsewhere fuel never threatens the win.
@@ -103,10 +103,15 @@ function build(mission: MissionDef): Rig {
 }
 
 function signals(r: Rig, elapsed: number): MissionSignals {
+  // The perfect player flies clean: every fire water-killed with an on-target drop, no hard landings,
+  // no crash — so the score tally mirrors the rig's real state with idealised precision/handling.
+  const saved = r.structures.aliveCount;
+  const pristine = r.structures.list.reduce((n, s) => n + (s.health >= SCORE.pristineHealth ? 1 : 0), 0);
+  const doused = r.fire.doused;
   return {
     firesActive: r.fire.activeCount,
     firesInitial: r.firesInitial,
-    firesDoused: r.fire.doused,
+    firesDoused: doused,
     structuresAlive: r.structures.aliveCount,
     structuresTotal: r.structures.total,
     crewsDelivered: r.crew?.delivered ?? 0,
@@ -116,6 +121,25 @@ function signals(r: Rig, elapsed: number): MissionSignals {
     starved: r.fuel?.starved ?? false,
     threat: r.structures.threat,
     windAngle: r.wind.angle,
+    tally: {
+      firesDoused: doused,
+      firesBurnedOut: r.fire.burnedOut,
+      firesInitial: r.firesInitial,
+      structuresSaved: saved,
+      structuresTotal: r.structures.total,
+      structuresLost: r.structures.total - saved,
+      structuresPristine: pristine,
+      crewsDelivered: r.crew?.delivered ?? 0,
+      crewsTotal: r.crew?.total ?? 0,
+      drops: doused,
+      dropsEffective: doused,
+      dropsWasted: 0,
+      peakThreat: r.structures.threat,
+      peakFireLoad: r.firesInitial,
+      fuelEnd: r.fuel?.fuel ?? 1,
+      hardLandings: 0,
+      crashed: false,
+    },
   };
 }
 
@@ -204,6 +228,25 @@ function trippingSignals(elapsed: number): MissionSignals {
     starved: true,
     threat: 1,
     windAngle: 0,
+    tally: {
+      firesDoused: 0,
+      firesBurnedOut: 0,
+      firesInitial: 5,
+      structuresSaved: 0,
+      structuresTotal: 6,
+      structuresLost: 6,
+      structuresPristine: 0,
+      crewsDelivered: 0,
+      crewsTotal: 0,
+      drops: 0,
+      dropsEffective: 0,
+      dropsWasted: 0,
+      peakThreat: 1,
+      peakFireLoad: 5,
+      fuelEnd: 0,
+      hardLandings: 0,
+      crashed: false,
+    },
   };
 }
 

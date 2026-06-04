@@ -46,9 +46,13 @@ export class HelicopterSim {
   private prevVelX = 0;
   private prevVelZ = 0;
   // Eased control demands. Raw input (a key tap or stick flick) is a step; these
-  // chase it with inertia so turns and throttle ramp in and roll out smoothly.
+  // chase it with inertia so turns, throttle AND collective ramp in and roll out
+  // smoothly. Smoothing the lift demand here (not just the resulting climb rate)
+  // gives the collective an S-curve onset instead of the single-lag jerk you get
+  // when a full-deflection step hits the velocity ease cold.
   private turnInput = 0;
   private throttleInput = 0;
+  private liftInput = 0;
 
   constructor(x = 0, z = 0, heliClass: HeliClass = resolveHeliClass()) {
     this.position.set(x, FLIGHT.startAltitude, z);
@@ -68,7 +72,31 @@ export class HelicopterSim {
     this.vel.set(0, 0, 0);
     this.prevVelX = 0;
     this.prevVelZ = 0;
+    this.turnInput = 0;
+    this.throttleInput = 0;
+    this.liftInput = 0;
     this.agl = FLIGHT.minClearance;
+  }
+
+  /**
+   * Start airborne and stationary, hovering at cruise clearance over (x, z). This is the QA /
+   * autostart pose: those URLs skip the hold-to-start ritual, but we still want to spawn OVER HOME
+   * rather than the world origin (an origin spawn reads as "mid air in the middle of nowhere", with
+   * the pad and the crew LZs far off in some random direction). Syncs altitude + agl to the flight
+   * floor so the first integrated frame doesn't jump.
+   */
+  hoverAt(x: number, z: number, floorY: number): void {
+    const y = floorY + FLIGHT.maxClearance;
+    this.position.set(x, y, z);
+    this.altitude = y;
+    this.altVel = 0;
+    this.vel.set(0, 0, 0);
+    this.prevVelX = 0;
+    this.prevVelZ = 0;
+    this.turnInput = 0;
+    this.throttleInput = 0;
+    this.liftInput = 0;
+    this.agl = FLIGHT.maxClearance;
   }
 
   /** Horizontal speed (units/s). */
@@ -124,6 +152,7 @@ export class HelicopterSim {
     const ctlA = 1 - Math.pow(1 - FLIGHT.controlResponse * cls.controlMul, dt * 60);
     this.turnInput += (THREE.MathUtils.clamp(input.turn, -1, 1) - this.turnInput) * ctlA;
     this.throttleInput += (THREE.MathUtils.clamp(input.throttle, -1, 1) - this.throttleInput) * ctlA;
+    this.liftInput += (THREE.MathUtils.clamp(input.lift, -1, 1) - this.liftInput) * ctlA;
 
     // --- Yaw: the pilot turns the nose directly, at a rate set by the (smoothed) stick.
     // (No more chasing the velocity vector — that was what made the view swing.) ---
@@ -169,7 +198,7 @@ export class HelicopterSim {
     // bucket cuts climb power (climbSpeed above), drags the craft down with a constant
     // sink the rotor must fight, and makes the collective laggier — so a full heli
     // wallows and you must hold UP just to hold height. All of it fades as it drains. ---
-    const lift = THREE.MathUtils.clamp(input.lift, -1, 1);
+    const lift = this.liftInput; // smoothed collective demand (eased above, like turn/throttle)
     const upRate = climbSpeed; // already payload-penalized above
     const downRate = FLIGHT.descendSpeed; // weight assists descent → no payload cut
     let targetAltVel = lift >= 0 ? lift * upRate : lift * downRate;

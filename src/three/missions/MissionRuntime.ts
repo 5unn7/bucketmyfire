@@ -1,4 +1,4 @@
-import { SCORE } from '../config';
+import { computeScore } from './score';
 import type {
   MissionDef,
   MissionSignals,
@@ -9,6 +9,7 @@ import type {
   SubTask,
   LedgerEvent,
   CompletionRecord,
+  ScoreBreakdown,
 } from './types';
 
 /**
@@ -27,6 +28,7 @@ import type {
 export class MissionRuntime {
   private _state: MissionState = 'active';
   private _score = 0;
+  private _breakdown: ScoreBreakdown | null = null;
   private readonly subtasks: SubTask[];
   private readonly objs: (Objective | FailCondition)[]; // parallel to subtasks (same order)
   private readonly _events: LedgerEvent[] = [];
@@ -47,6 +49,11 @@ export class MissionRuntime {
 
   get score(): number {
     return this._score;
+  }
+
+  /** The line-itemed score + grade, computed once at the outcome (null until then). */
+  get breakdown(): ScoreBreakdown | null {
+    return this._breakdown;
   }
 
   /** Whether every GOAL sub-task is latched done (the mission's completion is verified). */
@@ -105,6 +112,7 @@ export class MissionRuntime {
     return {
       wonAt: won?.at ?? 0,
       score: this._score,
+      grade: this._breakdown?.grade ?? null,
       subtasks: this.subtasks.map((t) => ({ label: t.label, completedAt: t.completedAt ?? null })),
     };
   }
@@ -119,11 +127,8 @@ export class MissionRuntime {
 
   private end(state: MissionState, at: number, s: MissionSignals): void {
     this._state = state;
-    this._score =
-      SCORE.perFireDoused * s.firesDoused +
-      SCORE.perStructureSaved * s.structuresAlive +
-      SCORE.perCrewDelivered * s.crewsDelivered +
-      (state === 'won' ? SCORE.winBonus : 0);
+    this._breakdown = computeScore(this.def, state, at, s.tally);
+    this._score = this._breakdown.total;
     this._events.push({ at, type: state === 'won' ? 'won' : 'lost', id: 'mission', label: this.def.name });
   }
 
