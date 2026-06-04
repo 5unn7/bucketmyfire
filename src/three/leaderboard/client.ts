@@ -49,6 +49,14 @@ export interface ScoreSubmission {
   timeS?: number;
 }
 
+/** A pilot's own position on a board: 1-based `rank` within `total` ranked pilots, plus their row.
+ *  Lets the UI pin a "YOU · #14 · Top 5%" card even when the player is far below the visible top. */
+export interface Standing<E> {
+  rank: number;
+  total: number;
+  entry: E;
+}
+
 // --- Anonymous device id ----------------------------------------------------
 // A stable, anonymous per-browser id so the board can highlight "you" without any login.
 // Purely a display aid — it's also sent with each row so a future "your best" lookup is cheap.
@@ -153,18 +161,60 @@ export async function submitScore(s: ScoreSubmission): Promise<boolean> {
   }
 }
 
-/** Top runs for one mission (each pilot's best), highest score first. [] on any failure. */
-export async function fetchMissionTop(missionId: string, limit = 25): Promise<MissionEntry[]> {
-  if (!isConfigured()) return [];
-  const q = `mission_id=eq.${encodeURIComponent(missionId)}&order=score.desc,time_s.asc.nullslast&limit=${limit}`;
-  return (await getJson<MissionEntry[]>(`/rest/v1/mission_best?${q}`)) ?? [];
+/** A page of board rows plus the TOTAL number of ranked pilots (read from PostgREST's
+ *  `Content-Range` header), so the UI can say "top 25 of 312" and compute percentiles. */
+export interface Board<E> {
+  rows: E[];
+  total: number;
 }
 
-/** Overall career board (sum of best-per-mission per pilot), highest first. [] on any failure. */
-export async function fetchCareerTop(limit = 50): Promise<CareerEntry[]> {
-  if (!isConfigured()) return [];
-  const q = `order=total.desc&limit=${limit}`;
-  return (await getJson<CareerEntry[]>(`/rest/v1/career_totals?${q}`)) ?? [];
+/** Top runs for one mission (each pilot's best), highest score first. Empty board on any failure. */
+export async function fetchMissionTop(missionId: string, limit = 25): Promise<Board<MissionEntry>> {
+  if (!isConfigured()) return { rows: [], total: 0 };
+  const q = `mission_id=eq.${encodeURIComponent(missionId)}&order=score.desc,time_s.asc.nullslast&limit=${limit}`;
+  const res = await getJsonWithCount<MissionEntry[]>(`/rest/v1/mission_best?${q}`);
+  return { rows: res?.data ?? [], total: res?.total ?? res?.data?.length ?? 0 };
+}
+
+/** Overall career board (sum of best-per-mission per pilot), highest first. Empty board on failure. */
+export async function fetchCareerTop(limit = 50): Promise<Board<CareerEntry>> {
+  if (!isConfigured()) return { rows: [], total: 0 };
+  const res = await getJsonWithCount<CareerEntry[]>(`/rest/v1/career_totals?order=total.desc&limit=${limit}`);
+  return { rows: res?.data ?? [], total: res?.total ?? res?.data?.length ?? 0 };
+}
+
+/**
+ * This device's standing on one mission board: its best row, the count of pilots ranked above it,
+ * and the total field. `null` when the device has never posted to this mission, or on any network
+ * failure — the caller then falls back to the local best. Ranking matches the board order: a pilot
+ * is "above" you if their score is strictly higher (ties break by time in the view, close enough).
+ */
+export async function fetchMissionStanding(missionId: string): Promise<Standing<MissionEntry> | null> {
+  if (!isConfigured()) return null;
+  const id = getClientId();
+  const mine = await getJson<MissionEntry[]>(
+    `/rest/v1/mission_best?mission_id=eq.${encodeURIComponent(missionId)}&client_id=eq.${encodeURIComponent(id)}&limit=1`,
+  );
+  if (!mine || mine.length === 0) return null;
+  const entry = mine[0];
+  const above = await countRows(`/rest/v1/mission_best?mission_id=eq.${encodeURIComponent(missionId)}&score=gt.${entry.score}`);
+  if (above == null) return null;
+  const total = await countRows(`/rest/v1/mission_best?mission_id=eq.${encodeURIComponent(missionId)}`);
+  return { rank: above + 1, total: total ?? above + 1, entry };
+}
+
+/** This pilot's standing on the career board (by callsign). `null` when unfound/offline/error. */
+export async function fetchCareerStanding(pilot: string): Promise<Standing<CareerEntry> | null> {
+  if (!isConfigured()) return null;
+  const name = pilot.trim();
+  if (name.length < 2) return null;
+  const mine = await getJson<CareerEntry[]>(`/rest/v1/career_totals?pilot=eq.${encodeURIComponent(name)}&limit=1`);
+  if (!mine || mine.length === 0) return null;
+  const entry = mine[0];
+  const above = await countRows(`/rest/v1/career_totals?total=gt.${entry.total}`);
+  if (above == null) return null;
+  const total = await countRows(`/rest/v1/career_totals`);
+  return { rank: above + 1, total: total ?? above + 1, entry };
 }
 
 /**
@@ -199,4 +249,49 @@ async function getJson<T>(path: string): Promise<T | null> {
   } finally {
     t.done();
   }
+}
+
+/** Like getJson, but also asks PostgREST for the exact total (`Prefer: count=exact`) and returns it
+ *  from the `Content-Range` header — used to show "top N of TOTAL" without a second request. */
+async function getJsonWithCount<T>(path: string): Promise<{ data: T; total: number | null } | null> {
+  const t = withTimeout(8000);
+  try {
+    const res = await fetch(`${URL_BASE}${path}`, { headers: headers({ Prefer: 'count=exact' }), signal: t.signal });
+    if (!res.ok) return null;
+    const data = (await res.json()) as T;
+    return { data, total: parseRangeTotal(res.headers.get('content-range')) };
+  } catch {
+    return null;
+  } finally {
+    t.done();
+  }
+}
+
+/** Count rows matching a query WITHOUT paying for their bodies: ask for one row + the exact count,
+ *  read the total from `Content-Range`. Returns null on any failure. */
+async function countRows(path: string): Promise<number | null> {
+  const sep = path.includes('?') ? '&' : '?';
+  const t = withTimeout(8000);
+  try {
+    const res = await fetch(`${URL_BASE}${path}${sep}limit=1`, {
+      headers: headers({ Prefer: 'count=exact' }),
+      signal: t.signal,
+    });
+    if (!res.ok) return null;
+    return parseRangeTotal(res.headers.get('content-range'));
+  } catch {
+    return null;
+  } finally {
+    t.done();
+  }
+}
+
+/** PostgREST reports the total row count in the Content-Range header (e.g. "0-24/312", or a
+ *  star-slash form when the offset is unknown). The total is the part after the slash. */
+function parseRangeTotal(header: string | null): number | null {
+  if (!header) return null;
+  const slash = header.indexOf('/');
+  if (slash < 0) return null;
+  const n = parseInt(header.slice(slash + 1), 10);
+  return Number.isFinite(n) ? n : null;
 }
