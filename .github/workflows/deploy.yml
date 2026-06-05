@@ -2,19 +2,20 @@ name: deploy
 
 # Auto-deploy the game to GitHub Pages on every push to main.
 #
-# Builds the static site (tsc gate + vite build) and publishes dist/ to the `gh-pages`
-# branch, which GitHub Pages serves (Settings → Pages → Deploy from a branch: gh-pages /).
-# The Supabase leaderboard keys are injected from repo secrets at build time so the live
-# board stays online (the anon key is public/RLS-gated — safe to ship in the bundle).
+# Pipeline:  install -> lint (advisory) -> build (tsc gate + vite) -> verify:campaign
+# (prove every mission is still completable) -> publish dist/ to gh-pages WITH HISTORY
+# (so a bad deploy is one `git revert` + push away) -> post-deploy propagation smoke.
 #
-# If a build ever fails, gh-pages is left untouched and the current site keeps serving.
+# The Supabase leaderboard keys are injected from repo secrets at build time (the anon
+# key is public/RLS-gated — safe to ship in the bundle). If any pre-publish gate fails,
+# gh-pages is left untouched and the current live site keeps serving.
 
 on:
   push:
     branches: [main]
   workflow_dispatch: {}
 
-# Let the build push the gh-pages branch with the default token.
+# The publish step pushes the gh-pages branch with the default token.
 permissions:
   contents: write
 
@@ -39,25 +40,55 @@ jobs:
       - name: Install deps
         run: npm ci
 
+      # Advisory for now (non-blocking): the lint baseline is clean, but it's marked
+      # continue-on-error until the full baseline is committed off the in-flight visual
+      # branch. Flip to a hard gate (remove continue-on-error) once that lands.
+      - name: Lint
+        run: npm run lint
+        continue-on-error: true
+
       - name: Build (tsc gate + vite build)
         run: npm run build
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           # Crash/error beacon sink (the report-error Edge Function). Public endpoint baked into the
-          # bundle; absent → errors log to the console only. See src/three/telemetry/errorBeacon.ts.
+          # bundle; absent -> errors log to the console only. See src/three/telemetry/errorBeacon.ts.
           VITE_ERROR_BEACON_URL: ${{ secrets.VITE_ERROR_BEACON_URL }}
 
+      # Hard gate: prove a perfect player can still complete every mission (catches sim/
+      # scenario regressions that a type-check can't). Pure Node, no browser, ~1s.
+      - name: Verify campaign completability
+        run: npm run verify:campaign
+
+      # History-preserving publish: commits dist/ ON TOP of the existing gh-pages branch
+      # (force_orphan defaults false), so a bad deploy can be rolled back with one revert
+      # instead of being lost to a force-push. Keeps the CNAME + adds .nojekyll for us.
+      # (Pin to a full commit SHA instead of @v4 if you want to harden the supply chain.)
       - name: Publish dist/ to gh-pages
-        env:
-          DEPLOY_TOKEN: ${{ github.token }}
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          publish_branch: gh-pages
+          cname: bucketmyfire.com
+          commit_message: "deploy: ${{ github.sha }}"
+          user_name: github-actions[bot]
+          user_email: 41898282+github-actions[bot]@users.noreply.github.com
+
+      # Post-deploy: confirm GitHub Pages is actually serving the NEW build by matching the
+      # freshly-built JS asset hash on the live site. Advisory — Pages propagation can lag a
+      # couple of minutes, so this warns (not fails) if it hasn't caught up within ~3 min.
+      - name: Post-deploy smoke check
         run: |
-          touch dist/.nojekyll
-          cd dist
-          git init -q
-          git config user.name  "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -qm "deploy: ${GITHUB_SHA}"
-          git branch -M gh-pages
-          git push -f "https://x-access-token:${DEPLOY_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
+          asset=$(grep -oE 'assets/index-[A-Za-z0-9_-]+\.js' dist/index.html | head -1)
+          echo "Expecting live site to serve: $asset"
+          for i in $(seq 1 12); do
+            if curl -fsSL https://bucketmyfire.com/ | grep -q "$asset"; then
+              echo "OK: live site is serving the new build."
+              exit 0
+            fi
+            echo "Attempt $i/12: not propagated yet, retrying in 15s..."
+            sleep 15
+          done
+          echo "::warning::Live site did not serve the new build within ~3 min (likely slow GitHub Pages propagation; verify manually)."
