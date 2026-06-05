@@ -50,11 +50,97 @@ function cacheModelsInDev(): Plugin {
   };
 }
 
+/**
+ * SEO + AEO structured data. Injected as a STATIC <script type="application/ld+json"> via
+ * transformIndexHtml (which runs AFTER Vite's HTML inline-proxy pass), so it lands verbatim in the
+ * built index.html for search engines AND answer engines (ChatGPT/Perplexity/Google AI Overviews/
+ * voice) — without an inline ld+json in index.html, which desyncs the inline-proxy and breaks the
+ * build. Keep the description/FAQ answers in sync with the meta tags in index.html.
+ */
+const STRUCTURED_DATA = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': ['VideoGame', 'SoftwareApplication'],
+      name: 'Bucket My Fire',
+      alternateName: 'Bucket My Fire — Helicopter Wildfire Flight Sim',
+      url: 'https://bucketmyfire.com/',
+      image: 'https://bucketmyfire.com/og-image.jpg',
+      description:
+        'Fly a helicopter, fill from the lakes, and fight the wildfire before it reaches the town. A real-feel helicopter flight sim, free in your browser.',
+      genre: ['Flight simulator', 'Helicopter game', 'Wildfire firefighting game'],
+      gamePlatform: 'Web browser',
+      applicationCategory: 'GameApplication',
+      operatingSystem: 'Any modern web browser (iOS, Android, Windows, macOS)',
+      playMode: 'SinglePlayer',
+      inLanguage: 'en',
+      author: { '@type': 'Organization', name: 'Bucket My Fire' },
+      offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD', availability: 'https://schema.org/InStock' },
+    },
+    {
+      '@type': 'FAQPage',
+      mainEntity: [
+        {
+          '@type': 'Question',
+          name: 'What is Bucket My Fire?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'Bucket My Fire is a free browser-based helicopter wildfire flight sim. You fly a helitanker, fill a slung bucket from lakes, and fight a spreading wildfire before it reaches the town.',
+          },
+        },
+        {
+          '@type': 'Question',
+          name: 'Is Bucket My Fire free to play?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'Yes. It is completely free and runs in your web browser. No download, install, or sign-up required.',
+          },
+        },
+        {
+          '@type': 'Question',
+          name: 'How do you play Bucket My Fire?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: "Fly the helicopter low over a lake to fill your bucket, then drop the water on the fire. Keep the fire off the cabins and complete each mission's objectives.",
+          },
+        },
+        {
+          '@type': 'Question',
+          name: 'What devices does Bucket My Fire run on?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'Any modern web browser on phone, tablet, or desktop. It is built mobile-first with touch controls and keyboard support.',
+          },
+        },
+        {
+          '@type': 'Question',
+          name: 'Is there multiplayer?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'Co-op multiplayer is in development. Today the game is a single-player campaign with a global leaderboard.',
+          },
+        },
+      ],
+    },
+  ],
+};
+
+function injectStructuredData(): Plugin {
+  return {
+    name: 'bmf-structured-data',
+    transformIndexHtml() {
+      return [
+        { tag: 'script', attrs: { type: 'application/ld+json' }, children: JSON.stringify(STRUCTURED_DATA), injectTo: 'head' },
+      ];
+    },
+  };
+}
+
 // bucketmyfire is a pure client-side Three.js game. Vite serves src/ in dev and
 // bundles a static site into dist/ for deployment to any static host.
 export default defineConfig({
   base: './',
-  plugins: [cacheModelsInDev()],
+  plugins: [cacheModelsInDev(), injectStructuredData()],
   server: {
     host: true, // expose on LAN so you can test on a real phone
     port: 5173,
