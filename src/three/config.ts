@@ -3,6 +3,8 @@
 // units (the terrain spans ~600 units; the aircraft is ~8 units long), retuned
 // down from the old 2D pixel scale but preserving the same momentum "feel".
 
+import { applyConfigOverrides } from './dev/configOverrides';
+
 export const WORLD3D = {
   size: 2100, // square terrain extent, centered at origin — ENLARGED 1500→2100 so the big lakes stop eating
   // the land (anchors spread ~1.4× further apart, lakes keep their absolute size → more dry ground, esp. La
@@ -608,20 +610,26 @@ export const CRASH = {
   pullUpAlt: 40, // "PULL UP" / "TERRAIN" only fire this close to the ground (≈180 ft)
 } as const;
 
-// The Missinipe cantilever bridge — a SCENIC easter-egg + skill gate (the "secret trick only the
-// known would know"). A procedural truss bridge is spanned across the authored Churchill River at
-// the point nearest the `missinipe` anchor (see meshes/churchillBridge.ts + World.namedRiverPath),
-// so it always sits over real water. The dare: descend below the deck and thread the helicopter
-// UNDER it, low over the river — clip the deck, the truss, or a bank pier and you STRIKE (it reuses
-// the crash pipeline → crumble + fall + detonate, cause 'bridge'). A clean pass-through earns a
-// quiet radio nod (recognition only — no score change), gated by `rewardCooldown` so you can't farm
-// it by hovering. ONLY built on maps that have the Churchill River + a Missinipe anchor (the SK map);
-// other regions skip it silently. All values are WORLD UNITS unless noted. Set enabled:false to remove.
+// Procedural truss bridges where a ROAD/TOWN crosses a river — a SCENIC feature + skill gate. Each
+// `sites` entry spans the authored river named there at the point nearest its real lat/lon, so every
+// bridge sits over real water (see meshes/bridges.ts + World.namedRiverPath/projectLatLon). The dare:
+// descend below the deck and thread the helicopter UNDER it, low over the river — clip the deck, the
+// truss, or a bank pier and you STRIKE (reuses the crash pipeline → crumble + fall + detonate, cause
+// 'bridge'). A clean pass-through earns a quiet radio nod naming that bridge (recognition only — no
+// score change), gated by `rewardCooldown`. World shapes a river VALLEY at each so the bridge spans
+// the banks instead of standing on stilts. Bridges whose river isn't on the active map skip silently
+// (so non-SK maps get none). Dimensions are SHARED across all bridges. All values are WORLD UNITS
+// unless noted. Set enabled:false to remove them all; trim `sites` to remove individual bridges.
 export const BRIDGE = {
   enabled: true,
-  river: 'Churchill River', // which authored RegionRiver to span (matched by name)
-  nearAnchor: 'missinipe', // place it at the river point nearest THIS anchor id
-  // --- Structure dimensions ---
+  // Where to build a bridge: span `river` (an authored RegionRiver name) at the point nearest `near`
+  // (real lat/lon). `name` labels the clean-pass radio call. These are the road-crosses-river towns.
+  sites: [
+    { name: 'Missinipe', river: 'Churchill River', near: { lat: 56.3156, lon: -105.1285 } },
+    { name: 'Prince Albert', river: 'Saskatchewan River', near: { lat: 53.1266, lon: -105.7296 } },
+    { name: 'Saskatoon', river: 'S Saskatchewan river', near: { lat: 52.133, lon: -106.67 } },
+  ],
+  // --- Structure dimensions (shared by every bridge) ---
   span: 50, // deck LENGTH bank-to-bank (across the channel) — wide enough to land its piers on dry banks
   roadway: 14, // deck WIDTH along the flow = the front-to-back depth of the tunnel you thread
   deckClearance: 14, // height of the deck UNDERSIDE above the river surface = the headroom you fly under
@@ -630,7 +638,7 @@ export const BRIDGE = {
   trussBays: 6, // number of triangle panels per truss plane (the "5–6 triangle" Warren-truss look)
   trussBeam: 1.1, // truss member (chord/diagonal/post) cross-section thickness
   pierWidth: 12, // each bank pier's footprint across the span — sits at the span ENDS, leaving the centre clear
-  // --- Collision (the airframe-vs-bridge strike test; engine-agnostic, in churchillBridge.ts) ---
+  // --- Collision (the airframe-vs-bridge strike test; engine-agnostic, in meshes/bridges.ts) ---
   heliReach: 4.5, // horizontal collision radius of the airframe + rotor disc added to every solid part
   heliTopRise: 5, // how far the rotor disc sits ABOVE the belly — the vertical span tested against the deck
   // --- Clean-pass reward (recognition only) ---
@@ -889,6 +897,7 @@ export const ROADS = {
   bridgeLift: 0.7, // extra height where a road crosses water (a low causeway over the surface)
   meanderAmp: 10, // gentle lateral wander (units) — roads bend with terrain, less than rivers (eased from 18 to calm the bends)
   dodgeMax: 140, // max lateral search (units) to route a road point around a lake before giving up
+  shoreClear: 0.8, // ride the road this far ABOVE a lake's surface (units) when dodging — clears the sub-water shore shelf so the deck doesn't drape at/under the waterline (the "road in the lake" 3D bug). Raise to push roads further up the bank
   smoothPasses: 3, // Laplacian smoothing passes over a road's interior points — kills the dodge-water sawtooth/zigzag (never relaxes a point onto water)
   resample: 4.5, // ribbon cross-section spacing (units) — smaller = smoother road edges + better drape
   edgeConform: 0.7, // 0..1: how much each edge follows its OWN ground height (1) vs the centre's (0)
@@ -1459,3 +1468,26 @@ export const TITLE = {
   },
   wind: { x: 0.35, z: 0.12 }, // gentle ambient wind fed to the shared uniform bus (drives foliage/smoke in later phases)
 } as const;
+
+// --- Live tuning registry (dev tooling) -------------------------------------
+// Every tunable block, by name. The dev slider panel (`dev/ConfigPanel.ts`, toggled with the
+// backtick key under `import.meta.env.DEV || ?qa || ?tune`) walks this to auto-generate a control
+// per value, and mutates these SAME object references — so a runtime knob (flight/bucket/fire/
+// camera/drop/audio…) updates on the next frame. The objects are `as const` for editing safety in
+// source, but JS lets us mutate them at runtime through this loosely-typed view (intentional, dev-only).
+export const CONFIG_REGISTRY: Record<string, Record<string, unknown>> = {
+  WORLD3D, MAPGEO, TERRAIN, LAKE_SHAPE, STREAM, BIOMES, FOREST,
+  FLIGHT, STARTUP, WASH, INSTRUMENTS, BUCKET3D, DROP_PHYSICS, DROP_FX, FIREHEAD,
+  HELI_CLASSES, HEALTH, CRASH, BRIDGE,
+  FIRE3D, STRUCTURES, STRUCT_FIRE, COMMUNITIES, ROADS, SCORE, MISSIONS, FAUNA,
+  QUALITY, POSTFX, GODRAYS, GRADE, FIRELIGHT, EMBERS, AMBIENT_EMBERS,
+  WATER, CLOUDS, SPRAY, SMOKE, HAZE, AUDIO, CAMERA, TITLE,
+};
+
+// A deep clone captured BEFORE overrides are applied — the panel's "reset to default" baseline.
+// (JSON round-trip is safe here: these blocks are pure number/string/boolean/array/object data.)
+export const CONFIG_DEFAULTS: Record<string, Record<string, unknown>> = JSON.parse(JSON.stringify(CONFIG_REGISTRY));
+
+// Re-apply whatever the tuning panel saved last session, so load-time knobs (terrain, world-gen,
+// quality…) take effect too. No-op in the headless Node bundle and when nothing is stored.
+applyConfigOverrides(CONFIG_REGISTRY);

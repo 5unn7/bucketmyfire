@@ -45,7 +45,7 @@ import { HeliAudio } from './audio/HeliAudio';
 import { Profile } from './ui/profile';
 import { createCrewFigures, CrewFigures } from './meshes/crewFigures';
 import { createLandingZone, LandingZoneMesh } from './meshes/landingZone';
-import { createChurchillBridge, computeBridgeSite, type ChurchillBridge } from './meshes/churchillBridge';
+import { createBridge, computeBridgeSites, type Bridge } from './meshes/bridges';
 import { CrewTransport, CrewZone } from './sim/CrewTransport';
 import { FuelSim } from './sim/FuelSim';
 import { HealthSim } from './sim/HealthSim';
@@ -165,12 +165,12 @@ export class Game {
   private lost = false; // C3: every structure destroyed → mission failed (latches the sim off)
   private crashed = false; // airframe destroyed (a Game-level loss, any mission) — explosion has fired
   private crashCause: 'tree' | 'impact' | 'airframe' | 'bridge' | null = null; // why the wreck — picks the mayday copy
-  /** The Missinipe easter-egg bridge (null on maps without it / when BRIDGE.enabled is false). Public for QA via __game. */
-  bridge: ChurchillBridge | null = null;
-  private bridgeUnder = false; // currently threading under the deck (clean-pass tracking)
-  private bridgeEnterU = 0; // sign of the along-flow coord when the tunnel was entered
-  private bridgePassCd = 0; // s until another clean pass-under can be acknowledged (no hover-farming)
-  /** Clean pass-throughs under the bridge this session (read by QA / future achievements). */
+  /** The scenic bridges on this map (empty on maps without any / when BRIDGE.enabled is false). Public for QA via __game. */
+  bridges: Bridge[] = [];
+  // Per-bridge clean-pass tracking (indices align with `bridges`): are we under it, which side we
+  // entered from, and the per-bridge cooldown until another clean pass can be acknowledged.
+  private bridgePass: { under: boolean; enterU: number; cd: number }[] = [];
+  /** Clean pass-throughs under any bridge this session (read by QA / future achievements). */
   bridgePasses = 0;
   private crashHold = 0; // s remaining to linger on the explosion before the MISSION FAILED modal (CRASH.deathHold)
   private airframeHitCd = 0; // cooldown (s) so one hard landing fires ONE damage warning, not a per-frame burst
@@ -287,11 +287,11 @@ export class Game {
     // Grow the mission's MAP (its authored region, else the player's chosen map, else the default)
     // and lay any authored place-name pins over the seeded ones so briefings match the radar.
     this.world = new World(mission.seed, { regionId: mission.map ?? this.mapId, pins: mission.places, homeBase: mission.homeBase });
-    // Resolve the Missinipe bridge site up front (null off-SK / when disabled) and shape its river
-    // VALLEY into the terrain BEFORE the mesh + structures sample the ground, so the bridge spans the
-    // banks instead of standing tall. The same site builds the bridge mesh + collider further below.
-    const bridgeSite = computeBridgeSite(this.world);
-    this.world.setBridgeValley(bridgeSite);
+    // Resolve the bridge sites up front (empty off-SK / when disabled) and shape their river VALLEYS
+    // into the terrain BEFORE the mesh + structures sample the ground, so each bridge spans its banks
+    // instead of standing tall. The same sites build the bridge meshes + colliders further below.
+    const bridgeSites = computeBridgeSites(this.world);
+    this.world.setBridgeValleys(bridgeSites);
     this.wind = new Wind(mission.wind?.angle, mission.wind?.strengthScale ?? 1);
     this.fauna = new Fauna(this.scene, this.world);
     this.depotXZ = (() => {
@@ -500,11 +500,13 @@ export class Game {
     // bucket scrapes terrain and snags treetops against this (see bucketSim below).
     this.obstacles = new Obstacles(this.world, forest.colliders);
 
-    // The Missinipe bridge mesh + collider, built from the site resolved above (its valley is already
-    // shaped into the terrain). Null off-SK / when disabled, so this self-skips.
-    if (bridgeSite) {
-      this.bridge = createChurchillBridge(bridgeSite);
-      this.scene.add(this.bridge.group);
+    // The bridge meshes + colliders, built from the sites resolved above (their valleys are already
+    // shaped into the terrain). Empty off-SK / when disabled, so this self-skips.
+    for (const site of bridgeSites) {
+      const bridge = createBridge(site);
+      this.scene.add(bridge.group);
+      this.bridges.push(bridge);
+      this.bridgePass.push({ under: false, enterU: 0, cd: 0 });
     }
 
     // Mixed-forest variety: deciduous (birch/aspen) accents + burnt snags, each reusing
@@ -1742,14 +1744,14 @@ export class Game {
   }
 
   /**
-   * Begin a bridge-strike crash: the airframe clipped the Missinipe bridge while threading it. Same
-   * crumble-and-fall as a tree strike (it tumbles to the river, where detonate('bridge') finishes it),
-   * with a bridge-specific mayday so the cause is unmistakable. No-op if already going down.
+   * Begin a bridge-strike crash: the airframe clipped a bridge while threading it. Same crumble-and-
+   * fall as a tree strike (it tumbles to the river, where detonate('bridge') finishes it), with a
+   * bridge-specific mayday so the cause is unmistakable. No-op if already going down.
    */
   private beginBridgeCrash(): void {
     if (this.heliSim.crashing || this.won || this.lost) return;
     this.crashCause = 'bridge';
-    this.bridgeUnder = false; // a clipped pass is not a clean one
+    for (const st of this.bridgePass) st.under = false; // a clipped pass is not a clean one
     this.heliSim.beginCrash();
     this.hud.flashDamage(1);
     this.hud.setAlert(null);
@@ -1758,34 +1760,37 @@ export class Game {
   }
 
   /**
-   * Track threading the bridge for the clean-pass reward (the "secret trick"). A pass counts when the
-   * airframe enters the tunnel under the deck on one side and exits the OTHER side without striking —
-   * acknowledged with a quiet radio nod (recognition only, no score change), rate-limited by a
-   * cooldown so hovering under the deck can't farm it. No-op (and cheap) on maps without the bridge.
+   * Track threading the bridges for the clean-pass reward (the "secret trick"). A pass counts when the
+   * airframe enters the tunnel under a deck on one side and exits the OTHER side without striking —
+   * acknowledged with a quiet radio nod naming that bridge (recognition only, no score change), rate-
+   * limited per bridge so hovering can't farm it. No-op (and cheap) on maps without any bridges.
    */
   private updateBridgePass(dt: number): void {
-    if (!this.bridge) return;
-    if (this.bridgePassCd > 0) this.bridgePassCd -= dt;
     const p = this.heliSim.position;
-    const { under, u } = this.bridge.collider.pass(p.x, p.y, p.z);
-    if (under && !this.bridgeUnder) {
-      // Entered the tunnel — remember which side, so a straight-through pass can be told from a back-out.
-      this.bridgeEnterU = Math.sign(u) || 1;
-    } else if (!under && this.bridgeUnder) {
-      // Left the tunnel: a clean pass is an exit on the opposite side (crossed under, didn't reverse out).
-      if (Math.sign(u) === -this.bridgeEnterU && this.bridgePassCd <= 0 && !this.crashed && !this.won && !this.lost) {
-        this.bridgePasses++;
-        this.bridgePassCd = BRIDGE.rewardCooldown;
-        const lines = [
-          'Whoo! Clean under the Missinipe bridge — that was flying.',
-          'Right under the deck — nerves of steel, Water-1.',
-          'Did you just thread the bridge? Don’t tell the chief.',
-        ];
-        this.hud.pushComms('crew', lines[(this.bridgePasses - 1) % lines.length], 'info');
-        this.audio.playSquelch('info');
+    for (let i = 0; i < this.bridges.length; i++) {
+      const bridge = this.bridges[i];
+      const st = this.bridgePass[i];
+      if (st.cd > 0) st.cd -= dt;
+      const { under, u } = bridge.collider.pass(p.x, p.y, p.z);
+      if (under && !st.under) {
+        // Entered the tunnel — remember which side, so a straight-through pass can be told from a back-out.
+        st.enterU = Math.sign(u) || 1;
+      } else if (!under && st.under) {
+        // Left the tunnel: a clean pass is an exit on the opposite side (crossed under, didn't reverse out).
+        if (Math.sign(u) === -st.enterU && st.cd <= 0 && !this.crashed && !this.won && !this.lost) {
+          this.bridgePasses++;
+          st.cd = BRIDGE.rewardCooldown;
+          const lines = [
+            `Whoo! Clean under the ${bridge.name} bridge — that was flying.`,
+            `Right under the ${bridge.name} deck — nerves of steel, Water-1.`,
+            `Did you just thread the ${bridge.name} bridge? Don’t tell the chief.`,
+          ];
+          this.hud.pushComms('crew', lines[(this.bridgePasses - 1) % lines.length], 'info');
+          this.audio.playSquelch('info');
+        }
       }
+      st.under = under;
     }
-    this.bridgeUnder = under;
   }
 
   /**
@@ -1803,11 +1808,13 @@ export class Game {
     const agl = this.heliSim.agl;
     const sink = -this.heliSim.vertSpeed; // + = descending
 
-    // Bridge strike: the airframe clipped the deck, truss, or a bank pier of the Missinipe bridge.
-    // (One O(1) box test; harmless when there's no bridge.) Threading cleanly UNDER returns false.
-    if (this.bridge && this.bridge.collider.strike(x, belly, z)) {
-      this.beginBridgeCrash();
-      return null;
+    // Bridge strike: the airframe clipped the deck, truss, or a bank pier of any bridge. (One O(1)
+    // box test per bridge; harmless when there are none.) Threading cleanly UNDER returns false.
+    for (const bridge of this.bridges) {
+      if (bridge.collider.strike(x, belly, z)) {
+        this.beginBridgeCrash();
+        return null;
+      }
     }
 
     // Tree strike / canopy proximity (one O(1) grid query for the worst treetop near the airframe).

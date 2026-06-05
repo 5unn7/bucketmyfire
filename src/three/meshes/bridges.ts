@@ -4,25 +4,28 @@ import { BRIDGE } from '../config';
 import type { World } from '../World';
 
 /**
- * The Missinipe cantilever bridge — a SCENIC easter-egg + skill gate (the "secret trick only the
- * known would know"). A procedural Warren-truss bridge spanned across the authored Churchill River
- * at the point nearest the Missinipe anchor, low over the water. The dare: descend below the deck
- * and thread the helicopter UNDER it. Clip the deck, the truss, or a bank pier and you STRIKE.
+ * Procedural truss bridges where a road/town crosses a river — SCENIC features + skill gates. Each
+ * `BRIDGE.sites` entry spans the authored river named there at the point nearest its real lat/lon,
+ * low over the water. The dare: descend below the deck and thread the helicopter UNDER it. Clip the
+ * deck, the truss, or a bank pier and you STRIKE.
  *
  * Three pieces, all procedural (zero assets), all built ONCE at load — no per-frame work, no
  * recompiles (the mobile-60fps invariants):
- *   1. `computeBridgeSite(world)` — resolves WHERE: the nearest Churchill River point to Missinipe,
- *      the flow tangent there, and the water surface Y. Null on maps without that river/anchor.
- *   2. `createChurchillBridge(site)` — the mesh: two triangulated truss planes (merged to ONE steel
- *      draw call), a concrete deck slab + two bank piers (ONE concrete draw call), posed at the site.
+ *   1. `computeBridgeSites(world)` — resolves WHERE each bridge sits: the nearest river point to the
+ *      site's lat/lon, the flow tangent there, and the water surface Y. Skips sites whose river isn't
+ *      on the active map (so non-SK maps get none).
+ *   2. `createBridge(site)` — the mesh: two triangulated truss planes (merged to ONE steel draw call),
+ *      a concrete deck slab + two bank piers (ONE concrete draw call), posed at the site.
  *   3. `BridgeCollider` — pure-number collision: `strike()` (did the airframe hit a solid part?) and
  *      `pass()` (is it cleanly under the deck, and on which side?). No THREE, no scene — like a sim.
+ * Dimensions are SHARED across every bridge (the `BRIDGE` config), so the collider + mesh read them.
  */
 
 // --- Placement -----------------------------------------------------------------
 
-/** Where the bridge sits: the river point + flow tangent (unit `a*`) + the local water surface. */
+/** Where a bridge sits: its label + the river point + flow tangent (unit `a*`) + the local water surface. */
 export interface BridgeSite {
+  name: string; // labels the clean-pass radio call (e.g. 'Prince Albert')
   x: number;
   z: number;
   surfaceY: number; // river water level here — the bridge's vertical datum (everything is measured up from this)
@@ -31,52 +34,56 @@ export interface BridgeSite {
 }
 
 /**
- * Resolve the bridge site from the world: find the point on the authored Churchill River polyline
- * nearest the Missinipe anchor, take the segment's direction as the flow tangent, and sample the
- * water surface there. Returns null when the bridge is disabled or the active map lacks the river /
- * anchor (so non-SK maps silently skip it).
+ * Resolve every configured bridge site against the world: for each `BRIDGE.sites` entry, project its
+ * real lat/lon, find the point on its named river polyline nearest that point, take the segment's
+ * direction as the flow tangent, and sample the water surface. Sites whose river isn't on the active
+ * map are skipped (empty list off-SK / when disabled).
  */
-export function computeBridgeSite(world: World): BridgeSite | null {
-  if (!BRIDGE.enabled) return null;
-  const path = world.namedRiverPath(BRIDGE.river);
-  const anchor = world.anchor(BRIDGE.nearAnchor);
-  if (!path || !anchor) return null;
+export function computeBridgeSites(world: World): BridgeSite[] {
+  if (!BRIDGE.enabled) return [];
+  const out: BridgeSite[] = [];
+  for (const spec of BRIDGE.sites) {
+    const path = world.namedRiverPath(spec.river);
+    if (!path) continue; // that river isn't on this map
+    const near = world.projectLatLon(spec.near.lat, spec.near.lon);
 
-  // Nearest point on the polyline to the anchor (project the anchor onto each segment, keep the best).
-  let best: { x: number; z: number; ax: number; az: number } | null = null;
-  let bestD = Infinity;
-  for (let i = 0; i < path.length - 1; i++) {
-    const a = path[i];
-    const b = path[i + 1];
-    const dx = b.x - a.x;
-    const dz = b.z - a.z;
-    const l2 = dx * dx + dz * dz || 1;
-    let t = ((anchor.x - a.x) * dx + (anchor.z - a.z) * dz) / l2;
-    t = Math.max(0, Math.min(1, t));
-    const px = a.x + dx * t;
-    const pz = a.z + dz * t;
-    const d = (px - anchor.x) ** 2 + (pz - anchor.z) ** 2;
-    if (d < bestD) {
-      bestD = d;
-      const l = Math.hypot(dx, dz) || 1;
-      best = { x: px, z: pz, ax: dx / l, az: dz / l };
+    // Nearest point on the polyline to `near` (project it onto each segment, keep the best).
+    let best: { x: number; z: number; ax: number; az: number } | null = null;
+    let bestD = Infinity;
+    for (let i = 0; i < path.length - 1; i++) {
+      const a = path[i];
+      const b = path[i + 1];
+      const dx = b.x - a.x;
+      const dz = b.z - a.z;
+      const l2 = dx * dx + dz * dz || 1;
+      let t = ((near.x - a.x) * dx + (near.z - a.z) * dz) / l2;
+      t = Math.max(0, Math.min(1, t));
+      const px = a.x + dx * t;
+      const pz = a.z + dz * t;
+      const d = (px - near.x) ** 2 + (pz - near.z) ** 2;
+      if (d < bestD) {
+        bestD = d;
+        const l = Math.hypot(dx, dz) || 1;
+        best = { x: px, z: pz, ax: dx / l, az: dz / l };
+      }
     }
-  }
-  if (!best) return null;
+    if (!best) continue;
 
-  // Water surface at the centreline (the carved channel), falling back to the bed/bank if the query
-  // lands just off the meandered channel — the deck rides `deckClearance` above whichever it is.
-  const wl = world.waterLevelAt(best.x, best.z);
-  const surfaceY = wl ?? world.groundHeightAt(best.x, best.z);
-  return { x: best.x, z: best.z, surfaceY, ax: best.ax, az: best.az };
+    // Water surface at the centreline (the carved channel), falling back to the bed/bank if the query
+    // lands just off the meandered channel — the deck rides `deckClearance` above whichever it is.
+    const wl = world.waterLevelAt(best.x, best.z);
+    const surfaceY = wl ?? world.groundHeightAt(best.x, best.z);
+    out.push({ name: spec.name, x: best.x, z: best.z, surfaceY, ax: best.ax, az: best.az });
+  }
+  return out;
 }
 
 // --- Collision (pure numbers — no THREE, no scene) -----------------------------
 
 /**
- * Static airframe-vs-bridge collision over the bridge's LOCAL frame: `u` runs along the flow (the
+ * Static airframe-vs-bridge collision over one bridge's LOCAL frame: `u` runs along the flow (the
  * tunnel axis you thread), `v` runs across the span (bank to bank), `y` is height above the water.
- * One cheap transform + a few box tests per query — O(1), there's exactly one bridge so no grid.
+ * One cheap transform + a few box tests per query — O(1) per bridge, so a handful of bridges is free.
  */
 export class BridgeCollider {
   private readonly cx: number;
@@ -109,7 +116,7 @@ export class BridgeCollider {
     this.channelHalf = this.halfSpan - BRIDGE.pierWidth;
   }
 
-  /** Project a world point into the bridge's local (u = along-flow, v = across-span, y = above water). */
+  /** Project a world point into this bridge's local (u = along-flow, v = across-span, y = above water). */
   private local(px: number, py: number, pz: number): { u: number; v: number; y: number } {
     const dx = px - this.cx;
     const dz = pz - this.cz;
@@ -208,20 +215,21 @@ function buildTrussPlane(steel: THREE.BufferGeometry[], zside: number, deckTopY:
   }
 }
 
-export interface ChurchillBridge {
+export interface Bridge {
   group: THREE.Group;
   collider: BridgeCollider;
+  name: string; // the site label (for the clean-pass radio call / QA)
   /** A flyable approach point upstream of the bridge (QA convenience: teleport here to find it). */
   fly: { x: number; y: number; z: number };
 }
 
 /**
- * Build the bridge mesh at a resolved site. Two merged meshes (steel truss, concrete deck+piers) +
+ * Build one bridge mesh at a resolved site. Two merged meshes (steel truss, concrete deck+piers) +
  * a collider. Geometry is generated once here; `Game` adds `group` to the scene and never rebuilds.
  */
-export function createChurchillBridge(site: BridgeSite): ChurchillBridge {
+export function createBridge(site: BridgeSite): Bridge {
   const group = new THREE.Group();
-  group.name = 'churchillBridge';
+  group.name = `bridge:${site.name}`;
 
   const halfSpan = BRIDGE.span / 2;
   const halfRoad = BRIDGE.roadway / 2;
@@ -277,5 +285,5 @@ export function createChurchillBridge(site: BridgeSite): ChurchillBridge {
     z: site.z - site.az * 70,
   };
 
-  return { group, collider: new BridgeCollider(site), fly };
+  return { group, collider: new BridgeCollider(site), name: site.name, fly };
 }

@@ -108,7 +108,7 @@ export interface WorldOptions {
   homeBase?: string; // which MapAnchor base is the operational HOME (spawn/refuel) — placed first; omit → region home
 }
 
-/** The river valley shaped under the Missinipe bridge (set via setBridgeValley) — local frame + derived dims. */
+/** A river valley shaped under one bridge (set via setBridgeValleys) — local frame + derived dims. */
 interface BridgeValley {
   cx: number; // valley centre (the bridge site) in world XZ
   cz: number;
@@ -161,8 +161,8 @@ export class World {
   private readonly latCenter: number; // centre of the geo box — the projection origin
   private readonly lonCenter: number;
   private readonly uPerKm: number; // world units per real kilometre (geo N–S extent → MAPGEO.fill of world)
-  /** The Missinipe bridge valley (set after construction via setBridgeValley); null = no terrain shaping. */
-  private bridgeValley: BridgeValley | null = null;
+  /** River valleys shaped under the bridges (set after construction via setBridgeValleys); empty = no shaping. */
+  private bridgeValleys: BridgeValley[] = [];
 
   /**
    * @param seed world seed — threads through noise/hydrology/placement/fire RNG so the same
@@ -389,21 +389,28 @@ export class World {
     return def.points.map((p) => this.project(p.lat, p.lon));
   }
 
+  /** Project a real (lat, lon) to world XZ via the active map's geo projection (anchored maps); a
+   *  no-op origin on procedural maps. Public read-only wrapper for features pinned at real coords
+   *  (e.g. the bridges) that need to resolve a lat/lon against the same projection the world used. */
+  projectLatLon(lat: number, lon: number): { x: number; z: number } {
+    return this.project(lat, lon);
+  }
+
   /**
-   * Shape a river VALLEY at the Missinipe bridge so it spans the banks instead of standing tall on
-   * stilts: `groundHeightAt` then RAISES the banks on either side up toward the deck, while the river
-   * channel + the fly-under tunnel stay low. Call ONCE after construction with the resolved bridge
-   * site (or null to clear / on maps without it), BEFORE the terrain mesh + structures sample the
-   * ground. Bank height + corridor width are DERIVED from the bridge config so they track any tuning.
-   * Uses no rng and only raises ground, so determinism + the campaign verifier are untouched.
+   * Shape a river VALLEY at each bridge so it spans the banks instead of standing tall on stilts:
+   * `groundHeightAt` then RAISES the banks on either side up toward the deck, while the river channel
+   * + the fly-under tunnel stay low. Call ONCE after construction with the resolved bridge sites
+   * (empty to clear / on maps without any), BEFORE the terrain mesh + structures sample the ground.
+   * Bank height + corridor width are DERIVED from the bridge config so they track any tuning. Uses no
+   * rng and only raises ground, so determinism + the campaign verifier are untouched.
    */
-  setBridgeValley(site: { x: number; z: number; ax: number; az: number; surfaceY: number } | null): void {
-    if (!site || !BRIDGE.enabled || !BRIDGE.valley.enabled) {
-      this.bridgeValley = null;
+  setBridgeValleys(sites: readonly { x: number; z: number; ax: number; az: number; surfaceY: number }[]): void {
+    if (!BRIDGE.enabled || !BRIDGE.valley.enabled) {
+      this.bridgeValleys = [];
       return;
     }
     const bankPeak = BRIDGE.span / 2;
-    this.bridgeValley = {
+    this.bridgeValleys = sites.map((site) => ({
       cx: site.x,
       cz: site.z,
       ax: site.ax,
@@ -415,7 +422,7 @@ export class World {
       approach: BRIDGE.valley.approach,
       alongHalf: BRIDGE.valley.alongHalf,
       taper: BRIDGE.valley.taper,
-    };
+    }));
   }
 
   /** All placed anchors (bases + towns) for the active map; empty on procedural maps. */
@@ -1092,9 +1099,29 @@ export class World {
       for (let i = 1; i < pts.length - 1; i++) {
         const cx = (pts[i - 1].x + pts[i].x + pts[i + 1].x) / 3;
         const cz = (pts[i - 1].z + pts[i].z + pts[i + 1].z) / 3;
-        if (!this.isOverWater(cx, cz)) pts[i] = { x: cx, z: cz };
+        // Only relax onto safe ground — never back onto water OR a sub-water lake shelf (which would re-drape the
+        // deck at the waterline). A rejected point keeps its dodged position, so this can't undo the lake-avoid.
+        if (this.roadPointOk(cx, cz)) pts[i] = { x: cx, z: cz };
       }
     }
+  }
+
+  /**
+   * Is (x, z) safe to drape a road on? Off all water AND up on the bank — above any nearby lake's surface by
+   * ROADS.shoreClear, never on the sub-water shore shelf (carved below the water plane), which would sit the
+   * deck at/under the waterline. Used by the smoothing pass; the dodge does the equivalent against its own lake.
+   */
+  private roadPointOk(x: number, z: number): boolean {
+    if (this.isOverWater(x, z)) return false;
+    const g = this.groundHeightAt(x, z);
+    for (const lake of this.lakes) {
+      const dx = x - lake.x;
+      const dz = z - lake.z;
+      const reach = lake.r * 2.5 + WORLD3D.lakeBankWidth + WORLD3D.lakeBlendWidth; // matches the carve's influence cull
+      if (dx * dx + dz * dz > reach * reach) continue;
+      if (g < lake.waterLevel + ROADS.shoreClear) return false; // would drape at/under this lake's surface
+    }
+    return true;
   }
 
   /**
@@ -1109,12 +1136,20 @@ export class World {
   private dodgeWater(p: { x: number; z: number }, nx: number, nz: number, prefer: number): { x: number; z: number; sign: number } {
     // Only LAKES get ridden around. Dry land — or a RIVER — leaves the point on the line: a river is narrow, so the
     // road just BRIDGES it (the deck causeways over the channel via ROADS.bridgeLift). lakeAt is null for both.
-    if (!this.lakeAt(p.x, p.z)) return { x: p.x, z: p.z, sign: 0 }; // not a lake (dry or a river) → don't dodge; reset the side bias
+    const lake = this.lakeAt(p.x, p.z);
+    if (!lake) return { x: p.x, z: p.z, sign: 0 }; // not a lake (dry or a river) → don't dodge; reset the side bias
     const step = ROADS.width;
     const maxSteps = Math.ceil(ROADS.dodgeMax / step);
-    // Clear the full carriageway, not just the centreline, so shoulders stay dry.
+    // A dodged point must be off the water AND sit UP THE BANK, above the lake surface. The shore shelf is carved
+    // BELOW the water plane (WORLD3D.lakeShoreDrop), so a road dropped just past the boundary drapes at/under the
+    // waterline and reads as "in the lake" in 3D even though its centreline is technically off the water (the 2D
+    // minimap can't see the height). Requiring ground ≥ waterLevel + shoreClear lifts it onto dry bank.
+    const minGround = lake.waterLevel + ROADS.shoreClear;
     const clear = (cx: number, cz: number): boolean =>
-      !this.isOverWater(cx, cz) && !this.isOverWater(cx + nx * ROADS.width, cz + nz * ROADS.width) && !this.isOverWater(cx - nx * ROADS.width, cz - nz * ROADS.width);
+      !this.isOverWater(cx, cz) &&
+      this.groundHeightAt(cx, cz) >= minGround &&
+      !this.isOverWater(cx + nx * ROADS.width, cz + nz * ROADS.width) &&
+      !this.isOverWater(cx - nx * ROADS.width, cz - nz * ROADS.width);
     if (prefer !== 0) {
       // Sticky: search the current side to its limit first, then the other — stay on one side of the lake.
       for (const sign of [prefer, -prefer]) {
@@ -1223,35 +1258,37 @@ export class World {
       }
       if (w > 0) h = lerp(h, channelProfile(rv.d, rv.river.width, rv.surf), w);
     }
-    // Missinipe bridge valley: raise the banks toward the deck so the bridge spans a valley, not stilts.
-    return this.applyBridgeValley(x, z, h);
+    // Bridge valleys: raise the banks toward each deck so the bridges span valleys, not stilts.
+    return this.applyBridgeValleys(x, z, h);
   }
 
   /**
-   * Raise the banks of the bridge valley at (x, z) toward the deck (see setBridgeValley), returning the
-   * possibly-raised ground. A no-op (returns `h`) when there's no valley, the point is outside the
-   * localized footprint, inside the protected channel corridor, or over water — so it never buries a
-   * lake or the river, and the fly-under tunnel stays clear. RAISE-only: it never digs below the
-   * natural (carved) ground. The cheap rejects up front keep it ~free everywhere off the bridge.
+   * Raise the banks of every bridge valley at (x, z) toward its deck (see setBridgeValleys), returning
+   * the possibly-raised ground. A no-op (returns `h`) where there's no valley, the point is outside a
+   * valley's localized footprint, inside its protected channel corridor, or over water — so it never
+   * buries a lake or the river, and the fly-under tunnels stay clear. RAISE-only: it never digs below
+   * the natural (carved) ground. The cheap rejects up front keep it ~free everywhere off the bridges,
+   * and the valleys are far apart so at most one applies at any point.
    */
-  private applyBridgeValley(x: number, z: number, h: number): number {
-    const bv = this.bridgeValley;
-    if (!bv) return h;
-    const dx = x - bv.cx;
-    const dz = z - bv.cz;
-    const u = dx * bv.ax + dz * bv.az; // along the river (the fly-under axis)
-    const along = 1 - smoothstep((Math.abs(u) - bv.alongHalf) / bv.taper); // localize up/downstream of the bridge
-    if (along <= 0) return h;
-    const av = Math.abs(dx * bv.az - dz * bv.ax); // |across-span| — distance from the channel centreline
-    if (av <= bv.channelHalf) return h; // the channel corridor stays low (protects the fly-under tunnel)
-    const wall = Math.max(1e-3, bv.bankPeak - bv.channelHalf);
-    const rampIn = smoothstep((av - bv.channelHalf) / wall); // 0 at the channel edge → 1 at the abutment (the valley wall)
-    const rampOut = 1 - smoothstep((av - (bv.bankPeak + bv.approach)) / bv.taper); // hold the approach, then fade out
-    const profile = rampIn * rampOut;
-    if (profile <= 0) return h;
-    if (this.isOverWater(x, z)) return h; // never raise over water — keep lakes + the river at their level
-    const raised = Math.max(h, lerp(h, bv.surfaceY + bv.bankRise, profile)); // toward the bank top; never below natural ground
-    return lerp(h, raised, along);
+  private applyBridgeValleys(x: number, z: number, h: number): number {
+    for (const bv of this.bridgeValleys) {
+      const dx = x - bv.cx;
+      const dz = z - bv.cz;
+      const u = dx * bv.ax + dz * bv.az; // along the river (the fly-under axis)
+      const along = 1 - smoothstep((Math.abs(u) - bv.alongHalf) / bv.taper); // localize up/downstream of the bridge
+      if (along <= 0) continue;
+      const av = Math.abs(dx * bv.az - dz * bv.ax); // |across-span| — distance from the channel centreline
+      if (av <= bv.channelHalf) continue; // the channel corridor stays low (protects the fly-under tunnel)
+      const wall = Math.max(1e-3, bv.bankPeak - bv.channelHalf);
+      const rampIn = smoothstep((av - bv.channelHalf) / wall); // 0 at the channel edge → 1 at the abutment (the valley wall)
+      const rampOut = 1 - smoothstep((av - (bv.bankPeak + bv.approach)) / bv.taper); // hold the approach, then fade out
+      const profile = rampIn * rampOut;
+      if (profile <= 0) continue;
+      if (this.isOverWater(x, z)) continue; // never raise over water — keep lakes + the river at their level
+      const raised = Math.max(h, lerp(h, bv.surfaceY + bv.bankRise, profile)); // toward the bank top; never below natural ground
+      h = lerp(h, raised, along);
+    }
+    return h;
   }
 
   // --- Water -------------------------------------------------------------------
