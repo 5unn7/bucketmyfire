@@ -1266,29 +1266,34 @@ export class World {
    * Raise the banks of every bridge valley at (x, z) toward its deck (see setBridgeValleys), returning
    * the possibly-raised ground. A no-op (returns `h`) where there's no valley, the point is outside a
    * valley's localized footprint, inside its protected channel corridor, or over water — so it never
-   * buries a lake or the river, and the fly-under tunnels stay clear. RAISE-only: it never digs below
-   * the natural (carved) ground. The cheap rejects up front keep it ~free everywhere off the bridges,
-   * and the valleys are far apart so at most one applies at any point.
+   * buries a lake or the river, and the fly-under tunnels stay clear.
+   *
+   * RAISE-only and SMOOTH: every falloff is quintic `smootherstep` (zero 1st + 2nd derivative at the
+   * ends → no visible kink), the rise is spread over a wide wall + a generous taper for a casual,
+   * polished slope, and overlapping valleys are combined with a MAX of their targets (not summed), so
+   * two nearby bridges merge into one gentle rise instead of stacking into a spike.
    */
   private applyBridgeValleys(x: number, z: number, h: number): number {
+    if (this.bridgeValleys.length === 0) return h;
+    let target = h; // highest bank target any valley wants here; starts at natural ground (raise-only)
     for (const bv of this.bridgeValleys) {
       const dx = x - bv.cx;
       const dz = z - bv.cz;
       const u = dx * bv.ax + dz * bv.az; // along the river (the fly-under axis)
-      const along = 1 - smoothstep((Math.abs(u) - bv.alongHalf) / bv.taper); // localize up/downstream of the bridge
+      const along = 1 - smootherstep((Math.abs(u) - bv.alongHalf) / bv.taper); // localize up/downstream of the bridge
       if (along <= 0) continue;
       const av = Math.abs(dx * bv.az - dz * bv.ax); // |across-span| — distance from the channel centreline
       if (av <= bv.channelHalf) continue; // the channel corridor stays low (protects the fly-under tunnel)
       const wall = Math.max(1e-3, bv.bankPeak - bv.channelHalf);
-      const rampIn = smoothstep((av - bv.channelHalf) / wall); // 0 at the channel edge → 1 at the abutment (the valley wall)
-      const rampOut = 1 - smoothstep((av - (bv.bankPeak + bv.approach)) / bv.taper); // hold the approach, then fade out
-      const profile = rampIn * rampOut;
-      if (profile <= 0) continue;
+      const rampIn = smootherstep((av - bv.channelHalf) / wall); // 0 at the channel edge → 1 at the abutment (the valley wall)
+      const rampOut = 1 - smootherstep((av - (bv.bankPeak + bv.approach)) / bv.taper); // hold the approach, then fade out
+      const factor = rampIn * rampOut * along; // 0 outside the footprint → 1 at a full-height bank
+      if (factor <= 0) continue;
       if (this.isOverWater(x, z)) continue; // never raise over water — keep lakes + the river at their level
-      const raised = Math.max(h, lerp(h, bv.surfaceY + bv.bankRise, profile)); // toward the bank top; never below natural ground
-      h = lerp(h, raised, along);
+      const want = lerp(h, bv.surfaceY + bv.bankRise, factor); // this valley's desired ground here
+      if (want > target) target = want; // smooth-max across valleys → nearby bridges merge, never spike
     }
-    return h;
+    return target;
   }
 
   // --- Water -------------------------------------------------------------------
@@ -1654,6 +1659,13 @@ function pointToRiver(x: number, z: number, r: RiverRuntime): { d: number; surf:
 function smoothstep(t: number): number {
   const c = t < 0 ? 0 : t > 1 ? 1 : t;
   return c * c * (3 - 2 * c);
+}
+
+/** Quintic smootherstep (Perlin) — like smoothstep but with zero 1st AND 2nd derivative at both ends,
+ *  so blends have no visible kink/crease. Used to keep the bridge valleys polished. */
+function smootherstep(t: number): number {
+  const c = t < 0 ? 0 : t > 1 ? 1 : t;
+  return c * c * c * (c * (c * 6 - 15) + 10);
 }
 
 function lerp(a: number, b: number, t: number): number {

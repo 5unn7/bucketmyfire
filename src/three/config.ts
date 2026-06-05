@@ -643,19 +643,22 @@ export const BRIDGE = {
   heliTopRise: 5, // how far the rotor disc sits ABOVE the belly — the vertical span tested against the deck
   // --- Clean-pass reward (recognition only) ---
   rewardCooldown: 5, // seconds before another clean pass-under can be acknowledged again (no hover-farming)
-  // --- Terrain blend: shape a river VALLEY at the bridge so it spans the banks instead of standing
-  // tall on stilts. World.applyBridgeValley RAISES the banks on either side toward the deck (the
-  // river channel + the fly-under tunnel stay low + untouched), localized to the bridge. Bank height
-  // and corridor width are DERIVED from the bridge dimensions above, so they auto-track any tuning of
-  // span/deckClearance. RAISE-only (never buries water — lakes + the channel are protected), no rng,
-  // computed once at load → determinism + the campaign verifier are unaffected. enabled:false = flat. ---
+  // --- Terrain blend: shape a gentle river VALLEY at each bridge so it spans the banks instead of
+  // standing tall on stilts. World.applyBridgeValleys RAISES the banks on either side toward the deck
+  // (the river channel + the fly-under tunnel stay low + untouched), with a SMOOTH (quintic) profile
+  // and a wide taper so the rise is a casual, polished slope — not a spike — and nearby bridges merge
+  // (smooth-max) instead of stacking. Bank height + corridor width DERIVE from the bridge dims, so
+  // they track any tuning. RAISE-only (never buries water — lakes + the channel are protected), no
+  // rng, computed once at load → determinism + the verifier are unaffected. enabled:false = flat.
+  // NOTE: gentleness is bounded by `span` — a tall deck over a SMALL span forces a steeper bank
+  // (the rise must reach the deck within half the span). Widen `span` for genuinely casual walls. ---
   valley: {
     enabled: true,
-    bankToDeck: 1.0, // banks rise to this fraction of the deck-top height (1 = flush with the road deck; <1 leaves the deck proud of the bank)
-    channelFrac: 0.5, // inner fraction of the half-span kept LOW as the channel corridor; the rest is the valley wall up to the abutment (auto-scales with span)
-    approach: 24, // how far PAST the abutment (outward, away from the river) the bank holds full height before tapering — the road approach
-    alongHalf: 45, // half-length of the valley ALONG the river (up/downstream of the bridge) before it fades back to natural terrain
-    taper: 30, // smooth taper distance back to natural terrain at every outer edge — bigger = gentler valley walls + approaches
+    bankToDeck: 0.78, // banks rise to this fraction of the deck-top height; <1 leaves the deck slightly proud (its piers cover the gap) and keeps the wall gentler — avoids a steep "meet the deck exactly" spike
+    channelFrac: 0.3, // inner fraction of the half-span kept LOW as the channel corridor; the rest is the valley wall up to the abutment. Lower = the rise STARTS nearer the water → wider, gentler wall
+    approach: 30, // how far PAST the abutment (outward, away from the river) the bank holds full height before tapering — the road approach
+    alongHalf: 55, // half-length of the valley ALONG the river (up/downstream of the bridge) before it fades back to natural terrain
+    taper: 48, // smooth taper distance back to natural terrain at every outer edge — the dominant "beside the bridge" blend; bigger = gentler, more polished
   },
 } as const;
 
