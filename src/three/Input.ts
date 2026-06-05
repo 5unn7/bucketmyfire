@@ -397,6 +397,7 @@ export class Input {
     // -- Cell helpers --
     const cell = (extra: Partial<CSSStyleDeclaration> = {}): HTMLDivElement =>
       button('', {
+        position: 'relative', // button() defaults to 'fixed'; cells live inside the grid
         borderRadius: '0',
         flexDirection: 'column',
         gap: '4px',
@@ -424,7 +425,7 @@ export class Input {
     // DOWN cell — subtle warm tint (descending toward fire).
     const descend = cell({ background: 'rgba(10,7,4,0.90)', borderColor: 'transparent' });
     descend.appendChild(mkGlyph('▼', 'rgba(255,130,60,0.80)'));
-    descend.appendChild(mkLabel('SNK', 'rgba(255,106,44,0.40)'));
+    descend.appendChild(mkLabel('DES', 'rgba(255,106,44,0.40)'));
     this.descendBtn = descend;
     holdButton(descend, (on) => (this.btnDown = on));
 
@@ -462,10 +463,10 @@ export class Input {
       boxShadow: UI.shadowBtn,
     });
     setBlur(bento);
-    bento.appendChild(climb);
     bento.appendChild(drop);
-    bento.appendChild(descend);
+    bento.appendChild(climb);
     bento.appendChild(detach);
+    bento.appendChild(descend);
     const a = anchor('bottom-right');
     a.appendChild(bento);
     root.appendChild(a);
