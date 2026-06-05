@@ -22,6 +22,7 @@ export type SizeClass = 'spot' | 'small' | 'medium' | 'large' | 'mega';
  *   • a `string` MapAnchor id ('la-ronge', 'weyakwin', …) — an authored anchored place (regions.ts).
  * The `(string & {})` keeps `'base'` a distinct literal in autocomplete while accepting any anchor id.
  */
+// eslint-disable-next-line @typescript-eslint/ban-types -- `string & {}` is the intentional "keep-literal-autocomplete" idiom documented above, not an accidental empty-object type
 export type CommunityRef = number | 'base' | (string & {});
 
 /**

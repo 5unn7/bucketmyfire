@@ -2,7 +2,7 @@
   "name": "bucketmyfire",
   "version": "0.1.0",
   "private": true,
-  "description": "Mobile-browser helicopter simulator: fight forest fires in northern Saskatchewan with a Bambi bucket.",
+  "description": "Mobile-browser helicopter simulator: fight forest fires in northern Saskatchewan with a slung water bucket.",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -14,12 +14,13 @@
     "format": "prettier --write \"src/**/*.{ts,html,css}\""
   },
   "dependencies": {
-    "three": "^0.184.0"
+    "three": "0.184.0"
   },
   "devDependencies": {
     "@types/three": "^0.184.1",
     "@typescript-eslint/eslint-plugin": "^7.16.0",
     "@typescript-eslint/parser": "^7.16.0",
+    "esbuild": "0.21.5",
     "eslint": "^8.57.0",
     "prettier": "^3.3.3",
     "typescript": "^5.5.4",

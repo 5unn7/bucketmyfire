@@ -250,7 +250,7 @@ function buildFlameSprite(): THREE.Texture {
       const edge = Math.pow(1 - Math.abs(hx), 1.25);
       const n = fbm2(cx * 3.2 + 11.0, t * 5.5 + 3.0); // licking detail
       // Body shape carved by noise + an upward erosion that bites harder toward the crown.
-      let flame = edge * vert * (0.5 + 0.85 * n) - t * t * 1.2 * (1 - n);
+      const flame = edge * vert * (0.5 + 0.85 * n) - t * t * 1.2 * (1 - n);
       const alpha = smoothstep(0.16, 0.5, flame);
       if (alpha <= 0.003) {
         d[i + 3] = 0;
