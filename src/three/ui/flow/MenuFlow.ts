@@ -29,6 +29,7 @@ import {
   type CatalogItem,
 } from '../profile';
 import { UI, div } from '../theme';
+import { randomCallsign } from '../callsign';
 import { section, creditsFooter } from '../menuShared';
 import { brandMark, stepDots, primaryButton, ghostButton, fadeSwap, type StepDots, type PrimaryButton } from './chrome';
 import type { FlowCtx } from './types';
@@ -46,6 +47,7 @@ export class MenuFlow {
   private readonly primary: PrimaryButton;
   private readonly backBtn: HTMLButtonElement;
   private readonly skipBtn: HTMLButtonElement;
+  private readonly quickBtn: HTMLButtonElement;
   private readonly ctx: FlowCtx;
 
   private readonly catalog: MissionDef[];
@@ -93,9 +95,15 @@ export class MenuFlow {
     this.primary = primaryButton();
     this.backBtn = ghostButton('← Back', () => this.ctx.goBack());
     this.skipBtn = ghostButton('Skip to missions →', () => this.ctx.jumpToMissions());
+    // First-run "instant fly": skip the whole identity gate + wizard with an auto callsign (audit
+    // FIX #10). Shown only to un-named first-time pilots on Screen 1; returning pilots use "Skip to
+    // missions →" instead. The two never show together (one needs a named profile, the other not).
+    this.quickBtn = ghostButton('⚡ Quick fly', () => this.quickFly());
 
     const header = section({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', margin: '0 auto 22px', flexWrap: 'wrap' });
-    header.append(brandMark(), this.dots.el, this.skipBtn);
+    const actions = div({ display: 'flex', alignItems: 'center', gap: '8px' });
+    actions.append(this.quickBtn, this.skipBtn);
+    header.append(brandMark(), this.dots.el, actions);
     this.root.appendChild(header);
 
     this.content = div({ width: '100%' });
@@ -153,6 +161,18 @@ export class MenuFlow {
     saveProfile({ name: this.name, mapId: this.selMap.id, heliId: this.selHeli.id });
   }
 
+  /** First-run instant-fly: stamp an auto callsign if still unnamed, then boot the campaign's first
+   *  mission on the selected map — bypassing the identity gate and the rest of the wizard (FIX #10).
+   *  The player can rename later from Screen 1; uniqueness is enforced only at score-submit. */
+  private quickFly(): void {
+    if (!this.name.trim()) {
+      this.name = randomCallsign();
+      this.persist();
+    }
+    const first = this.catalog.find((m) => (m.map ?? '') === this.selMap.id) ?? this.catalog[0];
+    this.onSelect(first.id);
+  }
+
   private goTo(step: number): void {
     this.step = Math.max(0, Math.min(STEPS - 1, step));
     this.render();
@@ -164,6 +184,8 @@ export class MenuFlow {
     this.backBtn.style.visibility = step > 0 ? 'visible' : 'hidden';
     // Skip is for returning pilots (a real saved callsign) who aren't already on the mission screen.
     this.skipBtn.style.display = hasNamedProfile() && step < STEPS - 1 ? '' : 'none';
+    // Quick fly is its mirror: first-run (un-named) pilots on Screen 1 only.
+    this.quickBtn.style.display = !hasNamedProfile() && step === 0 ? '' : 'none';
     this.primary.show(); // default; a screen may hide it (the mission screen does)
 
     const screen =
