@@ -84,12 +84,15 @@ export function structurePlan(
 
 /** Resolve a crew zone placement to a world point (optionally pushed `offset` units along a compass `bearingDeg`). */
 function zonePoint(world: World, z: ZonePlacement): { x: number; z: number } {
-  if (z.at === 'point') return { x: z.x ?? 0, z: z.z ?? 0 };
+  // A point zone may be real lat/lon (projected through the geo frame) or raw x/z.
+  if (z.at === 'point') return z.lat != null && z.lon != null ? world.projectLatLon(z.lat, z.lon) : { x: z.x ?? 0, z: z.z ?? 0 };
   const base = z.at === 'depot' ? communityPoint(world, 'base') : communityPoint(world, z.community ?? 0);
-  if (!z.offset) return base;
+  // km wins over raw units (scale-invariant); no offset → the community itself.
+  const off = z.offsetKm != null ? z.offsetKm * world.unitsPerKm : (z.offset ?? 0);
+  if (!off) return base;
   // Flank a community without inventing a second anchor: 0 = N (−Z), 90 = E (+X), matching the lake bearing convention.
   const b = (z.bearingDeg ?? 0) * (Math.PI / 180);
-  return { x: base.x + Math.sin(b) * z.offset, z: base.z - Math.cos(b) * z.offset };
+  return { x: base.x + Math.sin(b) * off, z: base.z - Math.cos(b) * off };
 }
 
 /** Resolve ONE crew/cargo endpoint to a world-space `CrewZone`. Shared by the opening `crewZones`
@@ -128,8 +131,9 @@ export function backburnLine(world: World, mission: MissionDef, wind: { vx: numb
   const cl = mission.controlLine;
   if (!cl) return [];
   const base = communityPoint(world, cl.community);
-  const offset = cl.offset ?? 110;
-  const length = cl.length ?? 140;
+  // km wins over raw units (scale-invariant) for both the offset and the line span.
+  const offset = cl.offsetKm != null ? cl.offsetKm * world.unitsPerKm : (cl.offset ?? 110);
+  const length = cl.lengthKm != null ? cl.lengthKm * world.unitsPerKm : (cl.length ?? 140);
   const n = Math.max(1, cl.points ?? 5);
   // Direction community → line centre: an explicit compass bearing, else UPWIND (toward the head).
   let dirX: number;
@@ -190,17 +194,20 @@ export function igniteFromPlacement(
     const cls = SIZE_CLASS[f.size];
     const radiusCells = fire.cellsFromU(cls.radius); // world-u size class → this grid's cells
     if (f.at === 'point') {
-      fire.igniteAt(f.x, f.z, radiusCells, cls.heat);
+      // A point may be authored as real lat/lon (projected through the world geo frame) or raw x/z.
+      const p = f.lat != null && f.lon != null ? world.projectLatLon(f.lat, f.lon) : { x: f.x ?? 0, z: f.z ?? 0 };
+      fire.igniteAt(p.x, p.z, radiusCells, cls.heat);
     } else if (f.at === 'nearCommunity') {
       const base = communityPoint(world, f.community);
       const count = f.count ?? 1;
       // A numeric phase that's consistent whether `community` is an index or 'base' (vs the old
       // `toString().length`, where 'base' (4) fanned the ring quite differently from index 0/1).
       const phase = f.community === 'base' ? -1 : typeof f.community === 'number' ? f.community : hashStr(f.community);
+      // km wins over raw units (scale-invariant); default 60u.
+      const off = f.offsetKm != null ? f.offsetKm * world.unitsPerKm : (f.offset ?? 60);
       for (let i = 0; i < count; i++) {
         // Fan multiple fires around the community at the offset radius (deterministic angles).
         const ang = (i / count) * Math.PI * 2 + phase;
-        const off = f.offset ?? 60;
         const target = fuelPointNear(world, base.x + Math.cos(ang) * off, base.z + Math.sin(ang) * off);
         fire.igniteAt(target.x, target.z, radiusCells, cls.heat);
       }
@@ -214,7 +221,7 @@ export function igniteFromPlacement(
       let cz: number;
       if (f.community !== undefined) {
         const base = communityPoint(world, f.community);
-        const off = f.offset ?? 90;
+        const off = f.offsetKm != null ? f.offsetKm * world.unitsPerKm : (f.offset ?? 90);
         cx = base.x - wux * off; // `offset` units UPWIND of the community so the head runs onto it
         cz = base.z - wuz * off;
       } else {
@@ -235,12 +242,13 @@ export function igniteFromPlacement(
           dirZ = 0;
         }
       }
-      fire.igniteLine(c.x, c.z, dirX, dirZ, f.length ?? 90, radiusCells, cls.heat);
+      const lineLen = f.lengthKm != null ? f.lengthKm * world.unitsPerKm : (f.length ?? 90);
+      fire.igniteLine(c.x, c.z, dirX, dirZ, lineLen, radiusCells, cls.heat);
     } else if (f.at === 'cluster') {
       // An AUTHORED fire complex: a deterministic centre with `count` heads fanned within `spread`,
       // so it reads as ONE growing blaze (not scattered dots). Centre = anchor + bearing·distance.
       const bearing = f.bearing ?? 0;
-      const distance = f.distance ?? 0;
+      const distance = f.distanceKm != null ? f.distanceKm * world.unitsPerKm : (f.distance ?? 0);
       let cx: number;
       let cz: number;
       if (f.anchor === 'origin') {
@@ -270,7 +278,7 @@ export function igniteFromPlacement(
         cz = base.z + Math.sin(bearing) * distance;
       }
       const count = f.count ?? 1;
-      const spread = f.spread ?? 45;
+      const spread = f.spreadKm != null ? f.spreadKm * world.unitsPerKm : (f.spread ?? 45);
       for (let i = 0; i < count; i++) {
         // Deterministic fan (mirrors `nearCommunity`); `bearing` phases it so specs differ.
         const ang = (i / count) * Math.PI * 2 + bearing;

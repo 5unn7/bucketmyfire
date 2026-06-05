@@ -33,39 +33,52 @@ export type CommunityRef = number | 'base' | (string & {});
  */
 export type TimeOfDay = 'dawn' | 'day' | 'noon' | 'overcast' | 'golden' | 'dusk';
 
-/** Where a mission seeds a fire (or a cluster of `count` fires). */
+/**
+ * Where a mission seeds a fire (or a cluster of `count` fires).
+ *
+ * SCALE-INVARIANT AUTHORING (Slice 1b): distances may be given in real KILOMETRES (`offsetKm`,
+ * `distanceKm`, `spreadKm`, `lengthKm`) instead of raw world units — `scenario.ts` multiplies them by
+ * `world.unitsPerKm`, so a km-authored placement lands at the same real-world distance on ANY map
+ * size. A `point` may be given as a real `lat`/`lon` (projected through the world's geo frame). Raw
+ * `x`/`z`/`offset`/… still work unchanged (the 8 campaign missions are byte-identical), and where both
+ * are present the km/lat-lon form WINS.
+ */
 export type FirePlacement =
-  | { at: 'point'; x: number; z: number; size: SizeClass }
-  | { at: 'nearCommunity'; community: CommunityRef; offset?: number; size: SizeClass; count?: number }
+  | { at: 'point'; x?: number; z?: number; lat?: number; lon?: number; size: SizeClass }
+  | { at: 'nearCommunity'; community: CommunityRef; offset?: number; offsetKm?: number; size: SizeClass; count?: number }
   | { at: 'random'; count: number; size: SizeClass; minFromOrigin?: number }
   // An AUTHORED fire COMPLEX: `count` heads bunched within `spread` around a deterministic anchor
   // (vs `random`, which scatters independent dots map-wide). The anchor is `origin` (map centre),
   // a `lake` (the complex is placed in the bush right beside the nearest lake → a scoop source on
-  // hand), or a `community`. `bearing` (radians) + `distance` (units) push the centre off the
-  // anchor. Stays seed-robust: every head is snapped to dry fuel so the blaze always catches.
+  // hand), or a `community`. `bearing` (radians) + `distance` (units, or `distanceKm`) push the centre
+  // off the anchor. Stays seed-robust: every head is snapped to dry fuel so the blaze always catches.
   | {
       at: 'cluster';
       anchor: 'origin' | 'lake' | { community: CommunityRef };
       bearing?: number;
       distance?: number;
+      distanceKm?: number;
       spread?: number;
+      spreadKm?: number;
       count?: number;
       size: SizeClass;
     }
   // A continuous fire FRONT: a row of seed discs along a line. `length` is its world-unit extent
-  // (default ~90); `angle` the axis in radians — omit to face the front downwind (axis ⟂ wind) so
-  // it spreads toward you like a real ridge-line head. Center it either at explicit (x,z) or, to
-  // stay seed-robust like the other specs, at a `community` — the line is then placed `offset`
-  // units UPWIND of it so the head advances onto the settlement.
+  // (default ~90; or `lengthKm`); `angle` the axis in radians — omit to face the front downwind (axis
+  // ⟂ wind) so it spreads toward you like a real ridge-line head. Center it either at explicit (x,z) or,
+  // to stay seed-robust like the other specs, at a `community` — the line is then placed `offset`
+  // units (or `offsetKm`) UPWIND of it so the head advances onto the settlement.
   | {
       at: 'line';
       size: SizeClass;
       length?: number;
+      lengthKm?: number;
       angle?: number;
       x?: number;
       z?: number;
       community?: CommunityRef;
       offset?: number;
+      offsetKm?: number;
     };
 
 /** Which structures a mission places (explicit — not the sandbox auto-generation). */
@@ -83,8 +96,11 @@ export interface ZonePlacement {
   at: 'point' | 'nearCommunity' | 'depot';
   x?: number;
   z?: number;
+  lat?: number; // a `point` zone may be given as real lat/lon (projected through the world geo frame); wins over x/z
+  lon?: number;
   community?: CommunityRef;
   offset?: number; // push the pad this many units off the community along `bearingDeg` (flank an LZ without a new anchor)
+  offsetKm?: number; // same flank offset in real KILOMETRES (× world.unitsPerKm) — scale-invariant; wins over `offset`
   bearingDeg?: number; // compass bearing of that offset (0 = N, 90 = E); omit → 0 (due north)
   hover?: boolean; // deliver by HOLDING A HOVER over the spot for MISSIONS.hoverSec (vs landing) — hover-training drops
   lowHover?: boolean; // PRECISION LOW HOVER: hold near-ground AGL (0..lowHoverAglMax) for MISSIONS.lowHoverSec. No crew needed.
@@ -111,8 +127,10 @@ export interface Objective {
 export interface ControlLinePlacement {
   community: CommunityRef; // the settlement the line protects (its head-side flank)
   offset?: number; // distance from the community to the line centre (default ~110)
+  offsetKm?: number; // same offset in real KILOMETRES (× world.unitsPerKm) — scale-invariant; wins over `offset`
   bearingDeg?: number; // compass bearing community→line centre (0 = N, 90 = E); omit → upwind (toward the head)
   length?: number; // the line's world-unit span (default ~140)
+  lengthKm?: number; // same span in real KILOMETRES (× world.unitsPerKm) — scale-invariant; wins over `length`
   points?: number; // how many segments to light (default 5)
 }
 
