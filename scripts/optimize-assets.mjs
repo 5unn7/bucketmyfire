@@ -30,6 +30,8 @@ const TEXTURES = [
   { slug: 'forest_ground_04', maps: ['diff'], size: 512 }, // terrain ground grain
   { slug: 'rock_ground', maps: ['diff'], size: 512 }, // terrain steep faces
   { slug: 'burned_ground_01', maps: ['diff'], size: 512 }, // terrain burn scar
+  { slug: 'pine_bark', maps: ['diff'], size: 512 }, // tree trunks (bark)
+  { slug: 'forest_leaves_04', maps: ['diff'], size: 512 }, // tree foliage (leaf detail)
 ];
 // HDRI: webp can't hold HDR, so the env map ships as-is — but only the ONE the config uses.
 const HDRI_KEEP = ['autumn_field_puresky_1k.hdr'];

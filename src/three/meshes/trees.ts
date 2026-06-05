@@ -45,6 +45,7 @@ export interface TreeFieldOptions {
   rng: () => number; // seeded PRNG → deterministic forest for a given world seed
   species?: TreeSpecies; // optional — defaults to the boreal conifer below
   burnable?: boolean; // if set, trees ignite + char + collapse when the fire field reaches them
+  deferred?: boolean; // if set, return an EMPTY field + a `buildStep(budgetMs)` to mesh it across frames
 }
 
 /**
@@ -94,6 +95,13 @@ export interface TreeField {
    *  throttled scan lights trees whose cell is hot; lit trees char + collapse over
    *  `treeBurnTime` into black snags. Call once per frame with the field's `heatAt`. */
   updateFire: (dt: number, heatAt: (x: number, z: number) => number) => void;
+  /** Present only when `opts.deferred` is set. Advances the time-budgeted incremental
+   *  build (phase-1 candidate scatter, then phase-2 chunk meshing) within `budgetMs`,
+   *  and returns `true` once the field is FULLY built. Call once per frame until it
+   *  returns true; after that it's a no-op returning true. The candidate loop is paused
+   *  and resumed in strict index order, so the deferred build consumes `rng()` in the
+   *  IDENTICAL order/count as the synchronous build — same seed → same forest. */
+  buildStep?: (budgetMs: number) => boolean;
 }
 
 // Spatial chunking for culling. The forest is bucketed into CHUNK-sized cells, each
@@ -147,7 +155,34 @@ export function createTreeField(opts: TreeFieldOptions): TreeField {
   const cellsPerSideX = Math.max(1, Math.ceil(size / CHUNK));
   const cellsPerSideZ = Math.max(1, Math.ceil(sizeZ / CHUNK));
 
-  for (let i = 0; i < candidates; i++) {
+  // Per non-empty chunk: trunks + FULL foliage + a LOD (single-cone) foliage, all sharing
+  // geometry/material, each with a tight bounding sphere so Three frustum-culls off-screen
+  // cells. `cull()` then picks ONE LOD per chunk by distance so only its level draws.
+  const chunkList: {
+    trunks: THREE.InstancedMesh;
+    foliage: THREE.InstancedMesh;
+    foliageLod: THREE.InstancedMesh;
+    cx: number;
+    cz: number;
+  }[] = [];
+  // Per-tree burn handles (only when `burnable`): the foliage/LOD meshes + this tree's
+  // instance index + its world XZ, so the fire field can ignite it and we can char +
+  // collapse just that instance. Base transform/colour are captured lazily on ignition.
+  const burns: BurnTree[] = [];
+
+  // --- Incremental build state (hoisted so `buildStep` can pause/resume) ---------------
+  // Phase 1 scatters candidates 0..candidates-1 into `cells` (the rng-consuming +
+  // groundHeight-sampling phase); phase 2 meshes each cell into an InstancedMesh pair.
+  // Both run inline in the synchronous path (infinite budget) and across frames in the
+  // deferred path — the SAME stepper, so the rng stream is identical either way.
+  let phase1Cursor = 0; // next candidate index to scatter (strict order ⇒ stable rng draws)
+  let cellIter: IterableIterator<Cell> | null = null; // phase-2 cell cursor (lazily created)
+  let built = false; // whole field fully meshed
+
+  // Scatter ONE candidate (index `i`) into `cells`/`colliders`. Consumes rng() in the
+  // exact same order/count as the original inline loop, so pausing between candidates
+  // never perturbs determinism.
+  const scatterCandidate = (i: number): void => {
     const x = (rng() - 0.5) * size; // in [-sizeX/2, +sizeX/2]
     const z = (rng() - 0.5) * sizeZ; // in [-sizeZ/2, +sizeZ/2]
 
@@ -155,7 +190,7 @@ export function createTreeField(opts: TreeFieldOptions): TreeField {
     // (dense in moist forest, sparse in meadow, ~none on rock or water). Consume the
     // rng even when rejected so the stream stays deterministic.
     const biome = sample(x, z);
-    if (rng() >= biome.treeDensity) continue;
+    if (rng() >= biome.treeDensity) return;
 
     // Base sits on the terrain surface at this XZ.
     position.set(x, heightAt(x, z), z);
@@ -193,23 +228,12 @@ export function createTreeField(opts: TreeFieldOptions): TreeField {
       topY: position.y + apex * sy,
       radius: collideR * s,
     });
-  }
+  };
 
-  // Per non-empty chunk: trunks + FULL foliage + a LOD (single-cone) foliage, all sharing
-  // geometry/material, each with a tight bounding sphere so Three frustum-culls off-screen
-  // cells. `cull()` then picks ONE LOD per chunk by distance so only its level draws.
-  const chunkList: {
-    trunks: THREE.InstancedMesh;
-    foliage: THREE.InstancedMesh;
-    foliageLod: THREE.InstancedMesh;
-    cx: number;
-    cz: number;
-  }[] = [];
-  // Per-tree burn handles (only when `burnable`): the foliage/LOD meshes + this tree's
-  // instance index + its world XZ, so the fire field can ignite it and we can char +
-  // collapse just that instance. Base transform/colour are captured lazily on ignition.
-  const burns: BurnTree[] = [];
-  for (const cell of cells.values()) {
+  // Mesh ONE cell into a trunks/foliage/LOD InstancedMesh trio and register it for
+  // culling + burning. Only run after ALL candidates are scattered (a cell's instance
+  // count isn't final until phase 1 completes).
+  const meshCell = (cell: Cell): void => {
     const n = cell.mats.length;
     const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, n);
     const foliage = new THREE.InstancedMesh(foliageGeo, foliageMat, n);
@@ -248,6 +272,41 @@ export function createTreeField(opts: TreeFieldOptions): TreeField {
         burns.push({ foliage, lod: foliageLod, idx: k, x: cell.xs[k], z: cell.zs[k], state: 0, t: 0 });
       }
     }
+  };
+
+  // The shared stepper: scatter phase-1 candidates (strict index order) until done, THEN
+  // mesh phase-2 cells, returning `true` only once the whole field is built. `budgetMs`
+  // caps wall-time per call (use Infinity to build it all in one go). After completion
+  // it's a no-op returning true. NOTE phase 1 must FULLY finish before phase 2 starts —
+  // a chunk's instance count isn't final until all candidates are scattered.
+  const stepBuild = (budgetMs: number): boolean => {
+    if (built) return true;
+    const start = performance.now();
+
+    // Phase 1 — scatter candidates in strict 0..candidates-1 order.
+    while (phase1Cursor < candidates) {
+      scatterCandidate(phase1Cursor++);
+      if (performance.now() - start >= budgetMs) return false;
+    }
+
+    // Phase 2 — mesh cells (only reachable once phase 1 is complete).
+    if (!cellIter) cellIter = cells.values();
+    let next = cellIter.next();
+    while (!next.done) {
+      meshCell(next.value);
+      if (performance.now() - start >= budgetMs) return false;
+      next = cellIter.next();
+    }
+
+    built = true;
+    return true;
+  };
+
+  // Default (synchronous) path: build the whole field now — byte-identical to the old
+  // inline loops (same rng order, same cells, same meshes). Deferred callers skip this
+  // and drive `stepBuild` themselves over multiple frames.
+  if (!opts.deferred) {
+    stepBuild(Infinity);
   }
 
   const cull = (camX: number, camZ: number): void => {
@@ -324,7 +383,12 @@ export function createTreeField(opts: TreeFieldOptions): TreeField {
     }
   };
 
-  return { object: group, colliders, cull, updateFire };
+  const field: TreeField = { object: group, colliders, cull, updateFire };
+  // Only deferred fields expose the incremental driver — keeping the synchronous return
+  // shape (and existing callers/types) untouched. `stepBuild` already short-circuits to
+  // `true` once built, so a caller that over-calls it is harmless.
+  if (opts.deferred) field.buildStep = stepBuild;
+  return field;
 }
 
 /**
@@ -436,6 +500,7 @@ function mergeGeometries(geos: THREE.BufferGeometry[]): THREE.BufferGeometry {
 
   const positions = new Float32Array(vertexCount * 3);
   const normals = new Float32Array(vertexCount * 3);
+  const uvs = new Float32Array(vertexCount * 2); // preserved so the foliage can carry a leaf texture (TREE_TEX)
   const indices = new Uint32Array(indexCount);
 
   let vOffset = 0; // vertex write cursor (in vertices)
@@ -445,6 +510,8 @@ function mergeGeometries(geos: THREE.BufferGeometry[]): THREE.BufferGeometry {
     const nrm = g.getAttribute('normal') as THREE.BufferAttribute;
     positions.set(pos.array as ArrayLike<number>, vOffset * 3);
     normals.set(nrm.array as ArrayLike<number>, vOffset * 3);
+    const uv = g.getAttribute('uv') as THREE.BufferAttribute | undefined;
+    if (uv) uvs.set(uv.array as ArrayLike<number>, vOffset * 2); // cones have uv; preserve it through the merge
 
     const idx = g.getIndex();
     if (idx) {
@@ -462,6 +529,7 @@ function mergeGeometries(geos: THREE.BufferGeometry[]): THREE.BufferGeometry {
 
   out.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   out.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+  out.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
   out.setIndex(new THREE.BufferAttribute(indices, 1));
   out.computeBoundingSphere();
   return out;

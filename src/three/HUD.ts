@@ -161,6 +161,7 @@ export class HUD {
   private menuCell?: HTMLDivElement; // ☰ tucked at the head of the strip (campaign only)
   private readonly objPanel: HTMLDivElement; // campaign objective checklist (hidden in sandbox)
   private objSig = ''; // last-rendered objective signature (skip DOM churn when unchanged)
+  private objPrev = new Map<string, { current: number; done: boolean }>(); // per-goal last state → flash on advance
   // Crew board/disembark progress bar — a labelled fill that appears while landed on a zone
   // ("CREW BOARDING" climbing in / "CREW DISEMBARKING" stepping off). Hidden when not working a zone.
   private readonly crewBar: HTMLDivElement;
@@ -944,13 +945,21 @@ export class HUD {
 
     this.objPanel.style.display = '';
     this.objPanel.replaceChildren(label('OBJECTIVES'));
+    const next = new Map<string, { current: number; done: boolean }>();
     for (const t of items) {
+      const cur = t.current ?? 0;
+      const prev = this.objPrev.get(t.label);
+      // "Advanced" = a count ticked up, or the goal just latched done — the moment worth flagging so a
+      // sub-goal completion doesn't pass silently (the gather's #1 direction gap). Not on first paint.
+      const advanced = !!prev && !t.failed && (cur > prev.current || (t.done && !prev.done));
+      next.set(t.label, { current: cur, done: t.done });
       const row = el('div', {
         display: 'flex',
         alignItems: 'center',
         gap: '8px',
         marginTop: '5px',
         fontSize: FS.sm,
+        borderRadius: R.sm,
       });
       const mark = t.failed ? '✕' : t.done ? '✓' : t.kind === 'constraint' ? '◆' : '○';
       const col = t.failed ? UI.warn : t.done ? UI.accent : 'rgba(231,247,255,0.85)';
@@ -962,7 +971,18 @@ export class HUD {
       else if (t.target !== undefined) val = `${t.current ?? 0}/${t.target}`;
       if (val) row.appendChild(el('div', { color: UI.dim, fontWeight: FW.semibold }, val));
       this.objPanel.appendChild(row);
+      // Progress flash — an accent wash that snaps in and bleeds out (DESIGN.md impact-flash motion),
+      // gated on reduced-motion. Purely visual; no layout shift (background only).
+      if (advanced && !prefersReducedMotion()) {
+        row.style.transition = 'none';
+        row.style.backgroundColor = t.done ? UI.accentFill : 'rgba(103,232,255,0.22)';
+        requestAnimationFrame(() => {
+          row.style.transition = 'background-color 0.6s ease';
+          row.style.backgroundColor = 'transparent';
+        });
+      }
     }
+    this.objPrev = next;
     this.positionMessages(); // left column grew/changed — re-seat the hint below it
   }
 

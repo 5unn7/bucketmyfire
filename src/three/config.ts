@@ -156,13 +156,14 @@ export const BIOMES = {
 // the existing per-chunk frustum cull + distance LOD + the DPR watchdog hold 60fps. Revert to the
 // old stylized look in one place: densityMul 1, canopyTiers 3, aoGradient 0, topLift 1.
 export const FOREST = {
-  baseCandidates: 2000, // tree candidates at the 600u reference size (Game scales by world AREA). TRIMMED again
-  // (3200→2600→2000) in the load-perf pass: candidate count × world-area is the dominant BOOT cost (each one
-  // samples groundHeightAt+biome), and the conifers are already chunked + distance-LOD'd. The deferred
-  // birch/aspen groves + snags (buildAccentFoliage) refill the look after first frame, so the forest still reads full.
-  densityMul: 1.5, // candidate-count multiplier on med/high (forest fullness) — low tier stays at 1. 2.0→1.5 perf trim.
-  canopyTiers: 4, // overlapping cone tiers per conifer (perf pass 6→4 — still a fuller crown than the old stylized 3)
+  baseCandidates: 2800, // tree candidates at the 600u reference size (Game scales by world AREA). Bumped back UP
+  // (2000→2800) now that the forest is DEFERRED (streamed a few ms/frame post-first-frame, see Game.deferredBuild) —
+  // the candidate cost no longer freezes the boot, so we can afford a fuller forest again.
+  densityMul: 2.0, // candidate-count multiplier on med/high (forest fullness) — low tier stays at 1. Back to 2.0 (deferred).
+  canopyTiers: 5, // overlapping cone tiers per conifer (4→5 — fuller crown; the deferred stream absorbs the build cost)
   radialSegments: 7, // near-LOD canopy roundness (8→7) — still round up close, one ring of verts off per cone
+  nearRadius: 420, // a synchronous conifer patch of this radius around the spawn is built AT FIRST FRAME (so cone trees
+  // are already around you on the pad) while the full forest streams in past it — see Game's near-patch.
   bottomRadius: 1.75, // widest (lowest) tier radius — a broader, more grounded base (old fixed: 1.5)
   topRadius: 0.42, // narrowest (apex) tier radius — a finer point
   aoGradient: 0.5, // how dark the crown BASE is vs the tips (0 = flat/old look, 1 = black base) — fakes self-shadow/AO
@@ -1138,9 +1139,9 @@ export const POSTFX = {
 // load, zero per-frame work. Gated OFF on the low tier (saves the extra IBL ambient + a little
 // VRAM). Keep `intensity` low: the hemisphere light still does the heavy lifting; this is polish.
 export const ENV = {
-  enabled: true,
-  file: 'textures/hdri/autumn_field_puresky_1k.hdr', // swap to autumn_forest_04_1k.hdr for warmer bounce
-  intensity: 0.35, // scene.environmentIntensity — subtle reflections, not a second key light
+  enabled: false,
+  file: 'textures/hdri/autumn_field_puresky_1k.hdr',
+  intensity: 0.35,
 } as const;
 
 // Helipad deck surfacing (downloaded CC0 PBR concrete, see public/textures/ATTRIBUTION.txt). The pad
@@ -1172,6 +1173,19 @@ export const TERRAIN_TEX = {
   rockStrength: 0.7, // how strongly real rock albedo takes over on steep faces
   rockBright: 1.7, // scales the rock albedo into a believable lit-granite brightness
   scorchStrength: 0.6, // charred-earth detail blended into the burn scar
+} as const;
+
+// Tree bark + foliage texturing (downloaded CC0 PBR albedo, see public/textures/ATTRIBUTION.txt). Real bark on the
+// trunks (pine_bark) and broadleaf-litter detail on the foliage cones (forest_leaves_04, modulating the biome tint so
+// the canopy reads less like flat plastic up close). Both 512 webp, loaded once + shared (loadAlbedo). Cheap — the
+// trunks/cones are instanced, so it's one extra texture each, not per-tree.
+export const TREE_TEX = {
+  enabled: true,
+  bark: 'pine_bark', // trunk slug
+  leaves: 'forest_leaves_04', // foliage slug
+  barkRepeat: 2.0, // tiling up the trunk
+  leafRepeat: 1.6, // tiling across the canopy cones
+  leafStrength: 0.5, // how strongly the leaf albedo modulates the foliage tint (0 = off/procedural, 1 = full photo)
 } as const;
 
 // Volumetric god-rays / crepuscular shafts (Track B — golden-hour). A screen-space radial
@@ -1559,7 +1573,7 @@ export const CONFIG_REGISTRY: Record<string, Record<string, unknown>> = {
   WORLD3D, MAPGEO, TERRAIN, LAKE_SHAPE, STREAM, BIOMES, FOREST,
   FLIGHT, STARTUP, WASH, INSTRUMENTS, BUCKET3D, DROP_PHYSICS, DROP_FX, FIREHEAD,
   HELI_CLASSES, HEALTH, CRASH, BRIDGE,
-  FIRE3D, STRUCTURES, STRUCT_FIRE, COMMUNITIES, ROADS, SCORE, MISSIONS, FAUNA, HELIPAD, TERRAIN_TEX,
+  FIRE3D, STRUCTURES, STRUCT_FIRE, COMMUNITIES, ROADS, SCORE, MISSIONS, FAUNA, HELIPAD, TERRAIN_TEX, TREE_TEX,
   QUALITY, POSTFX, ENV, GODRAYS, GRADE, FIRELIGHT, EMBERS, AMBIENT_EMBERS,
   WATER, CLOUDS, SPRAY, SMOKE, HAZE, AUDIO, CAMERA, TITLE,
 };

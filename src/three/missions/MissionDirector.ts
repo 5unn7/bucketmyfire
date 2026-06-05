@@ -1,5 +1,6 @@
 import type { MissionDef, MissionSignals, MissionBeat, MissionAction, MissionTrigger } from './types';
 import type { MissionRuntime } from './MissionRuntime';
+import { generateScript } from './voice';
 
 /**
  * The mission EXPERIENCE engine — engine-agnostic (numbers/POJOs, no Three.js / DOM), exactly like
@@ -18,7 +19,11 @@ export class MissionDirector {
   private readonly fired = new Set<string>();
 
   constructor(def: MissionDef) {
-    this.beats = def.script ?? [];
+    // An authored script wins; a mission that omits one gets a GENERATED reactive script from
+    // `voice.ts` — so a new map/mission narrates itself in one voice, place-aware, with no hand
+    // authoring. (The existing campaign all ship hand-written scripts, so this is a pure additive
+    // fallback that changes nothing today and lights up the moment a scriptless mission appears.)
+    this.beats = def.script && def.script.length ? def.script : generateScript(def);
   }
 
   /**

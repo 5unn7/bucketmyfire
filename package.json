@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "verify:campaign": "esbuild scripts/verify-campaign.ts --bundle --platform=node --format=esm --outfile=scripts/.verify-campaign.mjs --log-level=warning && node scripts/.verify-campaign.mjs",
     "verify:crash": "esbuild scripts/verify-crash.ts --bundle --platform=node --format=esm --outfile=scripts/.verify-crash.mjs --log-level=warning && node scripts/.verify-crash.mjs",
+    "verify:voice": "esbuild scripts/verify-voice.ts --bundle --platform=node --format=esm --outfile=scripts/.verify-voice.mjs --log-level=warning && node scripts/.verify-voice.mjs",
     "lint": "eslint \"src/**/*.ts\"",
     "format": "prettier --write \"src/**/*.{ts,html,css}\"",
     "optimize:assets": "node scripts/optimize-assets.mjs"

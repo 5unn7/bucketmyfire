@@ -59,6 +59,7 @@ import { newlyUnlockedHelis, markColdStartSeen } from './ui/profile';
 import { submitScore } from './leaderboard/client';
 import { cloudAutoSave } from './leaderboard/cloudSave';
 import { button, UI, FW } from './ui/theme';
+import { coached, coachBump } from './ui/hints';
 import type { MissionDef, MissionSignals, MissionAction, ZonePlacement, ScoreTally } from './missions/types';
 import type { EndScreenHooks } from './HUD';
 import { seedFires, structurePlan, crewZones, resolveCrewZone, igniteFromPlacement, backburnLine } from './missions/scenario';
@@ -122,13 +123,15 @@ export class Game {
   private snags: TreeField | null = null; // burnt dead-standing snags
   private accentFoliageTimer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false; // set by dispose(): stops deferred work + per-frame stepping after teardown
-  // Deferred scene build (load-perf): the heavy NON-critical meshing (lakes/rivers/roads/yards) is
-  // queued here as per-item closures and pumped a few-ms/frame by main.ts AFTER the first frame, so it
-  // streams in under the cold-start spool instead of freezing the boot. The CRITICAL scene (terrain,
-  // heli, pad, sky, fire, structures) is still built synchronously in the constructor.
-  private readonly deferredBuild: (() => void)[] = [];
+  // Deferred scene build (load-perf): the heavy NON-critical meshing (lakes/rivers/roads/yards + the
+  // FOREST) is queued here and pumped a few-ms/frame by main.ts AFTER the first frame, so it streams in
+  // under the cold-start spool instead of freezing the boot. The CRITICAL scene (terrain, heli, pad,
+  // sky, fire, structures) is still built synchronously in the constructor. Each item is a budget-aware
+  // stepper `(budgetMs) => done`: one-shot items (a lake/river/road) ignore the budget and return true;
+  // the forest returns false until its internal `buildStep` has scattered + meshed every chunk.
+  private readonly deferredBuild: ((budgetMs: number) => boolean)[] = [];
   private deferredIdx = 0;
-  private readonly obstacles: Obstacles; // bucket collision height field (ground + tree canopy)
+  private obstacles: Obstacles; // bucket collision height field — rebuilt when the deferred forest finishes
   private readonly frame = new FrameContext(); // shared time/wind/sun uniform bus (B0)
   private readonly ripples = new Ripples(); // 8-slot water ripple pool (B1)
   private readonly spray = new WaterSpray(); // pooled water-drop spray (B4/C2)
@@ -445,17 +448,21 @@ export class Game {
     // chunk of the boot freeze. Streamed in a few per frame after first frame. Scooping is unaffected
     // (it reads World.waterLevelAt, not the lake MESH), so a not-yet-built lake disc is purely cosmetic.
     for (const l of this.world.lakes) {
-      this.deferredBuild.push(() =>
+      this.deferredBuild.push(() => {
         this.lakes.push(
           new Lake(this.scene, l.x, l.z, l.r, l.waterLevel, waterSegments, (phi) => this.world.lakeRadius(l, phi), (x, z) => this.world.groundHeightAt(x, z), waterMat),
-        ),
-      );
+        );
+        return true;
+      });
     }
 
     // Streams / mini rivers (A4): a water ribbon per stream, sharing the same animated
     // material as the lakes. You can scoop from them too (World.waterLevelAt generalizes). DEFERRED.
     for (const r of this.world.rivers) {
-      this.deferredBuild.push(() => this.scene.add(createRiverMesh(r, (x, z) => this.world.groundHeightAt(x, z), waterMat)));
+      this.deferredBuild.push(() => {
+        this.scene.add(createRiverMesh(r, (x, z) => this.world.groundHeightAt(x, z), waterMat));
+        return true;
+      });
     }
 
     // Cleared yards (A5 polish): a packed-dirt clearing draped under each settlement, sharing
@@ -463,7 +470,10 @@ export class Game {
     // -1) so those layer cleanly on top; the forest already thinned here via clearingFactor.
     const yardMat = createYardMaterial();
     for (const c of builtSites) {
-      this.deferredBuild.push(() => this.scene.add(createYardPatch(c.x, c.z, (x, z) => this.world.groundHeightAt(x, z), yardMat))); // DEFERRED
+      this.deferredBuild.push(() => {
+        this.scene.add(createYardPatch(c.x, c.z, (x, z) => this.world.groundHeightAt(x, z), yardMat)); // DEFERRED
+        return true;
+      });
     }
 
     // Highways (A5): draped GRAVEL ribbons linking the communities. The deck DRAPES on the
@@ -482,14 +492,19 @@ export class Game {
       return wl !== null ? wl + ROADS.bridgeLift : this.world.groundHeightAt(x, z) + ROADS.lift;
     };
     for (const rd of this.world.roads) {
-      this.deferredBuild.push(() => this.scene.add(createRoadMesh(rd, roadSurfaceAt, gravelMat))); // DEFERRED
+      this.deferredBuild.push(() => {
+        this.scene.add(createRoadMesh(rd, roadSurfaceAt, gravelMat)); // DEFERRED
+        return true;
+      });
     }
 
-    // Forest scattered by BIOME (A2): each candidate is accepted with the biome's
-    // tree density (dense in moist forest, sparse in meadow, ~none on rock/water) and
-    // tinted by biome. Seeded off the World rng so the same seed grows the same forest.
-    // Photoreal pass: a denser forest reads far more real. Gate the bump to med/high — low-end
-    // devices keep the original count (the per-chunk cull + distance LOD + DPR watchdog do the rest).
+    // Forest scattered by BIOME (A2): each candidate is accepted with the biome's tree density and
+    // tinted by biome. This is the HEAVIEST build (the whole "forest" boot phase), so it's DEFERRED —
+    // streamed chunk-by-chunk a few ms/frame after the first frame (under the cold-start spool) via the
+    // stepper below. It runs on its OWN seeded rng stream (not world.rng): the candidate scatter spans
+    // several frames, which would otherwise interleave with the FireSystem's gameplay draws on the shared
+    // world.rng and break determinism — an independent stream (like the groves/snags) makes deferral safe.
+    // Same seed → same forest. (Decoupling also removes the world.rng tier-divergence flagged for co-op.)
     const forestDensityMul = tier.current.name === 'low' ? 1 : FOREST.densityMul;
     const forest = createTreeField({
       // Scale candidates with world AREA (constant density as the map grows), off the FOREST.baseCandidates
@@ -507,17 +522,25 @@ export class Game {
           treeTint: s.treeTint,
         };
       },
-      rng: this.world.rng,
+      rng: speciesRng(WORLD3D.seed ^ 0x6f1bbcdd), // own stream → safe to scatter across deferred frames
       burnable: true, // C5: conifers ignite + char + collapse when the fire field reaches them
+      deferred: true, // stream the candidate scatter + per-chunk meshing via buildStep (pumped in main.ts)
     });
     this.forest = forest;
-    this.scene.add(forest.object);
-    // B6: make the canopy sway in the shared wind (the same one that bends the smoke).
-    const foliage = forest.object.getObjectByName('TreeFoliage') as THREE.Mesh | null;
-    if (foliage) applyFoliageSway(foliage.material as THREE.Material, this.frame);
-    // Bucket collision height field: World ground raised to the forest canopy. The
-    // bucket scrapes terrain and snags treetops against this (see bucketSim below).
-    this.obstacles = new Obstacles(this.world, forest.colliders);
+    this.scene.add(forest.object); // present but EMPTY now — fills as the deferred stepper runs
+    // Bucket/heli collision starts on the BARE ground (no canopy) while the forest streams — the heli is
+    // parked on the cleared home pad through the spool, so there's nothing to snag yet. Rebuilt with the
+    // real tree colliders + the wind sway wired the moment the forest finishes (the stepper below).
+    this.obstacles = new Obstacles(this.world, []);
+    this.deferredBuild.push((budgetMs) => {
+      const done = forest.buildStep!(budgetMs);
+      if (done) {
+        this.obstacles = new Obstacles(this.world, forest.colliders); // canopy collision now live
+        const fol = forest.object.getObjectByName('TreeFoliage') as THREE.Mesh | null;
+        if (fol) applyFoliageSway(fol.material as THREE.Material, this.frame); // B6 canopy wind sway
+      }
+      return done;
+    });
 
     // The bridge meshes + colliders, built from the sites resolved above (their valleys are already
     // shaped into the terrain). Empty off-SK / when disabled, so this self-skips.
@@ -745,8 +768,11 @@ export class Game {
     if (this.disposed) return true;
     const t0 = performance.now();
     while (this.deferredIdx < this.deferredBuild.length) {
-      this.deferredBuild[this.deferredIdx++]();
-      if (performance.now() - t0 >= budgetMs) break;
+      const remaining = budgetMs - (performance.now() - t0);
+      if (remaining <= 0) break;
+      const itemDone = this.deferredBuild[this.deferredIdx](remaining);
+      if (itemDone) this.deferredIdx++; // one-shot item built (or the forest finished) — advance
+      else break; // a multi-frame stepper (the forest) isn't done yet — resume it next frame
     }
     const done = this.deferredIdx >= this.deferredBuild.length;
     if (done) this.lakeRadar = null; // refresh the radar now that every lake disc exists
@@ -2132,7 +2158,11 @@ export class Game {
       // below once the load is released). Pairs with the live "Filling… N%" hint + the water bar.
       if (this.water >= this.capacity && !this.bucketFull) {
         this.bucketFull = true;
-        this.hud.pushComms('dispatch', 'Bucket full — go work the fire.', 'info');
+        const teach = !coached('scoop'); // coach the first couple fills, then trust the pilot
+        coachBump('scoop');
+        // The spoken "bucket full" cue is a teaching line, so it stops after a couple fills (no more
+        // "bucket filled, go dump" every scoop); the squelch stays as a quiet, non-verbal confirmation.
+        if (teach) this.hud.pushComms('dispatch', 'Bucket full — go work the fire.', 'info');
         this.audio.playSquelch('info');
       }
     }
@@ -2384,15 +2414,17 @@ export class Game {
   }
 
   /**
-   * Status line: guide the player to dip, then show the live fill % while scooping. The percentage
-   * changes the string each frame, so the hint STAYS up the whole scoop (it re-arms the flash) — the
-   * fix for "I didn't know I had to hold the bucket in the water longer". Clears at full (the bucket-
-   * full cue + the topped-off bar take over).
+   * Status line: COACH the dip a couple of times, then trust the pilot. A CONSTANT string (the old
+   * version embedded a live % that changed every frame and so re-flashed the hint perpetually — the
+   * "bucket filled, go dump" nag); the water-bar GLOW now carries the live fill feedback. Once
+   * `coached('scoop')` (a few fills in) it goes quiet for good. Clears at full (the bucket-full cue +
+   * the topped-off bar take over).
    */
   private scoopHint(overWater: boolean, scooping: boolean): string | null {
     if (this.water >= this.capacity) return null;
-    if (scooping) return `Filling bucket… ${Math.round((this.water / this.capacity) * 100)}% — hold low`;
-    if (overWater) return 'Descend (▼ / J) to dip the bucket in';
+    if (coached('scoop')) return null; // taught it — the water-bar glow carries fill feedback from here
+    if (scooping) return 'Hold low to fill the bucket';
+    if (overWater) return 'Descend to dip the bucket in';
     return null;
   }
 
