@@ -16,6 +16,7 @@
  */
 
 import type { MissionDef } from '../../missions/types';
+import { dailyStreak } from '../../missions/streak';
 import {
   loadProfile,
   saveProfile,
@@ -101,8 +102,11 @@ export class MenuFlow {
     // missions →" instead. The two never show together (one needs a named profile, the other not).
     this.quickBtn = ghostButton('⚡ Quick fly', () => this.quickFly());
     // Daily Burn — the retention hook: today's date-seeded "clear every fire" challenge + its own
-    // board. Always available (navigates to ?daily), so there's a reason to come back tomorrow.
-    this.dailyBtn = ghostButton('🔥 Daily Burn', () => this.playDaily());
+    // board. Always available (navigates to ?daily), so there's a reason to come back tomorrow. A live
+    // consecutive-day streak (≥2) rides on the label as a "don't break the chain" pull (audit VISION-3).
+    const streak = dailyStreak();
+    const dailyLabel = streak >= 2 ? `🔥 Daily Burn · ${streak}-day streak` : '🔥 Daily Burn';
+    this.dailyBtn = ghostButton(dailyLabel, () => this.playDaily());
 
     const header = section({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', margin: '0 auto 22px', flexWrap: 'wrap' });
     const actions = div({ display: 'flex', alignItems: 'center', gap: '8px' });

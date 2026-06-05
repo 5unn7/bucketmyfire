@@ -84,6 +84,9 @@ export interface ZonePlacement {
   x?: number;
   z?: number;
   community?: CommunityRef;
+  offset?: number; // push the pad this many units off the community along `bearingDeg` (flank an LZ without a new anchor)
+  bearingDeg?: number; // compass bearing of that offset (0 = N, 90 = E); omit → 0 (due north)
+  hover?: boolean; // deliver by HOLDING A HOVER over the spot for MISSIONS.hoverSec (vs landing) — hover-training drops
   label?: string; // shown on the zone marker / HUD ("LZ Alpha", "Cabin 2")
 }
 
@@ -97,12 +100,13 @@ export interface Objective {
 }
 
 /** Loss conditions — ANY triggers a mission loss. */
-export type FailKind = 'protect' | 'timeout' | 'fuelOut';
+export type FailKind = 'protect' | 'timeout' | 'fuelOut' | 'rescue';
 export interface FailCondition {
   kind: FailKind;
   min?: number; // protect: minimum structures that must survive (default 1)
   all?: boolean; // protect: every structure must survive (min = total)
   seconds?: number; // timeout: lose if not won by this elapsed time
+  n?: number; // rescue: how many trapped families may be lost before failing (default 0 — lose ANY = fail)
   label?: string;
 }
 
@@ -223,6 +227,7 @@ export interface MissionSignals {
   structuresTotal: number;
   crewsDelivered: number;
   crewsTotal: number;
+  crewsLost: number; // trapped families the FIRE reached before pickup (drives the `rescue` fail)
   elapsed: number; // seconds since the mission became active
   fuel: number; // 0..1 (1 when no FuelSim)
   starved: boolean; // ran the tank dry
@@ -253,7 +258,7 @@ export interface ScoreTally {
   peakThreat: number; // 0..1 — worst structure threat survived (dynamic hardship)
   peakFireLoad: number; // most fires active at once (dynamic hardship)
   fuelEnd: number; // 0..1 fuel remaining at the end (range bonus, fuel missions only)
-  hardLandings: number; // hull-denting touchdowns (penalty)
+  hardLandings: number; // airframe-denting touchdowns (penalty)
   crashed: boolean; // airframe destroyed (terminal — the run scores 0 via Game, breakdown is null)
 }
 

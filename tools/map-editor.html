@@ -1,0 +1,1538 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>bucketmyfire — Saskatchewan Map Editor</title>
+<style>
+  :root {
+    --bg: #0e1418;
+    --panel: #161e24;
+    --panel2: #1d272e;
+    --line: #2a3741;
+    --text: #d7e3ea;
+    --muted: #8fa3b0;
+    --accent: #4ea3ff;
+    --water: #3f8fd6;
+    --fire: #ff7a33;
+    --base: #6fcf6f;
+    --community: #ffd166;
+    --city: #cfe3ff;
+    --upland: #c69a6d;
+    --province: #3a6ea5;
+    --river: #46c4e0;
+    --highway: #caa24a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 13px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+  }
+  header {
+    display: flex; align-items: center; gap: 14px;
+    padding: 8px 14px; background: var(--panel); border-bottom: 1px solid var(--line);
+    flex: 0 0 auto;
+  }
+  header h1 { font-size: 14px; margin: 0; font-weight: 600; letter-spacing: .2px; }
+  header h1 span { color: var(--muted); font-weight: 400; }
+  .toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .toolbar label { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); cursor: pointer; user-select: none; }
+  .toolbar .sep { width: 1px; height: 18px; background: var(--line); }
+  button {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; padding: 5px 10px; cursor: pointer; font: inherit;
+  }
+  button:hover { background: #25323b; border-color: #3a4c58; }
+  button.primary { background: var(--accent); color: #05121d; border-color: var(--accent); font-weight: 600; }
+  button.primary:hover { background: #6fb6ff; }
+  .grow { flex: 1 1 auto; }
+  main { flex: 1 1 auto; display: flex; min-height: 0; }
+  #stage { position: relative; flex: 1 1 auto; min-width: 0; }
+  canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+  canvas.dragging { cursor: grabbing; }
+  canvas.drawing { cursor: crosshair; }
+  #mode-banner {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    background: rgba(70,196,224,0.14); border: 1px solid var(--river); color: #cfeefa;
+    padding: 6px 14px; border-radius: 999px; font-size: 12px; font-weight: 600;
+    display: none; pointer-events: none; white-space: nowrap; backdrop-filter: blur(4px);
+  }
+  #mode-banner.on { display: block; }
+  #mode-banner.hwy { background: rgba(202,162,74,0.16); border-color: var(--highway); color: #f3e2b8; }
+  .chips { display: flex; flex-wrap: wrap; gap: 5px; margin: 6px 0; }
+  .chip { display: inline-flex; align-items: center; gap: 5px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 3px 4px 3px 8px; font-size: 12px; }
+  .chip button { padding: 0 5px; line-height: 1; border: none; background: transparent; color: var(--muted); font-size: 14px; }
+  .chip button:hover { color: #ff6b6b; background: transparent; }
+  .chip.bad { border-color: #6b2a2a; color: #ff9b9b; }
+  aside {
+    width: 320px; flex: 0 0 320px; background: var(--panel); border-left: 1px solid var(--line);
+    overflow-y: auto; padding: 14px;
+  }
+  aside h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); margin: 0 0 8px; }
+  .card { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+  .field { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 7px 0; }
+  .field label { color: var(--muted); flex: 0 0 96px; }
+  .field input, .field select {
+    flex: 1 1 auto; min-width: 0; background: var(--bg); color: var(--text);
+    border: 1px solid var(--line); border-radius: 5px; padding: 5px 7px; font: inherit;
+  }
+  .field input[type=range] { padding: 0; }
+  .row2 { display: flex; gap: 8px; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 600; }
+  .muted { color: var(--muted); }
+  .empty { color: var(--muted); font-style: italic; padding: 24px 8px; text-align: center; }
+  .legend div { display: flex; align-items: center; gap: 8px; margin: 4px 0; color: var(--muted); }
+  .dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; }
+  .help { font-size: 12px; color: var(--muted); }
+  .help b { color: var(--text); font-weight: 600; }
+  .help kbd { background: var(--panel2); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; font-size: 11px; color: var(--text); }
+  footer {
+    flex: 0 0 auto; display: flex; gap: 18px; align-items: center;
+    padding: 5px 14px; background: var(--panel); border-top: 1px solid var(--line);
+    color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px;
+  }
+  footer b { color: var(--text); font-weight: 600; }
+  /* export modal */
+  .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none; align-items: center; justify-content: center; z-index: 50; }
+  .modal-bg.open { display: flex; }
+  .modal { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; width: min(820px, 92vw); max-height: 88vh; display: flex; flex-direction: column; overflow: hidden; }
+  .modal header { background: var(--panel2); }
+  .modal .tabs { display: flex; gap: 6px; padding: 10px 14px 0; }
+  .modal .tabs button.active { background: var(--accent); color: #05121d; border-color: var(--accent); }
+  .modal textarea {
+    flex: 1 1 auto; margin: 12px 14px; min-height: 360px; resize: none;
+    background: var(--bg); color: #cfe9c8; border: 1px solid var(--line); border-radius: 8px;
+    padding: 12px; font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre;
+  }
+  .modal .actions { display: flex; gap: 8px; padding: 0 14px 14px; }
+  .danger { color: #ff6b6b; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Saskatchewan <span>map editor</span></h1>
+  <div class="toolbar">
+    <label><input type="checkbox" id="t-grid" checked> grid</label>
+    <label><input type="checkbox" id="t-province" checked> province</label>
+    <label><input type="checkbox" id="t-lakes" checked> lakes</label>
+    <label><input type="checkbox" id="t-bases" checked> bases/towns</label>
+    <label><input type="checkbox" id="t-landmarks" checked> landmarks</label>
+    <label><input type="checkbox" id="t-highways" checked> highways</label>
+    <label><input type="checkbox" id="t-rivers" checked> rivers</label>
+    <label><input type="checkbox" id="t-uplands" checked> uplands</label>
+    <label><input type="checkbox" id="t-labels" checked> labels</label>
+  </div>
+  <div class="grow"></div>
+  <div class="toolbar">
+    <button id="add-base">＋ Base</button>
+    <button id="add-lake">＋ Lake</button>
+    <button id="add-river">＋ River</button>
+    <button id="add-highway">＋ Highway</button>
+    <div class="sep"></div>
+    <button id="fit">Fit</button>
+    <button id="reset">Reset all</button>
+    <button class="primary" id="export">Export ▾</button>
+  </div>
+</header>
+
+<main>
+  <div id="stage"><canvas id="cv"></canvas><div id="mode-banner"></div></div>
+  <aside>
+    <h2>Inspector</h2>
+    <div id="inspector" class="card"><div class="empty">Click a marker or lake to edit it.</div></div>
+
+    <h2>Legend</h2>
+    <div class="card legend">
+      <div><span class="dot" style="background:var(--base)"></span> Base (spawn / refuel)</div>
+      <div><span class="dot" style="background:var(--community)"></span> Community / town (protectable)</div>
+      <div><span class="dot" style="background:var(--water)"></span> Scoop lake / named lake</div>
+      <div><span class="dot" style="background:var(--city)"></span> Landmark city/town (label only)</div>
+      <div><span class="dot" style="background:var(--upland)"></span> Upland / massif</div>
+      <div><span class="dot" style="background:var(--river)"></span> River (authored polyline)</div>
+      <div><span class="dot" style="background:var(--highway)"></span> Highway (route through anchors)</div>
+    </div>
+
+    <h2>How to use</h2>
+    <div class="card help">
+      <p><b>Drag</b> a marker or lake to move it — its real lat/lon updates live.</p>
+      <p><b>Resize a lake:</b> select it, then drag the ◇ handle on its rim, scroll the wheel over it, or edit <b>area</b> in the inspector.</p>
+      <p><b>Rotate / stretch:</b> edit <b>elong</b> &amp; <b>bearing</b> in the inspector.</p>
+      <p><b>Freeform a lake:</b> select it → <b>Convert to editable outline</b>. Drag the ● points to shape the shore, double-click a ● to delete, double-click an edge to add one. <b>Revert to ellipse</b> undoes it.</p>
+      <p><b>Add a river:</b> <kbd>＋ River</kbd>, then click to drop points along its course; <kbd>Enter</kbd> / double-click finishes. Drag a ● to adjust, double-click a ● to delete, set <b>width</b> in the inspector.</p>
+      <p><b>Connect a highway:</b> <kbd>＋ Highway</kbd>, then click bases/towns in order; <kbd>Enter</kbd> finishes. Select an existing highway to re-route it (✕ a stop, or <b>Connect anchors</b> to extend).</p>
+      <p><b>Pan:</b> drag empty space. <b>Zoom:</b> mouse wheel. <kbd>Del</kbd> removes the selected item. <kbd>Esc</kbd> deselects / finishes.</p>
+      <p class="muted">Projection, world scale (2100u) and the lake area→radius band match the game exactly. Rivers aren't in regions.ts yet — Export emits a paste-ready block + the interface to wire them in.</p>
+    </div>
+  </aside>
+</main>
+
+<footer>
+  <div>cursor <b id="f-world">—</b></div>
+  <div><b id="f-geo">—</b></div>
+  <div class="grow"></div>
+  <div>zoom <b id="f-zoom">—</b></div>
+  <div id="f-status" class="muted"></div>
+</footer>
+
+<div class="modal-bg" id="modal">
+  <div class="modal">
+    <header>
+      <h1>Export</h1>
+      <div class="grow"></div>
+      <button id="modal-close">✕</button>
+    </header>
+    <div class="tabs">
+      <button data-tab="ts" class="active">regions.ts blocks</button>
+      <button data-tab="json">JSON</button>
+    </div>
+    <textarea id="export-text" spellcheck="false" readonly></textarea>
+    <div class="actions">
+      <button class="primary" id="copy-btn">Copy to clipboard</button>
+      <button id="download-btn">Download file</button>
+      <div class="grow"></div>
+      <span id="copy-status" class="muted"></span>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ===================================================================
+   Constants — mirrored EXACTLY from the game (config.ts / World.ts)
+   =================================================================== */
+const WORLD_SIZE = 2100;          // WORLD3D.size
+const KM_PER_DEG_LAT = 111.32;
+const DEG2RAD = Math.PI / 180;
+const MAPGEO = {
+  fill: 0.93,
+  lakeMinR: 30, lakeMaxR: 105,
+  lakeAreaMin: 30, lakeAreaMax: 7850, lakeAreaDefault: 28,
+  metresPerUnit: 11, // vertical scale: an upland's REAL prominence (m) ÷ this = world-unit height (matches config.ts)
+};
+// Upland real→world conversions (mirror World.ts): footprint km → units via the projection scale, prominence m → units.
+function uplandRadiusU(radiusKm) { return radiusKm * uPerKm; }
+function uplandHeightU(prominenceM) { return prominenceM / MAPGEO.metresPerUnit; }
+
+/* ===================================================================
+   Region data — transcribed from src/three/world/regions.ts
+   Edit this block here and the map updates; Export regenerates the
+   regions.ts source from the (possibly edited) state.
+   =================================================================== */
+const GEO = {
+  latMin: 49, latMax: 60, lonMin: -110, lonMax: -101.36,
+  outline: [
+    { lat: 49, lon: -110 },
+    { lat: 49, lon: -101.36 },
+    { lat: 60, lon: -102.0 },
+    { lat: 60, lon: -110 },
+  ],
+};
+
+const DEFAULTS = {
+  anchors: [
+    { id: 'la-ronge', name: 'La Ronge', kind: 'both', lat: 55.1, lon: -105.284, home: true, scoop: { lake: 'Lac La Ronge', areaKm2: 480, elong: 1.3, bearingDeg: 40 }, blurb: 'Primary air-attack base — island lake, easy water.' },
+    { id: 'prince-albert', name: 'Prince Albert', kind: 'base', lat: 53.2, lon: -105.768, scoop: { lake: 'Candle Lake', areaKm2: 132 }, blurb: 'Southern gateway base; river country.' },
+    { id: 'southend', name: 'Southend', kind: 'base', lat: 56.317, lon: -103.234, scoop: { lake: 'Reindeer Lake', areaKm2: 6650, elong: 2.6, bearingDeg: 10 }, blurb: 'Remote far-north outpost on a vast cold lake.' },
+    { id: 'hudson-bay', name: 'Hudson Bay', kind: 'base', lat: 52.85, lon: -112.384, scoop: { lake: 'Ruby Lake', areaKm2: 2.2 }, blurb: 'Eastern forward base — lake-poor, hard scoop.' },
+    { id: 'denare-beach', name: 'Denare Beach', kind: 'both', lat: 54.667, lon: -104, scoop: { lake: 'Amisk Lake', areaKm2: 453 }, blurb: 'SE lakeside village near the Manitoba line.' },
+    { id: 'dorintosh', name: 'Dorintosh', kind: 'base', lat: 54.354, lon: -108.627, scoop: { lake: 'Greig Lake' }, blurb: 'SW park gateway — lakes everywhere, easy water.' },
+    { id: 'buffalo-narrows', name: 'Buffalo Narrows', kind: 'both', lat: 55.863, lon: -108.479, scoop: { lake: 'Peter Pond Lake', areaKm2: 778, elong: 2.2, bearingDeg: 0 }, blurb: 'NW lakes-country base on the narrows.' },
+    { id: 'weyakwin', name: 'Weyakwin', kind: 'community', lat: 54.423, lon: -105.787, scoop: { lake: 'Weyakwin Lake' } },
+    { id: 'missinipe', name: 'Missinipe', kind: 'community', lat: 55.603, lon: -104.773, scoop: { lake: 'Otter Lake' } },
+    { id: 'stanley-mission', name: 'Stanley Mission', kind: 'community', lat: 55.418, lon: -104.556, scoop: { lake: 'Nistowiak Lake' } },
+    { id: 'sucker-river', name: 'Sucker River', kind: 'community', lat: 55.299, lon: -105.165 },
+    { id: 'beauval', name: 'Beauval', kind: 'community', lat: 55.146, lon: -107.611, scoop: { lake: 'Lac la Plonge', areaKm2: 257 } },
+    { id: 'ile-a-la-crosse', name: 'Île-à-la-Crosse', kind: 'community', lat: 55.433, lon: -107.897, scoop: { lake: 'Lac Île-à-la-Crosse', areaKm2: 391 } },
+    { id: 'missinipe-south', name: 'Missinipe South', kind: 'community', lat: 55.56, lon: -104.79 },
+    { id: 'grandmothers-bay', name: 'Grandmother’s Bay', kind: 'community', lat: 55.607, lon: -104.591 },
+  ],
+  namedLakes: [
+    { name: 'Lake Athabasca', lat: 59.1, lon: -108.7, areaKm2: 4500, elong: 2.8, bearingDeg: 90 },
+    { name: 'Wollaston Lake', lat: 58.25, lon: -103.3, areaKm2: 2681, elong: 1.5, bearingDeg: 90 },
+    { name: 'Cree Lake', lat: 57.5, lon: -106.6, areaKm2: 1435, elong: 1.6, bearingDeg: 95 },
+    { name: 'Black Lake', lat: 59.18, lon: -105.35, areaKm2: 464, elong: 2.6, bearingDeg: 90 },
+    { name: 'Lake Diefenbaker', lat: 50.9, lon: -107.0, areaKm2: 394, elong: 4.0, bearingDeg: 110 },
+    { name: 'Last Mountain Lake', lat: 51.05, lon: -105.25, areaKm2: 226, elong: 5.5, bearingDeg: 168 },
+  ],
+  landmarks: [
+    { name: 'Uranium City', lat: 59.567, lon: -108.615, kind: 'town' },
+    { name: 'Fond-du-Lac', lat: 59.331, lon: -107.176, kind: 'town' },
+    { name: 'Stony Rapids', lat: 59.253, lon: -105.836, kind: 'town' },
+    { name: 'La Loche', lat: 56.483, lon: -109.433, kind: 'town' },
+    { name: 'Patuanak', lat: 55.903, lon: -107.714, kind: 'town' },
+    { name: 'Meadow Lake', lat: 54.13, lon: -108.435, kind: 'town' },
+    { name: 'Nipawin', lat: 53.367, lon: -104.009, kind: 'town' },
+    { name: 'North Battleford', lat: 52.758, lon: -108.286, kind: 'city' },
+    { name: 'Saskatoon', lat: 52.133, lon: -106.67, kind: 'city' },
+    { name: 'Regina', lat: 50.445, lon: -104.619, kind: 'city' },
+  ],
+  highways: [
+    { name: 'Hwy 2', through: ['prince-albert', 'weyakwin', 'la-ronge'] },
+    { name: 'Hwy 102', through: ['la-ronge', 'missinipe', 'stanley-mission'] },
+    { name: 'Hwy 155', through: ['beauval', 'ile-a-la-crosse', 'buffalo-narrows'] },
+  ],
+  uplands: [
+    { name: 'Cypress Hills', lat: 49.6, lon: -109.8, radiusKm: 50, prominenceM: 590 },
+  ],
+  // Authored rivers — NOT in regions.ts yet (today's in-game streams are procedural, World.makeRivers).
+  // Draw them here; Export emits a paste-ready SASKATCHEWAN_RIVERS block + RegionRiver interface to wire up.
+  rivers: [],
+};
+
+// deep clone so "Reset all" can restore originals
+const clone = (o) => JSON.parse(JSON.stringify(o));
+let state = clone(DEFAULTS);
+
+/* ===================================================================
+   Projection — identical to World.project / lakeRadiusFromArea
+   =================================================================== */
+const latCenter = (GEO.latMin + GEO.latMax) / 2;
+const lonCenter = (GEO.lonMin + GEO.lonMax) / 2;
+const uPerKm = (WORLD_SIZE * MAPGEO.fill) / ((GEO.latMax - GEO.latMin) * KM_PER_DEG_LAT);
+
+function project(lat, lon) {
+  const zKm = -(lat - latCenter) * KM_PER_DEG_LAT;
+  const xKm = (lon - lonCenter) * KM_PER_DEG_LAT * Math.cos(lat * DEG2RAD);
+  return { x: xKm * uPerKm, z: zKm * uPerKm };
+}
+// inverse: world XZ -> lat/lon (lat from z, then lon using that lat's cosine)
+function unproject(x, z) {
+  const lat = latCenter - (z / uPerKm) / KM_PER_DEG_LAT;
+  const lon = lonCenter + (x / uPerKm) / (KM_PER_DEG_LAT * Math.cos(lat * DEG2RAD));
+  return { lat, lon };
+}
+function lakeRadiusFromArea(areaKm2) {
+  const a = Math.max(MAPGEO.lakeAreaMin, Math.min(MAPGEO.lakeAreaMax, areaKm2 ?? MAPGEO.lakeAreaDefault));
+  const sMin = Math.sqrt(MAPGEO.lakeAreaMin);
+  const t = (Math.sqrt(a) - sMin) / (Math.sqrt(MAPGEO.lakeAreaMax) - sMin);
+  return MAPGEO.lakeMinR + t * (MAPGEO.lakeMaxR - MAPGEO.lakeMinR);
+}
+// inverse of the above: a rim radius (units) -> the areaKm2 that produces it
+function areaFromRadius(r) {
+  const t = (r - MAPGEO.lakeMinR) / (MAPGEO.lakeMaxR - MAPGEO.lakeMinR);
+  const sMin = Math.sqrt(MAPGEO.lakeAreaMin);
+  const s = sMin + Math.max(0, Math.min(1, t)) * (Math.sqrt(MAPGEO.lakeAreaMax) - sMin);
+  return Math.max(MAPGEO.lakeAreaMin, Math.min(MAPGEO.lakeAreaMax, s * s));
+}
+// bearing (0=N–S long axis, 90=E–W) -> long-axis direction in world XZ (north=-Z, east=+X)
+function bearingDir(bearingDeg) {
+  const b = (bearingDeg || 0) * DEG2RAD;
+  return { x: Math.sin(b), z: -Math.cos(b) };
+}
+
+/* ===================================================================
+   View transform (world XZ <-> screen px). North (-Z) is up.
+   =================================================================== */
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+let view = { ox: 0, oy: 0, scale: 0.3 }; // world(0,0) at (ox,oy); scale = px per world unit
+let dpr = Math.max(1, window.devicePixelRatio || 1);
+
+function resize() {
+  const r = cv.getBoundingClientRect();
+  dpr = Math.max(1, window.devicePixelRatio || 1);
+  cv.width = Math.round(r.width * dpr);
+  cv.height = Math.round(r.height * dpr);
+  draw();
+}
+function W2S(x, z) { return { x: view.ox + x * view.scale, y: view.oy + z * view.scale }; }
+function S2W(sx, sy) { return { x: (sx - view.ox) / view.scale, z: (sy - view.oy) / view.scale }; }
+function cssSize() { return { w: cv.width / dpr, h: cv.height / dpr }; }
+
+function fitView() {
+  const { w, h } = cssSize();
+  const pad = 40;
+  view.scale = Math.min((w - pad * 2), (h - pad * 2)) / WORLD_SIZE;
+  view.ox = w / 2;
+  view.oy = h / 2;
+  draw();
+}
+
+/* ===================================================================
+   Item model — a flat selectable list over the state arrays
+   types: anchor | lake (namedLake) | landmark | upland
+   =================================================================== */
+function itemWorld(it) {
+  if (it.type === 'upland') return project(it.ref.lat, it.ref.lon);
+  return project(it.ref.lat, it.ref.lon);
+}
+// a lake's req radius (equal-area) in world units
+function lakeReqR(d) { return lakeRadiusFromArea(d.areaKm2); }
+// the object holding a lake's shape fields: an anchor keeps them under .scoop, a named lake at top level
+function lakeFields(ref) { return ref.scoop ? ref.scoop : ref; }
+
+let selected = null; // { type, ref }  types: anchor|anchorLake|lake|landmark|upland|river|highway
+let mode = 'select';  // 'select' | 'draw-river' | 'connect-highway'
+let draft = null;     // the river/highway being built in a draw mode
+const RIVER_WIDTH_DEFAULT = 12; // authored river ribbon width (world units)
+
+function eachLakeShape(ref, isUpland) {
+  // returns {cx,cz,major,minor,angle} for drawing ellipse (world units)
+  const p = project(ref.lat, ref.lon);
+  if (isUpland) { const r = uplandRadiusU(ref.radiusKm); return { cx: p.x, cz: p.z, major: r, minor: r, angle: 0 }; }
+  const ld = lakeFields(ref); // anchor → .scoop, named lake → itself
+  const reqR = lakeRadiusFromArea(ld.areaKm2);
+  const elong = ld.elong && ld.elong > 1 ? ld.elong : 1;
+  const major = reqR * Math.sqrt(elong);
+  const minor = reqR / Math.sqrt(elong);
+  const dir = bearingDir(ld.bearingDeg);
+  const angle = Math.atan2(dir.z, dir.x); // screen-space angle (z down)
+  return { cx: p.x, cz: p.z, major, minor, angle };
+}
+
+/* ===================================================================
+   Drawing
+   =================================================================== */
+const T = {}; // layer toggles, filled from checkboxes
+function readToggles() {
+  T.grid = document.getElementById('t-grid').checked;
+  T.province = document.getElementById('t-province').checked;
+  T.lakes = document.getElementById('t-lakes').checked;
+  T.bases = document.getElementById('t-bases').checked;
+  T.landmarks = document.getElementById('t-landmarks').checked;
+  T.highways = document.getElementById('t-highways').checked;
+  T.rivers = document.getElementById('t-rivers').checked;
+  T.uplands = document.getElementById('t-uplands').checked;
+  T.labels = document.getElementById('t-labels').checked;
+}
+
+function draw() {
+  readToggles();
+  const { w, h } = cssSize();
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#0b1115';
+  ctx.fillRect(0, 0, w, h);
+
+  drawWorldBounds();
+  if (T.grid) drawGrid();
+  if (T.province) drawProvince();
+  if (T.rivers) drawRivers();
+  if (T.highways) drawHighways();
+  if (T.lakes) drawLakes();
+  if (T.uplands) drawUplands();
+  if (T.bases) drawAnchors();
+  if (T.landmarks) drawLandmarks();
+  drawCompass();
+  if (selected) drawSelectionHandles();
+  drawPolyHandles();
+}
+
+function drawWorldBounds() {
+  // the square playfield [-1050..1050]
+  const a = W2S(-WORLD_SIZE / 2, -WORLD_SIZE / 2);
+  const b = W2S(WORLD_SIZE / 2, WORLD_SIZE / 2);
+  ctx.save();
+  ctx.fillStyle = '#0e1519';
+  ctx.fillRect(a.x, a.y, b.x - a.x, b.y - a.y);
+  ctx.strokeStyle = '#2a3741';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y);
+  ctx.restore();
+}
+
+function drawGrid() {
+  const step = 100; // world units
+  const half = WORLD_SIZE / 2;
+  ctx.save();
+  ctx.lineWidth = 1;
+  ctx.font = '10px ui-monospace, monospace';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  for (let g = -half; g <= half; g += step) {
+    const v = W2S(g, -half), v2 = W2S(g, half);
+    const hH = W2S(-half, g), hH2 = W2S(half, g);
+    ctx.strokeStyle = g === 0 ? '#3a4c58' : '#1a242b';
+    ctx.beginPath(); ctx.moveTo(v.x, v.y); ctx.lineTo(v2.x, v2.y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(hH.x, hH.y); ctx.lineTo(hH2.x, hH2.y); ctx.stroke();
+    if (g % 500 === 0) {
+      ctx.fillStyle = '#54707f';
+      ctx.fillText(g, v.x + 2, W2S(0, -half).y + 2);
+      ctx.fillText(g, W2S(-half, 0).x + 2, hH.y + 2);
+    }
+  }
+  ctx.restore();
+}
+
+function projOutline(pts) { return pts.map(p => { const w = project(p.lat, p.lon); return W2S(w.x, w.z); }); }
+
+function drawProvince() {
+  if (!GEO.outline.length) return;
+  const pts = projOutline(GEO.outline);
+  ctx.save();
+  // shade exterior: fill canvas, punch out province with even-odd
+  ctx.beginPath();
+  const { w, h } = cssSize();
+  ctx.rect(0, 0, w, h);
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = pts.length - 1; i >= 0; i--) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(4,8,11,0.45)';
+  ctx.fill('evenodd');
+  // outline stroke
+  ctx.beginPath();
+  pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
+  ctx.closePath();
+  ctx.strokeStyle = 'var(--province)';
+  ctx.strokeStyle = getCss('--province');
+  ctx.lineWidth = 1.6;
+  ctx.setLineDash([6, 4]);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function highwayScreenPts(hw) {
+  return hw.through.map(id => state.anchors.find(a => a.id === id)).filter(Boolean)
+    .map(a => { const w = project(a.lat, a.lon); return W2S(w.x, w.z); });
+}
+
+function drawHighways() {
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  for (const hw of state.highways) {
+    const isSel = selected && selected.type === 'highway' && selected.ref === hw;
+    const pts = highwayScreenPts(hw);
+    if (pts.length >= 2) {
+      ctx.strokeStyle = isSel ? '#ffd97a' : '#caa24a';
+      ctx.lineWidth = isSel ? 3 : 2;
+      ctx.setLineDash([2, 5]);
+      ctx.beginPath();
+      pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
+      ctx.stroke();
+    }
+    // numbered nodes when selected (or while connecting this route)
+    if (isSel || (mode === 'connect-highway' && draft === hw)) {
+      ctx.setLineDash([]);
+      pts.forEach((p, i) => {
+        ctx.beginPath(); ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(202,162,74,0.9)'; ctx.fill();
+        ctx.fillStyle = '#1a1205'; ctx.font = '700 10px system-ui';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(String(i + 1), p.x, p.y);
+      });
+    }
+    if (T.labels && pts.length >= 2) {
+      const mid = pts[Math.floor(pts.length / 2)];
+      ctx.setLineDash([]);
+      ctx.fillStyle = isSel ? '#ffd97a' : '#caa24a';
+      ctx.font = '10px system-ui';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+      ctx.fillText(hw.name, mid.x, mid.y - 10);
+    }
+  }
+  ctx.restore();
+}
+
+function riverScreenPts(r) {
+  return r.pts.map(p => { const w = project(p.lat, p.lon); return W2S(w.x, w.z); });
+}
+
+function smoothPath(pts) {
+  // quadratic-midpoint smoothing for a flowing river look
+  ctx.beginPath();
+  if (pts.length < 3) { pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); return; }
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length - 1; i++) {
+    const mx = (pts[i].x + pts[i + 1].x) / 2, my = (pts[i].y + pts[i + 1].y) / 2;
+    ctx.quadraticCurveTo(pts[i].x, pts[i].y, mx, my);
+  }
+  ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
+}
+
+function drawRivers() {
+  ctx.save();
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  for (const r of state.rivers) {
+    const pts = riverScreenPts(r);
+    if (pts.length < 2) {
+      if (pts.length === 1) { ctx.beginPath(); ctx.arc(pts[0].x, pts[0].y, 4, 0, 7); ctx.fillStyle = getCss('--river'); ctx.fill(); }
+      continue;
+    }
+    const isSel = selected && selected.type === 'river' && selected.ref === r;
+    const w = Math.max(2, (r.width || RIVER_WIDTH_DEFAULT) * view.scale);
+    smoothPath(pts);
+    ctx.strokeStyle = 'rgba(70,196,224,0.35)'; ctx.lineWidth = w + (isSel ? 4 : 2); ctx.stroke();
+    smoothPath(pts);
+    ctx.strokeStyle = isSel ? '#7fe0f4' : getCss('--river'); ctx.lineWidth = Math.max(1.5, w * 0.5); ctx.stroke();
+    if (T.labels) {
+      const mid = pts[Math.floor(pts.length / 2)];
+      ctx.fillStyle = isSel ? '#bdeefa' : '#8fd9e8'; ctx.font = 'italic 11px system-ui';
+      ctx.textAlign = 'center';
+      ctx.strokeStyle = 'rgba(6,10,13,0.8)'; ctx.lineWidth = 3;
+      ctx.strokeText(r.name, mid.x, mid.y - w / 2 - 4);
+      ctx.fillText(r.name, mid.x, mid.y - w / 2 - 4);
+    }
+  }
+  ctx.restore();
+}
+
+// draggable vertex handles for a selected river / freeform lake (and the in-progress river draft)
+function drawPolyHandles() {
+  let verts = null, drawingRiver = false;
+  const ep = editablePoly(selected);
+  if (ep) verts = ep.arr.map((_, i) => ep.vWorld(i));
+  else if (mode === 'draw-river' && draft) { verts = draft.pts.map(p => project(p.lat, p.lon)); drawingRiver = true; }
+  if (!verts) return;
+  ctx.save();
+  verts.forEach((v, i) => {
+    const p = W2S(v.x, v.z);
+    ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+    ctx.fillStyle = (drawingRiver && i === verts.length - 1) ? '#7fe0f4' : '#0b1115';
+    ctx.strokeStyle = '#7fe0f4'; ctx.lineWidth = 2;
+    ctx.fill(); ctx.stroke();
+  });
+  ctx.restore();
+}
+
+function ellipsePath(s) {
+  // s in world units -> screen
+  const c = W2S(s.cx, s.cz);
+  ctx.save();
+  ctx.translate(c.x, c.y);
+  ctx.rotate(s.angle);
+  ctx.scale(view.scale, view.scale);
+  ctx.beginPath();
+  ctx.ellipse(0, 0, s.major, s.minor, 0, 0, Math.PI * 2);
+  ctx.restore();
+}
+
+// world-space vertices of a poly-lake's outline (center + stored offsets)
+function lakePolyWorld(ref) {
+  const lf = lakeFields(ref);
+  if (!lf.poly || lf.poly.length < 3) return null;
+  const c = project(ref.lat, ref.lon);
+  return lf.poly.map(o => ({ x: c.x + o.dx, z: c.z + o.dz }));
+}
+function closedSmoothPath(pts) {
+  ctx.beginPath();
+  const n = pts.length;
+  if (n < 3) { pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); return; }
+  // quadratic-midpoint smoothing around a closed loop
+  const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+  let prev = mid(pts[n - 1], pts[0]);
+  ctx.moveTo(prev.x, prev.y);
+  for (let i = 0; i < n; i++) {
+    const next = mid(pts[i], pts[(i + 1) % n]);
+    ctx.quadraticCurveTo(pts[i].x, pts[i].y, next.x, next.y);
+  }
+  ctx.closePath();
+}
+
+function drawLakeShape(ref, isUpland) {
+  const isSel = selected && selected.ref === ref;
+  const verts = isUpland ? null : lakePolyWorld(ref);
+  if (verts) {
+    const sp = verts.map(v => W2S(v.x, v.z));
+    closedSmoothPath(sp);
+    ctx.fillStyle = 'rgba(63,143,214,0.30)'; ctx.fill();
+    closedSmoothPath(sp);
+    ctx.lineWidth = isSel ? 2.5 : 1.4;
+    ctx.strokeStyle = isSel ? '#9ad1ff' : '#5aa6e0';
+    ctx.setLineDash([]); ctx.stroke();
+    // label anchor: centroid + extent
+    let cx = 0, cz = 0, ext = 0;
+    for (const v of verts) { cx += v.x; cz += v.z; }
+    cx /= verts.length; cz /= verts.length;
+    for (const v of verts) ext = Math.max(ext, Math.hypot(v.x - cx, v.z - cz));
+    return { cx, cz, minor: ext * view.scale, poly: true };
+  }
+  const s = eachLakeShape(ref, isUpland);
+  ellipsePath(s);
+  ctx.fillStyle = isUpland ? 'rgba(198,154,109,0.12)' : 'rgba(63,143,214,0.30)';
+  ctx.fill();
+  ellipsePath(s);
+  ctx.lineWidth = isSel ? 2.5 : 1.4;
+  ctx.strokeStyle = isUpland ? '#c69a6d' : (isSel ? '#9ad1ff' : '#5aa6e0');
+  if (isUpland) ctx.setLineDash([4, 4]); else ctx.setLineDash([]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  return s;
+}
+
+function drawLakes() {
+  for (const lk of state.namedLakes) {
+    const s = drawLakeShape(lk, false);
+    if (T.labels) label(lk.name, s.cx, s.cz, '#cfe3ff', s.minor + 4, 'lake');
+  }
+  // scoop lakes belong to anchors — draw them with the anchor layer if bases on,
+  // but draw here so they sit under markers regardless of toggle
+  for (const a of state.anchors) {
+    if (!a.scoop) continue;
+    const s = drawLakeShape(a, false);
+    if (T.labels) label(a.scoop.lake, s.cx, s.cz, '#9fc4e8', s.minor + 4, 'lake');
+  }
+}
+
+function drawUplands() {
+  for (const u of state.uplands) {
+    const s = drawLakeShape(u, true);
+    if (T.labels) label(u.name, s.cx, s.cz, '#c69a6d', s.minor + 4, 'upland');
+  }
+}
+
+function markerColor(kind) {
+  if (kind === 'base') return getCss('--base');
+  if (kind === 'community') return getCss('--community');
+  if (kind === 'both') return '#b6e36f';
+  return getCss('--accent');
+}
+
+function drawAnchors() {
+  for (const a of state.anchors) {
+    const w = project(a.lat, a.lon); const p = W2S(w.x, w.z);
+    const isSel = selected && selected.ref === a;
+    const col = markerColor(a.kind);
+    // home gets a ring
+    if (a.home) {
+      ctx.beginPath(); ctx.arc(p.x, p.y, 9, 0, Math.PI * 2);
+      ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, isSel ? 6 : 5, 0, Math.PI * 2);
+    ctx.fillStyle = col; ctx.fill();
+    ctx.lineWidth = isSel ? 2 : 1;
+    ctx.strokeStyle = isSel ? '#fff' : '#0b1115';
+    ctx.stroke();
+    if (T.labels) label(a.name + (a.home ? ' ★' : ''), w.x, w.z, '#e9f2f8', 9, 'anchor', true);
+  }
+}
+
+function drawLandmarks() {
+  for (const lm of state.landmarks) {
+    const w = project(lm.lat, lm.lon); const p = W2S(w.x, w.z);
+    const isSel = selected && selected.ref === lm;
+    const big = lm.kind === 'city';
+    ctx.beginPath();
+    ctx.rect(p.x - 3, p.y - 3, 6, 6);
+    ctx.fillStyle = big ? '#e6f0ff' : '#8aa0b0';
+    ctx.fill();
+    if (isSel) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke(); }
+    if (T.labels) label(lm.name, w.x, w.z, big ? '#e6f0ff' : '#9fb2c0', 7, 'landmark', true);
+  }
+}
+
+function label(text, wx, wz, color, dy, kind, marker) {
+  const p = W2S(wx, wz);
+  ctx.save();
+  ctx.font = (kind === 'anchor' ? '600 11px' : '10px') + ' system-ui';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = 'rgba(6,10,13,0.85)';
+  ctx.strokeText(text, p.x, p.y + dy);
+  ctx.fillStyle = color;
+  ctx.fillText(text, p.x, p.y + dy);
+  ctx.restore();
+}
+
+function drawCompass() {
+  const { w } = cssSize();
+  const x = w - 36, y = 36;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.strokeStyle = '#3a4c58'; ctx.fillStyle = '#8fa3b0';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(0, 16); ctx.lineTo(0, -16); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, -16); ctx.lineTo(-4, -10); ctx.lineTo(4, -10); ctx.closePath();
+  ctx.fillStyle = '#cfe3ff'; ctx.fill();
+  ctx.font = '700 11px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#cfe3ff'; ctx.fillText('N', 0, -24);
+  ctx.restore();
+}
+
+// resize/rotate handle for a selected lake/upland
+function selectionHandlePos() {
+  const ref = selected.ref;
+  const isUpland = selected.type === 'upland';
+  const s = eachLakeShape(ref, isUpland);
+  // handle at end of long axis
+  const hx = s.cx + Math.cos(s.angle) * s.major;
+  const hz = s.cz + Math.sin(s.angle) * s.major;
+  return { wx: hx, wz: hz, s };
+}
+function isPolyLake(sel) {
+  return sel && (sel.type === 'lake' || sel.type === 'anchorLake' || sel.type === 'anchor') && !!(lakeFields(sel.ref).poly);
+}
+function drawSelectionHandles() {
+  if (selected.type !== 'lake' && selected.type !== 'anchorLake' && selected.type !== 'upland') return;
+  if (isPolyLake(selected)) return; // a freeform lake is shaped by its vertices, not the ◇ resize handle
+  const { wx, wz } = selectionHandlePos();
+  const p = W2S(wx, wz);
+  ctx.save();
+  ctx.translate(p.x, p.y); ctx.rotate(Math.PI / 4);
+  ctx.fillStyle = '#9ad1ff'; ctx.strokeStyle = '#05121d'; ctx.lineWidth = 1.5;
+  ctx.fillRect(-5, -5, 10, 10); ctx.strokeRect(-5, -5, 10, 10);
+  ctx.restore();
+}
+
+function getCss(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim() || '#888'; }
+
+/* ===================================================================
+   Hit testing
+   =================================================================== */
+function lakeRefs() {
+  // [{ref, type}] for every lake-like ellipse (named + scoop + upland)
+  const out = [];
+  for (const lk of state.namedLakes) out.push({ ref: lk, type: 'lake' });
+  for (const a of state.anchors) if (a.scoop) out.push({ ref: a, type: 'anchorLake' });
+  for (const u of state.uplands) out.push({ ref: u, type: 'upland' });
+  return out;
+}
+
+function distToSeg(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay;
+  const len2 = dx * dx + dy * dy || 1;
+  let t = ((px - ax) * dx + (py - ay) * dy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (ax + dx * t), py - (ay + dy * t));
+}
+function polyDist(sx, sy, pts) {
+  let d = Infinity;
+  for (let i = 0; i < pts.length - 1; i++) d = Math.min(d, distToSeg(sx, sy, pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y));
+  return d;
+}
+function pointInPoly(px, pz, verts) {
+  let inside = false;
+  for (let i = 0, j = verts.length - 1; i < verts.length; j = i++) {
+    const xi = verts[i].x, zi = verts[i].z, xj = verts[j].x, zj = verts[j].z;
+    if (((zi > pz) !== (zj > pz)) && (px < ((xj - xi) * (pz - zi)) / (zj - zi) + xi)) inside = !inside;
+  }
+  return inside;
+}
+
+// Unified editable-vertex interface for the selected item: rivers (open, absolute lat/lon points)
+// and freeform lakes (closed, world-unit offsets from the lake centre). null if nothing is editable.
+function editablePoly(sel) {
+  if (!sel) return null;
+  if (sel.type === 'river') {
+    const arr = sel.ref.pts;
+    return {
+      arr, closed: false, minPts: 2,
+      vWorld: (i) => project(arr[i].lat, arr[i].lon),
+      setV: (i, wx, wz) => { const g = unproject(wx, wz); arr[i] = { lat: g.lat, lon: g.lon }; },
+      makeV: (wx, wz) => { const g = unproject(wx, wz); return { lat: g.lat, lon: g.lon }; },
+    };
+  }
+  if (sel.type === 'lake' || sel.type === 'anchorLake' || sel.type === 'anchor') {
+    const lf = lakeFields(sel.ref);
+    if (!lf.poly) return null;
+    const c = project(sel.ref.lat, sel.ref.lon);
+    return {
+      arr: lf.poly, closed: true, minPts: 3, center: c,
+      vWorld: (i) => ({ x: c.x + lf.poly[i].dx, z: c.z + lf.poly[i].dz }),
+      setV: (i, wx, wz) => { lf.poly[i] = { dx: Math.round(wx - c.x), dz: Math.round(wz - c.z) }; },
+      makeV: (wx, wz) => ({ dx: Math.round(wx - c.x), dz: Math.round(wz - c.z) }),
+    };
+  }
+  return null;
+}
+
+function pickAt(sx, sy) {
+  // priority: lake ◇ resize handle > selected-poly vertex > markers > highway/river lines > lakes
+  if (selected && (selected.type === 'lake' || selected.type === 'anchorLake' || selected.type === 'upland') && !isPolyLake(selected)) {
+    const { wx, wz } = selectionHandlePos();
+    const hp = W2S(wx, wz);
+    if (Math.hypot(hp.x - sx, hp.y - sy) <= 9) return { kind: 'handle' };
+  }
+  // vertices of the selected river or freeform lake (drag / delete)
+  const ep = editablePoly(selected);
+  if (ep) {
+    for (let i = 0; i < ep.arr.length; i++) {
+      const w = ep.vWorld(i); const p = W2S(w.x, w.z);
+      if (Math.hypot(p.x - sx, p.y - sy) <= 8) return { kind: 'poly-vertex', idx: i };
+    }
+  }
+  // markers (anchors + landmarks) — nearest within 11px
+  let best = null, bestD = 12;
+  for (const a of state.anchors) {
+    const w = project(a.lat, a.lon); const p = W2S(w.x, w.z);
+    const d = Math.hypot(p.x - sx, p.y - sy);
+    if (d < bestD) { bestD = d; best = { kind: 'item', sel: { type: 'anchor', ref: a } }; }
+  }
+  for (const lm of state.landmarks) {
+    const w = project(lm.lat, lm.lon); const p = W2S(w.x, w.z);
+    const d = Math.hypot(p.x - sx, p.y - sy);
+    if (d < bestD) { bestD = d; best = { kind: 'item', sel: { type: 'landmark', ref: lm } }; }
+  }
+  if (best) return best;
+  // highway lines (segments) within ~7px
+  if (T.highways) {
+    for (const hw of state.highways) {
+      const pts = highwayScreenPts(hw);
+      if (pts.length >= 2 && polyDist(sx, sy, pts) <= 7) return { kind: 'item', sel: { type: 'highway', ref: hw } };
+    }
+  }
+  // river ribbons within their half-width + a few px
+  if (T.rivers) {
+    for (const r of state.rivers) {
+      const pts = riverScreenPts(r);
+      const tol = Math.max(6, (r.width || RIVER_WIDTH_DEFAULT) * view.scale * 0.5 + 4);
+      if (pts.length >= 2 && polyDist(sx, sy, pts) <= tol) return { kind: 'item', sel: { type: 'river', ref: r } };
+    }
+  }
+  // lakes — inside outline/ellipse, smallest first so a small lake on a big one wins
+  const ww = S2W(sx, sy);
+  const cands = [];
+  for (const lr of lakeRefs()) {
+    const verts = lr.type === 'upland' ? null : lakePolyWorld(lr.ref);
+    if (verts) {
+      if (pointInPoly(ww.x, ww.z, verts)) {
+        let mnx = Infinity, mxx = -Infinity, mnz = Infinity, mxz = -Infinity;
+        for (const v of verts) { mnx = Math.min(mnx, v.x); mxx = Math.max(mxx, v.x); mnz = Math.min(mnz, v.z); mxz = Math.max(mxz, v.z); }
+        cands.push({ area: (mxx - mnx) * (mxz - mnz), sel: { type: lr.type, ref: lr.ref } });
+      }
+      continue;
+    }
+    const s = eachLakeShape(lr.ref, lr.type === 'upland');
+    // transform point into ellipse local frame
+    const dx = ww.x - s.cx, dz = ww.z - s.cz;
+    const ca = Math.cos(-s.angle), sa = Math.sin(-s.angle);
+    const lx = dx * ca - dz * sa, lz = dx * sa + dz * ca;
+    const inside = (lx * lx) / (s.major * s.major) + (lz * lz) / (s.minor * s.minor) <= 1;
+    if (inside) cands.push({ area: s.major * s.minor, sel: { type: lr.type, ref: lr.ref } });
+  }
+  if (cands.length) {
+    cands.sort((a, b) => a.area - b.area);
+    return { kind: 'item', sel: cands[0].sel };
+  }
+  return null;
+}
+
+/* ===================================================================
+   Pointer interaction
+   =================================================================== */
+let drag = null; // { mode:'pan'|'move'|'resize', ... }
+
+cv.addEventListener('pointerdown', (e) => {
+  cv.setPointerCapture(e.pointerId);
+  const { x: sx, y: sy } = localPt(e);
+
+  // DRAW MODES: press starts a possible pan; a click (no drag) adds a point / picks an anchor
+  if (mode === 'draw-river' || mode === 'connect-highway') {
+    drag = { mode: 'pan', sx, sy, ox: view.ox, oy: view.oy, moved: false, draw: mode };
+    cv.classList.add('dragging');
+    return;
+  }
+
+  const hit = pickAt(sx, sy);
+  if (hit && hit.kind === 'handle') {
+    drag = { mode: 'resize' };
+    cv.classList.add('dragging');
+    return;
+  }
+  if (hit && hit.kind === 'poly-vertex') {
+    drag = { mode: 'vertex', idx: hit.idx, moved: false };
+    cv.classList.add('dragging');
+    return;
+  }
+  if (hit && hit.kind === 'item') {
+    selected = hit.sel;
+    const t = hit.sel.type;
+    if (t === 'highway') {
+      drag = null; // a highway follows its anchors — not draggable as a whole
+    } else if (t === 'river') {
+      drag = { mode: 'river-move', sx, sy, orig: hit.sel.ref.pts.map(p => ({ lat: p.lat, lon: p.lon })), moved: false };
+      cv.classList.add('dragging');
+    } else {
+      const w = project(hit.sel.ref.lat, hit.sel.ref.lon);
+      const sp = W2S(w.x, w.z);
+      drag = { mode: 'move', gx: (sx - sp.x), gy: (sy - sp.y), moved: false };
+      cv.classList.add('dragging');
+    }
+    renderInspector();
+    draw();
+    return;
+  }
+  // empty space -> pan (and deselect on a click without drag)
+  drag = { mode: 'pan', sx, sy, ox: view.ox, oy: view.oy, moved: false, downSel: selected };
+  cv.classList.add('dragging');
+});
+
+cv.addEventListener('pointermove', (e) => {
+  const { x: sx, y: sy } = localPt(e);
+  // status readout
+  const ww = S2W(sx, sy);
+  const g = unproject(ww.x, ww.z);
+  document.getElementById('f-world').textContent = `${ww.x.toFixed(0)}, ${ww.z.toFixed(0)} u`;
+  document.getElementById('f-geo').textContent = `${g.lat.toFixed(3)}°N, ${Math.abs(g.lon).toFixed(3)}°W`;
+
+  if (!drag) return;
+  if (drag.mode === 'pan') {
+    view.ox = drag.ox + (sx - drag.sx);
+    view.oy = drag.oy + (sy - drag.sy);
+    if (Math.hypot(sx - drag.sx, sy - drag.sy) > 3) drag.moved = true;
+    draw();
+  } else if (drag.mode === 'move') {
+    drag.moved = true;
+    const wpt = S2W(sx - drag.gx, sy - drag.gy);
+    const geo = unproject(wpt.x, wpt.z);
+    selected.ref.lat = geo.lat;
+    selected.ref.lon = geo.lon;
+    renderInspector();
+    draw();
+  } else if (drag.mode === 'resize') {
+    const ref = selected.ref;
+    const isUpland = selected.type === 'upland';
+    const c = project(ref.lat, ref.lon);
+    const ww2 = S2W(sx, sy);
+    const dist = Math.hypot(ww2.x - c.x, ww2.z - c.z); // = major axis length in world units
+    if (isUpland) {
+      ref.radiusKm = Math.max(5, Math.round(dist / uPerKm)); // drag handle is in world units → back to real km
+    } else {
+      const ld = lakeFields(ref); // anchor → .scoop, named lake → itself
+      const elong = ld.elong && ld.elong > 1 ? ld.elong : 1;
+      const reqR = dist / Math.sqrt(elong);
+      ld.areaKm2 = Math.round(areaFromRadius(reqR));
+    }
+    renderInspector();
+    draw();
+  } else if (drag.mode === 'vertex') {
+    drag.moved = true;
+    const ep = editablePoly(selected);
+    if (ep) ep.setV(drag.idx, ww.x, ww.z);
+    renderInspector();
+    draw();
+  } else if (drag.mode === 'river-move') {
+    drag.moved = true;
+    const d0 = S2W(drag.sx, drag.sy);
+    const dx = ww.x - d0.x, dz = ww.z - d0.z; // world-unit translation
+    selected.ref.pts = drag.orig.map(p => {
+      const w0 = project(p.lat, p.lon);
+      return unproject(w0.x + dx, w0.z + dz);
+    });
+    renderInspector();
+    draw();
+  }
+});
+
+cv.addEventListener('pointerup', () => {
+  if (drag && drag.draw && !drag.moved) {
+    if (drag.draw === 'draw-river') addRiverPoint(drag.sx, drag.sy);
+    else if (drag.draw === 'connect-highway') addHighwayAnchor(drag.sx, drag.sy);
+  } else if (drag && drag.mode === 'pan' && !drag.moved && mode === 'select') {
+    // a click on empty space deselects
+    selected = null;
+    renderInspector();
+    draw();
+  }
+  drag = null;
+  cv.classList.remove('dragging');
+});
+
+cv.addEventListener('dblclick', (e) => {
+  if (mode !== 'select') { finishDraft(); return; }
+  // on a selected river / freeform lake: double-click a vertex to DELETE it, or an edge to INSERT one
+  const ep = editablePoly(selected);
+  if (!ep) return;
+  const { x: sx, y: sy } = localPt(e);
+  // vertex delete
+  for (let i = 0; i < ep.arr.length; i++) {
+    const w = ep.vWorld(i); const p = W2S(w.x, w.z);
+    if (Math.hypot(p.x - sx, p.y - sy) <= 8) {
+      if (ep.arr.length > ep.minPts) { ep.arr.splice(i, 1); renderInspector(); draw(); }
+      return;
+    }
+  }
+  // edge insert — nearest segment within tolerance, drop a vertex at the projected point
+  const segCount = ep.closed ? ep.arr.length : ep.arr.length - 1;
+  let bestI = -1, bestD = 8, bx = 0, bz = 0;
+  for (let i = 0; i < segCount; i++) {
+    const a = ep.vWorld(i), b = ep.vWorld((i + 1) % ep.arr.length);
+    const pa = W2S(a.x, a.z), pb = W2S(b.x, b.z);
+    const d = distToSeg(sx, sy, pa.x, pa.y, pb.x, pb.y);
+    if (d < bestD) {
+      bestD = d; bestI = i;
+      // projected point in world space
+      const ww = S2W(sx, sy);
+      const dx = b.x - a.x, dz = b.z - a.z; const len2 = dx * dx + dz * dz || 1;
+      let t = ((ww.x - a.x) * dx + (ww.z - a.z) * dz) / len2; t = Math.max(0, Math.min(1, t));
+      bx = a.x + dx * t; bz = a.z + dz * t;
+    }
+  }
+  if (bestI >= 0) { ep.arr.splice(bestI + 1, 0, ep.makeV(bx, bz)); renderInspector(); draw(); }
+});
+
+/* ---- draw-mode helpers (rivers + highways) ---- */
+function addRiverPoint(sx, sy) {
+  const ww = S2W(sx, sy); const g = unproject(ww.x, ww.z);
+  draft.pts.push({ lat: g.lat, lon: g.lon });
+  draw();
+}
+function pickAnchor(sx, sy) {
+  let best = null, bestD = 16;
+  for (const a of state.anchors) {
+    const w = project(a.lat, a.lon); const p = W2S(w.x, w.z);
+    const d = Math.hypot(p.x - sx, p.y - sy);
+    if (d < bestD) { bestD = d; best = a; }
+  }
+  return best;
+}
+function addHighwayAnchor(sx, sy) {
+  const a = pickAnchor(sx, sy);
+  if (!a) { hint('Click directly on a base/town marker to add it to the route'); return; }
+  if (draft.through[draft.through.length - 1] === a.id) return; // ignore a repeat tap
+  draft.through.push(a.id);
+  renderInspector(); draw();
+}
+function setMode(m) {
+  mode = m;
+  cv.classList.toggle('drawing', m !== 'select');
+  updateBanner();
+  draw();
+}
+function startRiver() {
+  const r = { name: 'New River', width: RIVER_WIDTH_DEFAULT, pts: [] };
+  state.rivers.push(r);
+  draft = r; selected = { type: 'river', ref: r };
+  setMode('draw-river'); renderInspector();
+}
+function startHighway() {
+  const r = { name: 'Hwy ?', through: [] };
+  state.highways.push(r);
+  draft = r; selected = { type: 'highway', ref: r };
+  setMode('connect-highway'); renderInspector();
+}
+function drawMoreRiver(r) { draft = r; selected = { type: 'river', ref: r }; setMode('draw-river'); renderInspector(); }
+function connectMore(hw) { draft = hw; selected = { type: 'highway', ref: hw }; setMode('connect-highway'); renderInspector(); }
+function finishDraft() {
+  if (draft) {
+    if (draft.pts) {
+      // drop a trailing duplicate (from the finishing double-click) then discard if too short
+      const p = draft.pts;
+      if (p.length >= 2) {
+        const a = p[p.length - 1], b = p[p.length - 2];
+        if (Math.abs(a.lat - b.lat) < 1e-4 && Math.abs(a.lon - b.lon) < 1e-4) p.pop();
+      }
+      if (p.length < 2) state.rivers = state.rivers.filter(r => r !== draft);
+    } else if (draft.through && draft.through.length < 2) {
+      state.highways = state.highways.filter(h => h !== draft);
+    }
+    const kept = (draft.pts ? state.rivers : state.highways).includes(draft);
+    selected = kept ? { type: draft.pts ? 'river' : 'highway', ref: draft } : null;
+  }
+  draft = null;
+  setMode('select'); renderInspector();
+}
+function updateBanner() {
+  const b = document.getElementById('mode-banner');
+  b.classList.remove('on', 'hwy');
+  if (mode === 'draw-river') {
+    b.textContent = '✎ Drawing river — click to drop points · ⌫ undo last · double-click / Enter to finish · Esc cancel';
+    b.classList.add('on');
+  } else if (mode === 'connect-highway') {
+    b.textContent = '🛣 Connecting highway — click bases/towns in order · double-click / Enter to finish · Esc cancel';
+    b.classList.add('on', 'hwy');
+  }
+}
+function hint(msg, ms = 1800) {
+  const s = document.getElementById('f-status');
+  s.textContent = msg; clearTimeout(hint._t); hint._t = setTimeout(() => { s.textContent = ''; }, ms);
+}
+
+cv.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const { x: sx, y: sy } = localPt(e);
+  // wheel over a selected ellipse lake / upland resizes it; freeform lakes are shaped by vertices, so they zoom
+  const overSel = selected && (selected.type === 'lake' || selected.type === 'anchorLake' || selected.type === 'upland')
+    && !isPolyLake(selected) && isInsideSelected(sx, sy);
+  if (overSel && e.shiftKey === false && e.ctrlKey === false) {
+    const ref = selected.ref;
+    const f = e.deltaY < 0 ? 1.06 : 1 / 1.06;
+    if (selected.type === 'upland') { ref.radiusKm = Math.max(5, Math.round(ref.radiusKm * f)); }
+    else { const ld = lakeFields(ref); ld.areaKm2 = Math.round(Math.max(1, Math.min(MAPGEO.lakeAreaMax, (ld.areaKm2 ?? MAPGEO.lakeAreaDefault) * f * f))); }
+    renderInspector();
+    draw();
+    return;
+  }
+  // zoom about cursor
+  const before = S2W(sx, sy);
+  const f = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+  view.scale = Math.max(0.03, Math.min(4, view.scale * f));
+  const after = W2S(before.x, before.z);
+  view.ox += sx - after.x;
+  view.oy += sy - after.y;
+  document.getElementById('f-zoom').textContent = view.scale.toFixed(2) + '×';
+  draw();
+}, { passive: false });
+
+function isInsideSelected(sx, sy) {
+  const ww = S2W(sx, sy);
+  const s = eachLakeShape(selected.ref, selected.type === 'upland');
+  const dx = ww.x - s.cx, dz = ww.z - s.cz;
+  const ca = Math.cos(-s.angle), sa = Math.sin(-s.angle);
+  const lx = dx * ca - dz * sa, lz = dx * sa + dz * ca;
+  return (lx * lx) / (s.major * s.major) + (lz * lz) / (s.minor * s.minor) <= 1.2;
+}
+
+function localPt(e) {
+  const r = cv.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+
+window.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if (mode !== 'select') {
+    if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); finishDraft(); }
+    else if (e.key === 'Backspace' && mode === 'draw-river' && draft && draft.pts.length) { draft.pts.pop(); draw(); }
+    else if (e.key === 'Backspace' && mode === 'connect-highway' && draft && draft.through.length) { draft.through.pop(); renderInspector(); draw(); }
+    return;
+  }
+  if (e.key === 'Escape') { selected = null; renderInspector(); draw(); }
+  if ((e.key === 'Delete' || e.key === 'Backspace') && selected) { deleteSelected(); }
+});
+
+function deleteSelected() {
+  if (!selected) return;
+  const ref = selected.ref;
+  if (selected.type === 'anchor' || selected.type === 'anchorLake') {
+    state.anchors = state.anchors.filter(a => a !== ref);
+  } else if (selected.type === 'lake') {
+    state.namedLakes = state.namedLakes.filter(l => l !== ref);
+  } else if (selected.type === 'landmark') {
+    state.landmarks = state.landmarks.filter(l => l !== ref);
+  } else if (selected.type === 'upland') {
+    state.uplands = state.uplands.filter(u => u !== ref);
+  } else if (selected.type === 'river') {
+    state.rivers = state.rivers.filter(r => r !== ref);
+  } else if (selected.type === 'highway') {
+    state.highways = state.highways.filter(h => h !== ref);
+  }
+  selected = null;
+  renderInspector();
+  draw();
+}
+
+/* ===================================================================
+   Inspector panel
+   =================================================================== */
+function num(n, d = 3) {
+  if (n === undefined || n === null || Number.isNaN(n)) return '';
+  return String(parseFloat(Number(n).toFixed(d)));
+}
+function fieldRow(label, inputHtml) {
+  return `<div class="field"><label>${label}</label>${inputHtml}</div>`;
+}
+function inp(id, val, attrs = '') { return `<input id="${id}" value="${val ?? ''}" ${attrs}>`; }
+
+// Shape section shared by named lakes + anchor scoop lakes: ellipse fields, or freeform-outline summary.
+function lakeShapeFieldsHtml(lf) {
+  if (lf.poly && lf.poly.length >= 3) {
+    let h = `<div class="field"><label>shape</label><span class="muted">freeform · ${lf.poly.length} points</span></div>`;
+    h += `<button id="f-revert">⭯ Revert to ellipse</button>`;
+    h += `<p class="help" style="margin:8px 0 0">Drag a ● to reshape · double-click a ● to delete · double-click an edge to add a point.</p>`;
+    return h;
+  }
+  const reqR = lakeReqR(lf).toFixed(0);
+  let h = fieldRow('area km²', inp('f-area', num(lf.areaKm2 ?? '', 0), 'type=number step=1 min=0'));
+  h += `<div class="field"><label>radius</label><span class="muted">${reqR} u</span></div>`;
+  h += fieldRow('elong', inp('f-elong', num(lf.elong ?? '', 2), 'type=number step=0.05 min=1 placeholder=1'));
+  h += fieldRow('bearing°', inp('f-bearing', num(lf.bearingDeg ?? '', 0), 'type=number step=5 placeholder=0'));
+  h += `<button id="f-convert" style="margin-top:6px">✦ Convert to editable outline</button>`;
+  return h;
+}
+// Seed a freeform outline from the current ellipse (world-unit offsets from the lake centre).
+function lakeToPolygon(ref) {
+  const s = eachLakeShape(ref, false);
+  const N = 14, poly = [];
+  for (let k = 0; k < N; k++) {
+    const t = (k / N) * Math.PI * 2;
+    const ex = s.major * Math.cos(t), ey = s.minor * Math.sin(t);
+    poly.push({
+      dx: Math.round(ex * Math.cos(s.angle) - ey * Math.sin(s.angle)),
+      dz: Math.round(ex * Math.sin(s.angle) + ey * Math.cos(s.angle)),
+    });
+  }
+  lakeFields(ref).poly = poly;
+}
+
+function renderInspector() {
+  const box = document.getElementById('inspector');
+  if (!selected) { box.innerHTML = '<div class="empty">Click a marker or lake to edit it.</div>'; return; }
+  const ref = selected.ref;
+  const t = selected.type;
+  let html = '';
+
+  if (t === 'anchor' || t === 'anchorLake') {
+    const col = markerColor(ref.kind);
+    html += `<div class="field"><span class="pill" style="background:${col};color:#05121d">${ref.kind}${ref.home ? ' · home' : ''}</span></div>`;
+    html += fieldRow('id', inp('f-id', ref.id));
+    html += fieldRow('name', inp('f-name', ref.name));
+    html += fieldRow('kind', `<select id="f-kind">${['base', 'community', 'both'].map(k => `<option ${k === ref.kind ? 'selected' : ''}>${k}</option>`).join('')}</select>`);
+    html += `<div class="field"><label>lat / lon</label><div class="row2">${inp('f-lat', num(ref.lat), 'type=number step=0.001')}${inp('f-lon', num(ref.lon), 'type=number step=0.001')}</div></div>`;
+    html += fieldRow('home base', `<input id="f-home" type="checkbox" ${ref.home ? 'checked' : ''}>`);
+    html += `<h2 style="margin-top:14px">Scoop lake</h2>`;
+    if (ref.scoop) {
+      html += fieldRow('lake name', inp('f-lkname', ref.scoop.lake));
+      html += lakeShapeFieldsHtml(ref.scoop);
+      html += `<button id="f-rmlake" style="margin-top:6px">Remove scoop lake</button>`;
+    } else {
+      html += `<button id="f-addlake">Add scoop lake</button>`;
+    }
+    html += fieldRow('blurb', inp('f-blurb', (ref.blurb ?? '').replace(/"/g, '&quot;')));
+  } else if (t === 'lake') {
+    html += `<div class="field"><span class="pill" style="background:var(--water);color:#05121d">named lake</span></div>`;
+    html += fieldRow('name', inp('f-name', ref.name));
+    html += `<div class="field"><label>lat / lon</label><div class="row2">${inp('f-lat', num(ref.lat), 'type=number step=0.001')}${inp('f-lon', num(ref.lon), 'type=number step=0.001')}</div></div>`;
+    html += lakeShapeFieldsHtml(ref);
+  } else if (t === 'landmark') {
+    html += `<div class="field"><span class="pill" style="background:var(--city);color:#05121d">landmark</span></div>`;
+    html += fieldRow('name', inp('f-name', ref.name));
+    html += `<div class="field"><label>lat / lon</label><div class="row2">${inp('f-lat', num(ref.lat), 'type=number step=0.001')}${inp('f-lon', num(ref.lon), 'type=number step=0.001')}</div></div>`;
+    html += fieldRow('kind', `<select id="f-lmkind">${['city', 'town'].map(k => `<option ${k === ref.kind ? 'selected' : ''}>${k}</option>`).join('')}</select>`);
+  } else if (t === 'upland') {
+    html += `<div class="field"><span class="pill" style="background:var(--upland);color:#05121d">upland</span></div>`;
+    html += fieldRow('name', inp('f-name', ref.name));
+    html += `<div class="field"><label>lat / lon</label><div class="row2">${inp('f-lat', num(ref.lat), 'type=number step=0.001')}${inp('f-lon', num(ref.lon), 'type=number step=0.001')}</div></div>`;
+    html += fieldRow('radius km', inp('f-radiusKm', num(ref.radiusKm, 0), 'type=number step=1 min=1'));
+    html += `<div class="field"><label>↳ footprint</label><span class="muted">${uplandRadiusU(ref.radiusKm).toFixed(0)} u</span></div>`;
+    html += fieldRow('prominence m', inp('f-prominenceM', num(ref.prominenceM, 0), 'type=number step=10 min=0'));
+    html += `<div class="field"><label>↳ rises</label><span class="muted">${uplandHeightU(ref.prominenceM).toFixed(0)} u</span></div>`;
+  } else if (t === 'river') {
+    html += `<div class="field"><span class="pill" style="background:var(--river);color:#05121d">river</span></div>`;
+    html += fieldRow('name', inp('f-name', ref.name));
+    html += fieldRow('width u', inp('f-width', num(ref.width ?? RIVER_WIDTH_DEFAULT, 0), 'type=number step=1 min=1'));
+    html += `<div class="field"><label>points</label><span class="muted">${ref.pts.length}</span></div>`;
+    html += `<button id="f-drawmore">✎ Add more points</button>`;
+    html += `<p class="help" style="margin:8px 0 0">Drag a ● to move a point · double-click a ● to delete it.</p>`;
+  } else if (t === 'highway') {
+    html += `<div class="field"><span class="pill" style="background:var(--highway);color:#05121d">highway</span></div>`;
+    html += fieldRow('name', inp('f-name', ref.name));
+    const chips = ref.through.map((id, i) => {
+      const a = state.anchors.find(x => x.id === id);
+      const nm = a ? a.name : id + ' (missing)';
+      return `<span class="chip${a ? '' : ' bad'}">${i + 1}. ${nm}<button data-i="${i}" title="remove">×</button></span>`;
+    }).join('') || '<span class="muted">no stops yet</span>';
+    html += `<div class="field" style="align-items:flex-start"><label>route</label><div class="chips" id="hw-chips">${chips}</div></div>`;
+    html += `<button id="f-connectmore">🛣 Connect anchors</button>`;
+    html += `<p class="help" style="margin:8px 0 0">Click bases/towns in order to route the highway through them.</p>`;
+  }
+
+  html += `<button class="danger" id="f-del" style="margin-top:10px">Delete</button>`;
+  box.innerHTML = html;
+  wireInspector();
+}
+
+function wireInspector() {
+  const ref = selected.ref;
+  const t = selected.type;
+  const on = (id, ev, fn) => { const el = document.getElementById(id); if (el) el.addEventListener(ev, fn); };
+  const f = (id) => document.getElementById(id);
+
+  on('f-name', 'input', e => { ref.name = e.target.value; draw(); });
+  on('f-id', 'input', e => { ref.id = e.target.value; draw(); });
+  on('f-kind', 'change', e => { ref.kind = e.target.value; draw(); });
+  on('f-lmkind', 'change', e => { ref.kind = e.target.value; draw(); });
+  on('f-lat', 'input', e => { ref.lat = parseFloat(e.target.value); draw(); });
+  on('f-lon', 'input', e => { ref.lon = parseFloat(e.target.value); draw(); });
+  on('f-home', 'change', e => {
+    if (e.target.checked) state.anchors.forEach(a => a.home = false);
+    ref.home = e.target.checked; draw();
+  });
+  on('f-blurb', 'input', e => { ref.blurb = e.target.value; });
+  on('f-radiusKm', 'input', e => { ref.radiusKm = parseFloat(e.target.value); renderInspector(); draw(); });
+  on('f-prominenceM', 'input', e => { ref.prominenceM = parseFloat(e.target.value); renderInspector(); draw(); });
+
+  // lake fields (named lake = ref; scoop lake = ref.scoop)
+  const lakeObj = t === 'lake' ? ref : (ref.scoop || null);
+  const lakeChanged = () => { renderInspector(); draw(); };
+  on('f-area', 'input', e => { const v = parseFloat(e.target.value); if (lakeObj) lakeObj.areaKm2 = Number.isNaN(v) ? undefined : v; draw(); updateRadiusLabel(); });
+  on('f-elong', 'input', e => { const v = parseFloat(e.target.value); if (lakeObj) lakeObj.elong = Number.isNaN(v) ? undefined : v; draw(); });
+  on('f-bearing', 'input', e => { const v = parseFloat(e.target.value); if (lakeObj) lakeObj.bearingDeg = Number.isNaN(v) ? undefined : v; draw(); });
+  on('f-lkname', 'input', e => { if (ref.scoop) ref.scoop.lake = e.target.value; draw(); });
+  on('f-addlake', 'click', () => { ref.scoop = { lake: 'New Lake', areaKm2: 100 }; lakeChanged(); });
+  on('f-rmlake', 'click', () => { delete ref.scoop; lakeChanged(); });
+  // freeform outline convert / revert
+  on('f-convert', 'click', () => { lakeToPolygon(ref); lakeChanged(); });
+  on('f-revert', 'click', () => { delete lakeFields(ref).poly; lakeChanged(); });
+
+  // river + highway controls
+  on('f-width', 'input', e => { const v = parseFloat(e.target.value); ref.width = Number.isNaN(v) ? RIVER_WIDTH_DEFAULT : v; draw(); });
+  on('f-drawmore', 'click', () => drawMoreRiver(ref));
+  on('f-connectmore', 'click', () => connectMore(ref));
+  document.querySelectorAll('#hw-chips .chip button').forEach(b => b.addEventListener('click', () => {
+    ref.through.splice(parseInt(b.dataset.i, 10), 1); renderInspector(); draw();
+  }));
+
+  on('f-del', 'click', deleteSelected);
+
+  function updateRadiusLabel() {
+    // cheap: re-render keeps it simple but loses focus; instead patch the muted span
+  }
+}
+
+/* ===================================================================
+   Add new items
+   =================================================================== */
+function viewCenterGeo() {
+  const { w, h } = cssSize();
+  const ww = S2W(w / 2, h / 2);
+  return unproject(ww.x, ww.z);
+}
+document.getElementById('add-base').addEventListener('click', () => {
+  const g = viewCenterGeo();
+  const a = { id: 'new-base-' + (state.anchors.length + 1), name: 'New Base', kind: 'base', lat: g.lat, lon: g.lon, scoop: { lake: 'New Lake', areaKm2: 120 } };
+  state.anchors.push(a);
+  selected = { type: 'anchor', ref: a };
+  renderInspector(); draw();
+});
+document.getElementById('add-lake').addEventListener('click', () => {
+  const g = viewCenterGeo();
+  const l = { name: 'New Lake', lat: g.lat, lon: g.lon, areaKm2: 300, elong: 1.5, bearingDeg: 90 };
+  state.namedLakes.push(l);
+  selected = { type: 'lake', ref: l };
+  renderInspector(); draw();
+});
+document.getElementById('add-river').addEventListener('click', startRiver);
+document.getElementById('add-highway').addEventListener('click', startHighway);
+
+/* ===================================================================
+   Toolbar
+   =================================================================== */
+['t-grid', 't-province', 't-lakes', 't-bases', 't-landmarks', 't-highways', 't-rivers', 't-uplands', 't-labels']
+  .forEach(id => document.getElementById(id).addEventListener('change', draw));
+document.getElementById('fit').addEventListener('click', fitView);
+document.getElementById('reset').addEventListener('click', () => {
+  if (!confirm('Discard all edits and restore the original Saskatchewan data?')) return;
+  state = clone(DEFAULTS);
+  selected = null; draft = null;
+  setMode('select');
+  renderInspector(); draw();
+});
+
+/* ===================================================================
+   Export — regenerate regions.ts blocks or JSON
+   =================================================================== */
+function q(s) { return "'" + String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'"; }
+function nz(n, d) { return parseFloat(Number(n).toFixed(d)); }
+
+// world-unit offset outline → absolute lat/lon points (real coords, like everything else)
+function outlineStr(centerLat, centerLon, poly) {
+  const c = project(centerLat, centerLon);
+  const pts = poly.map(o => { const g = unproject(c.x + o.dx, c.z + o.dz); return `{ lat: ${nz(g.lat, 4)}, lon: ${nz(g.lon, 4)} }`; });
+  return `outline: [${pts.join(', ')}]`;
+}
+function hasOutline(o) { return o && o.poly && o.poly.length >= 3; }
+
+function scoopStr(a) {
+  const s = a.scoop;
+  if (!s) return '';
+  let parts = [`lake: ${q(s.lake)}`];
+  if (s.areaKm2 !== undefined && s.areaKm2 !== null && !Number.isNaN(s.areaKm2)) parts.push(`areaKm2: ${nz(s.areaKm2, 1)}`);
+  if (hasOutline(s)) {
+    parts.push(outlineStr(a.lat, a.lon, s.poly)); // freeform outline supersedes elong/bearing
+  } else {
+    if (s.elong !== undefined && s.elong !== null && !Number.isNaN(s.elong) && s.elong > 1) parts.push(`elong: ${nz(s.elong, 2)}`);
+    if (s.bearingDeg !== undefined && s.bearingDeg !== null && !Number.isNaN(s.bearingDeg)) parts.push(`bearingDeg: ${nz(s.bearingDeg, 1)}`);
+  }
+  return `scoop: { ${parts.join(', ')} }`;
+}
+
+function anchorStr(a) {
+  let p = [`id: ${q(a.id)}`, `name: ${q(a.name)}`, `kind: ${q(a.kind)}`, `lat: ${nz(a.lat, 4)}`, `lon: ${nz(a.lon, 4)}`];
+  if (a.home) p.push('home: true');
+  if (a.scoop) p.push(scoopStr(a));
+  if (a.blurb) p.push(`blurb: ${q(a.blurb)}`);
+  return `  { ${p.join(', ')} },`;
+}
+function namedLakeStr(l) {
+  let p = [`name: ${q(l.name)}`, `lat: ${nz(l.lat, 4)}`, `lon: ${nz(l.lon, 4)}`];
+  if (l.areaKm2 !== undefined) p.push(`areaKm2: ${nz(l.areaKm2, 1)}`);
+  if (hasOutline(l)) {
+    p.push(outlineStr(l.lat, l.lon, l.poly));
+  } else {
+    if (l.elong !== undefined && l.elong > 1) p.push(`elong: ${nz(l.elong, 2)}`);
+    if (l.bearingDeg !== undefined) p.push(`bearingDeg: ${nz(l.bearingDeg, 1)}`);
+  }
+  return `  { ${p.join(', ')} },`;
+}
+function landmarkStr(l) {
+  return `  { name: ${q(l.name)}, lat: ${nz(l.lat, 4)}, lon: ${nz(l.lon, 4)}, kind: ${q(l.kind)} },`;
+}
+function uplandStr(u) {
+  return `  { name: ${q(u.name)}, lat: ${nz(u.lat, 4)}, lon: ${nz(u.lon, 4)}, radiusKm: ${nz(u.radiusKm, 0)}, prominenceM: ${nz(u.prominenceM, 0)} },`;
+}
+function highwayStr(h) {
+  return `  { name: ${q(h.name)}, through: [${h.through.map(q).join(', ')}] },`;
+}
+function riverStr(r) {
+  const pts = r.pts.map(p => `{ lat: ${nz(p.lat, 4)}, lon: ${nz(p.lon, 4)} }`).join(', ');
+  let p = [`name: ${q(r.name)}`];
+  if (r.width !== undefined) p.push(`width: ${nz(r.width, 0)}`);
+  p.push(`points: [${pts}]`);
+  return `  { ${p.join(', ')} },`;
+}
+
+function anyOutline() {
+  return state.namedLakes.some(hasOutline) || state.anchors.some(a => hasOutline(a.scoop));
+}
+
+function buildTS() {
+  let out = '// Paste these back into src/three/world/regions.ts (replacing the matching const).\n';
+  out += '// Generated by tools/map-editor.html — values match the game projection.\n\n';
+  if (anyOutline()) {
+    out += '// One or more lakes carry a freeform `outline: [{lat,lon}...]`. This IS wired into the game: World\n';
+    out += '// ray-casts the outline into its per-angle boundary LUT (LakeRuntime.radial), so the carve, water mesh,\n';
+    out += '// isOverWater and every other consumer trace the exact shore. `areaKm2` stays the fallback when no outline.\n';
+    out += '// Just paste — it renders. (Best with star-convex shapes; a deep concavity past the centre is bridged.)\n\n';
+  }
+  out += 'const SASKATCHEWAN_ANCHORS: readonly MapAnchor[] = [\n' + state.anchors.map(anchorStr).join('\n') + '\n];\n\n';
+  out += 'const SASKATCHEWAN_LAKES: readonly RegionLake[] = [\n' + state.namedLakes.map(namedLakeStr).join('\n') + '\n];\n\n';
+  out += 'const SASKATCHEWAN_LANDMARKS: readonly RegionPlace[] = [\n' + state.landmarks.map(landmarkStr).join('\n') + '\n];\n\n';
+  out += 'const SASKATCHEWAN_UPLANDS: readonly RegionUpland[] = [\n' + state.uplands.map(uplandStr).join('\n') + '\n];\n\n';
+  out += 'const SASKATCHEWAN_HIGHWAYS: readonly HighwayRoute[] = [\n' + state.highways.map(highwayStr).join('\n') + '\n];\n';
+  if (state.rivers.length) {
+    out += '\n// Authored named rivers (real lat/lon polylines). World.addAuthoredRivers projects each point and lays the\n';
+    out += '// river as carved, scoopable channel segments (no rng → seed-stable). Remember to attach it to the Region:\n';
+    out += '//   rivers: SASKATCHEWAN_RIVERS,   <-- in the `const SASKATCHEWAN: Region = { ... }` object below.\n';
+    out += 'const SASKATCHEWAN_RIVERS: readonly RegionRiver[] = [\n' + state.rivers.map(riverStr).join('\n') + '\n];\n';
+  }
+  return out;
+}
+function buildJSON() {
+  return JSON.stringify({ geo: GEO, ...state }, null, 2);
+}
+
+const modal = document.getElementById('modal');
+const exportText = document.getElementById('export-text');
+let exportTab = 'ts';
+function refreshExport() {
+  exportText.value = exportTab === 'ts' ? buildTS() : buildJSON();
+}
+document.getElementById('export').addEventListener('click', () => { refreshExport(); modal.classList.add('open'); });
+document.getElementById('modal-close').addEventListener('click', () => modal.classList.remove('open'));
+modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('open'); });
+document.querySelectorAll('.modal .tabs button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('.modal .tabs button').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  exportTab = b.dataset.tab;
+  refreshExport();
+}));
+document.getElementById('copy-btn').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(exportText.value); flash('Copied ✓'); }
+  catch { exportText.select(); document.execCommand('copy'); flash('Copied ✓'); }
+});
+document.getElementById('download-btn').addEventListener('click', () => {
+  const ext = exportTab === 'ts' ? 'ts.txt' : 'json';
+  const blob = new Blob([exportText.value], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'saskatchewan-map.' + ext; a.click();
+  URL.revokeObjectURL(url);
+  flash('Downloaded ✓');
+});
+function flash(msg) { const s = document.getElementById('copy-status'); s.textContent = msg; setTimeout(() => s.textContent = '', 1600); }
+
+/* ===================================================================
+   Boot
+   =================================================================== */
+window.addEventListener('resize', resize);
+const ro = new ResizeObserver(resize); ro.observe(document.getElementById('stage'));
+resize();
+fitView();
+document.getElementById('f-zoom').textContent = view.scale.toFixed(2) + '×';
+renderInspector();
+</script>
+</body>
+</html>

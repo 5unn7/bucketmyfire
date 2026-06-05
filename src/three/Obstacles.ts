@@ -65,6 +65,46 @@ export class Obstacles {
     return h;
   }
 
+  /**
+   * Helicopter-vs-canopy strike query: how far the tallest treetop near (x, z) pokes ABOVE the
+   * heli's belly (`bellyY`), within reach of the airframe. Reuses the same per-cell tree grid, so it's
+   * O(1) per frame. A tree counts only if the heli's horizontal disc (radius `reach`) overlaps the
+   * SOLID CORE of its canopy (the inner `coreFrac` of the footprint — the outer fringe is just needles,
+   * not a hit). Returns the worst (tallest-poking) such tree and its penetration `pen = topY − bellyY`,
+   * or null if nothing is near. Game thresholds `pen`: past `CRASH.strikeBite` it's a fatal strike
+   * (begin the crumble-and-fall); past the smaller `CRASH.warnBite` it raises the TERRAIN caution.
+   * `bellyY` is the heli's lowest point (its group Y / skid line).
+   */
+  heliStrike(
+    x: number,
+    z: number,
+    bellyY: number,
+    reach: number,
+    coreFrac: number,
+  ): { x: number; z: number; topY: number; pen: number } | null {
+    let worst: TreeCollider | null = null;
+    let worstPen = -Infinity;
+
+    const cx = Math.floor(x / CELL);
+    const cz = Math.floor(z / CELL);
+    for (let gx = cx - 1; gx <= cx + 1; gx++) {
+      for (let gz = cz - 1; gz <= cz + 1; gz++) {
+        const bucket = this.grid.get(this.cellKey(gx, gz));
+        if (!bucket) continue;
+        for (const t of bucket) {
+          const d = Math.hypot(x - t.x, z - t.z);
+          if (d >= t.radius * coreFrac + reach) continue; // airframe disc doesn't overlap the canopy core
+          const pen = t.topY - bellyY; // how far the treetop rises above the heli's belly
+          if (pen > worstPen) {
+            worstPen = pen;
+            worst = t;
+          }
+        }
+      }
+    }
+    return worst ? { x: worst.x, z: worst.z, topY: worst.topY, pen: worstPen } : null;
+  }
+
   /** Pack signed cell coords into one integer key (forest stays within ±CELL_OFFSET cells). */
   private cellKey(cx: number, cz: number): number {
     return (cx + CELL_OFFSET) * (CELL_OFFSET * 2) + (cz + CELL_OFFSET);

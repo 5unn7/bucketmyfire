@@ -26,6 +26,7 @@ export interface CrewZone {
   role: 'load' | 'unload';
   single: boolean; // single-use endpoint (counts toward `total`) vs reusable (the base)
   label: string;
+  hover?: boolean; // deliver by HOLDING A HOVER over the spot for MISSIONS.hoverSec (airborne, near-still) vs landing
 }
 
 /** A zone as the renderer/HUD sees it — with live done/active flags for marker tinting. */
@@ -33,11 +34,15 @@ export interface CrewZoneView extends CrewZone {
   done: boolean; // a single zone that's been satisfied (greyed out)
   active: boolean; // THE single next target given the carry state (highlighted) — one at a time
   home: boolean; // the reusable base endpoint — always marked uniquely (persistent home beacon)
+  lost: boolean; // a trapped family the fire reached first (the zone is dead — marker out, crew gone)
 }
 
 export class CrewTransport {
   private readonly zones: CrewZone[];
   private readonly done: boolean[];
+  private readonly lost: boolean[]; // single LOAD zones the fire overran before pickup (family lost)
+  private readonly exposure: number[]; // per-zone seconds of sustained fire heat (resets when doused)
+  private _lostCount = 0;
   private _carrying = false;
   private _delivered = 0;
   private _dwell = 0; // seconds held on the current zone
@@ -50,6 +55,8 @@ export class CrewTransport {
     // would see every runtime zone twice and desync `done`/markers). The sim owns its zone list.
     this.zones = [...zones];
     this.done = this.zones.map(() => false);
+    this.lost = this.zones.map(() => false);
+    this.exposure = this.zones.map(() => 0);
     this._total = zones.filter((z) => z.single).length;
     // Some missions begin with the first crew already aboard (skip the opening base pickup) — the
     // first targetable zone is then an UNLOAD, so the player flies straight out to set them down.
@@ -68,6 +75,11 @@ export class CrewTransport {
     return this._total;
   }
 
+  /** Trapped families the fire reached before pickup (drives the `rescue` mission fail). */
+  get lostCount(): number {
+    return this._lostCount;
+  }
+
   /**
    * Append a crew endpoint at runtime — a mid-mission pop-up rescue (its cabin + the family). A
    * single-use endpoint bumps `total` (so an `evacuate n` objective added alongside has somewhere to
@@ -76,14 +88,46 @@ export class CrewTransport {
   addZone(zone: CrewZone): void {
     this.zones.push(zone);
     this.done.push(false);
+    this.lost.push(false);
+    this.exposure.push(0);
     if (zone.single) this._total++;
+  }
+
+  /**
+   * Fire-overrun check for trapped families. Each pending single LOAD zone (a family awaiting pickup)
+   * accrues exposure while fire heat at its spot is at/above `MISSIONS.casualtyHeat`; past
+   * `casualtyGrace` seconds it's LOST — the fire reached them first. Heat dropping (you doused near
+   * them, or the front moved) RESETS the timer, so watering a trapped family buys time to reach them.
+   * The zone you're actively boarding is spared (you're on it). Returns `{ lost, danger }` indices of
+   * a family lost / newly endangered THIS frame (or -1 each) so Game can fire the radio + marker.
+   * `heatAt` is the live fire field; call once per frame while the mission is underway.
+   */
+  checkCasualties(heatAt: (x: number, z: number) => number, dt: number): { lost: number; danger: number } {
+    let lost = -1;
+    let danger = -1;
+    if (!Number.isFinite(dt) || dt <= 0) return { lost, danger };
+    for (let i = 0; i < this.zones.length; i++) {
+      const zn = this.zones[i];
+      if (zn.role !== 'load' || !zn.single || this.done[i] || this.lost[i] || i === this.active) continue;
+      if (heatAt(zn.x, zn.z) >= MISSIONS.casualtyHeat) {
+        if (this.exposure[i] === 0 && danger < 0) danger = i; // rising edge → "fire's on the family" warning
+        this.exposure[i] += dt;
+        if (this.exposure[i] >= MISSIONS.casualtyGrace) {
+          this.lost[i] = true;
+          this._lostCount++;
+          if (lost < 0) lost = i;
+        }
+      } else {
+        this.exposure[i] = 0; // heat dropped → they hang on
+      }
+    }
+    return { lost, danger };
   }
 
   /** 0..1 progress of the dwell on the zone being worked (drives a "loading…" readout). */
   get progress(): number {
     if (this.active < 0) return 0;
-    const need = this._carrying ? MISSIONS.dropSec : MISSIONS.pickupSec;
-    return Math.min(1, this._dwell / need);
+    return Math.min(1, this._dwell / this.needFor(this.active));
   }
 
   /** True while the heli is actively loading/unloading a crew on a zone (for HUD + audio). */
@@ -118,18 +162,23 @@ export class CrewTransport {
       done: this.done[i],
       active: this.isTargetable(i),
       home: !z.single, // the reusable base — always the "home" endpoint
+      lost: this.lost[i], // the fire got there first — marker dies, crew gone
     }));
   }
 
   /** A short guidance line for the HUD hint (null when there's nothing to do right now). */
   hint(): string | null {
     if (this._delivered >= this._total) return null;
-    if (this.active >= 0) return this._carrying ? 'Crew disembarking — hold it on the deck' : 'Crew boarding — hold it on the deck';
-    if (this._carrying) {
-      const tgt = this.zones.find((z, i) => z.role === 'unload' && !(z.single && this.done[i]));
-      return tgt ? `Land at ${tgt.label} to drop the crew` : null;
+    if (this.active >= 0) {
+      if (this.zones[this.active].hover) return 'Hold the hover steady — crew on the line';
+      return this._carrying ? 'Crew disembarking — hold it on the deck' : 'Crew boarding — hold it on the deck';
     }
-    const src = this.zones.find((z, i) => z.role === 'load' && !(z.single && this.done[i]));
+    if (this._carrying) {
+      const tgt = this.zones.find((z, i) => z.role === 'unload' && !(z.single && (this.done[i] || this.lost[i])));
+      if (!tgt) return null;
+      return tgt.hover ? `Hover over ${tgt.label} to drop the crew` : `Land at ${tgt.label} to drop the crew`;
+    }
+    const src = this.zones.find((z, i) => z.role === 'load' && !(z.single && (this.done[i] || this.lost[i])));
     return src ? `Land at ${src.label} to pick up a crew` : null;
   }
 
@@ -141,7 +190,6 @@ export class CrewTransport {
    */
   update(dt: number, x: number, z: number, agl: number, speed: number): void {
     if (!Number.isFinite(dt) || dt <= 0) return;
-    const working = agl <= MISSIONS.landAgl && speed <= MISSIONS.landSpeed;
 
     // Find the nearest zone we can act on given the carry state.
     let target = -1;
@@ -155,7 +203,9 @@ export class CrewTransport {
       }
     }
 
-    if (target < 0 || !working) {
+    // The "holding" gate depends on the zone: a HOVER zone wants a held stationary hover (airborne, under the
+    // ceiling, near-still); a normal zone wants skids-down-and-stopped. Either way you must be ON the zone.
+    if (target < 0 || !this.holding(target, agl, speed)) {
       this.active = -1;
       this._dwell = 0;
       return;
@@ -166,8 +216,7 @@ export class CrewTransport {
       this._dwell = 0;
     }
     this._dwell += dt;
-    const need = this._carrying ? MISSIONS.dropSec : MISSIONS.pickupSec;
-    if (this._dwell >= need) {
+    if (this._dwell >= this.needFor(target)) {
       if (this._carrying) {
         this._carrying = false;
         if (this.zones[target].single) this.done[target] = true;
@@ -181,6 +230,19 @@ export class CrewTransport {
     }
   }
 
+  /** Is the heli holding zone `i`? A HOVER zone needs an airborne, near-still hover under the ceiling; a normal
+   *  zone needs skids down and stopped. (The caller has already confirmed the heli is within `lzRadius`.) */
+  private holding(i: number, agl: number, speed: number): boolean {
+    if (this.zones[i].hover) return agl > MISSIONS.landAgl && agl <= MISSIONS.hoverAglMax && speed <= MISSIONS.hoverSpeed;
+    return agl <= MISSIONS.landAgl && speed <= MISSIONS.landSpeed;
+  }
+
+  /** Dwell seconds to satisfy zone `i`: a held-hover drop (`hoverSec`), or a landed board/drop. */
+  private needFor(i: number): number {
+    if (this.zones[i].hover) return MISSIONS.hoverSec;
+    return this._carrying ? MISSIONS.dropSec : MISSIONS.pickupSec;
+  }
+
   /**
    * Is zone `i` THE next target given the current carry state? Single-use endpoints light ONE AT A
    * TIME, in array order (so a pickup leaves exactly one LZ lit — the guidance the player follows);
@@ -188,17 +250,17 @@ export class CrewTransport {
    */
   private isTargetable(i: number): boolean {
     const zn = this.zones[i];
-    if (zn.single && this.done[i]) return false;
+    if (zn.single && (this.done[i] || this.lost[i])) return false; // satisfied — or the fire took them
     const need: 'load' | 'unload' = this._carrying ? 'unload' : 'load';
     if (zn.role !== need) return false;
     if (!zn.single) return true; // the reusable base is always a valid endpoint for its role
     return i === this.nextSingleIndex(need); // single endpoints are sequential — only the next one
   }
 
-  /** Array index of the first not-done single-use zone of `role` (the next in sequence), or -1. */
+  /** Array index of the first not-done, not-lost single-use zone of `role` (the next in sequence), or -1. */
   private nextSingleIndex(role: 'load' | 'unload'): number {
     for (let i = 0; i < this.zones.length; i++) {
-      if (this.zones[i].single && this.zones[i].role === role && !this.done[i]) return i;
+      if (this.zones[i].single && this.zones[i].role === role && !this.done[i] && !this.lost[i]) return i;
     }
     return -1;
   }

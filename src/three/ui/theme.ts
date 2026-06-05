@@ -30,6 +30,7 @@ export const UI = {
   accent: '#67e8ff',
   accentSoft: 'rgba(103,232,255,0.55)',
   accentFill: 'rgba(103,232,255,0.10)', // wash behind a selected card / "NEXT" pill
+  accentHi: '#9af1ff', // brighter cyan for an accent's hover / active / peak state (still "interactive")
   // State / semantic
   warn: '#ff5d4d', // amber-red — RTB cue, threatened structure, critical gauge
   fire: '#ff7a45', // orange — fire / the DROP action
@@ -38,14 +39,21 @@ export const UI = {
   // `warn` (the amber-red RTB / burning-structure highlight) so a fire dot ≠ a threatened building.
   warm: '#ff7a45', // Input's name for the DROP / fire accent (== fire)
   water: '#56c4ee', // scoop water
-  ok: '#63d68a', // success / "cleared" green (unified the menus' two greens; the in-world HULL gauge
+  ok: '#63d68a', // success / "cleared" green (unified the menus' two greens; the in-world AIRFRAME gauge
   // keeps a deeper #46d17a tuned to read against bright terrain — a documented exception, see DESIGN.md)
+  caution: '#ffc861', // amber "heads up" — the middle state between ok (green) and warn (red): low fuel, a
+  // gauge dipping, a soft advisory. Distinct from `warn` so a caution never reads as a hard alarm.
+  friendly: '#74d0bf', // calm teal for welcoming / informational copy (tips, onboarding, neutral hints) —
+  // a non-alarming "we've got you" tone that is NOT the interactive cyan accent.
   // Podium medals (leaderboard top three)
   gold: '#ffd66b',
   silver: '#cfe0ee',
   bronze: '#e6a268',
   // Text hierarchy
   text: 'rgba(255,255,255,0.94)',
+  textCool: 'rgba(198,224,236,0.82)', // body text that wants a COOL cast without claiming "interactive" —
+  // the correct home for the cyan-tinted prose that was wrongly using the `accent` (cyan = actionable only).
+  ink: '#0c1410', // near-black text for drawing ON a bright fill (a gold medal chip, an accent pill).
   dim: 'rgba(255,255,255,0.45)',
   faint: 'rgba(255,255,255,0.34)', // smallest labels, captions, separators
   // Surfaces
@@ -57,6 +65,8 @@ export const UI = {
   rowMine: 'rgba(103,232,255,0.14)', // accent-tinted row: "this one is you"
   field: 'rgba(8,13,18,0.60)', // recessed input / text-field fill
   track: 'rgba(255,255,255,0.10)', // recessed track / subtle white fill (progress bars, avatar bg)
+  recess: 'rgba(5,9,13,0.55)', // a DEEPER inset well than `field` — score-tally rows, stat readouts, any
+  // sunken panel that should read as carved into the card rather than floating on it.
   // Strokes
   warmStroke: 'rgba(255,138,110,0.85)',
   stroke: 'rgba(255,255,255,0.12)', // default hairline (HUD panels, overlay cards)
@@ -69,6 +79,18 @@ export const UI = {
   shadowCard: '0 8px 30px rgba(0,0,0,0.45)', // overlay cards — stronger, lifts off a busy backdrop
   glow: '0 0 10px rgba(103,232,255,0.45)',
   font: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+};
+
+// Score-grade → colour, keyed by `ScoreGrade` ('S' | 'A' | 'B' | 'C' | 'D'). One map so the debrief
+// grade letter, a badge, and any grade chip all paint the same colour per rank instead of each module
+// re-deciding "what colour is an A". Typed loosely (Record<string,string>) to avoid a UI→missions
+// import; the five keys mirror `missions/types.ts` ScoreGrade. (DS-5)
+export const GRADE: Record<string, string> = {
+  S: UI.gold, // flawless — the podium gold
+  A: UI.ok, // great — success green
+  B: UI.accent, // solid — the live cyan
+  C: UI.water, // passable — cool water blue
+  D: UI.dim, // rough — dimmed
 };
 
 // --- Type / weight / radius scales ------------------------------------------

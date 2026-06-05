@@ -25,7 +25,7 @@ import { CAMPAIGN } from '../src/three/missions/catalog';
 import { buildDailyMission, dailyMissionId } from '../src/three/missions/daily';
 import { seedFires, structurePlan, crewZones, resolveCrewZone, igniteFromPlacement } from '../src/three/missions/scenario';
 import type { MissionDef, MissionSignals } from '../src/three/missions/types';
-import { WORLD3D, BUCKET3D, DROP_PHYSICS, SCORE } from '../src/three/config';
+import { WORLD3D, BUCKET3D, DROP_PHYSICS, SCORE, MISSIONS } from '../src/three/config';
 
 const DT = 0.1;
 const MAX_SEC = 400; // playthrough cap (survive missions need ~180s; blazes converge well under this)
@@ -130,6 +130,7 @@ function signals(r: Rig, elapsed: number): MissionSignals {
     structuresTotal: r.structures.total,
     crewsDelivered: r.crew?.delivered ?? 0,
     crewsTotal: r.crew?.total ?? 0,
+    crewsLost: r.crew?.lostCount ?? 0,
     elapsed,
     fuel: r.fuel?.fuel ?? 1,
     starved: r.fuel?.starved ?? false,
@@ -180,7 +181,9 @@ function run(mission: MissionDef, mode: Mode): { r: Rig; elapsed: number; addedZ
       // missions have no crew — so each half no-ops where it doesn't apply.
       if (r.crew) {
         const z = r.crew.views.find((v) => v.active);
-        if (z) r.crew.update(DT, z.x, z.z, 0, 0);
+        // A HOVER zone is satisfied by an airborne hold (agl in the hover band); a normal zone by skids down
+        // (agl 0). Model whichever the active zone wants so a hover-training drop actually completes here.
+        if (z) r.crew.update(DT, z.x, z.z, z.hover ? (MISSIONS.landAgl + MISSIONS.hoverAglMax) / 2 : 0, 0);
       }
       if (canWater && r.fire.activeCount > 0 && step % PASS_INTERVAL === 0) {
         // A competent pilot's bucket pass: aim at the HOTTEST flames (not a cluster centroid — that can
@@ -211,6 +214,10 @@ function run(mission: MissionDef, mode: Mode): { r: Rig; elapsed: number; addedZ
 
     r.fire.update(DT * 1000, r.wind);
     r.structures.update(DT * 1000, r.fire.active());
+    // Parity with Game: a trapped family the fire overruns is lost (drives the `rescue` fail). Running
+    // it here proves the perfect player rescues everyone in time — if a mission's spread could overrun a
+    // family before the optimal route reaches them, this gate goes red (re-tune CRASH/casualtyGrace, not the assert).
+    if (r.crew) r.crew.checkCasualties((x, z) => r.fire.heatAt(x, z), DT);
     elapsed += DT;
     let sig = signals(r, elapsed);
     // Run the REACTIVE layer and execute its world actions (flare-ups / wind shifts / pop-up rescues)
@@ -263,6 +270,7 @@ function trippingSignals(elapsed: number): MissionSignals {
     structuresTotal: 6,
     crewsDelivered: 0,
     crewsTotal: 0,
+    crewsLost: 6, // trips the `rescue` fail too (this snapshot must latch EVERY constraint kind)
     elapsed,
     fuel: 0,
     starved: true,

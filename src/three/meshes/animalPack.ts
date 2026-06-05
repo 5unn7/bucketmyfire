@@ -33,8 +33,11 @@ const PACK_URL = import.meta.env.BASE_URL + 'animals/animals-opt.glb';
 
 export type AnimalPrototypes = Partial<Record<AnimalKind, THREE.Group>>;
 
-/** Load the pack once and return a normalized prototype per animal (empty map on failure). */
-export function loadAnimalPack(): Promise<AnimalPrototypes> {
+/** Load the pack once and return a normalized prototype per animal (empty map on failure).
+ *  `enabled` gates the ~4.4 MB fetch+decode (audit PERF-3): pass false on a low-end tier to SKIP it
+ *  entirely and let the caller fall back to procedural fauna — no download, no GLTF parse. */
+export function loadAnimalPack(enabled = true): Promise<AnimalPrototypes> {
+  if (!enabled) return Promise.resolve({}); // low tier → procedural fallback, never touch the network
   return new Promise((resolve) => {
     new GLTFLoader().load(
       PACK_URL,

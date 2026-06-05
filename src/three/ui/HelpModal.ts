@@ -83,7 +83,7 @@ interface Leg {
   desc: string;
 }
 const HUD_LEGEND: Leg[] = [
-  { n: '1', tone: 'cyan', label: 'Gauges', desc: 'water · hull · fires-left · wind · heading' },
+  { n: '1', tone: 'cyan', label: 'Gauges', desc: 'water · airframe · fires-left · wind · heading' },
   { n: '2', tone: 'water', label: 'Radar', desc: 'fires (red), lakes (blue), your base — tap to zoom' },
   { n: '3', tone: 'cyan', label: 'Fly stick', desc: 'steer the nose + throttle' },
   { n: '4', tone: 'fire', label: 'Cluster', desc: 'climb ▲ · descend ▼ · DROP' },

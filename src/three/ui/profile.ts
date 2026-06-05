@@ -116,14 +116,14 @@ export const HELIS: CatalogItem[] = [
       { label: 'Speed', value: 0.55 },
       { label: 'Agility', value: 0.85 },
       { label: 'Bucket', value: 0.5 },
-      { label: 'Hull', value: 0.6 },
+      { label: 'Airframe', value: 0.6 },
     ],
   },
   {
     id: 'bell-212',
     name: 'Bell 212',
     tagline: 'Twin-engine medium',
-    blurb: 'The Twin-Pac sister of the Huey — more power, a bigger belly, and a tougher hull. A balanced step up from the 205: faster and carries more, still steady in the gusts off the lakes.',
+    blurb: 'The Twin-Pac sister of the Huey — more power, a bigger belly, and a tougher airframe. A balanced step up from the 205: faster and carries more, still steady in the gusts off the lakes.',
     available: true,
     unlockAfter: 2, // earned at Mission 3 — the first real wall (Hold the Line)
     accent: '#d8a12a',
@@ -132,14 +132,14 @@ export const HELIS: CatalogItem[] = [
       { label: 'Speed', value: 0.7 },
       { label: 'Agility', value: 0.62 },
       { label: 'Bucket', value: 0.75 },
-      { label: 'Hull', value: 0.75 },
+      { label: 'Airframe', value: 0.75 },
     ],
   },
   {
     id: 'uh-60',
     name: 'UH-60 Black Hawk',
     tagline: 'Supreme — a handful',
-    blurb: 'A big four-blade utility ship: the fastest, biggest tank (double the 205), and toughest hull. But heavy and twitchy down low — all that momentum overshoots, so it takes a confident hand. Supreme range and payload for an experienced pilot.',
+    blurb: 'A big four-blade utility ship: the fastest, biggest tank (double the 205), and toughest airframe. But heavy and twitchy down low — all that momentum overshoots, so it takes a confident hand. Supreme range and payload for an experienced pilot.',
     available: true,
     unlockAfter: 4, // unlocks for Missions 5 & 6 — the set-piece + the finale
     accent: '#5b6b50',
@@ -148,7 +148,7 @@ export const HELIS: CatalogItem[] = [
       { label: 'Speed', value: 0.95 },
       { label: 'Agility', value: 0.4 },
       { label: 'Bucket', value: 1.0 },
-      { label: 'Hull', value: 0.95 },
+      { label: 'Airframe', value: 0.95 },
     ],
   },
 ];

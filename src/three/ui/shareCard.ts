@@ -23,10 +23,12 @@ const BRAND_PANEL = '#16241a';
 export interface ScoreCardData {
   missionName: string; // e.g. "First Light"
   location?: string; // the place saved, e.g. "Weyakwin" (falls back to missionName)
+  region?: string; // the setting line under the place — the ACTIVE map's region (default northern SK)
   score: number;
   stars?: number; // 0..3
   won?: boolean;
   callsign?: string;
+  streak?: number; // Daily Burn consecutive-day streak — shown as a "🔥 N-day streak" flex when ≥ 2
   url?: string; // default https://bucketmyfire.com
 }
 
@@ -110,11 +112,17 @@ export function renderScoreCard(data: ScoreCardData): HTMLCanvasElement {
   ctx.fillText(truncate(ctx, data.won ? `Saved ${place}` : place, 540), CARD_W - 64, 300);
   ctx.font = '500 28px system-ui, sans-serif';
   ctx.fillStyle = UI.dim;
-  ctx.fillText('northern Saskatchewan', CARD_W - 64, 346);
+  ctx.fillText(data.region ?? 'northern Saskatchewan', CARD_W - 64, 346);
   if (data.callsign) {
     ctx.font = '600 28px system-ui, sans-serif';
     ctx.fillStyle = UI.water;
     ctx.fillText(truncate(ctx, `Pilot ${data.callsign}`, 540), CARD_W - 64, 394);
+  }
+  // Daily Burn streak — a "don't break the chain" flex (only worth showing from 2 days on).
+  if (typeof data.streak === 'number' && data.streak >= 2) {
+    ctx.font = '700 28px system-ui, sans-serif';
+    ctx.fillStyle = UI.warm;
+    ctx.fillText(`🔥 ${data.streak}-day streak`, CARD_W - 64, 440);
   }
 
   // Footer: domain + CTA.
@@ -134,9 +142,10 @@ export function renderScoreCard(data: ScoreCardData): HTMLCanvasElement {
 export async function shareScoreCard(data: ScoreCardData): Promise<ShareOutcome> {
   const url = data.url ?? 'https://bucketmyfire.com';
   const place = data.location || data.missionName;
+  const streak = typeof data.streak === 'number' && data.streak >= 2 ? ` 🔥 ${data.streak}-day streak!` : '';
   const text = data.won
-    ? `I saved ${place} with ${data.score.toLocaleString()} pts${starsText(data.stars)} in Bucket My Fire!`
-    : `I scored ${data.score.toLocaleString()} pts in Bucket My Fire!`;
+    ? `I saved ${place} with ${data.score.toLocaleString()} pts${starsText(data.stars)} in Bucket My Fire!${streak}`
+    : `I scored ${data.score.toLocaleString()} pts in Bucket My Fire!${streak}`;
 
   let blob: Blob | null = null;
   try {

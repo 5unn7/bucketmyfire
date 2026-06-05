@@ -3,6 +3,7 @@ import { World } from './World';
 import { FAUNA, FIRE3D, WORLD3D } from './config';
 import { createFauna } from './meshes/fauna';
 import { loadAnimalPack, AnimalKind, AnimalPrototypes } from './meshes/animalPack';
+import { detectTier } from './render/QualityTier';
 
 /**
  * Wildlife manager — scatters and gently animates the map's fauna (Track B6 / world life).
@@ -53,7 +54,11 @@ export class Fauna {
     private readonly world: World,
   ) {
     this.placeLoons();
-    void loadAnimalPack().then((protos) => this.placeLand(protos));
+    // Tier-gate the ~4.4 MB animal GLB (audit PERF-3): a low-end device skips the download + GLTF parse
+    // and gets the procedural land herd instead (placeLand already falls back when a prototype is
+    // missing), saving the heaviest single asset on exactly the hardware that can least afford it.
+    const highDetail = detectTier() !== 'low';
+    void loadAnimalPack(highDetail).then((protos) => this.placeLand(protos));
   }
 
   /** Loons floating on each lake (procedural — the pack has no waterfowl). */

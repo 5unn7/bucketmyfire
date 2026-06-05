@@ -1,4 +1,4 @@
-import { WORLD3D, FLIGHT, LAKES3D, LAKE_SHAPE, STREAM, COMMUNITIES, ROADS, MAPGEO } from './config';
+import { WORLD3D, FLIGHT, LAKES3D, LAKE_SHAPE, STREAM, COMMUNITIES, ROADS, MAPGEO, BRIDGE } from './config';
 import { Noise2D, FbmParams } from './world/noise';
 import { Biomes } from './world/biomes';
 import { Placement } from './world/placement';
@@ -43,6 +43,13 @@ export interface LakeRuntime {
   waterLevel: number;
   shape: LakeShape;
   name: string; // boreal lake name (Track A5) — display only
+  /**
+   * Authored freeform shore: a per-angle boundary-radius lookup table sampled once from a real `outline`
+   * (ray-cast from the centre). When present, `lakeRadius()` reads THIS instead of the ellipse+harmonics,
+   * so the carve, water mesh, isOverWater and every other consumer follow the exact drawn shape — no other
+   * code path changes. Built by `World.applyOutline`; absent on the procedural/ellipse lakes (the default).
+   */
+  radial?: number[];
 }
 
 /** A named settlement (Track A5): the lakeside base, or a small forest hamlet. */
@@ -101,6 +108,21 @@ export interface WorldOptions {
   homeBase?: string; // which MapAnchor base is the operational HOME (spawn/refuel) — placed first; omit → region home
 }
 
+/** The river valley shaped under the Missinipe bridge (set via setBridgeValley) — local frame + derived dims. */
+interface BridgeValley {
+  cx: number; // valley centre (the bridge site) in world XZ
+  cz: number;
+  ax: number; // unit flow tangent (the along-river / fly-under axis)
+  az: number;
+  surfaceY: number; // river water level — the valley's vertical datum
+  bankPeak: number; // |v| (across-span) at which the bank reaches full height — the abutment (= span/2)
+  channelHalf: number; // inner |v| kept LOW as the channel corridor (no raise)
+  bankRise: number; // height the banks/abutments are built up to, above surfaceY
+  approach: number; // how far past the abutment the bank holds full height before tapering
+  alongHalf: number; // half-length of the valley along the river before it fades out
+  taper: number; // smooth taper distance at every outer edge
+}
+
 export class World {
   readonly size = WORLD3D.size;
   readonly lakes: LakeRuntime[];
@@ -139,6 +161,8 @@ export class World {
   private readonly latCenter: number; // centre of the geo box — the projection origin
   private readonly lonCenter: number;
   private readonly uPerKm: number; // world units per real kilometre (geo N–S extent → MAPGEO.fill of world)
+  /** The Missinipe bridge valley (set after construction via setBridgeValley); null = no terrain shaping. */
+  private bridgeValley: BridgeValley | null = null;
 
   /**
    * @param seed world seed — threads through noise/hydrology/placement/fire RNG so the same
@@ -351,6 +375,49 @@ export class World {
     return this.resolvedAnchors.find((a) => a.id === id) ?? null;
   }
 
+  /**
+   * The world-XZ polyline of an authored named river (`region.rivers`, e.g. 'Churchill River'),
+   * or null if this map has no such river. A read-only geo query — like `landmarks()`/`anchor()`,
+   * it just re-projects the authored lat/lon points through the same `project()` the world used to
+   * lay the channel, so a feature (the Missinipe bridge) can be pinned onto real river geometry
+   * without re-deriving the projection. Returns the raw centreline points (no meander), enough to
+   * find the nearest point + flow tangent. Empty/missing river → null.
+   */
+  namedRiverPath(name: string): { x: number; z: number }[] | null {
+    const def = (this.region.rivers ?? []).find((r) => r.name === name);
+    if (!def || def.points.length < 2) return null;
+    return def.points.map((p) => this.project(p.lat, p.lon));
+  }
+
+  /**
+   * Shape a river VALLEY at the Missinipe bridge so it spans the banks instead of standing tall on
+   * stilts: `groundHeightAt` then RAISES the banks on either side up toward the deck, while the river
+   * channel + the fly-under tunnel stay low. Call ONCE after construction with the resolved bridge
+   * site (or null to clear / on maps without it), BEFORE the terrain mesh + structures sample the
+   * ground. Bank height + corridor width are DERIVED from the bridge config so they track any tuning.
+   * Uses no rng and only raises ground, so determinism + the campaign verifier are untouched.
+   */
+  setBridgeValley(site: { x: number; z: number; ax: number; az: number; surfaceY: number } | null): void {
+    if (!site || !BRIDGE.enabled || !BRIDGE.valley.enabled) {
+      this.bridgeValley = null;
+      return;
+    }
+    const bankPeak = BRIDGE.span / 2;
+    this.bridgeValley = {
+      cx: site.x,
+      cz: site.z,
+      ax: site.ax,
+      az: site.az,
+      surfaceY: site.surfaceY,
+      bankPeak,
+      channelHalf: bankPeak * BRIDGE.valley.channelFrac,
+      bankRise: (BRIDGE.deckClearance + BRIDGE.deckThickness) * BRIDGE.valley.bankToDeck,
+      approach: BRIDGE.valley.approach,
+      alongHalf: BRIDGE.valley.alongHalf,
+      taper: BRIDGE.valley.taper,
+    };
+  }
+
   /** All placed anchors (bases + towns) for the active map; empty on procedural maps. */
   anchors(): ResolvedAnchor[] {
     return this.resolvedAnchors.slice();
@@ -401,7 +468,9 @@ export class World {
       // Drop a TOWN lake that would substantially overlap existing water (it attaches to that lake — the
       // connected Churchill chain near La Ronge becomes one big lake, not a pile of discs); bases keep theirs.
       if (!isBase && lakes.some((o) => Math.hypot(o.x - p.x, o.z - p.z) < o.r + r * 0.4)) continue;
-      lakes.push({ x: p.x, z: p.z, r, waterLevel: this.baseHeight(p.x, p.z), shape, name: sc.lake });
+      const lake: LakeRuntime = { x: p.x, z: p.z, r, waterLevel: this.baseHeight(p.x, p.z), shape, name: sc.lake };
+      this.applyOutline(lake, sc.outline); // authored freeform shore (if any) overrides the ellipse silhouette
+      lakes.push(lake);
     }
     const density = LAKES3D.length / (600 * 600); // curated lakes per unit² at the base size
     const count = Math.max(LAKES3D.length, Math.round(density * this.size * this.size * this.profile.lakeDensityScale));
@@ -450,7 +519,9 @@ export class World {
       const lim = this.size / 2 - r - 20;
       p.x = Math.max(-lim, Math.min(lim, p.x));
       p.z = Math.max(-lim, Math.min(lim, p.z));
-      lakes.push({ x: p.x, z: p.z, r, waterLevel: this.baseHeight(p.x, p.z), shape: namedLakeShape(elong, bearingToElongAngle(nl.bearingDeg ?? 0), i), name: nl.name });
+      const lake: LakeRuntime = { x: p.x, z: p.z, r, waterLevel: this.baseHeight(p.x, p.z), shape: namedLakeShape(elong, bearingToElongAngle(nl.bearingDeg ?? 0), i), name: nl.name };
+      this.applyOutline(lake, nl.outline); // authored freeform shore (if any) overrides the ellipse silhouette
+      lakes.push(lake);
     }
     return lakes;
   }
@@ -483,6 +554,18 @@ export class World {
    * so the irregular shoreline is identical across geometry, physics, and queries.
    */
   lakeRadius(lake: LakeRuntime, phi: number): number {
+    // Authored freeform shore: interpolate the pre-sampled boundary LUT (wrap-around) — O(1), and it makes
+    // every downstream consumer trace the exact outline without knowing it isn't an ellipse.
+    const lut = lake.radial;
+    if (lut) {
+      const n = lut.length;
+      let a = phi / (Math.PI * 2);
+      a -= Math.floor(a); // wrap phi into [0, 1)
+      const f = a * n;
+      const i = Math.floor(f) % n;
+      const frac = f - Math.floor(f);
+      return lut[i] * (1 - frac) + lut[(i + 1) % n] * frac;
+    }
     const s = lake.shape;
     const a = phi - s.elongAngle;
     const ca = Math.cos(a);
@@ -491,6 +574,36 @@ export class World {
     let w = 1;
     for (const h of s.harmonics) w += h.amp * Math.sin(h.k * phi + h.phase);
     return lake.r * ellipse * w;
+  }
+
+  /**
+   * Stamp an authored freeform outline onto a lake: project its real lat/lon ring to world XZ, re-centre the
+   * lake on the ring centroid, and ray-cast a per-angle boundary LUT from there (`radial`). After this the lake
+   * traces the EXACT drawn shore everywhere `lakeRadius` is read. Determinism is untouched — the lake's seeded
+   * `shape` (and its rng draws) were already taken; this only overrides the boundary, centre, radius and water
+   * level. No-op for a missing/degenerate ring, so the lake keeps its ellipse. (Assumes a star-convex outline —
+   * the editor's default; a wild concavity past the centre is bridged radially, never a hole.)
+   */
+  private applyOutline(lake: LakeRuntime, outline: readonly { lat: number; lon: number }[] | undefined): void {
+    if (!outline || outline.length < 3) return;
+    const verts = outline.map((o) => this.project(o.lat, o.lon));
+    let cx = 0;
+    let cz = 0;
+    for (const v of verts) {
+      cx += v.x;
+      cz += v.z;
+    }
+    cx /= verts.length;
+    cz /= verts.length;
+    const lut = buildLakeLUT(cx, cz, verts, LAKE_OUTLINE_SAMPLES);
+    let maxR = 0;
+    for (const t of lut) if (t > maxR) maxR = t;
+    if (maxR <= 0) return; // degenerate (centre outside the ring) → leave the ellipse intact
+    lake.x = cx;
+    lake.z = cz;
+    lake.r = maxR;
+    lake.radial = lut;
+    lake.waterLevel = this.baseHeight(cx, cz);
   }
 
   // --- Rivers / streams (A4) ---------------------------------------------------
@@ -504,6 +617,10 @@ export class World {
    */
   private makeRivers(): RiverRuntime[] {
     const rivers: RiverRuntime[] = [];
+
+    // Authored named rivers FIRST (region.rivers): real lat/lon polylines laid as carved channels. Uses no rng,
+    // so it can't perturb the seeded procedural streams that follow.
+    this.addAuthoredRivers(rivers);
 
     // Mini rivers: a fraction of lakes connect to their nearest strictly-lower lake.
     for (const src of this.lakes) {
@@ -570,6 +687,27 @@ export class World {
       }
     }
     return rivers;
+  }
+
+  /**
+   * Lay each authored region river (a real lat/lon polyline) as a chain of short carved channels — one
+   * RiverRuntime per consecutive pair of points. The water surface is sampled from the terrain at each
+   * vertex (`baseHeight`), so the channel hugs the ground and stays scoopable everywhere `waterLevelAt`
+   * reads it; `width` is the FULL ribbon width (halved here for the channel half-width `buildRiver` expects,
+   * default = the mini-river width). Uses NO rng — determinism is untouched. Each segment is its own mesh in
+   * Game, so frustum culling keeps the draw cost to the few segments near the camera.
+   */
+  private addAuthoredRivers(rivers: RiverRuntime[]): void {
+    for (const def of this.region.rivers ?? []) {
+      const verts = def.points.map((p) => this.project(p.lat, p.lon));
+      if (verts.length < 2) continue;
+      const half = (def.width ?? STREAM.width * 2) / 2;
+      for (let i = 0; i < verts.length - 1; i++) {
+        const a = verts[i];
+        const b = verts[i + 1];
+        rivers.push(this.buildRiver(a.x, a.z, b.x, b.z, this.baseHeight(a.x, a.z), this.baseHeight(b.x, b.z), half, STREAM.meanderAmp * 0.5));
+      }
+    }
   }
 
   /** Resample a straight A→B run into a meandering polyline + cached lengths/bbox. */
@@ -920,6 +1058,7 @@ export class World {
     const nz = (b.x - a.x) / L;
     const segs = Math.max(4, Math.ceil(L / ROADS.resample));
     const pts: { x: number; z: number }[] = [];
+    let dodgeSign = 0; // sticky lake-side bias: stay on ONE side across a contiguous water crossing (no flip-flop)
     for (let k = 0; k <= segs; k++) {
       const t = k / segs;
       const px = a.x + (b.x - a.x) * t;
@@ -927,39 +1066,73 @@ export class World {
       // Lateral wander from noise, tapered to 0 at both ends so the road meets each town.
       const off = this.noise.simplex(px * 0.015 - 5, pz * 0.015 + 9) * ROADS.meanderAmp * Math.sin(Math.PI * t);
       const p = { x: px + nx * off, z: pz + nz * off };
-      // Route around lakes: if this point fell in water, slide it along the road's
-      // perpendicular until it hits land (endpoints stay put — towns sit on shore).
-      pts.push(k === 0 || k === segs ? p : this.dodgeWater(p, nx, nz));
+      // Lakes: ride AROUND them — slide the point along the road's perpendicular to dry land, committing to the
+      // side we're already on so a big lake (e.g. Diefenbaker) is arced around ONE end, not zigzagged through.
+      // Rivers are LEFT on the line — the road bridges them. Endpoints stay put (towns sit on shore).
+      if (k === 0 || k === segs) {
+        pts.push(p);
+        continue;
+      }
+      const hit = this.dodgeWater(p, nx, nz, dodgeSign);
+      dodgeSign = hit.sign;
+      pts.push({ x: hit.x, z: hit.z });
     }
+    this.smoothRoad(pts);
     return { name: name ?? this.nameSource.highway(), pts, width: ROADS.width };
   }
 
   /**
-   * Nudge a road point off water along the carriageway's perpendicular (nx, nz). Searches
-   * both sides in growing steps and returns the first dry spot found (clearing the road's
-   * full half-width so the deck doesn't clip the shore). Falls back to the original point if
-   * no land is found within the cap — a long causeway is better than a kinked dead end.
+   * Laplacian smoothing of a road's INTERIOR points — relax each toward the average of its neighbours a few
+   * passes. This kills the high-frequency sawtooth `dodgeWater` leaves when a road threads between lakes (the
+   * "zigzag"), leaving long, gentle bends. A point is NEVER relaxed onto water (the dodged detour stays put
+   * there) and the endpoints stay pinned to their towns. Cheap, one-time at world build.
    */
-  private dodgeWater(p: { x: number; z: number }, nx: number, nz: number): { x: number; z: number } {
-    if (!this.isOverWater(p.x, p.z)) return p;
+  private smoothRoad(pts: { x: number; z: number }[]): void {
+    for (let pass = 0; pass < ROADS.smoothPasses; pass++) {
+      for (let i = 1; i < pts.length - 1; i++) {
+        const cx = (pts[i - 1].x + pts[i].x + pts[i + 1].x) / 3;
+        const cz = (pts[i - 1].z + pts[i].z + pts[i + 1].z) / 3;
+        if (!this.isOverWater(cx, cz)) pts[i] = { x: cx, z: cz };
+      }
+    }
+  }
+
+  /**
+   * Ride a road point AROUND a lake: nudge it along the carriageway's perpendicular (nx, nz) to dry land,
+   * clearing the road's full half-width so the deck doesn't clip the shore. Only LAKES are dodged — a river is
+   * left on the line and bridged (see the lakeAt guard). `prefer` is the side the road is already dodging toward:
+   * mid-crossing we COMMIT to that side (search it fully, then the other) so a road arcs around a big lake on
+   * ONE side instead of flip-flopping point-to-point; a fresh crossing (`prefer` 0) takes the nearest dry shore.
+   * Returns the chosen side in `sign` (0 when the point isn't a lake → reset the bias between separate lakes).
+   * Falls back to the original point (a causeway) if no shore is in range — better than a kinked dead end.
+   */
+  private dodgeWater(p: { x: number; z: number }, nx: number, nz: number, prefer: number): { x: number; z: number; sign: number } {
+    // Only LAKES get ridden around. Dry land — or a RIVER — leaves the point on the line: a river is narrow, so the
+    // road just BRIDGES it (the deck causeways over the channel via ROADS.bridgeLift). lakeAt is null for both.
+    if (!this.lakeAt(p.x, p.z)) return { x: p.x, z: p.z, sign: 0 }; // not a lake (dry or a river) → don't dodge; reset the side bias
     const step = ROADS.width;
     const maxSteps = Math.ceil(ROADS.dodgeMax / step);
-    for (let s = 1; s <= maxSteps; s++) {
-      const d = s * step;
-      for (const sign of [1, -1]) {
-        const cx = p.x + nx * d * sign;
-        const cz = p.z + nz * d * sign;
-        // Clear the full carriageway, not just the centreline, so shoulders stay dry.
-        if (
-          !this.isOverWater(cx, cz) &&
-          !this.isOverWater(cx + nx * ROADS.width, cz + nz * ROADS.width) &&
-          !this.isOverWater(cx - nx * ROADS.width, cz - nz * ROADS.width)
-        ) {
-          return { x: cx, z: cz };
+    // Clear the full carriageway, not just the centreline, so shoulders stay dry.
+    const clear = (cx: number, cz: number): boolean =>
+      !this.isOverWater(cx, cz) && !this.isOverWater(cx + nx * ROADS.width, cz + nz * ROADS.width) && !this.isOverWater(cx - nx * ROADS.width, cz - nz * ROADS.width);
+    if (prefer !== 0) {
+      // Sticky: search the current side to its limit first, then the other — stay on one side of the lake.
+      for (const sign of [prefer, -prefer]) {
+        for (let s = 1; s <= maxSteps; s++) {
+          const d = s * step;
+          if (clear(p.x + nx * d * sign, p.z + nz * d * sign)) return { x: p.x + nx * d * sign, z: p.z + nz * d * sign, sign };
+        }
+      }
+    } else {
+      // Fresh crossing: nearest dry shore on either side, and record which side we took (to stay sticky after).
+      for (let s = 1; s <= maxSteps; s++) {
+        const d = s * step;
+        for (const sign of [1, -1]) {
+          if (clear(p.x + nx * d * sign, p.z + nz * d * sign)) return { x: p.x + nx * d * sign, z: p.z + nz * d * sign, sign };
         }
       }
     }
-    return p;
+    return { x: p.x, z: p.z, sign: prefer || 1 }; // no shore in range → causeway; keep a side bias for the rest of the crossing
   }
 
   // --- Base terrain ------------------------------------------------------------
@@ -1050,7 +1223,35 @@ export class World {
       }
       if (w > 0) h = lerp(h, channelProfile(rv.d, rv.river.width, rv.surf), w);
     }
-    return h;
+    // Missinipe bridge valley: raise the banks toward the deck so the bridge spans a valley, not stilts.
+    return this.applyBridgeValley(x, z, h);
+  }
+
+  /**
+   * Raise the banks of the bridge valley at (x, z) toward the deck (see setBridgeValley), returning the
+   * possibly-raised ground. A no-op (returns `h`) when there's no valley, the point is outside the
+   * localized footprint, inside the protected channel corridor, or over water — so it never buries a
+   * lake or the river, and the fly-under tunnel stays clear. RAISE-only: it never digs below the
+   * natural (carved) ground. The cheap rejects up front keep it ~free everywhere off the bridge.
+   */
+  private applyBridgeValley(x: number, z: number, h: number): number {
+    const bv = this.bridgeValley;
+    if (!bv) return h;
+    const dx = x - bv.cx;
+    const dz = z - bv.cz;
+    const u = dx * bv.ax + dz * bv.az; // along the river (the fly-under axis)
+    const along = 1 - smoothstep((Math.abs(u) - bv.alongHalf) / bv.taper); // localize up/downstream of the bridge
+    if (along <= 0) return h;
+    const av = Math.abs(dx * bv.az - dz * bv.ax); // |across-span| — distance from the channel centreline
+    if (av <= bv.channelHalf) return h; // the channel corridor stays low (protects the fly-under tunnel)
+    const wall = Math.max(1e-3, bv.bankPeak - bv.channelHalf);
+    const rampIn = smoothstep((av - bv.channelHalf) / wall); // 0 at the channel edge → 1 at the abutment (the valley wall)
+    const rampOut = 1 - smoothstep((av - (bv.bankPeak + bv.approach)) / bv.taper); // hold the approach, then fade out
+    const profile = rampIn * rampOut;
+    if (profile <= 0) return h;
+    if (this.isOverWater(x, z)) return h; // never raise over water — keep lakes + the river at their level
+    const raised = Math.max(h, lerp(h, bv.surfaceY + bv.bankRise, profile)); // toward the bank top; never below natural ground
+    return lerp(h, raised, along);
   }
 
   // --- Water -------------------------------------------------------------------
@@ -1109,14 +1310,15 @@ export class World {
   /**
    * Minimum heli altitude at (x, z) — the surface the AGL band rides. Over water it
    * sits a small scoopClearance above the flat surface (so a full descent dips the
-   * slung bucket under); on land it sits a larger canopyClearance above the ground
-   * (so the rotor disc clears the trees). HelicopterSim adds the [minClearance,
-   * maxClearance] band on top.
+   * slung bucket under); on land it sits a small groundClearance above the ground, so
+   * you can SET DOWN ANYWHERE on open ground and the craft is never auto-lifted to clear
+   * terrain. The trees are an obstacle the rotor crashes into (CRASH), NOT a floor that
+   * elevators you over them. HelicopterSim adds the [minClearance, maxClearance] band on top.
    */
   flightFloorAt(x: number, z: number): number {
     const wl = this.waterLevelAt(x, z);
     if (wl !== null) return wl + FLIGHT.scoopClearance;
-    return this.groundHeightAt(x, z) + FLIGHT.canopyClearance;
+    return this.groundHeightAt(x, z) + FLIGHT.groundClearance;
   }
 
   // --- Slope -------------------------------------------------------------------
@@ -1193,6 +1395,64 @@ export class World {
 
 const KM_PER_DEG_LAT = 111.32; // mean km per degree of latitude (also the lon scale before cos(lat))
 const DEG2RAD = Math.PI / 180;
+
+// --- Authored freeform-lake boundary (module-pure) -----------------------------
+
+const LAKE_OUTLINE_SAMPLES = 128; // angular resolution of an authored lake's boundary LUT (smooth + cheap to read)
+
+/**
+ * Distance along a ray (origin O, UNIT direction D) to its first crossing of segment A→B, or -1 if it misses.
+ * Solves O + tD = A + u(B−A) for t ≥ 0, u ∈ [0,1]; |D|=1 so t is the world-unit distance. Used to ray-cast a
+ * polygon outline into the per-angle boundary radius the radial lake model reads.
+ */
+function rayHitSeg(ox: number, oz: number, dx: number, dz: number, ax: number, az: number, bx: number, bz: number): number {
+  const ex = bx - ax;
+  const ez = bz - az;
+  const det = ex * dz - ez * dx;
+  if (Math.abs(det) < 1e-9) return -1; // ray ∥ edge
+  const wx = ax - ox;
+  const wz = az - oz;
+  const t = (ex * wz - ez * wx) / det; // distance along the ray
+  const u = (dx * wz - dz * wx) / det; // position along the edge
+  if (u < -1e-6 || u > 1 + 1e-6 || t < 0) return -1;
+  return t;
+}
+
+/**
+ * Sample an outline polygon into a per-angle boundary-radius LUT, ray-cast from centre (cx, cz). Each entry is
+ * the nearest shoreline crossing along that angle — exact for a star-convex ring (one crossing), and the same
+ * convention `lakeRadius` reads back: angle a → direction (cos a, sin a), matching `atan2(dz, dx)`. A degenerate
+ * angle with no forward hit borrows its neighbour so the boundary never collapses to 0.
+ */
+function buildLakeLUT(cx: number, cz: number, verts: { x: number; z: number }[], samples: number): number[] {
+  const lut = new Array<number>(samples).fill(0);
+  for (let s = 0; s < samples; s++) {
+    const a = (s / samples) * Math.PI * 2;
+    const dx = Math.cos(a);
+    const dz = Math.sin(a);
+    let best = Infinity;
+    for (let i = 0; i < verts.length; i++) {
+      const A = verts[i];
+      const B = verts[(i + 1) % verts.length];
+      const t = rayHitSeg(cx, cz, dx, dz, A.x, A.z, B.x, B.z);
+      if (t >= 0 && t < best) best = t;
+    }
+    lut[s] = Number.isFinite(best) ? best : 0;
+  }
+  // Patch any holes (a ray that found nothing — centre on/outside an edge) with the nearest non-zero neighbour.
+  for (let s = 0; s < samples; s++) {
+    if (lut[s] > 0) continue;
+    for (let step = 1; step < samples; step++) {
+      const a = lut[(s - step + samples) % samples];
+      const b = lut[(s + step) % samples];
+      if (a > 0 || b > 0) {
+        lut[s] = Math.max(a, b);
+        break;
+      }
+    }
+  }
+  return lut;
+}
 
 /**
  * Compass bearing of a lake's long axis (degrees, 0 = N–S, 90 = E–W) → the `elongAngle` (the `phi` where the

@@ -35,6 +35,7 @@ export interface ControlState {
   drop: boolean; // DROP held this frame (the 'valve' bucket pours while held)
   dropPressed: boolean; // DROP went down THIS frame (edge) — a one-tap 'bambi' dump trigger
   swapPressed: boolean; // SWAP went down THIS frame (edge) — re-rig bucket↔crew at base (mixed missions)
+  detachPressed: boolean; // DETACH went down THIS frame (edge) — jettison the slung bucket (RTB to re-rig)
 }
 
 /** Stick travel below this fraction reads as zero, then rescales smoothly. */
@@ -59,6 +60,8 @@ export class Input {
   private prevDrop = false; // last frame's drop level, for press-edge detection
   private btnSwap = false;
   private prevSwap = false; // last frame's swap level, for press-edge detection
+  private btnDetach = false;
+  private prevDetach = false; // last frame's detach level, for press-edge detection
 
   // Free-look ("eye" button): drag sets orbit VELOCITY, release eases back.
   private lookActive = false;
@@ -77,6 +80,7 @@ export class Input {
   private descendBtn!: HTMLDivElement;
   private dropBtn!: HTMLDivElement;
   private swapBtn!: HTMLDivElement;
+  private detachBtn!: HTMLDivElement;
   private clusterRow!: HTMLDivElement;
   private eyeBtn!: HTMLDivElement;
   private eyeSvg!: SVGElement;
@@ -125,7 +129,18 @@ export class Input {
     const swapPressed = swap && !this.prevSwap;
     this.prevSwap = swap;
 
-    return { turn, throttle, lift, drop, dropPressed, swapPressed };
+    // Detach the bucket (B, or the DETACH button) — edge-detected, one jettison per press.
+    const detach = this.btnDetach || k.has('KeyB');
+    const detachPressed = detach && !this.prevDetach;
+    this.prevDetach = detach;
+
+    return { turn, throttle, lift, drop, dropPressed, swapPressed, detachPressed };
+  }
+
+  /** Show/hide the DETACH (jettison-bucket) button. Game shows it on a water sortie while a bucket is
+   *  attached — press it to release the slung bucket; you then RTB to a base for a fresh one. */
+  setDetachVisible(on: boolean): void {
+    if (this.detachBtn) this.detachBtn.style.display = on ? 'flex' : 'none';
   }
 
   /** Show/hide the contextual SWAP-loadout button. Game calls this each frame: it's only
@@ -217,9 +232,29 @@ export class Input {
     parent.appendChild(root);
   }
 
-  /** Contextual SWAP-loadout button (bottom-centre, hidden until Game enables it). On a mixed
-   *  crew+water mission, set down at the home base re-rigs the slung load bucket↔crew. */
+  /** Contextual bottom-centre action buttons, hidden until Game enables each:
+   *   - DETACH — jettison the slung bucket (shown on a water sortie while a bucket is attached).
+   *   - SWAP   — re-rig bucket↔crew (shown set down at the home base, on a mixed mission).
+   *  Stacked in ONE column so they never overlap — a hidden button takes no space (display:none),
+   *  so whichever is showing sits centred and both stack with a gap when (rarely) both are up. */
   private buildSwapUI(root: HTMLElement): void {
+    // DETACH — a warm "caution" button (releasing your only water-delivery is a real commitment).
+    const detach = button('⊗ RELEASE BUCKET', {
+      position: 'relative',
+      display: 'none', // shown only when Game.setDetachVisible(true) — water sortie, bucket attached
+      padding: '0 16px',
+      height: '42px',
+      borderRadius: R.pill,
+      fontSize: FS.meta,
+      fontWeight: FW.bold,
+      letterSpacing: '1.2px',
+      color: '#ffe7df',
+      borderColor: UI.warmStroke,
+      boxShadow: `0 0 14px rgba(255,90,60,0.26), ${UI.shadowBtn}`,
+    });
+    this.detachBtn = detach;
+    holdButton(detach, (on) => (this.btnDetach = on), UI.warm); // edge-read in read() → one jettison per press
+
     const swap = button('⇄ SWAP', {
       position: 'relative',
       display: 'none', // shown only when Game.setSwapVisible(true) — at base, on a mixed mission
@@ -232,13 +267,15 @@ export class Input {
       color: UI.text,
       borderColor: UI.accentSoft,
       boxShadow: `0 0 16px ${UI.accent}33, ${UI.shadowBtn}`,
-      marginBottom: '14px',
     });
     this.swapBtn = swap;
     holdButton(swap, (on) => (this.btnSwap = on));
 
+    const col = div({ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', marginBottom: '14px' });
+    col.appendChild(detach);
+    col.appendChild(swap);
     const a = anchor('bottom-center');
-    a.appendChild(swap);
+    a.appendChild(col);
     root.appendChild(a);
   }
 

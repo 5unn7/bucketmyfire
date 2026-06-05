@@ -31,6 +31,12 @@ export class SmokePlume {
   private readonly aHeat: Float32Array; // per-puff fire heat 0..1 → bigger/denser/darker for hot fires
   private readonly baseY: Float32Array; // the crown Y the puff left (for height-zoned color)
   private cursor = 0;
+  // Live-puff budget. The ring buffer holds SMOKE.max slots, but a hot fire emitting at full rate over
+  // the long puff lifetime can want MORE live puffs than the pool holds — the cursor then recycles a
+  // puff that is still rising, which reads as a mid-air "teleport pop" on busy stages. We refuse to
+  // emit once the pool is full (drop the puff rather than stomp a live one), so the column tops out at
+  // its true capacity and never pops. Recounted authoritatively each update(); bumped per fresh emit.
+  private aliveCount = 0;
 
   private readonly posAttr: THREE.BufferAttribute;
   private readonly lifeAttr: THREE.BufferAttribute;
@@ -197,9 +203,11 @@ export class SmokePlume {
    * later rises above it.
    */
   emit(x: number, y: number, z: number, heat: number): void {
+    if (this.aliveCount >= SMOKE.max) return; // pool full — drop the puff, never recycle a live one
     const h = heat < 0 ? 0 : heat > 1 ? 1 : heat;
     const i = this.cursor;
     this.cursor = (this.cursor + 1) % SMOKE.max;
+    const wasAlive = this.life[i] > 0; // stomping the (rare) oldest live puff leaves the count flat
     const p = i * 3;
     const jitter = 3 + 20 * h; // base spans the flame wall — a big blaze has a broad column foot
     this.positions[p] = x + (Math.random() - 0.5) * jitter;
@@ -215,6 +223,7 @@ export class SmokePlume {
     this.aSeed[i] = Math.random();
     this.aHeat[i] = h;
     this.baseY[i] = y; // the crown this puff left — height-zoned colour measures rise above it
+    if (!wasAlive) this.aliveCount++; // filled a dead slot → one more live puff (a stomp keeps it flat)
   }
 
   /**
@@ -229,7 +238,7 @@ export class SmokePlume {
     const catchK = Math.min(1, SMOKE.windCatch * dt);
     const riseKeep = Math.max(0, 1 - SMOKE.riseDamp * dt);
 
-    let anyAlive = false;
+    let alive = 0;
     for (let i = 0; i < SMOKE.max; i++) {
       let rem = this.life[i];
       if (rem <= 0) {
@@ -253,8 +262,10 @@ export class SmokePlume {
       }
       this.life[i] = rem;
       this.aLife[i] = this.maxLife[i] > 0 ? rem / this.maxLife[i] : 0; // 1 fresh → 0 dead
-      anyAlive = true;
+      alive++;
     }
+    this.aliveCount = alive; // authoritative live count — emit() budgets against it to fit the pool
+    const anyAlive = alive > 0;
 
     if (anyAlive || this.points.visible) {
       this.posAttr.needsUpdate = true;

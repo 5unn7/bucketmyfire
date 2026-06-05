@@ -29,10 +29,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: 20
           cache: npm
@@ -64,9 +64,10 @@ jobs:
       # History-preserving publish: commits dist/ ON TOP of the existing gh-pages branch
       # (force_orphan defaults false), so a bad deploy can be rolled back with one revert
       # instead of being lost to a force-push. Keeps the CNAME + adds .nojekyll for us.
-      # (Pin to a full commit SHA instead of @v4 if you want to harden the supply chain.)
+      # Pinned to a full commit SHA (supply-chain hardening); Dependabot bumps it (see
+      # .github/dependabot.yml). The trailing comment tracks which release the SHA is.
       - name: Publish dist/ to gh-pages
-        uses: peaceiris/actions-gh-pages@v4
+        uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./dist

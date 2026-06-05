@@ -45,12 +45,15 @@ import { HeliAudio } from './audio/HeliAudio';
 import { Profile } from './ui/profile';
 import { createCrewFigures, CrewFigures } from './meshes/crewFigures';
 import { createLandingZone, LandingZoneMesh } from './meshes/landingZone';
+import { createChurchillBridge, computeBridgeSite, type ChurchillBridge } from './meshes/churchillBridge';
 import { CrewTransport, CrewZone } from './sim/CrewTransport';
 import { FuelSim } from './sim/FuelSim';
 import { HealthSim } from './sim/HealthSim';
 import { MissionRuntime } from './missions/MissionRuntime';
 import { MissionDirector } from './missions/MissionDirector';
 import { recordWin, getProgress } from './missions/progress';
+import { isDailyId } from './missions/daily';
+import { recordDailyClear } from './missions/streak';
 import { newlyUnlockedHelis } from './ui/profile';
 import { submitScore } from './leaderboard/client';
 import { cloudAutoSave } from './leaderboard/cloudSave';
@@ -58,7 +61,7 @@ import { button, UI, FW } from './ui/theme';
 import type { MissionDef, MissionSignals, MissionAction, ZonePlacement, ScoreTally } from './missions/types';
 import type { EndScreenHooks } from './HUD';
 import { seedFires, structurePlan, crewZones, resolveCrewZone, igniteFromPlacement } from './missions/scenario';
-import { WORLD3D, FLIGHT, STARTUP, BUCKET3D, DROP_PHYSICS, DROP_FX, FIREHEAD, CAMERA, FIRE3D, WATER, WASH, SPRAY, SMOKE, EMBERS, INSTRUMENTS, ROADS, MISSIONS, COMMUNITIES, SCORE, FOREST, STRUCT_FIRE, resolveHeliClass } from './config';
+import { WORLD3D, FLIGHT, STARTUP, BUCKET3D, DROP_PHYSICS, DROP_FX, FIREHEAD, CAMERA, FIRE3D, WATER, WASH, SPRAY, SMOKE, EMBERS, INSTRUMENTS, ROADS, MISSIONS, COMMUNITIES, SCORE, FOREST, STRUCT_FIRE, CRASH, BRIDGE, resolveHeliClass } from './config';
 
 // Instrument calibration factors (world units → real-world HUD units). Derived from
 // the FLIGHT caps so the gauges stay consistent if those are retuned.
@@ -160,21 +163,35 @@ export class Game {
   private engineStarted: boolean;
   private won = false;
   private lost = false; // C3: every structure destroyed → mission failed (latches the sim off)
-  private crashed = false; // health hit zero → airframe destroyed (a Game-level loss, any mission)
-  private hullHitCd = 0; // cooldown (s) so one hard landing fires ONE damage warning, not a per-frame burst
+  private crashed = false; // airframe destroyed (a Game-level loss, any mission) — explosion has fired
+  private crashCause: 'tree' | 'impact' | 'airframe' | 'bridge' | null = null; // why the wreck — picks the mayday copy
+  /** The Missinipe easter-egg bridge (null on maps without it / when BRIDGE.enabled is false). Public for QA via __game. */
+  bridge: ChurchillBridge | null = null;
+  private bridgeUnder = false; // currently threading under the deck (clean-pass tracking)
+  private bridgeEnterU = 0; // sign of the along-flow coord when the tunnel was entered
+  private bridgePassCd = 0; // s until another clean pass-under can be acknowledged (no hover-farming)
+  /** Clean pass-throughs under the bridge this session (read by QA / future achievements). */
+  bridgePasses = 0;
+  private crashHold = 0; // s remaining to linger on the explosion before the MISSION FAILED modal (CRASH.deathHold)
+  private airframeHitCd = 0; // cooldown (s) so one hard landing fires ONE damage warning, not a per-frame burst
   private bucketFull = false; // latched once a scoop tops off — one "bucket full" cue per fill, re-armed on release
   private finalScore = 0; // computed once when the mission ends (win or loss)
   // --- Score telemetry (feeds the reworked ScoreTally → missions/score.ts) ---------------------------
   // Accumulated over the run: drop precision (effective vs wasted pours), the worst conditions actually
-  // faced (peak threat + peak fire load → dynamic hardship), and hull-denting hard landings (a penalty).
+  // faced (peak threat + peak fire load → dynamic hardship), and airframe-denting hard landings (a penalty).
   private scoreDrops = 0; // committed pours that released water
   private scoreDropsEffective = 0; // pours that knocked down meaningful heat (a "hit")
   private scoreDropsWasted = 0; // pours that missed or dispersed too high
   private peakThreat = 0; // worst structure threat survived, 0..1
   private peakFireLoad = 0; // most fires active at once
-  private hardLandings = 0; // hull-denting touchdowns
+  private hardLandings = 0; // airframe-denting touchdowns
   private elapsed = 0; // total seconds, drives fire flicker
   private rippleTimer = 0; // throttles ripple-ring spawns while scooping/dropping
+  // Reused HUD-radar buffers so the per-frame HUD payload allocates NO new arrays/objects for the
+  // radar (the mobile-60fps no-per-frame-alloc invariant). `fireRadar` is a pooled {x,z} list refilled
+  // in place and trimmed to the live fire count; `lakeRadar` is built once (lakes are immutable).
+  private readonly fireRadar: { x: number; z: number }[] = [];
+  private lakeRadar: { x: number; z: number; r: number }[] | null = null;
   private washRippleTimer = 0; // throttles the downwash ripple rings under a low heli (C4)
   private sprayAccum = 0; // throttles drop-spray emission to SPRAY.emitInterval
   private smokeAccum = 0; // throttles per-fire smoke puff bursts to SMOKE.emitInterval
@@ -207,6 +224,7 @@ export class Game {
   private readonly fireBound = WORLD3D.size / 2 - 40; // valid-fire-site radius (matches scenario seeding)
   private inBriefing = true; // pre-flight briefing card up → sim + clock paused until BEGIN
   private payloadMode: 'water' | 'crew'; // CURRENT slung loadout (mutable: mixed missions re-rig at base)
+  private bucketAttached = true; // water sorties: is the slung bucket rigged? DETACH jettisons it; a base re-rigs a fresh one
   private readonly loadouts: ('water' | 'crew')[]; // loadouts the pilot can re-rig between; >1 → swap enabled
   private loadoutIdx = 0; // index into `loadouts` of the current payload
   private readonly bucketType: 'bambi' | 'valve';
@@ -269,6 +287,11 @@ export class Game {
     // Grow the mission's MAP (its authored region, else the player's chosen map, else the default)
     // and lay any authored place-name pins over the seeded ones so briefings match the radar.
     this.world = new World(mission.seed, { regionId: mission.map ?? this.mapId, pins: mission.places, homeBase: mission.homeBase });
+    // Resolve the Missinipe bridge site up front (null off-SK / when disabled) and shape its river
+    // VALLEY into the terrain BEFORE the mesh + structures sample the ground, so the bridge spans the
+    // banks instead of standing tall. The same site builds the bridge mesh + collider further below.
+    const bridgeSite = computeBridgeSite(this.world);
+    this.world.setBridgeValley(bridgeSite);
     this.wind = new Wind(mission.wind?.angle, mission.wind?.strengthScale ?? 1);
     this.fauna = new Fauna(this.scene, this.world);
     this.depotXZ = (() => {
@@ -476,6 +499,13 @@ export class Game {
     // Bucket collision height field: World ground raised to the forest canopy. The
     // bucket scrapes terrain and snags treetops against this (see bucketSim below).
     this.obstacles = new Obstacles(this.world, forest.colliders);
+
+    // The Missinipe bridge mesh + collider, built from the site resolved above (its valley is already
+    // shaped into the terrain). Null off-SK / when disabled, so this self-skips.
+    if (bridgeSite) {
+      this.bridge = createChurchillBridge(bridgeSite);
+      this.scene.add(this.bridge.group);
+    }
 
     // Mixed-forest variety: deciduous (birch/aspen) accents + burnt snags, each reusing
     // the conifer's chunk/LOD machinery via the species slot, on its OWN seeded stream
@@ -698,6 +728,7 @@ export class Game {
       water: this.water,
       health: this.healthSim.health, // airframe health 0..1 (for headless damage/crash assertions)
       crashed: this.crashed,
+      crashing: this.heliSim.crashing, // mid-air crash fall in progress (tree strike → crumble + drop)
       firesLeft: this.fireSystem.activeCount,
       burnedOut: this.fireSystem.burnedOut, // C3: fires that consumed their fuel and self-extinguished
       lakes: this.lakes.map((l) => ({ x: l.x, z: l.z, r: l.r })),
@@ -745,6 +776,29 @@ export class Game {
     this.chase.setAspect(aspect);
   }
 
+  /**
+   * Refill the pooled fire-radar buffer in place from the live fires, trimmed to the live count, so
+   * the per-frame HUD payload allocates nothing for the radar (the {x,z} objects are reused frame to
+   * frame; only a change in fire count touches the pool). Returns the SAME array each frame — the HUD
+   * consumes it synchronously while drawing the radar, so the shared reference is safe.
+   */
+  private refillFireRadar(active: readonly { x: number; z: number }[]): { x: number; z: number }[] {
+    const buf = this.fireRadar;
+    const n = active.length;
+    for (let i = 0; i < n; i++) {
+      const f = active[i];
+      const slot = buf[i];
+      if (slot) {
+        slot.x = f.x;
+        slot.z = f.z;
+      } else {
+        buf[i] = { x: f.x, z: f.z };
+      }
+    }
+    if (buf.length > n) buf.length = n; // drop the stale tail when fewer fires are active
+    return buf;
+  }
+
   update(dt: number): void {
     const dtMs = dt * 1000;
     this.elapsed += dt;
@@ -765,21 +819,53 @@ export class Game {
       }
     }
 
-    // Freeze the sim when the mission is over (win/loss), while the pre-flight briefing card is up,
-    // or while the engine is still spooling — so the fire doesn't spread and the mission clock doesn't
-    // run before the pilot hits BEGIN and brings the rotors up to speed.
-    const frozen = this.won || this.lost || this.inBriefing || !this.engineStarted;
+    // Freeze the sim when the mission is over (win/loss), the airframe has been DESTROYED (the
+    // explosion has fired — gameplay stops while we linger on the wreck), while the pre-flight briefing
+    // card is up, or while the engine is still spooling — so the fire doesn't spread and the mission
+    // clock doesn't run before the pilot hits BEGIN and brings the rotors up to speed.
+    const frozen = this.won || this.lost || this.crashed || this.inBriefing || !this.engineStarted;
+    let hazardAlert: string | null = null; // GPWS-style caption to show this frame (null = clear it)
+
+    // Death hold: after a detonation the sim is frozen but the explosion VFX keep animating (the pools
+    // update every frame). Linger for CRASH.deathHold so the player SEES the crash, winding the rotor
+    // down meanwhile, THEN drop the MISSION FAILED modal (finishCrash latches `lost` → banner).
+    if (this.crashed && !this.lost) {
+      this.rotorRpm = Math.max(0, this.rotorRpm - dt / CRASH.rotorCutSeconds);
+      this.crashHold -= dt;
+      if (this.crashHold <= 0) this.finishCrash();
+    }
 
     // Loadout re-rig (mixed crew+water missions): set down at the home base to SWAP the slung load
     // bucket↔crew. Only a >1-loadout mission shows the button / accepts G; everyone else: button hidden,
     // swap inert — zero behaviour change for normal sorties.
     if (this.loadouts.length > 1) {
-      const canSwap = !frozen && this.atHomeBaseLanded();
+      const canSwap = !frozen && !this.heliSim.crashing && this.atHomeBaseLanded();
       this.input.setSwapVisible(canSwap);
       if (canSwap && c.swapPressed) this.swapLoadout();
     }
 
-    if (!frozen) {
+    // Bucket DETACH / re-attach (water sorties). The DETACH button jettisons the slung bucket anytime
+    // in flight — you then fly with no scoop/no drop until you set down at a base, where a fresh bucket
+    // is auto-rigged. Hidden at base (you'd just re-rig there) and on crew sorties (no bucket).
+    if (this.payloadMode === 'water') {
+      const live = !frozen && !this.heliSim.crashing;
+      this.input.setDetachVisible(live && this.bucketAttached && !this.atHomeBaseLanded());
+      if (live && this.bucketAttached && c.detachPressed) this.detachBucket();
+      if (live && !this.bucketAttached && this.canRefuel()) this.attachBucket(); // back at a base → new bucket
+    } else {
+      this.input.setDetachVisible(false);
+    }
+
+    if (this.heliSim.crashing && !this.crashed) {
+      // CRASH FALL: the airframe flew into the canopy — the pilot has no control. It crumbles and FALLS
+      // under gravity (updateCrash), the rotor winds down, and when it hits the ground we detonate the
+      // wreck (which sets `crashed` → this branch stops and the death hold takes over). The pose block
+      // below copies the tumbling sim transform to the mesh, so the fall is all visible.
+      const floorY = this.landingFloorAt(this.heliSim.position.x, this.heliSim.position.z);
+      this.heliSim.updateCrash(dt, floorY);
+      this.rotorRpm = Math.max(0, this.rotorRpm - dt / CRASH.rotorCutSeconds);
+      if (this.heliSim.crashLanded) this.detonate(this.crashCause ?? 'tree');
+    } else if (!frozen) {
       this.missionElapsed += dt; // mission clock (drives survive/timeout; stops on win/lose)
       this.wind.update(dtMs);
       // AGL flight: the altitude band rides the World floor under the heli, and a
@@ -825,7 +911,17 @@ export class Game {
           this.rtbWarned = false;
         }
       }
+
+      // Crash hazards (after the flight step so position/AGL/sink are current): detect a tree strike
+      // (→ begin the crumble-and-fall) and compute the GPWS-style caption (SINK RATE / PULL UP /
+      // TERRAIN) that warns the player BEFORE they slam in. Returns the caption (or null to clear).
+      hazardAlert = this.checkHazards();
+      // Easter-egg: acknowledge a clean thread UNDER the Missinipe bridge (no-op without one).
+      this.updateBridgePass(dt);
     }
+
+    // Drive the centred hazard caption — cleared whenever the sim is frozen or already crashing.
+    this.hud.setAlert(frozen || this.heliSim.crashing ? null : hazardAlert);
 
     // --- Pose the airframe from the sim (YZX: yaw about +Y, pitch +Z, roll +X) ---
     const g = this.heli.group;
@@ -848,7 +944,7 @@ export class Game {
     let scraping = false;
     let dropping = false;
     let overWater = false;
-    if (this.payloadMode === 'water') {
+    if (this.payloadMode === 'water' && this.bucketAttached) {
       ({ scooping, scraping, dropping, overWater } = this.updateSlungBucket(dtMs, c, frozen));
     }
 
@@ -857,8 +953,26 @@ export class Game {
     if (this.crew) {
       // The ferry only advances while the CREW sling is the rigged loadout — on a mixed mission the
       // crew sit tight (markers still drawn below, greyed) until the pilot re-rigs from the bucket.
-      if (!frozen && this.payloadMode === 'crew') {
+      if (!frozen && !this.heliSim.crashing && this.payloadMode === 'crew') {
         this.crew.update(dt, this.heliSim.position.x, this.heliSim.position.z, this.heliSim.agl, this.heliSim.speed);
+      }
+      // Casualties: a trapped family the FIRE reaches first is lost — and that happens whatever you're
+      // rigged for (they burn while you're off fighting flames in the water loadout). Warn when the
+      // fire's on them, mayday when it's too late; the `rescue` fail (if the mission has one) then
+      // latches the loss off `crewsLost`.
+      if (!frozen && !this.heliSim.crashing && this.crew.total > 0) {
+        const cas = this.crew.checkCasualties((x, z) => this.fireSystem.heatAt(x, z), dt);
+        if (cas.danger >= 0) {
+          const label = this.crew.views[cas.danger]?.label ?? 'the LZ';
+          this.hud.pushComms('warning', `Fire's on the family at ${label} — get them out, now!`, 'warn');
+          this.audio.playSquelch('warn');
+        }
+        if (cas.lost >= 0) {
+          const label = this.crew.views[cas.lost]?.label ?? 'the LZ';
+          this.hud.pushComms('warning', `We've lost the family at ${label}. The fire got there first.`, 'alert');
+          this.hud.flashDamage(0.6);
+          this.audio.playSquelch('alert');
+        }
       }
       const views = this.crew.views;
       const delivered = this.crew.delivered;
@@ -867,8 +981,9 @@ export class Game {
       const prog = this.crew.progress; // 0..1 dwell on that zone — drives the walk in/out
       for (let i = 0; i < this.lzMeshes.length; i++) {
         const v = views[i];
-        // The reusable base is the always-lit HOME pad; everything else cycles active/inactive/done.
-        this.lzMeshes[i].setState(v.home ? 'home' : v.done ? 'done' : v.active ? 'active' : 'inactive');
+        // A lost family's pad dies (ashen red, beacon out); otherwise the base is the lit HOME pad and
+        // the rest cycle active/inactive/done.
+        this.lzMeshes[i].setState(v.lost ? 'lost' : v.home ? 'home' : v.done ? 'done' : v.active ? 'active' : 'inactive');
         const figs = this.crewFigures[i];
         if (!figs) continue;
         if (i === activeZone) {
@@ -877,12 +992,12 @@ export class Game {
         } else {
           // Idle figures, decoupled from which zone is the single LIT target (so an evac shows ALL
           // the waiting families, not just the next one). A LOAD zone shows crew while it still has
-          // someone to give — a single cabin until it's picked up, the reusable base while crews
-          // remain. An UNLOAD zone shows them once SET DOWN (single done; the base once any are in).
+          // someone to give — a single cabin until it's picked up (and NOT once the fire took them),
+          // the reusable base while crews remain. An UNLOAD zone shows them once SET DOWN.
           const show =
             v.role === 'load'
               ? v.single
-                ? !v.done
+                ? !v.done && !v.lost
                 : delivered < total
               : v.single
                 ? v.done
@@ -950,28 +1065,35 @@ export class Game {
         m.group.visible = false;
       }
     }
-    // --- Airframe health: a hard-landing IMPACT model only — a high-sink floor contact dents the hull
-    // (toughness divides it), repair grounded/slow at a base. Zero health → crash (instant fail, any
-    // mission). Flying low through fire, scraping the bucket, and overspeed no longer cook the airframe
-    // — FUEL is the resource that ticks down and forces a return to base (FuelSim). ---
-    if (!frozen) {
+    // --- Airframe health: a hard-landing IMPACT model only — a high-sink floor contact dents the
+    // airframe (toughness divides it), repair grounded/slow at a base. Zero health → crash (instant
+    // fail, any mission). Flying low through fire, scraping the bucket, and overspeed no longer cook
+    // the airframe — FUEL is the resource that ticks down and forces a return to base (FuelSim). ---
+    if (!frozen && !this.heliSim.crashing) {
       const hpBefore = this.healthSim.health;
       this.healthSim.update(dt, {
         impact: this.heliSim.landingImpact,
         repairing: this.canRefuel(),
+        // A contact on the water floor (a scoop) is cushioned — it can dent but never explodes, so a
+        // firm scoop descent isn't a death sentence (the explosion gate is for slamming the ground).
+        overWater: this.world.isOverWater(this.heliSim.position.x, this.heliSim.position.z),
       });
-      // A hard landing dents the hull SILENTLY in the model — players never noticed the number drop.
+      // A hard landing dents the airframe SILENTLY in the model — players never noticed the number drop.
       // Detect the loss here (delta > 0 only on a damage frame; repair raises it) and FIRE feedback:
       // a red impact flash + a severity-scaled Dispatch warning + a squelch. A short cooldown means a
       // touchdown that bottoms out over a couple frames reads as one hit, not a burst.
-      if (this.hullHitCd > 0) this.hullHitCd -= dt;
+      if (this.airframeHitCd > 0) this.airframeHitCd -= dt;
       const hpLost = hpBefore - this.healthSim.health;
-      if (hpLost > 0.001 && this.hullHitCd <= 0 && !this.healthSim.dead) {
-        this.hullHitCd = 0.8;
+      if (hpLost > 0.001 && this.airframeHitCd <= 0 && !this.healthSim.dead) {
+        this.airframeHitCd = 0.8;
         this.hardLandings++; // score penalty: a denting touchdown
-        this.reportHullHit(hpLost);
+        this.reportAirframeHit(hpLost);
       }
-      if (this.healthSim.dead && !this.won && !this.lost) this.crashLoss();
+      // Airframe destroyed: an unsurvivable slam (fatalImpact → explode in place) or ground down across
+      // several bad landings. Either way the airframe is gone → detonate it (VFX + boom + mission loss).
+      if (this.healthSim.dead && !this.won && !this.lost && !this.crashed) {
+        this.detonate(this.healthSim.fatalImpact ? 'impact' : 'airframe');
+      }
     }
     // Sync the structure meshes: char + progressive collapse with damage, flames + HDR glow while
     // burning, advance their flame animation, and edge-detect ignite/lost for the radio callouts.
@@ -1262,6 +1384,8 @@ export class Game {
       water: this.water,
       waterMax: this.capacity,
       scooping, // bucket actively filling → the HUD glows the water bar so "keep dipping" reads
+      bucketDetached: this.payloadMode === 'water' && !this.bucketAttached, // jettisoned → water pod reads "NO BUCKET"
+
       health: this.healthSim.health,
       healthLow: this.healthSim.low,
       firesLeft,
@@ -1284,8 +1408,8 @@ export class Game {
       yaw: this.heliSim.yaw,
       windKt: this.wind.strength * FLIGHT.windSpeed * KT_PER_UNIT,
       windDir: this.wind.angle, // Wind.vx/vz = cos/sin(angle) → blows toward `angle`
-      fires: activeFires.map((f) => ({ x: f.x, z: f.z })),
-      lakes: this.lakes.map((l) => ({ x: l.x, z: l.z, r: l.r })),
+      fires: this.refillFireRadar(activeFires),
+      lakes: this.lakeRadar ?? (this.lakeRadar = this.lakes.map((l) => ({ x: l.x, z: l.z, r: l.r }))),
       worldSize: WORLD3D.size,
       // C3 stakes: structures to defend, the threat gauge, lose state + final score.
       structures: sList.map((s) => ({ x: s.x, z: s.z, kind: s.kind, health: s.health, burning: s.burning })),
@@ -1298,7 +1422,7 @@ export class Game {
       objectives: this.runtime.tracker,
       fuel: this.fuelSim ? this.fuelSim.fuel : undefined,
       fuelLow: this.fuelSim ? this.fuelSim.low : undefined,
-      zones: this.crew ? this.crew.views.map((v) => ({ x: v.x, z: v.z, active: v.active, done: v.done, home: v.home })) : undefined,
+      zones: this.crew ? this.crew.views.map((v) => ({ x: v.x, z: v.z, active: v.active, done: v.done, home: v.home, lost: v.lost })) : undefined,
       // Crew aboard count + live board/disembark dwell → the strip's crew icon + the BOARDING bar.
       crew: this.crew
         ? {
@@ -1321,6 +1445,7 @@ export class Game {
               crewTotal: this.crew?.total ?? 0,
               timeSec: this.missionElapsed,
               breakdown: this.runtime.breakdown ?? undefined, // line-itemed score + grade (null on a crash)
+              cause: this.lost ? this.failCause() : undefined, // drives the blunt cause-aware loss sub-line
             }
           : undefined,
       // Aircraft just unlocked by this win → the end screen's celebratory callout (empty otherwise).
@@ -1416,6 +1541,7 @@ export class Game {
       structuresTotal: this.structures.total,
       crewsDelivered: this.crew?.delivered ?? 0,
       crewsTotal: this.crew?.total ?? 0,
+      crewsLost: this.crew?.lostCount ?? 0,
       elapsed: this.missionElapsed,
       fuel: this.fuelSim?.fuel ?? 1,
       starved: this.fuelSim?.starved ?? false,
@@ -1497,6 +1623,10 @@ export class Game {
       // screen. (recordWin only grows the count on a FIRST clear, so a replay announces nothing.)
       const clearedBefore = getProgress().completed.length;
       recordWin(this.mission.id, this.finalScore, this.runtime.completion());
+      // Daily Burn streak (audit VISION-3): a clear today extends the consecutive-UTC-day chain. The
+      // streak store is idempotent per UTC day, so a same-day replay (or a per-frame outcome latch)
+      // never double-counts. Gated to daily ids so a campaign clear can't bump the daily streak.
+      if (isDailyId(this.mission.id)) recordDailyClear();
       const clearedAfter = getProgress().completed.length;
       this.newlyUnlocked = newlyUnlockedHelis(clearedBefore, clearedAfter).map((h) => ({ name: h.name, tagline: h.tagline }));
       // Global leaderboard (optional): fire-and-forget — submitScore never throws and no-ops
@@ -1510,39 +1640,214 @@ export class Game {
       // Cloud progress sync (optional): if this device is linked to an email account, push the
       // freshly-recorded unlocks/scores. No-ops when unlinked or Supabase is unconfigured.
       void cloudAutoSave();
+    } else if (this.lost) {
+      // Loss capstone: Dispatch closes the loop straight, no sugar (every mission authors a triumphant
+      // 'won' beat but none a 'lost' one, and losing was otherwise silent on the radio). Crashes never
+      // reach here — they go through finishCrash and already mayday'd — so this is the mission-rule
+      // loss, keyed off the constraint that actually latched. ('Water-1' → the pilot's callsign.)
+      const line =
+        this.runtime.failedKind === 'rescue'
+          ? "Water-1, the family's gone — the fire beat you to them. Break it off."
+          : this.runtime.failedKind === 'fuelOut'
+            ? "Water-1, you're out of fuel. That's the sortie — should've watched the gauge."
+            : this.runtime.failedKind === 'timeout'
+              ? "Water-1, that's time — the fire got past us. Break it off."
+              : this.runtime.failedKind === 'protect'
+                ? "Water-1, break it off. The community's gone — we lost this one."
+                : "Water-1, break it off. The fire beat us this time.";
+      this.hud.pushComms('dispatch', line, 'alert');
+      this.audio.playSquelch('alert');
     }
   }
 
   /**
-   * Airframe destroyed (health hit zero): force a mission loss this instant, on ANY mission. Sets the
-   * same fields latchOutcome() sets for a loss; `frozen` (which includes `lost`) then freezes the sim
-   * and the HUD shows the loss banner next frame. A WARNING comms line + alert squelch sell the mayday.
-   * Kept Game-level (not a MissionRuntime fail) so it's universal and the campaign verifier is untouched.
+   * Why the run ended in failure — drives the blunt, cause-specific end-banner sub-line. A crash
+   * carries its sub-cause (`crashCause`, set at the strike/slam); a mission-rule loss is read live
+   * from the signals (dry tank → fuel, a structure past the protect line → structures). 'fire' is the
+   * catch-all (e.g. a timeout, or a structures-min loss with everything still standing).
    */
-  private crashLoss(): void {
+  private failCause(): 'tree' | 'impact' | 'airframe' | 'bridge' | 'fuel' | 'casualty' | 'timeout' | 'structures' | 'fire' {
+    if (this.crashed) return this.crashCause ?? 'airframe'; // a crash isn't a mission-rule loss
+    // Otherwise map the constraint that actually latched (precise — not a re-guess from signals).
+    switch (this.runtime.failedKind) {
+      case 'rescue':
+        return 'casualty';
+      case 'fuelOut':
+        return 'fuel';
+      case 'protect':
+        return 'structures';
+      case 'timeout':
+        return 'timeout';
+      default:
+        return 'fire';
+    }
+  }
+
+  /**
+   * Finish a crash: latch the mission LOSS once the death hold has elapsed (the modal trigger — `lost`
+   * keeps `frozen` true and the HUD shows the MISSION FAILED banner next frame). `detonate()` already
+   * fired the explosion + mayday at the impact; this is just the delayed end-of-run. Kept Game-level
+   * (not a MissionRuntime fail) so it's universal and the campaign verifier is untouched.
+   */
+  private finishCrash(): void {
     if (this.won || this.lost) return;
-    this.crashed = true;
     this.lost = true;
     this.finalScore = this.runtime.score;
-    this.hud.pushComms('warning', 'Mayday — airframe down!', 'alert');
+  }
+
+  /**
+   * Blow up the wreck: the airframe has been destroyed (a tree strike that just hit the ground, an
+   * unsurvivable hard-landing slam, or the airframe ground to zero). Bursts a ball of embers + smoke at
+   * the airframe, flashes the screen, fires the impact boom + cause-specific mayday call — all RIGHT NOW
+   * — then starts the death hold (`crashed` freezes gameplay; the modal waits CRASH.deathHold so the
+   * player SEES the crash). Fires ONCE (guarded on `crashed`). `cause` picks the radio line.
+   */
+  private detonate(cause: 'tree' | 'impact' | 'airframe' | 'bridge'): void {
+    if (this.crashed) return; // the wreck only blows once
+    this.crashed = true;
+    this.crashHold = CRASH.deathHold;
+    const p = this.heliSim.position;
+    // Explosion: a fountain of sparks + a few dense smoke puffs off the impact point (reuses the
+    // fire VFX pools — no new scene objects, no recompiles), plus a hard red screen flash + boom.
+    for (let i = 0; i < CRASH.explodeEmbers; i++) this.embers.emit(p.x, p.y + 1.5, p.z, 1);
+    for (let i = 0; i < CRASH.explodeSmoke; i++) this.smoke.emit(p.x, p.y + 2, p.z, 1);
+    this.hud.flashDamage(1);
+    this.hud.setAlert(null); // the warnings have done their job — it's a wreck now
+    this.audio.playCrash();
+    const message =
+      cause === 'tree'
+        ? 'Airframe down in the trees — mayday, mayday.'
+        : cause === 'impact'
+          ? 'Heavy impact — she’s gone. Mayday.'
+          : cause === 'bridge'
+            ? 'She’s in the river by the bridge — mayday.'
+            : 'Mayday — airframe down!';
+    this.hud.pushComms('warning', message, 'alert');
     this.audio.playSquelch('alert');
   }
 
   /**
-   * Hard-landing feedback: the hull number quietly dropping went unnoticed, so a dent now FIRES a
-   * red impact flash + a severity-scaled Dispatch warning + a squelch. `lost` is the health fraction
-   * shed this touchdown; once the hull crosses the warn line it escalates to a critical alert. The
-   * HEALTH bar in the strip visibly drops alongside (animated). crashLoss owns the mayday at zero.
+   * Begin a tree-strike crash: the airframe flew into the canopy. Hands the flight model into its
+   * crumble-and-fall state (it now tumbles to the ground, where detonate() finishes it), and sells the
+   * strike immediately with a red flash + an alert squelch + a mayday call. No-op if already going down.
    */
-  private reportHullHit(lost: number): void {
-    const critical = this.healthSim.low; // hull now in the warning band
+  private beginTreeCrash(): void {
+    if (this.heliSim.crashing || this.won || this.lost) return;
+    this.crashCause = 'tree';
+    this.heliSim.beginCrash();
+    this.hud.flashDamage(1);
+    this.hud.setAlert(null);
+    this.hud.pushComms('warning', 'Mayday — rotor strike! Going down!', 'alert');
+    this.audio.playSquelch('alert');
+  }
+
+  /**
+   * Begin a bridge-strike crash: the airframe clipped the Missinipe bridge while threading it. Same
+   * crumble-and-fall as a tree strike (it tumbles to the river, where detonate('bridge') finishes it),
+   * with a bridge-specific mayday so the cause is unmistakable. No-op if already going down.
+   */
+  private beginBridgeCrash(): void {
+    if (this.heliSim.crashing || this.won || this.lost) return;
+    this.crashCause = 'bridge';
+    this.bridgeUnder = false; // a clipped pass is not a clean one
+    this.heliSim.beginCrash();
+    this.hud.flashDamage(1);
+    this.hud.setAlert(null);
+    this.hud.pushComms('warning', 'Clipped the bridge — mayday, going in!', 'alert');
+    this.audio.playSquelch('alert');
+  }
+
+  /**
+   * Track threading the bridge for the clean-pass reward (the "secret trick"). A pass counts when the
+   * airframe enters the tunnel under the deck on one side and exits the OTHER side without striking —
+   * acknowledged with a quiet radio nod (recognition only, no score change), rate-limited by a
+   * cooldown so hovering under the deck can't farm it. No-op (and cheap) on maps without the bridge.
+   */
+  private updateBridgePass(dt: number): void {
+    if (!this.bridge) return;
+    if (this.bridgePassCd > 0) this.bridgePassCd -= dt;
+    const p = this.heliSim.position;
+    const { under, u } = this.bridge.collider.pass(p.x, p.y, p.z);
+    if (under && !this.bridgeUnder) {
+      // Entered the tunnel — remember which side, so a straight-through pass can be told from a back-out.
+      this.bridgeEnterU = Math.sign(u) || 1;
+    } else if (!under && this.bridgeUnder) {
+      // Left the tunnel: a clean pass is an exit on the opposite side (crossed under, didn't reverse out).
+      if (Math.sign(u) === -this.bridgeEnterU && this.bridgePassCd <= 0 && !this.crashed && !this.won && !this.lost) {
+        this.bridgePasses++;
+        this.bridgePassCd = BRIDGE.rewardCooldown;
+        const lines = [
+          'Whoo! Clean under the Missinipe bridge — that was flying.',
+          'Right under the deck — nerves of steel, Water-1.',
+          'Did you just thread the bridge? Don’t tell the chief.',
+        ];
+        this.hud.pushComms('crew', lines[(this.bridgePasses - 1) % lines.length], 'info');
+        this.audio.playSquelch('info');
+      }
+    }
+    this.bridgeUnder = under;
+  }
+
+  /**
+   * Per-frame crash hazards, evaluated after the flight step. Detects a TREE STRIKE — the airframe's
+   * disc overlapping a treetop's solid core, deep enough (`CRASH.strikeBite`) to be fatal — and, if so,
+   * begins the crumble-and-fall. Otherwise it returns the GPWS-style hazard caption (or null): a
+   * "SINK RATE" / "PULL UP" descent warning and a "TERRAIN" / "TERRAIN — PULL UP" canopy-proximity
+   * warning, so the player gets honest, aviation-correct notice before they slam in. Returns null when
+   * a strike was triggered (the crash takes over) or when there's nothing to warn about.
+   */
+  private checkHazards(): string | null {
+    const x = this.heliSim.position.x;
+    const z = this.heliSim.position.z;
+    const belly = this.heliSim.position.y; // the heli's lowest point (skid line) = its group Y
+    const agl = this.heliSim.agl;
+    const sink = -this.heliSim.vertSpeed; // + = descending
+
+    // Bridge strike: the airframe clipped the deck, truss, or a bank pier of the Missinipe bridge.
+    // (One O(1) box test; harmless when there's no bridge.) Threading cleanly UNDER returns false.
+    if (this.bridge && this.bridge.collider.strike(x, belly, z)) {
+      this.beginBridgeCrash();
+      return null;
+    }
+
+    // Tree strike / canopy proximity (one O(1) grid query for the worst treetop near the airframe).
+    const strike = this.obstacles.heliStrike(x, z, belly, CRASH.heliRadius, CRASH.canopyCore);
+    if (strike && strike.pen >= CRASH.strikeBite) {
+      this.beginTreeCrash();
+      return null;
+    }
+    const terrainClose = !!strike && strike.pen >= CRASH.warnBite;
+    // Descending onto WATER is a scoop — an intended low, sometimes fast, approach the lake cushions —
+    // so the sink callouts are suppressed there (no nag every scoop). Terrain warnings can't fire over
+    // water anyway (no trees), so they're unaffected.
+    const overWater = this.world.isOverWater(x, z);
+    const sinkArmed = !overWater;
+
+    // Priority: an imminent slam (fast sink, very low) → PULL UP; closing on the canopy that low →
+    // TERRAIN — PULL UP; a fast descent while merely low → SINK RATE; an approaching canopy → TERRAIN.
+    if (sinkArmed && agl < CRASH.pullUpAlt && sink >= CRASH.sinkWarningRate) return 'PULL UP';
+    if (terrainClose && agl < CRASH.pullUpAlt) return 'TERRAIN — PULL UP';
+    if (sinkArmed && agl < CRASH.cautionAlt && sink >= CRASH.sinkCautionRate) return 'SINK RATE';
+    if (terrainClose) return 'TERRAIN';
+    return null;
+  }
+
+  /**
+   * Hard-landing feedback: the airframe number quietly dropping went unnoticed, so a dent now FIRES a
+   * red impact flash + a severity-scaled Dispatch warning + a squelch. `lost` is the health fraction
+   * shed this touchdown; once the airframe crosses the warn line it escalates to a critical alert. The
+   * HEALTH bar in the strip visibly drops alongside (animated). detonate() owns the mayday + explosion
+   * when a slam is fatal (or grinds the airframe to zero); this is only the SURVIVABLE-dent feedback.
+   */
+  private reportAirframeHit(lost: number): void {
+    const critical = this.healthSim.low; // airframe now in the warning band
     const sev = Math.min(1, lost / 0.25); // a ~quarter-bar loss reads as a full-strength flash
     this.hud.flashDamage(critical ? Math.max(sev, 0.7) : sev);
     if (critical) {
-      this.hud.pushComms('warning', 'Hard impact — hull critical! Set down at a base to repair.', 'alert');
+      this.hud.pushComms('warning', 'Hard impact — airframe critical! Set down at a base to repair.', 'alert');
       this.audio.playSquelch('alert');
     } else {
-      const text = lost > 0.15 ? 'Heavy landing — hull damage taken.' : 'Hard landing — ease the descent on touchdown.';
+      const text = lost > 0.15 ? 'Heavy landing — airframe damage taken.' : 'Hard landing — ease the descent on touchdown.';
       this.hud.pushComms('warning', text, 'warn');
       this.audio.playSquelch('warn');
     }
@@ -1729,6 +2034,7 @@ export class Game {
     this.loadoutIdx = (this.loadoutIdx + 1) % this.loadouts.length;
     this.payloadMode = this.loadouts[this.loadoutIdx];
     const water = this.payloadMode === 'water';
+    this.bucketAttached = water; // a swap at base always re-rigs a FRESH bucket (clears any prior jettison)
     this.bucket.group.visible = water;
     this.rope.visible = water;
     this.water = 0;
@@ -1740,6 +2046,43 @@ export class Game {
     this.dropActive = false;
     this.beginDropTally();
     this.hud.pushComms('dispatch', water ? 'Bucket rigged — fill from the lake.' : 'Crew sling rigged — go bring them out.', 'info');
+  }
+
+  /**
+   * Jettison the slung bucket (the DETACH button / B). A real helitanker can release its bucket on the
+   * longline — here it cuts the line: the bucket is gone, you fly LIGHTER (no payload), and you can't
+   * scoop or drop until you set down at a base for a fresh one (`attachBucket`). Water-payload only;
+   * no-op if already detached. Empties the tank + clears any in-flight pour so nothing is stranded.
+   */
+  private detachBucket(): void {
+    if (!this.bucketAttached || this.payloadMode !== 'water') return;
+    this.bucketAttached = false;
+    this.water = 0;
+    this.bucketFull = false;
+    this.dumping = false;
+    this.dropActive = false;
+    this.beginDropTally();
+    this.bucket.group.visible = false;
+    this.rope.visible = false;
+    this.dropMarker.hide();
+    this.hud.pushComms('warning', 'Bucket released — RTB to a base to rig a fresh one.', 'warn');
+    this.audio.playSquelch('warn');
+  }
+
+  /**
+   * Rig a fresh bucket — fired once when a detached water sortie returns to a base (grounded + slow in
+   * refuel range, via `canRefuel`). Restores the slung load + longline empty (scoop to fill). No-op if
+   * one's already attached. Mirrors `swapLoadout`'s fresh-rig reset, minus the loadout cycle.
+   */
+  private attachBucket(): void {
+    if (this.bucketAttached || this.payloadMode !== 'water') return;
+    this.bucketAttached = true;
+    this.water = 0;
+    this.bucketFull = false;
+    this.bucket.group.visible = true;
+    this.rope.visible = true;
+    this.hud.pushComms('dispatch', 'Fresh bucket rigged — fill from the lake.', 'info');
+    this.audio.playSquelch('info');
   }
 
   /**

@@ -89,8 +89,10 @@ export class QualityTier {
   }
 }
 
-/** Coarse one-shot device probe → starting tier. Errs toward safe (lower) on mobile. */
-function detectTier(): TierName {
+/** Coarse one-shot device probe → starting tier. Errs toward safe (lower) on mobile. Exported so
+ *  load-time consumers (e.g. Fauna's heavy-GLB gate) can make the same low/med/high decision without
+ *  threading a QualityTier instance through every constructor. */
+export function detectTier(): TierName {
   const nav = typeof navigator !== 'undefined' ? navigator : undefined;
   const cores = nav?.hardwareConcurrency ?? 4;
   const ua = nav?.userAgent ?? '';

@@ -9,9 +9,10 @@ import { MISSIONS } from '../config';
  *   - `active`   — a valid next target (bright cyan, beacon lit)
  *   - `inactive` — a zone of the wrong role for the current carry state (dimmed)
  *   - `done`     — satisfied (greyed, beacon dropped to a stub)
+ *   - `lost`     — the fire reached the trapped family first (dead ashen red, beacon out)
  */
 
-export type ZoneState = 'home' | 'active' | 'inactive' | 'done';
+export type ZoneState = 'home' | 'active' | 'inactive' | 'done' | 'lost';
 
 export interface LandingZoneMesh {
   group: THREE.Group;
@@ -93,6 +94,14 @@ export function createLandingZone(home = false): LandingZoneMesh {
       ringMat.emissive.copy(grey);
       ringMat.emissiveIntensity = 0.3;
       ringMat.opacity = 0.5;
+      beaconWanted = false;
+    } else if (state === 'lost') {
+      // The fire reached the family first — the pad goes a dead, ashen red and the beacon drops out.
+      const red = new THREE.Color(MISSIONS.zoneLost);
+      ringMat.color.copy(red);
+      ringMat.emissive.copy(red);
+      ringMat.emissiveIntensity = 0.45;
+      ringMat.opacity = 0.45;
       beaconWanted = false;
     } else {
       const tint = new THREE.Color(MISSIONS.zoneSmoke);

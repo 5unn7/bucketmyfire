@@ -66,9 +66,13 @@ function loadMuted(): boolean {
 }
 
 export class HeliAudio {
-  private readonly ctx: AudioContext;
-  private readonly master: GainNode;
-  private readonly rotorGain: GainNode;
+  private readonly ctx!: AudioContext;
+  private readonly master!: GainNode;
+  private readonly rotorGain!: GainNode;
+  // Web Audio may be absent or throw on construction (old/embedded WebViews, no audio device); when it
+  // does we degrade to a silent no-op (every public method early-returns) instead of blank-screening
+  // the game. Audio is non-essential — a failure here must never take the whole game down.
+  private disabled = false;
   private rotorSrc: AudioBufferSourceNode | null = null;
   private rotorBuffer: AudioBuffer | null = null;
   private startBuffer: AudioBuffer | null = null; // ~7s engine-start crank (one-shot)
@@ -91,13 +95,25 @@ export class HeliAudio {
   private wasDropping = false;
   private wasWon = false;
 
-  private readonly unlockHandler: () => void;
+  private readonly unlockHandler!: () => void; // assigned only on the non-disabled path (see constructor)
 
   constructor() {
     const Ctx =
       window.AudioContext ||
-      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    this.ctx = new Ctx();
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    // Guard construction: a missing Web Audio API or a throwing constructor (no audio hardware, a
+    // locked-down embedded browser) must not take the game down. Fall back to a silent no-op.
+    let ctx: AudioContext | null = null;
+    try {
+      if (Ctx) ctx = new Ctx();
+    } catch {
+      ctx = null;
+    }
+    if (!ctx) {
+      this.disabled = true;
+      return; // graph never built; every public method early-returns and the game runs silently.
+    }
+    this.ctx = ctx;
 
     this.master = this.ctx.createGain();
     this.master.gain.value = 0; // ramped up on unlock
@@ -154,6 +170,7 @@ export class HeliAudio {
 
   /** Resume the context and start the rotor loop once a gesture has occurred. */
   ensureStarted(): void {
+    if (this.disabled) return;
     if (this.ctx.state === 'suspended') void this.ctx.resume();
     if (this.started) return;
     this.started = true;
@@ -200,7 +217,9 @@ export class HeliAudio {
     } catch {
       /* storage blocked — mute still works this session, just won't persist */
     }
-    this.master.gain.setTargetAtTime(muted ? 0 : AUDIO.masterVolume, this.ctx.currentTime, 0.05);
+    if (!this.disabled) {
+      this.master.gain.setTargetAtTime(muted ? 0 : AUDIO.masterVolume, this.ctx.currentTime, 0.05);
+    }
     for (const cb of this.muteListeners) cb(muted);
   }
 
@@ -211,6 +230,7 @@ export class HeliAudio {
    * the tab restores exactly the level they left, muted or not.
    */
   setSuspended(suspended: boolean): void {
+    if (this.disabled) return;
     if (suspended === this.suspended) return;
     this.suspended = suspended;
     try {
@@ -237,7 +257,7 @@ export class HeliAudio {
     rpm?: number; // main-rotor spin fraction 0..1 (cold start spools it up); default 1 = full
     engineHolding?: boolean; // START dial currently held — gates the crank so a release cuts it
   }): void {
-    if (!this.started) return;
+    if (this.disabled || !this.started) return;
     const now = this.ctx.currentTime;
     const ease = AUDIO.paramEaseSec;
 
@@ -437,6 +457,42 @@ export class HeliAudio {
       osc.start(t);
       osc.stop(t + 0.55);
     });
+  }
+
+  /**
+   * Crash — the impact boom when the airframe hits the ground or explodes. A deep low sine swept DOWN
+   * (the gut-punch) under a burst of broadband debris noise lowpassed to a closing rumble (the crunch).
+   * The loudest one-shot in the game (`AUDIO.crashVolume`) — it's a crash. Fired once by Game.detonate.
+   */
+  playCrash(): void {
+    if (!this.started) return;
+    const t = this.ctx.currentTime;
+    // Low boom: a sine swept down from a thud to sub-bass.
+    const osc = this.ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(140, t);
+    osc.frequency.exponentialRampToValueAtTime(36, t + 0.5);
+    const og = this.ctx.createGain();
+    og.gain.setValueAtTime(0, t);
+    og.gain.linearRampToValueAtTime(AUDIO.crashVolume, t + 0.01);
+    og.gain.exponentialRampToValueAtTime(0.0001, t + 0.9);
+    osc.connect(og).connect(this.master);
+    osc.start(t);
+    osc.stop(t + 0.95);
+    // Debris burst: broadband noise through a lowpass that closes down — the crunch + rolling rumble.
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.makeNoiseBuffer(0.9);
+    const lp = this.ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(2600, t);
+    lp.frequency.exponentialRampToValueAtTime(220, t + 0.7);
+    const ng = this.ctx.createGain();
+    ng.gain.setValueAtTime(0, t);
+    ng.gain.linearRampToValueAtTime(AUDIO.crashVolume * 0.8, t + 0.015);
+    ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.85);
+    src.connect(lp).connect(ng).connect(this.master);
+    src.start(t);
+    src.stop(t + 0.9);
   }
 
   // === Helpers ============================================================

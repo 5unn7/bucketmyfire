@@ -76,18 +76,21 @@ export function structurePlan(
   return { depot: spec.depot ?? true, groups, extraCabins: spec.extraCabins ?? 0 };
 }
 
-/** Resolve a crew zone placement to a world point. */
+/** Resolve a crew zone placement to a world point (optionally pushed `offset` units along a compass `bearingDeg`). */
 function zonePoint(world: World, z: ZonePlacement): { x: number; z: number } {
   if (z.at === 'point') return { x: z.x ?? 0, z: z.z ?? 0 };
-  if (z.at === 'depot') return communityPoint(world, 'base');
-  return communityPoint(world, z.community ?? 0);
+  const base = z.at === 'depot' ? communityPoint(world, 'base') : communityPoint(world, z.community ?? 0);
+  if (!z.offset) return base;
+  // Flank a community without inventing a second anchor: 0 = N (−Z), 90 = E (+X), matching the lake bearing convention.
+  const b = (z.bearingDeg ?? 0) * (Math.PI / 180);
+  return { x: base.x + Math.sin(b) * z.offset, z: base.z - Math.cos(b) * z.offset };
 }
 
 /** Resolve ONE crew/cargo endpoint to a world-space `CrewZone`. Shared by the opening `crewZones`
  *  resolution AND the `addZone` beat, so a mid-mission pop-up rescue lands with the same vocabulary. */
 export function resolveCrewZone(world: World, z: ZonePlacement): CrewZone {
   const pt = zonePoint(world, z);
-  return { x: pt.x, z: pt.z, role: z.role, single: z.single, label: z.label ?? z.role };
+  return { x: pt.x, z: pt.z, role: z.role, single: z.single, label: z.label ?? z.role, hover: z.hover };
 }
 
 /** Resolve the mission's crew/cargo endpoints to world-space `CrewZone`s. */

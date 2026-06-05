@@ -23,11 +23,13 @@ import type { FireFieldView } from './sim/FireSystem';
 import { UI, FS, FW, R, el, frosted, makeCanvas, clamp01, anchor, setBlur, scrim, prefersReducedMotion } from './ui/theme';
 import { onLayout, type LayoutState } from './ui/layout';
 import { shareScoreCard } from './ui/shareCard';
+import { dailyStreak } from './missions/streak';
 
 export interface HudState {
   water: number;
   waterMax: number;
   scooping?: boolean; // bucket is actively filling — the water fill-bar glows so "keep dipping" reads
+  bucketDetached?: boolean; // bucket jettisoned (no scoop/drop) — water pod reads "NO BUCKET" until re-rigged at a base
   health?: number; // 0..1 airframe health (always supplied; drives the HEALTH gauge)
   healthLow?: boolean; // gauge flashes red below the warn line
   firesLeft: number;
@@ -56,7 +58,7 @@ export interface HudState {
   objectives?: readonly TrackerItem[];
   fuel?: number; // 0..1 tank fraction (undefined → no FuelSim → fuel gauge hidden)
   fuelLow?: boolean; // gauge flashes (below reserve)
-  zones?: { x: number; z: number; active: boolean; done: boolean; home: boolean }[]; // crew landing zones (radar blips); `home` = the always-marked base
+  zones?: { x: number; z: number; active: boolean; done: boolean; home: boolean; lost?: boolean }[]; // crew landing zones (radar blips); `home` = the always-marked base, `lost` = the fire reached the family
   // Crew transport (delivery/evac missions): how many crew are aboard + the live board/disembark dwell.
   // Drives the strip's crew-count icon and the "CREW BOARDING / DISEMBARKING" progress bar. Undefined
   // on water missions, so neither element renders.
@@ -77,6 +79,9 @@ export interface HudState {
     crewTotal: number;
     timeSec: number;
     breakdown?: ScoreBreakdown; // line-itemed score + grade (absent on a crash → plain score shown)
+    // Why the run ended in failure → picks the blunt, cause-specific banner sub-line (so a crash
+    // doesn't read "the fire won"). Set on a loss; ignored on a win. 'fire' is the catch-all.
+    cause?: 'tree' | 'impact' | 'airframe' | 'bridge' | 'fuel' | 'casualty' | 'timeout' | 'structures' | 'fire';
   };
   // Aircraft whose campaign gate this WIN just crossed — drives the end-screen "NEW AIRCRAFT
   // UNLOCKED" callout (the progression payoff, otherwise invisible until the menu). Empty/undefined
@@ -115,20 +120,33 @@ const EXPAND_ZOOM = 0.6; // DEFAULT px per world unit in the expanded map — DR
 const ZOOM_MIN = 0.22; // most zoomed-OUT (roughly the whole province in view)
 const ZOOM_MAX = 1.8; // most zoomed-IN (a base + its lake fill the panel)
 const HINT_VISIBLE_MS = 3600; // status hint flashes on, then auto-fades after this (no permanent nag)
-const HULL_OK = '#46d17a'; // healthy-hull bar green (matches the engine-ready green); turns red when low
+const AIRFRAME_OK = '#46d17a'; // healthy-airframe bar green (matches the engine-ready green); turns red when low
+
+// Inject the warning-caption flash keyframes once (the GPWS-style "SINK RATE" / "PULL UP" / "TERRAIN"
+// alert pulses to read as urgent). Pattern mirrors ui/flow/chrome.ts. Reduced-motion users get a
+// steady caption instead (HUD.setAlert skips the animation), so this is purely the throb.
+let alertStylesInjected = false;
+function ensureAlertStyles(): void {
+  if (alertStylesInjected) return;
+  alertStylesInjected = true;
+  const tag = document.createElement('style');
+  tag.textContent = `@keyframes bmf-alert-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.45; } }`;
+  document.head.appendChild(tag);
+}
 
 export class HUD {
   private readonly root: HTMLDivElement;
 
   // Instrument strip: ONE frosted capsule of compact icon + NUMBER "pods" laid out
-  // as a horizontal, wrapping top band (water / hull / fuel / fires / threat / compass /
+  // as a horizontal, wrapping top band (water / airframe / fuel / fires / threat / compass /
   // wind) — the mobile-portrait "all info in the top band, no bars" layout. Pods are
   // transparent — only the capsule carries glass, so it's a single backdrop-blur layer.
   private readonly spine: HTMLDivElement;
   private readonly waterPod: Pod;
   private waterNumBg = ''; // baseline water-readout color (captured at build), restored after a drop-result flash
+  private waterIconStroke = '#eaf6ff'; // baseline water-icon stroke (captured at build), restored when a bucket is re-rigged
   private gaugeFlashTimer = 0; // setTimeout id: restore the water readout after a result tint
-  private readonly hullPod: Pod;
+  private readonly airframePod: Pod;
   private readonly fuelPod: Pod;
   private readonly firesPod: Pod;
   private readonly threatPod: Pod;
@@ -155,8 +173,10 @@ export class HUD {
   private portraitMessages = false; // the hint drops below the band (phone/portrait) vs rides at the top (wide)
   private bandClear = 0; // floor px the hint is dropped by when portraitMessages
   private readonly smoke: HTMLDivElement; // C5: blinding-smoke veil when the camera is in a plume
-  private readonly hitFlash: HTMLDivElement; // red impact vignette pulsed on a hard-landing hull dent
+  private readonly hitFlash: HTMLDivElement; // red impact vignette pulsed on a hard-landing airframe dent
   private hitFlashTimer = 0; // setTimeout id: fade the impact flash back out
+  private readonly alertEl: HTMLDivElement; // big centred GPWS-style caption (SINK RATE / PULL UP / TERRAIN)
+  private alertText: string | null = null; // current caption (idempotent guard — never re-trigger the same one)
   private banner?: HTMLDivElement;
   private missionName = ''; // captured from the briefing → used in the end-screen Share text
   private readonly commsWrap: HTMLDivElement; // radio comms log (DISPATCH/CREW/WARNING toasts)
@@ -252,7 +272,7 @@ export class HUD {
     });
     this.root.appendChild(this.smoke);
 
-    // --- Damage impact flash — a red edge-vignette pulsed when the hull takes a hard-landing dent.
+    // --- Damage impact flash — a red edge-vignette pulsed when the airframe takes a hard-landing dent.
     // The quiet health NUMBER ticking down went unnoticed, so this is the unmissable "you just took a
     // hit" cue. Appended behind the gauges (like the smoke veil) so instruments stay readable; driven
     // event-only by flashDamage() (fast in, slow out), so it costs nothing while flying clean. ---
@@ -265,6 +285,34 @@ export class HUD {
       transition: 'opacity 0.55s ease',
     });
     this.root.appendChild(this.hitFlash);
+
+    // --- Hazard caption — the unmissable, aviation-correct warning before a crash: "SINK RATE" /
+    // "PULL UP" while descending too fast and low, "TERRAIN — PULL UP" closing on the canopy. Big,
+    // centred, red, pulsing (GPWS-style). Driven idempotently by setAlert() each frame; hidden when
+    // there's nothing to warn about, so it costs nothing while flying clean. ---
+    ensureAlertStyles();
+    this.alertEl = el('div', {
+      position: 'absolute',
+      top: '21%',
+      left: '50%',
+      transform: 'translateX(-50%)',
+      pointerEvents: 'none',
+      display: 'none',
+      padding: '6px 16px',
+      borderRadius: R.sm,
+      border: `2px solid ${UI.warn}`,
+      background: 'rgba(28,6,4,0.42)',
+      color: UI.warn,
+      fontSize: FS.title,
+      fontWeight: FW.heavy,
+      letterSpacing: '2.5px',
+      textAlign: 'center',
+      whiteSpace: 'nowrap',
+      textShadow: '0 1px 3px rgba(0,0,0,0.8)',
+      boxShadow: `0 0 18px ${UI.warn}77`,
+      zIndex: '22',
+    });
+    this.root.appendChild(this.alertEl);
 
     // --- Left instrument column. Stacked in a flex column (was three absolutely-positioned
     // chips) so the campaign's optional FUEL gauge and OBJECTIVE checklist can slot in without
@@ -294,12 +342,13 @@ export class HUD {
       this.menuCell = makeMenuCell(this.end.onMenu);
       this.spine.appendChild(this.menuCell);
     }
-    // Resource gauges (water / hull / fuel / threat) carry a thin animated fill BAR at the cell's
+    // Resource gauges (water / airframe / fuel / threat) carry a thin animated fill BAR at the cell's
     // base — the glanceable "how full / how healthy" cue the bare number didn't convey. Count + units
     // cells (fires / compass / wind) stay number-only.
     this.waterPod = makePod(WATER_SVG, true); // % of bucket capacity
     this.waterNumBg = this.waterPod.num.style.color; // baseline readout color, restored after a drop-result flash
-    this.hullPod = makePod(HEALTH_SVG, true); // airframe %
+    this.waterIconStroke = this.waterPod.svg.getAttribute('stroke') ?? '#eaf6ff'; // restored when a bucket is re-rigged
+    this.airframePod = makePod(HEALTH_SVG, true); // airframe %
     this.fuelPod = makePod(FUEL_SVG, true); // tank %
     this.firesPod = makePod(FIRES_SVG); // fires remaining (count)
     this.threatPod = makePod(THREAT_SVG, true); // most-endangered structure %
@@ -308,7 +357,7 @@ export class HUD {
     this.windPod = makePod(WIND_SVG); // wind kt (icon rotates to the heading-relative gust)
     this.pods = [
       this.waterPod,
-      this.hullPod,
+      this.airframePod,
       this.fuelPod,
       this.firesPod,
       this.threatPod,
@@ -772,13 +821,24 @@ export class HUD {
   update(s: HudState): void {
     // --- Instrument strip: one text write per cell (O(1)); colour flips/glows only when flagged. ---
     // Gauges read as whole-percent numbers (no bars); fires is a raw count; compass/wind are units.
-    const waterFrac = clamp01(s.water / s.waterMax);
-    this.waterPod.num.textContent = `${Math.round(waterFrac * 100)}`;
-    setPodBar(this.waterPod, waterFrac, UI.accent, !!s.scooping); // glow while actively filling → "keep dipping"
+    if (s.bucketDetached) {
+      // No bucket on the line — read "NO" with a warn-amber droplet + empty bar + a dimmed cell, so the
+      // gauge says "you have nothing to scoop or drop" rather than a misleading 0% (RTB to a base to re-rig).
+      this.waterPod.num.textContent = 'NO';
+      this.waterPod.svg.setAttribute('stroke', UI.warn);
+      this.waterPod.cell.style.opacity = '0.6';
+      setPodBar(this.waterPod, 0, UI.warn, false);
+    } else {
+      const waterFrac = clamp01(s.water / s.waterMax);
+      this.waterPod.num.textContent = `${Math.round(waterFrac * 100)}`;
+      this.waterPod.svg.setAttribute('stroke', this.waterIconStroke);
+      this.waterPod.cell.style.opacity = '1';
+      setPodBar(this.waterPod, waterFrac, UI.accent, !!s.scooping); // glow while actively filling → "keep dipping"
+    }
     const hp = clamp01(s.health ?? 1);
-    this.hullPod.num.textContent = `${Math.round(hp * 100)}`;
-    setNumWarn(this.hullPod, !!s.healthLow); // critical → red + pulse (sin only runs when low)
-    setPodBar(this.hullPod, hp, s.healthLow ? UI.warn : HULL_OK, !!s.healthLow); // visible HP — drops on a hit
+    this.airframePod.num.textContent = `${Math.round(hp * 100)}`;
+    setNumWarn(this.airframePod, !!s.healthLow); // critical → red + pulse (sin only runs when low)
+    setPodBar(this.airframePod, hp, s.healthLow ? UI.warn : AIRFRAME_OK, !!s.healthLow); // visible HP — drops on a hit
     if (s.fuel !== undefined) {
       setPodHidden(this.fuelPod, false);
       const fuelFrac = clamp01(s.fuel);
@@ -949,7 +1009,10 @@ export class HUD {
     });
 
     const who = this.pilotName ?? 'pilot';
-    const headline = s.won ? 'MISSION COMPLETE' : 'MISSION FAILED';
+    // A crash isn't a tactical "mission failed" — you wrecked the aircraft. Headline it as such so the
+    // outcome reads true at a glance; every other loss (fire/fuel/community/time) is MISSION FAILED.
+    const crashed = s.debrief?.cause === 'tree' || s.debrief?.cause === 'impact' || s.debrief?.cause === 'airframe' || s.debrief?.cause === 'bridge';
+    const headline = s.won ? 'MISSION COMPLETE' : crashed ? 'AIRFRAME LOST' : 'MISSION FAILED';
     card.appendChild(
       el('div', { fontSize: FS.banner, fontWeight: FW.heavy, letterSpacing: '0.5px', color: s.lost ? UI.warn : UI.accent }, headline),
     );
@@ -965,10 +1028,38 @@ export class HUD {
       if (d && d.structTotal > 0 && d.structSaved === d.structTotal && d.firesOut >= d.firesTotal) sub = `Flawless mission, ${who}. Not a structure lost.`;
       else if (d && d.structTotal > 0 && d.structSaved < d.structTotal) sub = `Mission complete — but the fire took ${d.structTotal - d.structSaved}.`;
       else sub = `Good flying, ${who}.`;
-    } else if (d && d.structTotal > 0 && d.structSaved < d.structTotal) {
-      sub = "The community couldn't be held.";
     } else {
-      sub = 'The fire won this time.';
+      // Loss: name what actually went wrong — straight, no theatrics, and own it. The cause is
+      // resolved by Game (a crash carries its sub-cause; a mission-rule loss reads fuel/structures).
+      switch (d?.cause) {
+        case 'tree':
+          sub = 'You put it into the trees. You might want to avoid that';
+          break;
+        case 'impact':
+          sub = 'Came in too hard. That was a rough landing, even for you.';
+          break;
+        case 'bridge':
+          sub = 'You clipped the bridge. Scenic, sure — but you have to fit under it.';
+          break;
+        case 'airframe':
+          sub = 'Heli’s too damaged to fly. Fly with sanity.';
+          break;
+        case 'fuel':
+          sub = 'Ran the tank dry. You knew the range.';
+          break;
+        case 'casualty':
+          sub = "We didn't reach them in time. They didn't make it.";
+          break;
+        case 'timeout':
+          sub = 'Out of time. The fire got away from us.';
+          break;
+        case 'structures':
+          sub = "The community burned. We didn't hold the line.";
+          break;
+        default:
+          sub = "Fire's still out there. We didn't get it done.";
+          break;
+      }
     }
     card.appendChild(el('div', { fontSize: FS.lg, marginTop: '8px', color: 'rgba(231,247,255,0.82)' }, sub));
 
@@ -1049,6 +1140,7 @@ export class HUD {
       stars: s.debrief?.breakdown?.stars ?? undefined,
       won: s.won,
       callsign: this.pilotName || undefined,
+      streak: dailyStreak(), // Daily Burn comeback-loop flex; the card shows it only from 2 days on
     });
     if (outcome === 'shared' || outcome === 'failed') return; // native sheet handled it / nothing to confirm
     const orig = btn.textContent;
@@ -1076,7 +1168,7 @@ export class HUD {
 
   /**
    * Pulse the red impact vignette over the whole view — the unmissable "you just took a hit" cue for
-   * a hard-landing hull dent (the quiet HEALTH number ticking down went unnoticed). `severity` 0..1
+   * a hard-landing airframe dent (the quiet HEALTH number ticking down went unnoticed). `severity` 0..1
    * scales the flash strength; a fast snap in, slow fade out. Event-driven (one call per impact), so
    * it costs nothing while flying clean. The HEALTH bar visibly drops alongside it (animated scaleX).
    */
@@ -1090,6 +1182,25 @@ export class HUD {
       this.hitFlash.style.opacity = '0';
       this.hitFlashTimer = 0;
     }, 60);
+  }
+
+  /**
+   * Show (or clear) the centred hazard caption — the proper, aviation-correct warning before a crash:
+   * "SINK RATE", "PULL UP", "TERRAIN — PULL UP". Game computes the current hazard every frame and
+   * passes the caption (or null to clear); idempotent on the text so a held condition pulses steadily
+   * instead of re-triggering. Reduced-motion users get a steady caption (no flash).
+   */
+  setAlert(text: string | null): void {
+    if (text === this.alertText) return; // unchanged since last frame — leave it pulsing
+    this.alertText = text;
+    if (!text) {
+      this.alertEl.style.display = 'none';
+      this.alertEl.style.animation = 'none';
+      return;
+    }
+    this.alertEl.textContent = text;
+    this.alertEl.style.display = 'block';
+    this.alertEl.style.animation = prefersReducedMotion() ? 'none' : 'bmf-alert-pulse 0.7s ease-in-out infinite';
   }
 
   // --- Radio comms + pre-flight briefing (the mission "experience" layer) ----
@@ -2019,7 +2130,7 @@ interface Pod {
 /** Build one strip cell: a stroked icon + a bold numeric readout, with a hairline divider on
  *  its left so the readouts read as one cluster (the pill supplies the glass; the cell is
  *  transparent). `withBar` adds a thin animated fill track across the cell's base for the 0..1
- *  resource gauges (water/hull/fuel/threat) — function = icon + number, plus a glanceable bar. */
+ *  resource gauges (water/airframe/fuel/threat) — function = icon + number, plus a glanceable bar. */
 function makePod(iconSvg: string, withBar = false): Pod {
   const cell = el('div', {
     display: 'flex',

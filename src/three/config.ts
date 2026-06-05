@@ -218,19 +218,20 @@ export const FLIGHT = {
   // Added on TOP of the acceleration-driven bank/pitch above, then clamped to the *Hard caps. ---
   steerBank: 0.55, // radians of roll commanded directly by full turn stick (a real banked turn even at modest speed)
   steerBankIdle: 0.35, // fraction of steerBank still present at a standstill (so a low-speed turn still drops a wing; full at cruise)
-  diveCommand: 0.6, // radians of nose-down commanded by full DOWN collective AT TOP SPEED — the dive-bomb tuck. The pitch→motion
+  diveCommand: 0.48, // radians of nose-down commanded by full DOWN collective AT TOP SPEED — the dive-bomb tuck. The pitch→motion
   // coupling (pitchThrust/pitchDive) then turns that nose-down into a real surging, sinking swoop; haul UP collective to flare out.
   // Scaled by forward speed, so easing straight down onto a lake to scoop barely noses over (only a fast forward descent dives).
+  // EASED 0.6→0.48: still a real dive when you push the nose over at speed — diving + climbing stays fun — just a less violent tuck.
   maxBankHard: 1.25, // hard clamp on TOTAL roll (~72°) so accel + stick combined can't tumble the airframe past a sane lean
   maxPitchHard: 0.95, // hard clamp on TOTAL pitch (~54°) — bounds the steepest dive/flare
   // --- Pitch → motion coupling (cyclic-forward): the nose-down disc drives REAL flight,
   // not just a cosmetic tilt. Tucking the nose tilts the thrust vector forward and down,
   // so a dive surges AND descends — and a committed dive can outrun level cruise. Pull UP
   // collective to flare out of it. Raise these for a more aggressive, weightier dive.
-  pitchThrust: 92, // extra forward accel (units/s^2) per radian of nose-down disc — the speed surge (RAISED 66→92:
-  // a committed dive bomb really gets away from you, scaled to stay proportional to the slower cruise)
-  pitchDive: 50, // sink rate (units/s) per radian of nose-down BEYOND the cruise trim — the descent (RAISED 36→50 for a steeper plunge)
-  diveSpeedBoost: 0.42, // top-speed cap raised by up to this fraction in a full committed dive (RAISED 0.28→0.42 — the dive outruns cruise)
+  pitchThrust: 80, // extra forward accel (units/s^2) per radian of nose-down disc — the speed surge (EASED 92→80: a dive
+  // still gets away from you, just not violently — diving stays a fun, controllable trade of height for speed)
+  pitchDive: 44, // sink rate (units/s) per radian of nose-down BEYOND the cruise trim — the descent (EASED 50→44: a real plunge, calmer)
+  diveSpeedBoost: 0.32, // top-speed cap raised by up to this fraction in a full committed dive (EASED 0.42→0.32 — the dive still outruns cruise, less wild)
   // Collective: the pilot raises/lowers altitude directly. To scoop you simply
   // descend over a lake until the slung bucket dips into the water (no scoop
   // button — the fill is physical). Vertical speed EASES in (rotor inertia) instead
@@ -259,7 +260,11 @@ export const FLIGHT = {
   // band you can climb into; normal flying stays low near the floor.
   startClearance: 111, // AGL the QA / autostart spawn drops you in at (≈ 500 ft) — comfortably airborne
   // in the working band, NOT pinned to the ceiling like before (which read as "starts at 2500 ft").
-  canopyClearance: 8, // land floor = ground + this — keeps the rotor disc above the canopy
+  groundClearance: 0.5, // land floor = ground + this — a SMALL skid clearance so you can SET DOWN ANYWHERE on open
+  // ground (not just pads), and the craft is never auto-lifted to clear terrain/canopy. It is NOT a canopy buffer:
+  // the trees are an OBSTACLE the rotor crashes into (the tree-strike in CRASH/Game), not a floor that elevators you
+  // over them. So you fly ABOVE the canopy to cross forest, or drop into a clearing to land — your blades just can't
+  // touch the trees. (Was `canopyClearance: 8`, which held you 8u over the canopy and auto-climbed rising terrain.)
   scoopClearance: 2, // water floor = waterLevel + this — low enough that the slung bucket dips under
   // Landing pad (cold start): right around the base helipad the flight floor eases DOWN from the full
   // canopy clearance to this, so the heli rests ON the pad (skids down) and lifts off without snapping
@@ -537,18 +542,113 @@ export function resolveHeliClass(id?: string): HeliClass {
   return HELI_CLASSES[id ?? ''] ?? HELI_CLASSES['bell-205a1'];
 }
 
-// Airframe health / damage. Hull integrity is an IMPACT model only: the heli takes damage solely from
-// slamming down (a hard landing past `hardLandingSink`); at zero health it CRASHES (instant mission
-// fail), and it REPAIRS at any base (alongside refuel). Flying through fire / overspeed / scraping the
-// bucket no longer cooks the airframe — FUEL is the resource that ticks down and sends you back to base
-// (see MISSIONS + FuelSim). Per-heli `toughness` (HELI_CLASSES) divides the impact. Engine-agnostic
-// state lives in sim/HealthSim.ts (numbers only, like FuelSim). Tuned FORGIVING: normal landings and
-// every refuel touchdown cost nothing — only a genuine high-sink crash dents the hull.
+// Airframe health / damage. Airframe integrity is an IMPACT model: the heli takes damage from slamming
+// down (a hard landing past `hardLandingSink`). A landing whose SEVERITY clears `explodeSeverity`
+// (i.e. a sink rate past the midpoint of hardLandingSink → fatalSink) is unsurvivable — the airframe
+// EXPLODES on touchdown (instant mission fail). A softer-but-still-hard landing only dents the airframe,
+// and grinding it to zero across several bad landings also crashes it. It REPAIRS at any base
+// (alongside refuel). Flying through fire / overspeed / scraping the bucket no longer cooks the
+// airframe — FUEL is the resource that ticks down and sends you back to base (see MISSIONS + FuelSim).
+// Per-heli `toughness` (HELI_CLASSES) divides the dent (NOT the explosion — a slam is a slam). The
+// separate `CRASH` block below covers flying INTO a tree (a mid-air rotor strike → crumble + fall).
+// Engine-agnostic state lives in sim/HealthSim.ts (numbers only, like FuelSim). Tuned FORGIVING:
+// normal landings and every refuel touchdown cost nothing — only a genuinely hard arrival hurts.
 export const HEALTH = {
   lowWarn: 0.3, // health gauge flashes below this
   hardLandingSink: 14, // sink rate (units/s) a floor contact must beat to be a SAFE settle (no damage)
-  impactDmgPerUnit: 0.05, // health lost per (unit/s) of sink ABOVE hardLandingSink on a hard landing
+  impactDmgPerUnit: 0.05, // health lost per (unit/s) of sink ABOVE hardLandingSink on a SURVIVABLE hard landing
+  // Catastrophic-impact gate ("over 50% → you explode"). A landing's SEVERITY ramps 0→1 across
+  // [hardLandingSink … fatalSink]; once it crosses `explodeSeverity` the touchdown is fatal — the
+  // airframe is destroyed outright and blows up where it sits (no slow bleed). 0.5 puts the
+  // explosion threshold at the midpoint sink rate ((14 + 34) / 2 = 24 units/s) — a normal full-down
+  // descent (~18 u/s) only dents; a committed dive-bomb into the deck blows up.
+  fatalSink: 34, // sink rate (units/s) that reads as 100% severity (a vertical slam)
+  explodeSeverity: 0.5, // severity fraction (0..1) at/above which the impact is unsurvivable → explode
   repairPerSec: 0.1, // health/sec restored at a base (slower than refuel — no free instant patch)
+} as const;
+
+// Crash from a TREE STRIKE + the descent warnings that precede a slam. Flying the airframe INTO the
+// forest canopy (the rotor disc / fuselage catching a treetop) is fatal: the heli CRUMBLES and FALLS —
+// engine cut, it tumbles ballistically to the ground and detonates on contact (sim/HelicopterSim
+// beginCrash/updateCrash drive the fall; Game.detonate ends the run). The flight floor keeps you a
+// canopy-clearance above flat forest, so strikes happen when you fly LOW into rising/forested terrain
+// or descend among tall trees — fairly warned by the GPWS-style "SINK RATE" / "TERRAIN — PULL UP"
+// callouts below. All values are world units / units-per-second; tune these to make crashing easier
+// (bigger heliRadius, smaller strikeBite) or more forgiving. Engine-agnostic; consumed by Obstacles +
+// HelicopterSim + Game.
+export const CRASH = {
+  // --- Tree strike (the airframe flies into the canopy) ---
+  heliRadius: 5, // horizontal collision reach of the airframe + rotor disc (units), added to a tree's core
+  canopyCore: 0.62, // fraction of a tree's canopy radius that's a SOLID strike core (the outer fringe is just needles, no hit)
+  strikeBite: 3, // a treetop must rise this far ABOVE the heli's belly (within reach) to be a fatal strike — raise to soften
+  warnBite: 1.5, // ...and this far above the belly to raise the "TERRAIN — PULL UP" caution (an early read on a rising canopy)
+  // --- The fall after a strike (crumble + drop to the ground) ---
+  gravity: 30, // downward accel (units/s²) once the engine is dead and the airframe is falling
+  maxFall: 60, // terminal sink (units/s) of the dead airframe
+  fallDrag: 0.5, // per-sec horizontal velocity bleed while tumbling (carries some momentum INTO the trees, then bleeds)
+  initialDrop: 6, // immediate downward kick (units/s) at the strike instant so a climbing heli still falls, not floats
+  tumbleYaw: 3.4, // spin (rad/s) of the dead airframe as it crumbles
+  tumbleRoll: 2.8, // roll tumble (rad/s)
+  tumblePitch: 1.9, // pitch tumble (rad/s)
+  rotorCutSeconds: 1.1, // rotor RPM bleeds 1 → 0 over this once the engine is dead (the disc winds down as it falls)
+  // --- Detonation burst (cosmetic — reuses the ember + smoke pools, no new scene objects) ---
+  explodeEmbers: 30, // sparks thrown when the wreck blows up
+  explodeSmoke: 9, // dense smoke puffs off the impact point
+  deathHold: 2, // seconds to LINGER on the explosion/wreck (sim frozen, VFX still playing) before the
+  // MISSION FAILED modal slides in — so the player actually SEES the crash instead of it being hidden
+  // instantly behind the card. The mayday radio call + flash + boom fire at the impact; the modal waits.
+  // --- GPWS-style descent warnings (the "proper warning" before you break the airframe) ---
+  // Surfaced as a flashing centre caption (HUD.setAlert) so a player gets honest notice before a slam:
+  // a SINK RATE caution while descending fast and low, escalating to PULL UP when the arrival would be
+  // fatal. cautionAlt/pullUpAlt gate them by AGL so they never nag during normal high cruise.
+  sinkCautionRate: 15, // descending faster than this (units/s) while low → "SINK RATE" caution (≈ HEALTH.hardLandingSink:
+  // a touchdown at this sink would START denting the airframe, so the caution tracks a real consequence — not a nag)
+  sinkWarningRate: 20, // ...this fast while VERY low → escalate to "PULL UP" (nearing the HEALTH explode threshold — you'll wreck it)
+  cautionAlt: 90, // only warn when within this AGL of the floor (≈400 ft) — silent while cruising high
+  pullUpAlt: 40, // "PULL UP" / "TERRAIN" only fire this close to the ground (≈180 ft)
+} as const;
+
+// The Missinipe cantilever bridge — a SCENIC easter-egg + skill gate (the "secret trick only the
+// known would know"). A procedural truss bridge is spanned across the authored Churchill River at
+// the point nearest the `missinipe` anchor (see meshes/churchillBridge.ts + World.namedRiverPath),
+// so it always sits over real water. The dare: descend below the deck and thread the helicopter
+// UNDER it, low over the river — clip the deck, the truss, or a bank pier and you STRIKE (it reuses
+// the crash pipeline → crumble + fall + detonate, cause 'bridge'). A clean pass-through earns a
+// quiet radio nod (recognition only — no score change), gated by `rewardCooldown` so you can't farm
+// it by hovering. ONLY built on maps that have the Churchill River + a Missinipe anchor (the SK map);
+// other regions skip it silently. All values are WORLD UNITS unless noted. Set enabled:false to remove.
+export const BRIDGE = {
+  enabled: true,
+  river: 'Churchill River', // which authored RegionRiver to span (matched by name)
+  nearAnchor: 'missinipe', // place it at the river point nearest THIS anchor id
+  // --- Structure dimensions ---
+  span: 50, // deck LENGTH bank-to-bank (across the channel) — wide enough to land its piers on dry banks
+  roadway: 11, // deck WIDTH along the flow = the front-to-back depth of the tunnel you thread
+  deckClearance: 14, // height of the deck UNDERSIDE above the river surface = the headroom you fly under
+  deckThickness: 2.4, // deck slab thickness
+  trussHeight: 6, // the triangulated truss rises this far ABOVE the deck (the superstructure)
+  trussBays: 6, // number of triangle panels per truss plane (the "5–6 triangle" Warren-truss look)
+  trussBeam: 1.1, // truss member (chord/diagonal/post) cross-section thickness
+  pierWidth: 12, // each bank pier's footprint across the span — sits at the span ENDS, leaving the centre clear
+  // --- Collision (the airframe-vs-bridge strike test; engine-agnostic, in churchillBridge.ts) ---
+  heliReach: 4.5, // horizontal collision radius of the airframe + rotor disc added to every solid part
+  heliTopRise: 5, // how far the rotor disc sits ABOVE the belly — the vertical span tested against the deck
+  // --- Clean-pass reward (recognition only) ---
+  rewardCooldown: 5, // seconds before another clean pass-under can be acknowledged again (no hover-farming)
+  // --- Terrain blend: shape a river VALLEY at the bridge so it spans the banks instead of standing
+  // tall on stilts. World.applyBridgeValley RAISES the banks on either side toward the deck (the
+  // river channel + the fly-under tunnel stay low + untouched), localized to the bridge. Bank height
+  // and corridor width are DERIVED from the bridge dimensions above, so they auto-track any tuning of
+  // span/deckClearance. RAISE-only (never buries water — lakes + the channel are protected), no rng,
+  // computed once at load → determinism + the campaign verifier are unaffected. enabled:false = flat. ---
+  valley: {
+    enabled: true,
+    bankToDeck: 1.0, // banks rise to this fraction of the deck-top height (1 = flush with the road deck; <1 leaves the deck proud of the bank)
+    channelFrac: 0.5, // inner fraction of the half-span kept LOW as the channel corridor; the rest is the valley wall up to the abutment (auto-scales with span)
+    approach: 24, // how far PAST the abutment (outward, away from the river) the bank holds full height before tapering — the road approach
+    alongHalf: 45, // half-length of the valley ALONG the river (up/downstream of the bridge) before it fades back to natural terrain
+    taper: 30, // smooth taper distance back to natural terrain at every outer edge — bigger = gentler valley walls + approaches
+  },
 } as const;
 
 // Lake centers (XZ); water height is sampled from the terrain at runtime.
@@ -787,8 +887,9 @@ export const ROADS = {
   width: 1.2, // half-width of the gravel ribbon (units) → ~3u carriageway
   lift: 0.2, // sit the road this far above the ground it hugs (clears z-fighting only)
   bridgeLift: 0.7, // extra height where a road crosses water (a low causeway over the surface)
-  meanderAmp: 18, // gentle lateral wander (units) — roads bend with terrain, less than rivers
+  meanderAmp: 10, // gentle lateral wander (units) — roads bend with terrain, less than rivers (eased from 18 to calm the bends)
   dodgeMax: 140, // max lateral search (units) to route a road point around a lake before giving up
+  smoothPasses: 3, // Laplacian smoothing passes over a road's interior points — kills the dodge-water sawtooth/zigzag (never relaxes a point onto water)
   resample: 4.5, // ribbon cross-section spacing (units) — smaller = smoother road edges + better drape
   edgeConform: 0.7, // 0..1: how much each edge follows its OWN ground height (1) vs the centre's (0)
   edgeRagged: 0.16, // shoulder wobble as a fraction of width — gravel roads aren't perfect strips
@@ -801,7 +902,7 @@ export const ROADS = {
 // transition by the pure `missions/score.ts` and shown line-by-line (+ an S/A/B/C grade) on
 // the end banner. It is built to reward the three things a good run actually demonstrates:
 //   • HARDSHIP   — harder missions + the scary moments you actually faced are worth more.
-//   • SKILL      — precise drops, a fast clean run, fuel left in the tank, no hull dents.
+//   • SKILL      — precise drops, a fast clean run, fuel left in the tank, no airframe dents.
 //   • COORDINATION — keeping every structure pristine, juggling multiple fronts, flawless runs.
 // Outcome points + skill + coordination are summed, scaled by a hardship multiplier, then the
 // active penalties (lost structures, hard landings, wasted water) are subtracted. The total is
@@ -846,7 +947,7 @@ export const SCORE = {
 
   // --- Penalties: active, subtracted after the multiplier; total floored at 0 ---------------
   perStructureLost: 28, // each structure destroyed
-  hardLandingPenalty: 9, // each hull-denting hard landing (a crash is its own 0-score loss)
+  hardLandingPenalty: 9, // each airframe-denting hard landing (a crash is its own 0-score loss)
   wastedDropPenalty: 4, // each drop that missed or dispersed too high (sloppy water)
 
   // --- Loss handling + grade thresholds -----------------------------------------------------
@@ -883,9 +984,24 @@ export const MISSIONS = {
   landSpeed: 2.0, // airspeed (units/s) below which the heli counts as stopped (no boarding on the roll)
   pickupSec: 2.2, // landed dwell to BOARD a crew at a pickup/base zone
   dropSec: 2.2, // landed dwell to set a crew DOWN at a dropoff zone
+  // HOVER delivery (a zone flagged `hover`, e.g. the hover-training mission): instead of landing, HOLD A
+  // STATIONARY HOVER over the spot — airborne (above skids height), under the ceiling, near-still — for
+  // `hoverSec`. Board on the pad, lift to a hover over the drop area, hold it, then set them down. CrewTransport reads these.
+  hoverSec: 5, // seconds of held hover over a hover-zone to complete the drop (the "5-second hover" drill)
+  hoverAglMax: 12, // ceiling (units above the eased floor) for a valid hover — above landAgl, below this
+  hoverSpeed: 3.5, // airspeed (units/s) below which the hover counts as "holding station" (a touch looser than landSpeed)
   zoneSmoke: 0x39d0ff, // marker-smoke / ring tint for an ACTIVE (next) zone (cyan)
   zoneSmokeDone: 0x5a6b72, // tint once a zone is satisfied (greyed out)
   zoneHome: 0x5fe0a0, // persistent tint for the reusable HOME base zone — always lit, distinct green from the cyan LZs
+  zoneLost: 0x8a3b34, // tint for a zone whose trapped family the fire reached first (a dead, ashen red — beacon out)
+
+  // --- Casualties (the `rescue` fail): a trapped family at a single LOAD zone the FIRE reaches first ---
+  // While fire heat at a pending pickup zone stays at/above `casualtyHeat`, exposure accrues; past
+  // `casualtyGrace` seconds the family is LOST (the fire overran them). Dousing near them knocks the
+  // heat down and RESETS the timer — so watering a trapped family buys time to reach them. Tuned
+  // forgiving (a competent pilot who beelines for them gets there); raise the grace to soften.
+  casualtyHeat: 0.5, // fire heat (0..1) at the family's spot that counts as "the fire's on them"
+  casualtyGrace: 20, // seconds of sustained that-hot exposure before the family is lost (resets if doused)
 
   // --- Fuel / range (Track C6 — calibrated to the hero Bell 205A-1, 60× time compression:
   // full bucket + full power ≈ 2.5 min endurance, light loiter ≈ 4.2 min). Only missions
@@ -1257,6 +1373,7 @@ export const AUDIO = {
   scoopVolume: 0.45,
   dropVolume: 0.5,
   winVolume: 0.4,
+  crashVolume: 0.75, // the impact boom when the airframe hits the ground / explodes (the loudest cue — it's a crash)
 } as const;
 
 // Chase camera: trails behind the heading, lifted up, looking slightly ahead —

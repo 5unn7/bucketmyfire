@@ -12,7 +12,7 @@ dist/
 .mcp.json
 .info.txt
 .claude/settings.local.json
-scripts/.verify-campaign.mjs
+scripts/.verify-*.mjs
 
 .vite/
 *.log

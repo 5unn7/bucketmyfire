@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { FLIGHT, WASH, resolveHeliClass, type HeliClass } from '../config';
+import { FLIGHT, WASH, CRASH, resolveHeliClass, type HeliClass } from '../config';
 
 export interface FlightInput {
   /** Yaw: -1 turn the nose left … +1 turn right. The pilot steers directly. */
@@ -37,8 +37,18 @@ export class HelicopterSim {
   /** Downward speed (units/s) at the instant it bottomed out on the floor THIS frame, else 0.
    *  Read by Game as the hard-landing impact signal for the health/damage model. */
   landingImpact = 0;
+  /** Crash state — set once the airframe flies into the canopy (a tree strike). While `crashing` the
+   *  pilot has no control: Game stops calling update() and calls updateCrash() instead, which lets the
+   *  dead airframe CRUMBLE and FALL to the ground. `crashLanded` latches for the single frame it hits
+   *  the deck, where Game detonates the wreck. */
+  crashing = false;
+  crashLanded = false;
   /** Per-heli class — its capacity/feel/durability multipliers (defaults to the 205A-1 baseline). */
   private readonly cls: HeliClass;
+  // Tumble rates (rad/s) of the dead airframe while it falls — seeded at the strike from the live state.
+  private tumbleYaw = 0;
+  private tumbleBank = 0;
+  private tumblePitch = 0;
   private altitude = FLIGHT.startAltitude;
   private altVel = 0; // vertical speed (units/s), eased toward the collective target
   // Last frame's horizontal velocity — differenced to get acceleration, which is
@@ -300,12 +310,12 @@ export class HelicopterSim {
     const moveFrac = THREE.MathUtils.clamp(this.speed / FLIGHT.maxSpeed, 0, 1);
     const steerGain = FLIGHT.steerBankIdle + (1 - FLIGHT.steerBankIdle) * moveFrac;
     targetBank += this.turnInput * FLIGHT.steerBank * steerGain;
-    // Dive-bomb: shoving the nose DOWN (down collective) while carrying forward speed tucks
-    // the airframe into a committed dive. The pitch→motion coupling above (which read last
-    // frame's pitch) then turns this deeper nose-down into a real surging, sinking swoop next
-    // frame; haul UP collective to kill the dive and flare out. Scaled by forward speed, so
-    // easing straight down onto a lake to scoop barely noses over — only a fast forward
-    // descent opens a dive. `lift` is the smoothed collective demand (−1 down … +1 up).
+    // Dive-bomb: shoving the nose DOWN (down collective) while carrying forward speed tucks the
+    // airframe into a committed dive. The pitch→motion coupling above (which read last frame's pitch)
+    // then turns this deeper nose-down into a real surging, sinking swoop next frame; haul UP collective
+    // to kill the dive and flare out. Scaled by forward speed, so easing straight down onto a lake to
+    // scoop barely noses over — only a fast forward descent opens a dive. `lift` is the smoothed
+    // collective demand (−1 down … +1 up).
     const diveFwd = THREE.MathUtils.clamp(fwdSpeed / FLIGHT.maxSpeed, 0, 1);
     const diveCmd = Math.max(0, -lift) * diveFwd;
     targetPitch -= diveCmd * FLIGHT.diveCommand;
@@ -316,5 +326,62 @@ export class HelicopterSim {
 
     this.bank = THREE.MathUtils.lerp(this.bank, targetBank, FLIGHT.bodyEase);
     this.pitch = THREE.MathUtils.lerp(this.pitch, targetPitch, FLIGHT.bodyEase);
+  }
+
+  /**
+   * Begin a CRASH: the airframe has flown into the forest canopy (a rotor/fuselage strike). Flight is
+   * over — the craft now CRUMBLES and FALLS under gravity (see `updateCrash`), tumbling, until it hits
+   * the ground. It keeps its horizontal momentum (so it carries on into the trees) plus an immediate
+   * downward kick, so a heli that was climbing at the strike still drops instead of floating up on the
+   * last frame of lift. Tumble direction is seeded off the live state (no RNG → the pure sim stays
+   * deterministic for the verifier, which never crashes). No-op if already crashing.
+   */
+  beginCrash(): void {
+    if (this.crashing) return;
+    this.crashing = true;
+    this.crashLanded = false;
+    this.altVel = Math.min(this.altVel, -CRASH.initialDrop); // ensure it starts falling, never floats up
+    const s = Math.sign(this.bank + this.turnInput) || 1; // roll the way it was already leaning
+    this.tumbleYaw = CRASH.tumbleYaw * s;
+    this.tumbleBank = CRASH.tumbleRoll * s;
+    this.tumblePitch = -CRASH.tumblePitch; // nose drops as it falls
+  }
+
+  /**
+   * Step the airframe while it's CRASHING: no pilot input, no thrust. Gravity pulls it down (capped at
+   * a terminal sink), its horizontal momentum bleeds via drag, and the body tumbles — the visible
+   * crumble. When it bottoms out on the flight floor it settles and latches `crashLanded` for one frame
+   * (Game detonates the wreck there). `floorY` is the World floor under the heli's XZ, same as update().
+   */
+  updateCrash(dt: number, floorY: number): void {
+    this.crashLanded = false; // one-shot — true only on the touchdown frame
+    this.landingImpact = 0; // the crash path detonates directly; never feed the hard-landing model
+    if (!this.crashing || !Number.isFinite(dt) || dt <= 0) return;
+
+    // Gravity → terminal fall.
+    this.altVel = Math.max(-CRASH.maxFall, this.altVel - CRASH.gravity * dt);
+    this.altitude += this.altVel * dt;
+
+    // Horizontal momentum carries the wreck on, bleeding to a stop (the engine is dead — no thrust).
+    const drag = Math.max(0, 1 - CRASH.fallDrag * dt);
+    this.vel.x *= drag;
+    this.vel.z *= drag;
+    this.position.x += this.vel.x * dt;
+    this.position.z += this.vel.z * dt;
+
+    // Tumble the airframe as it drops — the crumble.
+    this.yaw += this.tumbleYaw * dt;
+    this.bank += this.tumbleBank * dt;
+    this.pitch += this.tumblePitch * dt;
+
+    // Ground contact: settle on the floor and signal the detonation (once).
+    const minAlt = floorY + FLIGHT.minClearance;
+    if (this.altitude <= minAlt) {
+      this.altitude = minAlt;
+      this.altVel = 0;
+      this.crashLanded = true;
+    }
+    this.position.y = this.altitude;
+    this.agl = this.altitude - floorY;
   }
 }

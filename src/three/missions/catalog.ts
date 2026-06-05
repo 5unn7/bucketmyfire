@@ -58,41 +58,47 @@ export const CAMPAIGN: MissionDef[] = [
   },
   // ── 2 ─────────────────────────────────────────────────────────────────────────────────────────
   {
-    id: 'crews-to-the-road',
+    id: 'hover-training',
     index: 1,
-    name: 'Crews to the Road',
-    brief: 'Ferry two initial-attack crews to the highway by Missinipe, then re-rig to the bucket and knock down the fire astride it. Set down at base to swap the sling for the bucket.',
-    tagline: 'Ferry the crews to Highway 102, then turn the bucket on the fire.',
+    name: 'Hover Training',
+    brief: 'Hover-drop certification across the sector. Board a crew at each base, then HOLD A STEADY HOVER over the marked drop zone for five seconds before setting them down. Five bases — the central hub and one in each corner of the map.',
+    tagline: 'Hold a five-second hover at five bases — centre, then every corner.',
     intel:
-      'Two IA crews need setting down on the cleared pads flanking Highway 102, by Missinipe, before they can work the fire on it. You start rigged for the crews — run both teams out to the landing zones. Then return to base, re-rig to the water bucket, and put water on the three heads on the road. A medium wind is building, so mind your approach.',
-    difficulty: 2,
+      "No fire today, Water-1 — hover certification. At each base, set down and board a crew, then lift into a clean HOVER over the marked drop area and HOLD it steady for five seconds before you put them down. Start at the hub, La Ronge, then work the four corners of the sector: Buffalo Narrows in the northwest, Southend in the northeast, Denare Beach out east, and Cypress Hills down in the southwest hill country. Smooth and stable — a good hover is the whole job.",
+    difficulty: 1,
     seed: 987,
     map: 'saskatchewan',
     homeBase: 'la-ronge',
     timeOfDay: 'day',
-    wind: { strengthScale: 0.9 },
-    fire: { spreadScale: 0.7 },
+    wind: { strengthScale: 0.4 }, // light air — a fair hover test
     bucket: 'bambi',
-    payload: 'crew', // start rigged for the crews
-    loadouts: ['crew', 'water'], // … then re-rig to the bucket at base for the firefight
-    fires: [{ at: 'nearCommunity', community: 'missinipe', offset: 70, size: 'small', count: 3 }],
-    structures: { depot: true, groups: [{ community: 'missinipe', cabins: 3 }] },
+    payload: 'crew', // pure crew, one at a time — no bucket work
+    // HOVER-TRAINING tour: at each of 5 bases (centre + 4 corners) board a crew (land), then HOLD A HOVER over the
+    // marked drop zone for MISSIONS.hoverSec (the `hover:true` flag on the unload). Single zones light ONE AT A TIME
+    // in array order, so it's a guided drill: board → hover-drop → on to the next base. No fire, no fail — pure feel.
+    fires: [],
+    structures: { depot: true },
     zones: [
-      { role: 'load', single: false, at: 'depot', label: 'Base' },
-      { role: 'unload', single: true, at: 'nearCommunity', community: 'missinipe', label: 'Road LZ North' },
-      { role: 'unload', single: true, at: 'nearCommunity', community: 'missinipe-south', label: 'Road LZ South' },
+      { role: 'load', single: true, at: 'nearCommunity', community: 'la-ronge', label: 'La Ronge — board crew' },
+      { role: 'unload', single: true, hover: true, at: 'nearCommunity', community: 'la-ronge', offset: 75, bearingDeg: 45, label: 'Hover drop — La Ronge' },
+      { role: 'load', single: true, at: 'nearCommunity', community: 'buffalo-narrows', label: 'Buffalo Narrows — board crew' },
+      { role: 'unload', single: true, hover: true, at: 'nearCommunity', community: 'buffalo-narrows', offset: 75, bearingDeg: 135, label: 'Hover drop — Buffalo Narrows' },
+      { role: 'load', single: true, at: 'nearCommunity', community: 'southend', label: 'Southend — board crew' },
+      { role: 'unload', single: true, hover: true, at: 'nearCommunity', community: 'southend', offset: 75, bearingDeg: 225, label: 'Hover drop — Southend' },
+      { role: 'load', single: true, at: 'nearCommunity', community: 'denare-beach', label: 'Denare Beach — board crew' },
+      { role: 'unload', single: true, hover: true, at: 'nearCommunity', community: 'denare-beach', offset: 75, bearingDeg: 315, label: 'Hover drop — Denare Beach' },
+      { role: 'load', single: true, at: 'nearCommunity', community: 'cypress-hills', label: 'Cypress Hills — board crew' },
+      { role: 'unload', single: true, hover: true, at: 'nearCommunity', community: 'cypress-hills', offset: 75, bearingDeg: 90, label: 'Hover drop — Cypress Hills' },
     ],
-    objectives: [
-      { kind: 'deliver', n: 2, label: 'Insert both road crews' },
-      { kind: 'extinguishCount', n: 3, label: 'Knock down the road fire' },
-    ],
-    fails: [{ kind: 'protect', min: 1, label: 'Keep the LZs reachable' }],
+    objectives: [{ kind: 'deliver', n: 5, label: 'Complete the hover drops (5 bases)' }],
+    fails: [],
     script: [
-      { id: 'start', trigger: { at: 'start' }, actions: [{ do: 'comms', speaker: 'dispatch', text: 'Water-1, two crews for Highway 102 — North and South. Set them both down, then re-rig to the bucket at base and work the heads on the road.' }] },
-      { id: 'crew1', trigger: { at: 'crewDelivered', n: 1 }, actions: [{ do: 'comms', speaker: 'crew', text: "We're on the ground, thanks. One more team to set down." }] },
-      // The surprise: the head doubles across the road the moment the second crew is clear.
-      { id: 'crews-down', trigger: { at: 'crewDelivered', n: 2 }, actions: [{ do: 'ignite', place: { at: 'line', community: 'missinipe', offset: 70, length: 90, size: 'medium' } }, { do: 'comms', speaker: 'warning', urgency: 'warn', text: 'Crews are clear — and the head just doubled across the road. Re-rig to the bucket and get on it.' }] },
-      { id: 'won', trigger: { at: 'won' }, actions: [{ do: 'comms', speaker: 'dispatch', text: 'Crews inserted, fire knocked down. Two jobs, one sortie — nicely flown, Water-1.' }] },
+      { id: 'start', trigger: { at: 'start' }, actions: [{ do: 'comms', speaker: 'dispatch', text: 'Water-1, hover certification today. Board a crew at each base, then hold a steady five-second hover over the drop zone before you set them down. Start here at La Ronge, then the four corners.' }] },
+      { id: 'leg1', trigger: { at: 'crewDelivered', n: 1 }, actions: [{ do: 'comms', speaker: 'crew', text: 'Clean hover — nicely held. Northwest to Buffalo Narrows next.' }] },
+      { id: 'leg2', trigger: { at: 'crewDelivered', n: 2 }, actions: [{ do: 'comms', speaker: 'dispatch', text: 'Buffalo Narrows signed off. Across the top to Southend in the northeast.' }] },
+      { id: 'leg3', trigger: { at: 'crewDelivered', n: 3 }, actions: [{ do: 'comms', speaker: 'crew', text: 'Southend done. Swing east to Denare Beach on the lake.' }] },
+      { id: 'leg4', trigger: { at: 'crewDelivered', n: 4 }, actions: [{ do: 'comms', speaker: 'dispatch', text: 'One left — the long run southwest to Cypress Hills, down in the hill country.' }] },
+      { id: 'won', trigger: { at: 'won' }, actions: [{ do: 'comms', speaker: 'dispatch', text: 'Five clean hovers, every corner of the sector flown. Certified, Water-1 — that hover will save lives.' }] },
     ],
   },
   // ── 3 ─────────────────────────────────────────────────────────────────────────────────────────
@@ -136,7 +142,7 @@ export const CAMPAIGN: MissionDef[] = [
     brief: 'The fire is at the doorsteps of Stanley Mission. Fight the heads near town — and when families are cut off, re-rig to the sling and pull them out while ember spot-fires light behind you.',
     tagline: "Fire at Stanley Mission's doors. Beat it back, lift the families clear.",
     intel:
-      'The fire is at the doorsteps of Stanley Mission and Sucker River. Open on the heads near the homes with the bucket and keep them off the cabins. Dispatch is hearing of families getting cut off as the front passes — when that call comes, set down at base, re-rig to the crew sling, and pull them out before the flames reach the last door. Embers are throwing spot fires behind you, and the heavy wind should ease as the front goes through.',
+      'The fire is at the doorsteps of Stanley Mission and Missinipe. Open on the heads near the homes with the bucket and keep them off the cabins. Dispatch is hearing of families getting cut off as the front passes — when that call comes, set down at base, re-rig to the crew sling, and pull them out before the flames reach the last door. Embers are throwing spot fires behind you, and the heavy wind should ease as the front goes through.',
     difficulty: 4,
     seed: 55,
     map: 'saskatchewan',
@@ -149,19 +155,22 @@ export const CAMPAIGN: MissionDef[] = [
     loadouts: ['water', 'crew'],
     fires: [
       { at: 'nearCommunity', community: 'stanley-mission', offset: 70, size: 'medium', count: 3 },
-      { at: 'nearCommunity', community: 'sucker-river', offset: 70, size: 'medium', count: 3 },
+      { at: 'nearCommunity', community: 'missinipe', offset: 70, size: 'medium', count: 3 },
     ],
     structures: {
       depot: true,
       groups: [
         { community: 'stanley-mission', cabins: 3 },
-        { community: 'sucker-river', cabins: 3 },
+        { community: 'missinipe', cabins: 3 },
       ],
     },
     // Crew-CAPABLE from the start (the reusable base drop-off) so the pop-up rescue can appear.
     zones: [{ role: 'unload', single: false, at: 'depot', label: 'Base' }],
     objectives: [{ kind: 'extinguishCount', n: 8, label: 'Kill the fires at the doorsteps' }],
-    fails: [{ kind: 'protect', min: 4, label: 'Beat the fire to the doors' }],
+    fails: [
+      { kind: 'protect', min: 4, label: 'Beat the fire to the doors' },
+      { kind: 'rescue', label: 'Get the cut-off families out' }, // lose one to the fire = mission failed
+    ],
     script: [
       { id: 'start', trigger: { at: 'start' }, actions: [{ do: 'comms', speaker: 'dispatch', text: "Water-1, the fire's on the doorsteps at Stanley Mission. Work the heads by the cabins — and stand by, we may need you to pull people out." }] },
       // The pop-up RESCUE: three families cut off — a new evacuate goal + their cabins appear. Gated on
@@ -173,8 +182,8 @@ export const CAMPAIGN: MissionDef[] = [
           { do: 'comms', speaker: 'warning', urgency: 'alert', text: 'Three families are cut off as the front passes! Re-rig to the sling at base and get them out — fast.' },
           { do: 'addObjective', objective: { kind: 'evacuate', n: 3, label: 'Evacuate the cut-off families' } },
           { do: 'addZone', zone: { role: 'load', single: true, at: 'nearCommunity', community: 'stanley-mission', label: 'Family 1' } },
-          { do: 'addZone', zone: { role: 'load', single: true, at: 'nearCommunity', community: 'sucker-river', label: 'Family 2' } },
-          { do: 'addZone', zone: { role: 'load', single: true, at: 'nearCommunity', community: 'grandmothers-bay', label: 'Family 3' } },
+          { do: 'addZone', zone: { role: 'load', single: true, at: 'nearCommunity', community: 'missinipe', label: 'Family 2' } },
+          { do: 'addZone', zone: { role: 'load', single: true, at: 'nearCommunity', community: 'stanley-mission', offset: 110, bearingDeg: 60, label: 'Family 3' } },
         ],
       },
       // Ember spot-fires light behind you while you ferry — routing pressure, and they feed the count.
@@ -218,7 +227,10 @@ export const CAMPAIGN: MissionDef[] = [
     },
     zones: [{ role: 'unload', single: false, at: 'depot', label: 'Base' }],
     objectives: [{ kind: 'extinguishAll' }],
-    fails: [{ kind: 'protect', min: 6, label: 'Hold all three towns' }],
+    fails: [
+      { kind: 'protect', min: 6, label: 'Hold all three towns' },
+      { kind: 'rescue', label: 'Get the trapped families out' },
+    ],
     script: [
       { id: 'start', trigger: { at: 'start' }, actions: [{ do: 'comms', speaker: 'dispatch', text: "Water-1, two fronts and a wind that's joining them up. Triage Beauval and Île-à-la-Crosse — and watch Buffalo Narrows downwind." }] },
       // Threat-gated reinforcement: only once the merged head actually endangers town three.
@@ -268,6 +280,7 @@ export const CAMPAIGN: MissionDef[] = [
     fails: [
       { kind: 'protect', all: true, label: 'Save the depot and La Ronge' },
       { kind: 'fuelOut' },
+      { kind: 'rescue', label: 'Get the trapped family out' },
     ],
     script: [
       { id: 'start', trigger: { at: 'start' }, actions: [{ do: 'comms', speaker: 'dispatch', text: "Water-1, conditions are extreme. A monster on La Ronge reaching for the depot, wind gusting and shifting, finite fuel. Everything you've got — good luck out there." }] },

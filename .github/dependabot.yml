@@ -1,0 +1,16 @@
+# Dependabot — keeps the SHA-pinned GitHub Actions in .github/workflows/ current.
+# The deploy workflow pins each action to a full commit SHA (supply-chain hardening);
+# Dependabot opens a weekly PR to bump those SHAs (and the trailing `# vN` comment) when a
+# new release lands, so pinning never means going stale. npm deps are intentionally left
+# off here — the app ships exactly one runtime dependency (three), bumped by hand.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "ci"
+    labels:
+      - dependencies
+      - github-actions

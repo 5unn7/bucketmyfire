@@ -5,6 +5,7 @@ import type {
   MissionState,
   Objective,
   FailCondition,
+  FailKind,
   TrackerItem,
   SubTask,
   LedgerEvent,
@@ -59,6 +60,17 @@ export class MissionRuntime {
   /** Whether every GOAL sub-task is latched done (the mission's completion is verified). */
   get verified(): boolean {
     return this.subtasks.filter((t) => t.kind === 'goal').every((t) => t.status === 'done');
+  }
+
+  /** The FailKind of the first constraint that latched failed — what actually lost the mission, so
+   *  Game can pick the right loss copy without re-guessing from signals. Null while still active/won. */
+  get failedKind(): FailKind | null {
+    for (let i = 0; i < this.subtasks.length; i++) {
+      if (this.subtasks[i].kind === 'constraint' && this.subtasks[i].status === 'failed') {
+        return (this.objs[i] as FailCondition).kind;
+      }
+    }
+    return null;
   }
 
   /** The latched sub-task ledger (stable; statuses only ever advance pending→done/failed). */
@@ -180,6 +192,10 @@ export class MissionRuntime {
       }
       case 'fuelOut':
         return { failed: s.starved };
+      case 'rescue': {
+        const tolerated = f.n ?? 0; // families that may be lost before the mission fails (default 0)
+        return { current: s.crewsLost, target: tolerated, failed: s.crewsLost > tolerated };
+      }
     }
   }
 
@@ -210,6 +226,8 @@ export class MissionRuntime {
         return 'Time limit';
       case 'fuelOut':
         return "Don't run the tank dry";
+      case 'rescue':
+        return 'Get every family out';
     }
   }
 }
