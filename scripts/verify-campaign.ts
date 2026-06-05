@@ -22,6 +22,7 @@ import { FuelSim } from '../src/three/sim/FuelSim';
 import { MissionRuntime } from '../src/three/missions/MissionRuntime';
 import { MissionDirector } from '../src/three/missions/MissionDirector';
 import { CAMPAIGN } from '../src/three/missions/catalog';
+import { buildDailyMission, dailyMissionId } from '../src/three/missions/daily';
 import { seedFires, structurePlan, crewZones, resolveCrewZone, igniteFromPlacement } from '../src/three/missions/scenario';
 import type { MissionDef, MissionSignals } from '../src/three/missions/types';
 import { WORLD3D, BUCKET3D, DROP_PHYSICS, SCORE } from '../src/three/config';
@@ -377,6 +378,26 @@ for (const m of CAMPAIGN) {
   const passive = run(m, hasFuelFail ? 'starve' : 'noop');
   console.log(`      (no action → ${passive.r.runtime.state} @${passive.elapsed.toFixed(0)}s)`);
 }
+
+// --- Daily Burn completability: a runtime-built daily challenge must be clearable on EVERY seed (it
+// reuses the same World+FireSystem+scorer). A perfect player has to seed fires and drive extinguishAll
+// to a verified win across a month of seeds — proving the procedural daily never grows an impossible or
+// empty map. Baked into the gate so a tuning change to buildDailyMission can't silently break it. ---
+console.log('\nDaily Burn completability (30 seeds)\n');
+const DAILY_DAYS = 30;
+const dailyEpoch = Date.UTC(2026, 0, 1); // fixed start → deterministic probe
+let dailyWon = 0;
+for (let i = 0; i < DAILY_DAYS; i++) {
+  const date = new Date(dailyEpoch + i * 86_400_000);
+  const dm = buildDailyMission(date);
+  const { r, elapsed } = run(dm, 'play');
+  const seeded = r.firesInitial > 0;
+  const won = r.runtime.state === 'won' && r.runtime.verified;
+  if (won && seeded) dailyWon++;
+  ok(`${dailyMissionId(date)}: fires seeded`, seeded, `firesInitial=${r.firesInitial}`);
+  ok(`${dailyMissionId(date)}: completable`, won && seeded, `state=${r.runtime.state} @${elapsed.toFixed(0)}s`);
+}
+console.log(`  ${dailyWon}/${DAILY_DAYS} daily seeds cleared by a perfect player`);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (failures.length) {

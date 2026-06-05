@@ -1,4 +1,5 @@
 import type { MissionDef, CompletionRecord } from './types';
+import { isDailyId } from './daily';
 
 /**
  * Campaign progress persistence — a tiny localStorage wrapper. The campaign unlocks linearly:
@@ -45,6 +46,10 @@ export function getProgress(): Progress {
  * sub-task completion breakdown (the ledger) when it's the best score so far.
  */
 export function recordWin(id: string, score: number, completion?: CompletionRecord): void {
+  // Daily Burn is isolated from campaign progression: its wins never enter `completed[]`, so they
+  // can't inflate the linear-unlock count that gates helicopters. Its record lives on the global
+  // per-day leaderboard instead (submitScore under the daily id). See missions/daily.ts.
+  if (isDailyId(id)) return;
   const p = load();
   if (!p.completed.includes(id)) p.completed.push(id);
   const isBest = !(id in p.best) || score > p.best[id];
