@@ -10,7 +10,6 @@
 import { div, setBlur, UI, FS, FW, R } from './theme';
 import { getProgress } from '../missions/progress';
 import type { MissionDef } from '../missions/types';
-import { openCloudSave } from './CloudSave';
 
 /** Shared content-column width — every screen aligns to one centred column. */
 export const COL = '980px';
@@ -141,8 +140,8 @@ export function pilotRecord(catalog: MissionDef[]): HTMLDivElement | null {
 }
 
 /**
- * The co-op "coming soon" teaser — a card after the six solo sorties. Not selectable; the bell
- * opens the cloud-save email capture so a player can be notified when multiplayer ships.
+ * The co-op "coming soon" teaser — a card after the solo campaign. Not selectable; an honest
+ * "in development" note with no CTA (co-op isn't built, so there's nothing to sign up for yet).
  */
 export function coopTeaserCard(number: number): HTMLDivElement {
   const card = div({
@@ -176,12 +175,8 @@ export function coopTeaserCard(number: number): HTMLDivElement {
   clamp(blurb, 2);
   card.appendChild(blurb);
 
-  const footer = div({ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px', fontSize: FS.sm });
+  const footer = div({ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', marginTop: '12px', fontSize: FS.sm });
   footer.appendChild(div({ color: UI.dim }, 'In development'));
-  const notify = div({ fontWeight: FW.bold, letterSpacing: '1px', color: UI.accent, cursor: 'pointer' }, '🔔 NOTIFY ME');
-  notify.title = 'Get an email when co-op lands';
-  notify.addEventListener('pointerdown', () => openCloudSave());
-  footer.appendChild(notify);
   card.appendChild(footer);
   return card;
 }

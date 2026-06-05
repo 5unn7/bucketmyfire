@@ -20,8 +20,10 @@ scripts/.verify-*.mjs
 dogfood-chase.png
 .gstack/
 
-# Raw model sources — kept locally to regenerate optimized assets, not shipped
+# Raw asset masters — high-res sources kept locally to regenerate the optimized, shipped assets
+# (scripts/optimize-assets.mjs). Re-downloadable from public/textures/ATTRIBUTION.txt. Not shipped.
 model-src/
+art-source/
 public/animals/ultimate_3d_animal_pack_free_download/
 
 # Dev verification artifacts (screenshots + standalone preview pages)

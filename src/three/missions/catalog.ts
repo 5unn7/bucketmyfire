@@ -34,7 +34,7 @@ export const CAMPAIGN: MissionDef[] = [
     id: 'first-light',
     index: 0,
     name: 'First Light',
-    brief: 'Your first flight out of Weyakwin. Scoop from the lake and knock down the ground fire creeping at the cabins. Calm air — learn the aircraft.',
+    brief: 'Your first flight out of Weyakwin. Fill from the lake and knock down the ground fire creeping at the cabins. Calm air — learn the aircraft.',
     tagline: 'Dawn over Weyakwin. Learn to fly, and save the cabins.',
     intel:
       'Welcome aboard, Water-1. Bring the rotors up and ease her off the deck. A slow ground fire is working out of the bush toward the cabins at Weyakwin, on the lake’s south shore. Fly low over open water to fill the bucket, then pour it on the flames. Winds are light — a good morning to get the feel of her. Remember: a fire only dies when you put water on it.',
@@ -64,45 +64,39 @@ export const CAMPAIGN: MissionDef[] = [
   {
     id: 'hover-training',
     index: 1,
-    name: 'Hover Training',
-    brief: 'Hover-drop certification across the sector. Board a crew at each base, then HOLD A STEADY HOVER over the marked drop zone for five seconds before setting them down. Five bases — the central hub and one in each corner of the map.',
-    tagline: 'Hold a five-second hover at five bases — centre, then every corner.',
+    name: 'Low Hover Drill',
+    brief: 'Precision low-hover certification. Fly to five marked clearings on land and hold a steady hover three feet off the ground for twelve seconds at each — skids off the dirt, NOT touching, NOT climbing.',
+    tagline: 'Three feet off the ground. Don\'t touch. Five clearings.',
     intel:
-      "No fire today, Water-1 — hover certification. At each base, set down and board a crew, then lift into a clean HOVER over the marked drop area and HOLD it steady for five seconds before you put them down. Start at the hub, La Ronge, then work the four corners of the sector: Buffalo Narrows in the northwest, Southend in the northeast, Denare Beach out east, and Cypress Hills down in the southwest hill country. Smooth and stable — a good hover is the whole job.",
+      "No bucket today, Water-1 — fundamentals. A precision low hover is the hardest thing you can do with this aircraft: you're three feet from the rotor wash hitting dirt, ground effect pushing back, every control input amplified. We've marked five clearings across the sector — La Ronge first, then the four corners: Buffalo Narrows, Southend, Denare Beach, Cypress Hills. Fly to each, descend to three feet, and HOLD it for twelve seconds. Don't touch the ground. Don't drift. Don't climb. When the timer clears, move on.",
     difficulty: 1,
     seed: 987,
     map: 'saskatchewan',
     homeBase: 'la-ronge',
     timeOfDay: 'day',
-    wind: { strengthScale: 0.4 }, // light air — a fair hover test
-    bucket: 'bambi',
-    payload: 'crew', // pure crew, one at a time — no bucket work
-    // HOVER-TRAINING tour: at each of 5 bases (centre + 4 corners) board a crew (land), then HOLD A HOVER over the
-    // marked drop zone for MISSIONS.hoverSec (the `hover:true` flag on the unload). Single zones light ONE AT A TIME
-    // in array order, so it's a guided drill: board → hover-drop → on to the next base. No fire, no fail — pure feel.
+    wind: { strengthScale: 0.3 }, // light air — fair test without punishing drift
+    payload: 'crew', // activates CrewTransport for the low-hover zone mechanic (no actual crew/bucket)
+    // LOW HOVER DRILL: five clearings on land, each requiring a 12-second steady 3-ft hover.
+    // All zones are `lowHover:true` — no load/carry cycle, just fly to each spot, descend, and hold.
+    // The land-guarantee in resolveCrewZone snaps any water-adjacent point to nearby dry ground.
     fires: [],
     structures: { depot: true },
     zones: [
-      { role: 'load', single: true, at: 'nearCommunity', community: 'la-ronge', label: 'La Ronge — board crew' },
-      { role: 'unload', single: true, hover: true, at: 'nearCommunity', community: 'la-ronge', offset: 75, bearingDeg: 45, label: 'Hover drop — La Ronge' },
-      { role: 'load', single: true, at: 'nearCommunity', community: 'buffalo-narrows', label: 'Buffalo Narrows — board crew' },
-      { role: 'unload', single: true, hover: true, at: 'nearCommunity', community: 'buffalo-narrows', offset: 75, bearingDeg: 135, label: 'Hover drop — Buffalo Narrows' },
-      { role: 'load', single: true, at: 'nearCommunity', community: 'southend', label: 'Southend — board crew' },
-      { role: 'unload', single: true, hover: true, at: 'nearCommunity', community: 'southend', offset: 75, bearingDeg: 225, label: 'Hover drop — Southend' },
-      { role: 'load', single: true, at: 'nearCommunity', community: 'denare-beach', label: 'Denare Beach — board crew' },
-      { role: 'unload', single: true, hover: true, at: 'nearCommunity', community: 'denare-beach', offset: 75, bearingDeg: 315, label: 'Hover drop — Denare Beach' },
-      { role: 'load', single: true, at: 'nearCommunity', community: 'cypress-hills', label: 'Cypress Hills — board crew' },
-      { role: 'unload', single: true, hover: true, at: 'nearCommunity', community: 'cypress-hills', offset: 75, bearingDeg: 90, label: 'Hover drop — Cypress Hills' },
+      { role: 'unload', single: true, lowHover: true, at: 'nearCommunity', community: 'la-ronge',      offset: 65, bearingDeg: 45,  label: 'La Ronge Clearing' },
+      { role: 'unload', single: true, lowHover: true, at: 'nearCommunity', community: 'buffalo-narrows', offset: 65, bearingDeg: 135, label: 'Buffalo Narrows Clearing' },
+      { role: 'unload', single: true, lowHover: true, at: 'nearCommunity', community: 'southend',      offset: 65, bearingDeg: 225, label: 'Southend Clearing' },
+      { role: 'unload', single: true, lowHover: true, at: 'nearCommunity', community: 'denare-beach',  offset: 65, bearingDeg: 315, label: 'Denare Beach Clearing' },
+      { role: 'unload', single: true, lowHover: true, at: 'nearCommunity', community: 'cypress-hills', offset: 65, bearingDeg: 90,  label: 'Cypress Hills Clearing' },
     ],
-    objectives: [{ kind: 'deliver', n: 5, label: 'Complete the hover drops (5 bases)' }],
+    objectives: [{ kind: 'deliver', n: 5, label: 'Complete all five low-hover drills' }],
     fails: [],
     script: [
-      { id: 'start', trigger: { at: 'start' }, actions: [{ do: 'comms', speaker: 'dispatch', text: 'Water-1, hover certification today. Board a crew at each base, then hold a steady five-second hover over the drop zone before you set them down. Start here at La Ronge, then the four corners.' }] },
-      { id: 'leg1', trigger: { at: 'crewDelivered', n: 1 }, actions: [{ do: 'comms', speaker: 'crew', text: 'Clean hover — nicely held. Northwest to Buffalo Narrows next.' }] },
-      { id: 'leg2', trigger: { at: 'crewDelivered', n: 2 }, actions: [{ do: 'comms', speaker: 'dispatch', text: 'Buffalo Narrows signed off. Across the top to Southend in the northeast.' }] },
-      { id: 'leg3', trigger: { at: 'crewDelivered', n: 3 }, actions: [{ do: 'comms', speaker: 'crew', text: 'Southend done. Swing east to Denare Beach on the lake.' }] },
-      { id: 'leg4', trigger: { at: 'crewDelivered', n: 4 }, actions: [{ do: 'comms', speaker: 'dispatch', text: 'One left — the long run southwest to Cypress Hills, down in the hill country.' }] },
-      { id: 'won', trigger: { at: 'won' }, actions: [{ do: 'comms', speaker: 'dispatch', text: 'Five clean hovers, every corner of the sector flown. Certified, Water-1 — that hover will save lives.' }] },
+      { id: 'start', trigger: { at: 'start' }, actions: [{ do: 'comms', speaker: 'dispatch', text: "Water-1, low-hover certification today. Fly to each marked clearing, descend to three feet, and hold it for twelve seconds without touching. La Ronge first — the four corners after." }] },
+      { id: 'leg1', trigger: { at: 'crewDelivered', n: 1 }, actions: [{ do: 'comms', speaker: 'dispatch', text: "Twelve seconds clean — good hold. Northwest to Buffalo Narrows next." }] },
+      { id: 'leg2', trigger: { at: 'crewDelivered', n: 2 }, actions: [{ do: 'comms', speaker: 'dispatch', text: "Buffalo Narrows. Across the top to Southend in the northeast." }] },
+      { id: 'leg3', trigger: { at: 'crewDelivered', n: 3 }, actions: [{ do: 'comms', speaker: 'dispatch', text: "Southend. Swing east to Denare Beach." }] },
+      { id: 'leg4', trigger: { at: 'crewDelivered', n: 4 }, actions: [{ do: 'comms', speaker: 'dispatch', text: "One left — the run southwest to Cypress Hills." }] },
+      { id: 'won',  trigger: { at: 'won' }, actions: [{ do: 'comms', speaker: 'dispatch', text: "Five clean holds across the sector. That low hover will save a life, Water-1. Certified." }] },
     ],
   },
   // ── 3 ─────────────────────────────────────────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { makeGLTFLoader } from './gltfLoader';
 
 /**
  * Loads the CC-BY "Ultimate 3D Animal Pack" (WildMesh 3D) and carves the individual
@@ -39,7 +39,7 @@ export type AnimalPrototypes = Partial<Record<AnimalKind, THREE.Group>>;
 export function loadAnimalPack(enabled = true): Promise<AnimalPrototypes> {
   if (!enabled) return Promise.resolve({}); // low tier → procedural fallback, never touch the network
   return new Promise((resolve) => {
-    new GLTFLoader().load(
+    makeGLTFLoader().load(
       PACK_URL,
       (gltf) => {
         const root = gltf.scene;

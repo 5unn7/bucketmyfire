@@ -87,6 +87,7 @@ export interface ZonePlacement {
   offset?: number; // push the pad this many units off the community along `bearingDeg` (flank an LZ without a new anchor)
   bearingDeg?: number; // compass bearing of that offset (0 = N, 90 = E); omit → 0 (due north)
   hover?: boolean; // deliver by HOLDING A HOVER over the spot for MISSIONS.hoverSec (vs landing) — hover-training drops
+  lowHover?: boolean; // PRECISION LOW HOVER: hold near-ground AGL (0..lowHoverAglMax) for MISSIONS.lowHoverSec. No crew needed.
   label?: string; // shown on the zone marker / HUD ("LZ Alpha", "Cabin 2")
 }
 

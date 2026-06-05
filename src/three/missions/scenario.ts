@@ -90,8 +90,19 @@ function zonePoint(world: World, z: ZonePlacement): { x: number; z: number } {
 /** Resolve ONE crew/cargo endpoint to a world-space `CrewZone`. Shared by the opening `crewZones`
  *  resolution AND the `addZone` beat, so a mid-mission pop-up rescue lands with the same vocabulary. */
 export function resolveCrewZone(world: World, z: ZonePlacement): CrewZone {
-  const pt = zonePoint(world, z);
-  return { x: pt.x, z: pt.z, role: z.role, single: z.single, label: z.label ?? z.role, hover: z.hover };
+  let pt = zonePoint(world, z);
+  // Low-hover spots must always be on land — a clearing over a lake makes no sense.
+  // Walk outward in rings until we find dry ground (or keep the original if none found nearby).
+  if (z.lowHover && world.isOverWater(pt.x, pt.z)) {
+    outer: for (let r = 20; r <= 200; r += 20) {
+      for (let a = 0; a < Math.PI * 2; a += Math.PI / 4) {
+        const cx = pt.x + Math.cos(a) * r;
+        const cz = pt.z + Math.sin(a) * r;
+        if (!world.isOverWater(cx, cz)) { pt = { x: cx, z: cz }; break outer; }
+      }
+    }
+  }
+  return { x: pt.x, z: pt.z, role: z.role, single: z.single, label: z.label ?? z.role, hover: z.hover, lowHover: z.lowHover };
 }
 
 /** Resolve the mission's crew/cargo endpoints to world-space `CrewZone`s. */

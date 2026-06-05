@@ -98,7 +98,7 @@ class Leaderboard {
     panel.appendChild(head);
 
     panel.appendChild(
-      div({ fontSize: FS.body, color: UI.dim, marginBottom: '14px' }, 'Global standings — top helicopter pilots of the boreal.'),
+      div({ fontSize: FS.body, color: UI.dim, marginBottom: '14px' }, 'Global standings — the top helicopter pilots.'),
     );
 
     panel.appendChild(this.tabStrip());

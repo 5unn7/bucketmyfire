@@ -55,7 +55,7 @@ interface Step {
 }
 const STEPS: Step[] = [
   { glyph: '🚁', title: 'Fly the nose', body: 'Steer where the nose points and add throttle along it. She carries real momentum — ease off early to stop.', tone: 'cyan' },
-  { glyph: '💧', title: 'Scoop water', body: 'Descend low over a lake until the slung bucket dips in. It fills on its own (see below).', tone: 'water' },
+  { glyph: '💧', title: 'Fill the bucket', body: 'Descend low over a lake until the slung bucket dips in. It fills on its own (see below).', tone: 'water' },
   { glyph: '🔥', title: 'Drop on the fire', body: 'Line up over the flames and hit DROP. Fly straight and level so the water lands true.', tone: 'fire' },
   { glyph: '🏠', title: 'Protect & win', body: 'Keep fires off the cabins and finish each mission’s objectives (top-left). When a FUEL gauge shows, land at a base before it runs dry.', tone: 'cyan' },
 ];
@@ -477,11 +477,11 @@ export class HelpModal {
       );
     }
     const cap = h('p', { className: 'bmf-help-cap' });
-    cap.innerHTML = '<b>Lower the bucket enough to fill.</b> Fly low over any lake and keep descending until the slung bucket dips into the water — it fills automatically. There is no scoop button.';
+    cap.innerHTML = '<b>Lower the bucket enough to fill.</b> Fly low over any lake and keep descending until the slung bucket dips into the water — it fills automatically. There is no fill button.';
     return h('div', { className: 'bmf-help-page' }, [
       h('p', { className: 'bmf-help-sec', textContent: '1 · The job' }),
       steps,
-      h('p', { className: 'bmf-help-sub', textContent: 'Scooping' }),
+      h('p', { className: 'bmf-help-sub', textContent: 'Filling the bucket' }),
       viz(SCOOP_SVG),
       cap,
     ]);

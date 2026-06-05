@@ -191,7 +191,18 @@ function run(mission: MissionDef, mode: Mode): { r: Rig; elapsed: number; addedZ
         const z = r.crew.views.find((v) => v.active);
         // A HOVER zone is satisfied by an airborne hold (agl in the hover band); a normal zone by skids down
         // (agl 0). Model whichever the active zone wants so a hover-training drop actually completes here.
-        if (z) r.crew.update(DT, z.x, z.z, z.hover ? (MISSIONS.landAgl + MISSIONS.hoverAglMax) / 2 : 0, 0);
+        if (z) {
+          // Model the AGL the perfect player holds over this zone:
+          //   lowHover — near-ground drill: hold at mid-band (just above floor, under ceiling)
+          //   hover    — crew-delivery hover: mid-band between landAgl and hoverAglMax
+          //   normal   — skids down (agl 0)
+          const agl = z.lowHover
+            ? MISSIONS.lowHoverAglMax / 2
+            : z.hover
+              ? (MISSIONS.landAgl + MISSIONS.hoverAglMax) / 2
+              : 0;
+          r.crew.update(DT, z.x, z.z, agl, 0);
+        }
       }
       if (canWater && r.fire.activeCount > 0 && step % PASS_INTERVAL === 0) {
         // A competent pilot's bucket pass: aim at the HOTTEST flames (not a cluster centroid — that can

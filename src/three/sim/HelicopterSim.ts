@@ -196,6 +196,10 @@ export class HelicopterSim {
     const dive = Math.max(0, -this.pitch);
     this.vel.x += fx * dive * FLIGHT.pitchThrust * dt;
     this.vel.z += fz * dive * FLIGHT.pitchThrust * dt;
+    // Flare braking: a pitched-up disc tilts thrust backward, decelerating you — mirror of the dive surge.
+    const noseUp = Math.max(0, this.pitch);
+    this.vel.x -= fx * noseUp * FLIGHT.flareBrake * dt;
+    this.vel.z -= fz * noseUp * FLIGHT.flareBrake * dt;
     const drag = Math.max(0, 1 - FLIGHT.linearDrag * cls.dragMul * dt);
     this.vel.x *= drag;
     this.vel.z *= drag;
@@ -319,6 +323,9 @@ export class HelicopterSim {
     const diveFwd = THREE.MathUtils.clamp(fwdSpeed / FLIGHT.maxSpeed, 0, 1);
     const diveCmd = Math.max(0, -lift) * diveFwd;
     targetPitch -= diveCmd * FLIGHT.diveCommand;
+    // Flare: UP collective at forward speed pitches the nose back — mirror of the dive-bomb coupling.
+    const flareCmd = Math.max(0, lift) * diveFwd;
+    targetPitch += flareCmd * FLIGHT.flareCommand;
 
     // Hard envelope: accel + stick combined can't tumble the airframe past a sane lean.
     targetBank = THREE.MathUtils.clamp(targetBank, -FLIGHT.maxBankHard, FLIGHT.maxBankHard);

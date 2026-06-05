@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { makeGLTFLoader } from './gltfLoader';
 import { HelicopterMesh } from './helicopter';
 
 /**
@@ -170,7 +170,7 @@ export function swapInModel(heli: HelicopterMesh, heliId?: string): void {
   const placeholder = group.children.slice();
   for (const c of placeholder) c.visible = false;
 
-  new GLTFLoader().load(
+  makeGLTFLoader().load(
     spec.url,
     (gltf) => {
       const model = gltf.scene;

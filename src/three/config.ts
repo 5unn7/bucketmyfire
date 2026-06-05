@@ -130,12 +130,13 @@ export const BIOMES = {
   swampMoist: 0.74, // moisture above this (with low elevation + low slope) turns to swamp
   swampMaxHeight: 1.5, // only low ground (≤ this elevation) can be swamp
   swampMaxSlope: 0.18, // only near-flat ground can be swamp (bogs are level)
-  // Palette (hex)
-  colorShore: 0x9c8d63, // gravel/sand
-  colorMeadow: 0x6f8f3f, // light grassy green
-  colorForest: 0x355e2c, // deep boreal green
-  colorRock: 0x6f7176, // granite grey
-  colorSwamp: 0x4f5836, // murky olive-brown peat bog
+  // Palette (hex) — colour pass: greens pushed richer/more saturated and the shore warmed, so the
+  // boreal floor reads vivid instead of a flat olive wash (paired with GRADE.saturation 1.18).
+  colorShore: 0xb6a06a, // warm gravel/sand — a warm note against the greens + blue water
+  colorMeadow: 0x7ba83a, // brighter spring-grass green (was a muted 0x6f8f3f)
+  colorForest: 0x2f6e2c, // deep boreal green, a touch more saturated/greener (was 0x355e2c)
+  colorRock: 0x71747a, // granite grey, faintly cooler
+  colorSwamp: 0x53632f, // mossier olive-green peat bog (less brown, more life)
   // Tree placement (acceptance probability + foliage tint per biome)
   densForest: 1.0,
   densMeadow: 0.45, // denser meadow scatter — more trees overall
@@ -155,12 +156,13 @@ export const BIOMES = {
 // the existing per-chunk frustum cull + distance LOD + the DPR watchdog hold 60fps. Revert to the
 // old stylized look in one place: densityMul 1, canopyTiers 3, aoGradient 0, topLift 1.
 export const FOREST = {
-  baseCandidates: 3200, // tree candidates at the 600u reference size (Game scales by world AREA). TRIMMED from
-  // the old hard-coded 5200 so the enlarged 2100u world doesn't 2× the tree load — fewer trees = some perf back
-  // AND a more open landscape (lower canopy density over more land), which is part of the "more land" goal.
-  densityMul: 2.0, // candidate-count multiplier on med/high (forest fullness) — low tier stays at 1
-  canopyTiers: 6, // overlapping cone tiers per conifer (was 3) — a fuller, denser spruce silhouette
-  radialSegments: 8, // near-LOD canopy roundness (was 7) — a rounder crown up close
+  baseCandidates: 2000, // tree candidates at the 600u reference size (Game scales by world AREA). TRIMMED again
+  // (3200→2600→2000) in the load-perf pass: candidate count × world-area is the dominant BOOT cost (each one
+  // samples groundHeightAt+biome), and the conifers are already chunked + distance-LOD'd. The deferred
+  // birch/aspen groves + snags (buildAccentFoliage) refill the look after first frame, so the forest still reads full.
+  densityMul: 1.5, // candidate-count multiplier on med/high (forest fullness) — low tier stays at 1. 2.0→1.5 perf trim.
+  canopyTiers: 4, // overlapping cone tiers per conifer (perf pass 6→4 — still a fuller crown than the old stylized 3)
+  radialSegments: 7, // near-LOD canopy roundness (8→7) — still round up close, one ring of verts off per cone
   bottomRadius: 1.75, // widest (lowest) tier radius — a broader, more grounded base (old fixed: 1.5)
   topRadius: 0.42, // narrowest (apex) tier radius — a finer point
   aoGradient: 0.5, // how dark the crown BASE is vs the tips (0 = flat/old look, 1 = black base) — fakes self-shadow/AO
@@ -194,7 +196,7 @@ export const FLIGHT = {
   // (so releasing the stick doesn't let the wind carry you away)
   // Helicopter-style steering: the stick TURNS the nose (yawRate) and pushes
   // forward/back along it (variable throttle). The nose no longer chases velocity.
-  yawRate: 1, // turn rate (rad/s, ~97°/s) at full left/right stick
+  yawRate: 0.72, // turn rate (rad/s) at full left/right stick — LOWERED 1.0→0.72 to reduce jumpy over-steer
   reversePower: 0.5, // backward thrust fraction — flying tail-first is slower
   // Raw turn/throttle/collective input is eased toward (this) per-60fps factor before
   // it drives yaw, thrust and climb, so a key tap or stick flick ramps in and rolls
@@ -202,18 +204,18 @@ export const FLIGHT = {
   // feel. Lower = smoother/floatier, higher = snappier/more direct (1 = no smoothing).
   // (The collective ALSO has its own velocity inertia below, collectiveResponse — the
   // two cascade into a soft S-curve climb/descent rather than a single-lag jerk.)
-  controlResponse: 0.16,
+  controlResponse: 0.10, // LOWERED 0.16→0.10: one tap ramps in slower — less "a tiny flick does everything"
   // --- Body attitude (acceleration-driven, like a real airframe) ---
   // The fuselage tilts toward its acceleration: dive to speed up, flare to brake,
   // bank into turns. These cap how far it leans and how persistently it cruises
   // nose-down. See the attitude block in HelicopterSim.update().
   maxBank: 1.0, // radians of roll at full lateral (turn) acceleration (RAISED 0.8→1.0 for aerobatic banks ~57°)
-  maxPitch: 0.42, // radians of dive/flare at full fore/aft acceleration (LOWERED 0.62→0.42 ≈ 24°: full throttle
-  // used to snap the nose 35° down and — via the pitchThrust feedback below — plunge + porpoise ("see-saw").
-  // This caps ONLY the acceleration-driven tilt; the commanded dive-bomb (diveCommand) is bounded by maxPitchHard, untouched.
+  maxPitch: 0.60, // radians of physics-driven pitch at full fore/aft acceleration (RAISED 0.42→0.60 — was too
+  // low for flare: at cruise the nose could only tip ~16° nose-up under hard braking, not enough to feel it.
+  // Still well under maxPitchHard; the commanded dive-bomb (diveCommand) is bounded by that, untouched.
   cruisePitch: 0.14, // extra persistent nose-down at top speed (disc tilted to hold cruise)
-  bodyEase: 0.13, // how fast bank/pitch ease toward their targets (RAISED 0.1→0.13 — snappier aerobatic roll-in; lower = softer/heavier)
-  attitudeAccelSmoothing: 0.2, // EMA (per-60fps factor) on the acceleration that drives the nose-tilt/bank, BEFORE
+  bodyEase: 0.08, // how fast bank/pitch ease toward their targets — LOWERED 0.13→0.08 so the airframe leans in softly, not with a jerk
+  attitudeAccelSmoothing: 0.12, // EMA (per-60fps factor) on the acceleration that drives the nose-tilt/bank, BEFORE — LOWERED 0.2→0.12 for calmer lean
   // it leans the airframe. The raw per-frame accel spikes on a throttle slam and at the speed cap, and since
   // nose-down feeds more thrust (pitchThrust), the unfiltered loop porpoises. Lower = smoother/laggier lean (kills
   // the see-saw); 1 = the old raw, twitchy behavior. The commanded dive-bomb/steer-bank bypass this entirely.
@@ -221,12 +223,17 @@ export const FLIGHT = {
   // not just as a side effect of accelerating. This is what turns "it banks a little in a
   // turn" into "I can throw it into a hard banked turn and dive-bomb a fire on command."
   // Added on TOP of the acceleration-driven bank/pitch above, then clamped to the *Hard caps. ---
-  steerBank: 0.55, // radians of roll commanded directly by full turn stick (a real banked turn even at modest speed)
+  steerBank: 0.42, // radians of roll commanded directly by full turn stick — LOWERED 0.55→0.42 to reduce sharp-jerk banking on stick flicks
   steerBankIdle: 0.35, // fraction of steerBank still present at a standstill (so a low-speed turn still drops a wing; full at cruise)
   diveCommand: 0.48, // radians of nose-down commanded by full DOWN collective AT TOP SPEED — the dive-bomb tuck. The pitch→motion
   // coupling (pitchThrust/pitchDive) then turns that nose-down into a real surging, sinking swoop; haul UP collective to flare out.
   // Scaled by forward speed, so easing straight down onto a lake to scoop barely noses over (only a fast forward descent dives).
   // EASED 0.6→0.48: still a real dive when you push the nose over at speed — diving + climbing stays fun — just a less violent tuck.
+  flareCommand: 0.38, // radians of nose-UP commanded by full UP collective AT TOP SPEED — the flare brake. Mirror of diveCommand:
+  // pulling UP collective at speed pitches the nose back visibly and (via flareBrake below) actually bleeds airspeed.
+  // Fades with forward speed so a slow hover-climb doesn't wobble the nose. Tune together with diveCommand.
+  flareBrake: 45, // braking force (units/s²) per radian of nose-up — the flared disc tilts thrust backward and decelerates you.
+  // Mirror of pitchThrust (80): ~half strength so a flare scrubs speed without stopping dead. Raise for a harder brake.
   maxBankHard: 1.25, // hard clamp on TOTAL roll (~72°) so accel + stick combined can't tumble the airframe past a sane lean
   maxPitchHard: 0.95, // hard clamp on TOTAL pitch (~54°) — bounds the steepest dive/flare
   // --- Pitch → motion coupling (cyclic-forward): the nose-down disc drives REAL flight,
@@ -344,7 +351,8 @@ export const INSTRUMENTS = {
 // and overshoots on stops (payload physics); water leaves the bucket's world XZ,
 // not the heli's, so smooth flying bombs true. Mirrors the old 2D BUCKET_PHYS.
 export const BUCKET3D = {
-  ropeLength: 7, // rest hang below the heli (units)
+  ropeLength: 7, // rest hang below the cargo hook (units)
+  bellyOffset: 1.8, // how far the cargo hook sits above the skid line — rope attaches here, not the heli center
   // --- Longline flex (visual sag) ---
   // A real longline isn't a rigid stick: it bows into a catenary whose depth scales
   // with load. A LIGHT bucket lets the line go soft and droop; a FULL bucket's weight
@@ -353,8 +361,8 @@ export const BUCKET3D = {
   ropeSegments: 10, // line subdivisions for the drawn sag (visual only)
   ropeSagEmpty: 1.3, // mid-span droop (units) at an empty bucket — soft, flexible
   ropeSagFull: 0.25, // mid-span droop at a full bucket — taut, nearly straight
-  stiffness: 90, // LATERAL (XZ) spring pulling the bucket under the heli
-  damping: 9, // lateral sway bleed
+  stiffness: 8, // LATERAL (XZ) spring — low so the pendulum has a ~2s natural period and actually swings
+  damping: 3, // lateral sway bleed (ratio ~0.53: underdamped, oscillates a few times then settles)
   massEmpty: 1.0,
   massFull: 1.6, // a full bucket is heavier → more lateral lag/overshoot
   // How hard the heli's velocity drags the bucket's rest target back. Higher =
@@ -1005,6 +1013,12 @@ export const MISSIONS = {
   hoverSec: 5, // seconds of held hover over a hover-zone to complete the drop (the "5-second hover" drill)
   hoverAglMax: 12, // ceiling (units above the eased floor) for a valid hover — above landAgl, below this
   hoverSpeed: 3.5, // airspeed (units/s) below which the hover counts as "holding station" (a touch looser than landSpeed)
+  // LOW HOVER DRILL: nap-of-the-earth precision hover (3-4 ft off the ground, barely airborne).
+  // AGL is measured from the flight floor (groundHeight + groundClearance); at floor level the
+  // heli is sitting on the dirt. The low-hover band is just above that — not touching, not climbing.
+  lowHoverSec: 12, // seconds to hold the precision low hover at each spot
+  lowHoverAglMax: 2.2, // ceiling for a valid low hover (≈10 ft above the floor at 4.5 ft/unit)
+  lowHoverSpeed: 2.0, // max airspeed (units/s) — must be almost stationary
   zoneSmoke: 0x39d0ff, // marker-smoke / ring tint for an ACTIVE (next) zone (cyan)
   zoneSmokeDone: 0x5a6b72, // tint once a zone is satisfied (greyed out)
   zoneHome: 0x5fe0a0, // persistent tint for the reusable HOME base zone — always lit, distinct green from the cyan LZs
@@ -1083,9 +1097,12 @@ export const QUALITY = {
     // bloom > 0 enables the post-fx composer (low skips it entirely → cheapest path).
     // msaa = composer multisample count (0 = none; the no-composer low path AAs via the
     // renderer's own antialias). dprCap = per-tier render-resolution ceiling.
-    low: { name: 'low', dprCap: 1, shadows: false, shadowMapSize: 512, waterSegments: 96, terrainSegments: 140, bloom: 0, msaa: 0 }, // dprCap 1: low-end devices skip the ~2.5s startup jank of rendering at 2× before the watchdog steps down
-    med: { name: 'med', dprCap: 2, shadows: true, shadowMapSize: 1024, waterSegments: 160, terrainSegments: 190, bloom: 1, msaa: 0 },
-    high: { name: 'high', dprCap: 2, shadows: true, shadowMapSize: 2048, waterSegments: 224, terrainSegments: 248, bloom: 1, msaa: 4 },
+    // terrain/waterSegments TRIMMED in the load-perf pass: every terrain vertex + lake-disc edge samples
+    // groundHeightAt (which loops all lakes/rivers) at BUILD time, so grid resolution drives boot cost O(n²).
+    // Lower res = faster boot + fewer runtime verts, at a slightly softer carved shoreline.
+    low: { name: 'low', dprCap: 1, shadows: false, shadowMapSize: 512, waterSegments: 88, terrainSegments: 128, bloom: 0, msaa: 0 }, // dprCap 1: low-end devices skip the ~2.5s startup jank of rendering at 2× before the watchdog steps down
+    med: { name: 'med', dprCap: 2, shadows: true, shadowMapSize: 1024, waterSegments: 128, terrainSegments: 168, bloom: 1, msaa: 0 },
+    high: { name: 'high', dprCap: 2, shadows: true, shadowMapSize: 2048, waterSegments: 160, terrainSegments: 208, bloom: 1, msaa: 4 },
   },
   // Adaptive render-resolution watchdog (the only runtime lever — recompile-free).
   dpr: {
@@ -1114,6 +1131,49 @@ export const POSTFX = {
   // just over the old 0.95 when you faced the low sun) now stays crisp instead of blooming flat white
 } as const;
 
+// Image-based environment lighting (downloaded CC0 HDRI, see public/textures/ATTRIBUTION.txt). A
+// PMREM-prefiltered equirect map is set as `scene.environment` ONLY — the procedural sky dome stays
+// the visible background — so it adds realistic specular reflections + soft ambient to the heli
+// body and lake water without touching the carefully-tuned sun/hemi/fog. One-time PMREM cost at
+// load, zero per-frame work. Gated OFF on the low tier (saves the extra IBL ambient + a little
+// VRAM). Keep `intensity` low: the hemisphere light still does the heavy lifting; this is polish.
+export const ENV = {
+  enabled: true,
+  file: 'textures/hdri/autumn_field_puresky_1k.hdr', // swap to autumn_forest_04_1k.hdr for warmer bounce
+  intensity: 0.35, // scene.environmentIntensity — subtle reflections, not a second key light
+} as const;
+
+// Helipad deck surfacing (downloaded CC0 PBR concrete, see public/textures/ATTRIBUTION.txt). The pad
+// geometry/markings stay procedural; this just drops a real concrete albedo/normal/roughness onto the
+// slab + deck cap so the surface reads as poured concrete instead of flat plastic. Shared singleton
+// materials (one set for every pad, survives the in-place mission switch). `repeat` tiles the texture
+// across the ~7u pad; `normalScale` is the bump depth.
+export const HELIPAD = {
+  textured: true,
+  concrete: 'brushed_concrete_03', // slug under public/textures/pbr/<slug>/
+  concreteRepeat: 2.2,
+  normalScale: 0.6,
+} as const;
+
+// Terrain ground texturing (downloaded CC0 PBR albedo, see public/textures/ATTRIBUTION.txt). Adds
+// real photographic grain ON TOP of the procedural biome palette via in-shader TRIPLANAR sampling
+// (world-space, so it tiles seamlessly and never stretches on a cliff). It MODULATES, not replaces:
+// the ground texture pushes only LIGHTNESS (keeps each biome's hue), steep faces blend toward real
+// rock albedo, and the burn scar shows charred-earth detail instead of flat black. Gated to med/high
+// tier (adds ~7 texture taps/fragment — low stays fully procedural). Load-time (↻ reload to apply).
+export const TERRAIN_TEX = {
+  enabled: true,
+  ground: 'forest_ground_04', // flats — pine-forest floor grain
+  rock: 'rock_ground', // steep faces — boreal-shield granite
+  scorch: 'burned_ground_01', // the burn scar — cracked charred earth
+  scale: 0.05, // world→uv frequency (smaller = larger surface features)
+  groundStrength: 0.45, // how much ground grain modulates the biome lightness (0 = off, 1 = full)
+  groundMidLuma: 0.42, // the ground texture's average luma — divides it out so the multiply is brightness-neutral
+  rockStrength: 0.7, // how strongly real rock albedo takes over on steep faces
+  rockBright: 1.7, // scales the rock albedo into a believable lit-granite brightness
+  scorchStrength: 0.6, // charred-earth detail blended into the burn scar
+} as const;
+
 // Volumetric god-rays / crepuscular shafts (Track B — golden-hour). A screen-space radial
 // blur of the rendered scene TOWARD the low sun's projected position: bright sky near the sun
 // streams into shafts that the smoke column + ridgelines OCCLUDE — the defining "light raking
@@ -1124,7 +1184,8 @@ export const POSTFX = {
 // to frame-test on a real phone; if it ever costs too much, drop `samples` or gate to high only.
 export const GODRAYS = {
   enabled: true,
-  samples: 48, // ray-march steps from each pixel toward the sun (compile-time constant)
+  samples: 36, // ray-march steps from each pixel toward the sun (compile-time constant). Perf pass 48→36:
+  // the shaft quality is near-identical but it's a per-fragment loop on med/high, so fewer steps = real headroom.
   density: 0.9, // how far along the screen-vector to the sun each march reaches (0..1)
   decay: 0.95, // per-step brightness falloff → shafts fade out with distance from the sun
   weight: 0.5, // per-sample contribution to the accumulated shaft
@@ -1142,10 +1203,11 @@ export const GODRAYS = {
 // gentle vignette to frame the eye, and fine animated film grain to fuse the layers into one
 // image. All tasteful/subtle — pushed too far it reads as a filter, not film.
 export const GRADE = {
-  warmHighlights: 0.06, // how far highlights push warm (orange)
+  warmHighlights: 0.07, // how far highlights push warm (orange) — nudged for a touch more golden pop
   coolShadows: 0.05, // how far shadows push cool (teal)
-  saturation: 1.08, // slight saturation lift (>1 richer, 1 = neutral)
-  contrast: 1.05, // gentle S-curve contrast around mid grey
+  saturation: 1.18, // saturation lift (>1 richer, 1 = neutral). 1.08→1.18 in the colour pass — the boreal
+  // greens + lake blues read fuller instead of dull/washed; kept under ~1.2 so it enriches, not over-cooks.
+  contrast: 1.07, // gentle S-curve contrast around mid grey (1.05→1.07 — a hair more punch with the saturation)
   vignette: 0.32, // edge darkening strength (0 = none)
   grain: 0.035, // film grain amount (animated per frame)
 } as const;
@@ -1497,8 +1559,8 @@ export const CONFIG_REGISTRY: Record<string, Record<string, unknown>> = {
   WORLD3D, MAPGEO, TERRAIN, LAKE_SHAPE, STREAM, BIOMES, FOREST,
   FLIGHT, STARTUP, WASH, INSTRUMENTS, BUCKET3D, DROP_PHYSICS, DROP_FX, FIREHEAD,
   HELI_CLASSES, HEALTH, CRASH, BRIDGE,
-  FIRE3D, STRUCTURES, STRUCT_FIRE, COMMUNITIES, ROADS, SCORE, MISSIONS, FAUNA,
-  QUALITY, POSTFX, GODRAYS, GRADE, FIRELIGHT, EMBERS, AMBIENT_EMBERS,
+  FIRE3D, STRUCTURES, STRUCT_FIRE, COMMUNITIES, ROADS, SCORE, MISSIONS, FAUNA, HELIPAD, TERRAIN_TEX,
+  QUALITY, POSTFX, ENV, GODRAYS, GRADE, FIRELIGHT, EMBERS, AMBIENT_EMBERS,
   WATER, CLOUDS, SPRAY, SMOKE, HAZE, AUDIO, CAMERA, TITLE,
 };
 

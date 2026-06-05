@@ -23,6 +23,7 @@ import type { FireFieldView } from './sim/FireSystem';
 import { UI, FS, FW, R, GRADE, el, frosted, makeCanvas, clamp01, anchor, setBlur, scrim, prefersReducedMotion } from './ui/theme';
 import { onLayout, type LayoutState } from './ui/layout';
 import { shareScoreCard } from './ui/shareCard';
+import { openShop } from './ui/ShopScreen';
 import { dailyStreak } from './missions/streak';
 
 export interface HudState {
@@ -1125,15 +1126,11 @@ export class HUD {
       if (this.end.onLeaderboard) row2.appendChild(bannerButton('🏆 LEADERBOARD', UI.accent, this.end.onLeaderboard));
       row2.appendChild(this.shareButton(s));
       card.appendChild(row2);
-      // Win-only merch hook (#2) — surfaced at the highest-intent moment (just won, grade glowing). No
-      // store is wired yet, so this CAPTURES intent + acknowledges rather than dead-linking; swap the
-      // handler for the real Squadron Store URL once it's live.
+      // Win-only merch hook — surfaced at the highest-intent moment (just won, grade glowing). Opens
+      // the Squadron Store screen (a placeholder "fire in progress" + Notify-me email capture for now;
+      // the email both backs up the player's progress and lands us the lead). Real store drops in later.
       if (s.won) {
-        const store: HTMLDivElement = bannerButton('🪧 SQUADRON STORE', UI.warm, () => {
-          store.textContent = 'Patches, posters & decals — coming soon';
-          store.style.opacity = '0.7';
-          store.style.pointerEvents = 'none';
-        });
+        const store = bannerButton('🪧 SQUADRON STORE', UI.warm, () => openShop());
         const storeRow = el('div', { display: 'flex', justifyContent: 'center', marginTop: '12px' });
         storeRow.appendChild(store);
         card.appendChild(storeRow);

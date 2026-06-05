@@ -105,7 +105,7 @@ export function buildMissionScreen(ctx: FlowCtx): HTMLElement {
   injectScrollStyles();
   const root = section({});
   root.appendChild(
-    screenHeading('Select a mission', `Flying the ${ctx.currentHeli().name} over ${ctx.currentMap().name}. Six sorties — hardest last. Fly them in order.`),
+    screenHeading('Select a mission', `Flying the ${ctx.currentHeli().name} over ${ctx.currentMap().name}. ${ctx.catalog.length} missions — hardest last. Fly them in order.`),
   );
 
   const completed = new Set(getProgress().completed);

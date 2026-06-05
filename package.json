@@ -2,7 +2,7 @@
   "name": "bucketmyfire",
   "version": "0.1.0",
   "private": true,
-  "description": "In-browser helicopter wildfire game: a slung bucket, northern Saskatchewan, and a fire headed for the cabins.",
+  "description": "In-browser helicopter wildfire flight sim: fill from the lakes and fight the fire before it reaches the town.",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,18 +12,24 @@
     "verify:campaign": "esbuild scripts/verify-campaign.ts --bundle --platform=node --format=esm --outfile=scripts/.verify-campaign.mjs --log-level=warning && node scripts/.verify-campaign.mjs",
     "verify:crash": "esbuild scripts/verify-crash.ts --bundle --platform=node --format=esm --outfile=scripts/.verify-crash.mjs --log-level=warning && node scripts/.verify-crash.mjs",
     "lint": "eslint \"src/**/*.ts\"",
-    "format": "prettier --write \"src/**/*.{ts,html,css}\""
+    "format": "prettier --write \"src/**/*.{ts,html,css}\"",
+    "optimize:assets": "node scripts/optimize-assets.mjs"
   },
   "dependencies": {
     "three": "0.184.0"
   },
   "devDependencies": {
+    "@gltf-transform/core": "^4.3.0",
+    "@gltf-transform/extensions": "^4.3.0",
+    "@gltf-transform/functions": "^4.3.0",
     "@types/three": "^0.184.1",
     "@typescript-eslint/eslint-plugin": "^7.16.0",
     "@typescript-eslint/parser": "^7.16.0",
     "esbuild": "0.21.5",
     "eslint": "^8.57.0",
+    "meshoptimizer": "^1.1.1",
     "prettier": "^3.3.3",
+    "sharp": "^0.34.5",
     "typescript": "^5.5.4",
     "vite": "^5.4.0"
   }

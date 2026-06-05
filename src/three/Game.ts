@@ -80,6 +80,7 @@ const _swingQuat = new THREE.Quaternion();
 const _tipQuat = new THREE.Quaternion();
 const _bucketQuat = new THREE.Quaternion();
 const _swivel = new THREE.Vector3();
+const _bellyAnchor = new THREE.Vector3(); // cargo hook world position (belly of heli, above skid line)
 
 /**
  * The 3D scene + per-frame orchestration. Owns the Three scene graph (sky, light,
@@ -426,7 +427,7 @@ export class Game {
       tex: this.fireField.texture,
       min: this.fireField.worldMin,
       size: this.fireField.worldSize,
-    });
+    }, tier.current.name !== 'low'); // real PBR ground grain on med/high; low stays fully procedural
     this.scene.add(terrain.mesh);
 
     // One shared animated water material across every lake (B1), wired to the shared
@@ -2028,6 +2029,13 @@ export class Game {
     frozen: boolean,
   ): { scooping: boolean; scraping: boolean; dropping: boolean; overWater: boolean } {
     const fillRatio = this.water / this.capacity;
+    // Cargo hook on the belly of the fuselage — above the skid line by bellyOffset.
+    // This is where the longline attaches, not the heli's center/skid position.
+    _bellyAnchor.set(
+      this.heliSim.position.x,
+      this.heliSim.position.y + BUCKET3D.bellyOffset,
+      this.heliSim.position.z,
+    );
     // When the heli is on the deck the slung load isn't dangling under the belly — a ground crew lays
     // it out on the pad just ahead of the nose, line slack. While AGL is below `parkAgl` we PARK the
     // bucket there (upright, motion zeroed) and hand back to the pendulum once it lifts off.
@@ -2048,7 +2056,7 @@ export class Game {
       // Collision surface under the bucket (terrain raised to any treetop it'd catch on).
       const obstacleY = this.obstacles.heightAt(this.bucketSim.position.x, this.bucketSim.position.z);
       this.bucketObstacleY = obstacleY; // cache the raw surface under the bucket for the drop-AGL term
-      this.bucketSim.update(dtMs, this.heliSim.position, this.heliSim.velX, this.heliSim.velZ, fillRatio, dipping, obstacleY);
+      this.bucketSim.update(dtMs, _bellyAnchor, this.heliSim.velX, this.heliSim.velZ, fillRatio, dipping, obstacleY);
     }
     const bp = this.bucketSim.position;
     this.slung.position.copy(bp);
@@ -2056,17 +2064,17 @@ export class Game {
     const tip = this.bucketSim.tip;
     // --- Pendulum swing: in the air the bucket HANGS ALONG the longline instead of staying bolt-
     // upright, so the lateral lag the sim already produces also reads as the body swinging out. Align
-    // its local up-axis toward the heli (the rope direction), partially by swingTilt so it leans into
-    // the swing, then layer the scoop tip on as an extra forward pitch about local X. Parked on the
-    // deck it just sits upright. ---
+    // its local up-axis toward the belly anchor (the rope direction), partially by swingTilt so it
+    // leans into the swing, then layer the scoop tip on as an extra forward pitch about local X.
+    // Parked on the deck it just sits upright. ---
     if (onGround) {
       _bucketQuat.identity(); // sits upright on the pad
     } else {
       _ropeDir
         .set(
-          this.heliSim.position.x - bp.x,
-          this.heliSim.position.y - bp.y,
-          this.heliSim.position.z - bp.z,
+          _bellyAnchor.x - bp.x,
+          _bellyAnchor.y - bp.y,
+          _bellyAnchor.z - bp.z,
         )
         .normalize();
       _swingQuat.setFromUnitVectors(_UP, _ropeDir); // full hang-along-the-rope tilt
@@ -2079,9 +2087,9 @@ export class Game {
     // puts it, so derive its WORLD position from the bucket transform. Then draw the rope as a sagging
     // catenary that EASES with load — a light bucket bows soft, a full one pulls it taut and straight.
     _swivel.set(0, this.slungAnchorY, 0).applyQuaternion(_bucketQuat).add(bp);
-    const sx = this.heliSim.position.x;
-    const sy = this.heliSim.position.y;
-    const sz = this.heliSim.position.z;
+    const sx = _bellyAnchor.x;
+    const sy = _bellyAnchor.y;
+    const sz = _bellyAnchor.z;
     const ex = _swivel.x;
     const ey = _swivel.y;
     const ez = _swivel.z;

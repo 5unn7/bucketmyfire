@@ -59,9 +59,16 @@ export function createGodRaysShader() {
         vec3 rays = vec3(0.0);
         for (int i = 0; i < SAMPLES; i++) {
           coord -= delta;
+          // Mask samples that march off-screen. The composer's render target is ClampToEdge, so
+          // sampling outside [0,1] repeats the edge texel and SMEARS it into a hard radial band —
+          // the "broken rays" you get when the sun sits near / just past the frame edge (flying
+          // toward a low sun). Off-screen = no sky there, so it must contribute nothing. When the
+          // sun is fully on-screen every sample is in-bounds → identical to before.
+          vec2 inb = step(vec2(0.0), coord) * step(coord, vec2(1.0));
+          float onScreen = inb.x * inb.y;
           vec3 s = texture2D(tDiffuse, coord).rgb;
           float b = max(0.0, dot(s, vec3(0.299, 0.587, 0.114)) - uThreshold);
-          rays += s * b * illum * uWeight;
+          rays += s * b * illum * uWeight * onScreen;
           illum *= uDecay;
         }
         rays *= uExposure * uIntensity;

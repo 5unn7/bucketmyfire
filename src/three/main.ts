@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { Game } from './Game';
 import { QualityTier } from './render/QualityTier';
 import { Composer } from './postfx/Composer';
+import { loadEnvironment, applyEnvironment } from './render/Environment';
+import { ENV } from './config';
 import { shouldAutostart, defaultProfile } from './ui/Onboarding';
 import { MenuFlow } from './ui/flow/MenuFlow';
 import { TitleScreen } from './ui/title/TitleScreen';
@@ -204,7 +206,10 @@ function bootMission(mission: MissionDef): void {
   // renderer, composer, window listeners, and the render loop below are created ONCE and reused, and
   // only the Game (scene graph + sims + HUD) is torn down and rebuilt. Every closure below reads
   // `game` from this scope, so a reassignment is picked up transparently on the next frame.
+  const tBoot = performance.now();
   let game = buildGame(mission);
+  let firstFrameLogged = false;
+  if (params.has('qa')) console.log('[boot] Game constructed in', Math.round(performance.now() - tBoot), 'ms');
 
   // Bloom post-process (B3) — fire/sun glow, render path chosen by tier at load. Re-aimed at the
   // new scene/camera on each in-place switch via composer.setScene (see switchMission).
@@ -217,6 +222,18 @@ function bootMission(mission: MissionDef): void {
     renderer.setPixelRatio(dpr);
     composer.setPixelRatio(dpr);
   });
+
+  // Image-based environment lighting (downloaded CC0 HDRI). Loaded + PMREM-prefiltered ONCE
+  // (cached in the module), applied as `scene.environment` for specular reflections + soft ambient
+  // on the heli body and lake water — the procedural sky dome stays the visible background. Gated
+  // OFF on the low tier. Re-applied to each new scene on the in-place mission switch below.
+  let envTex: THREE.Texture | null = null;
+  if (ENV.enabled && tier.current.name !== 'low') {
+    void loadEnvironment(renderer).then((tex) => {
+      envTex = tex;
+      applyEnvironment(game.scene, tex); // the scene live at resolve time (first mission, or a later one)
+    });
+  }
 
   // Live tuning panel (dev only): an auto-generated slider board over every config.ts block.
   // Toggle with the backtick key or the ⚙ button. Lazy-imported so it stays out of a player's
@@ -263,6 +280,10 @@ function bootMission(mission: MissionDef): void {
     tier.sample(dt); // adaptive frame-time watchdog (scales DPR down under load, up under headroom)
     game.update(dt);
     composer.render(renderer, game.scene, game.camera, game.sunDir, game.hazeSources);
+    if (params.has('qa') && !firstFrameLogged) {
+      firstFrameLogged = true;
+      console.log('[boot] first frame at', Math.round(performance.now() - tBoot), 'ms (since Game ctor start)');
+    }
     signalFirstFrame(); // first mission frame is on screen — fade out the cold-start splash
   });
 
@@ -286,6 +307,7 @@ function bootMission(mission: MissionDef): void {
     game.dispose();
     game = buildGame(m);
     composer.setScene(game.scene, game.camera);
+    applyEnvironment(game.scene, envTex); // re-point the cached env map at the freshly built scene
     const url = new URL(location.href);
     url.searchParams.delete('daily'); // a campaign switch never carries a stale ?daily
     url.searchParams.set('m', m.id);

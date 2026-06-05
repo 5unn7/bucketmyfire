@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { World } from '../World';
-import { CLOUDS } from '../config';
+import { CLOUDS, TERRAIN_TEX } from '../config';
 import { FrameContext } from '../render/FrameContext';
+import { loadAlbedo } from './pbrTextures';
 
 /**
  * Procedural forest-floor terrain for the 3D world.
@@ -41,6 +42,7 @@ export function createTerrain(
   segments: number = DEFAULT_SEGMENTS,
   frame?: FrameContext,
   burn?: TerrainBurn,
+  textured = false,
 ): Terrain {
   // PlaneGeometry is built in the XY plane; we rotate it −90° about X so it lies
   // flat in XZ with +Y up. After the rotation, getX/getZ read true world X/Z.
@@ -93,7 +95,7 @@ export function createTerrain(
     roughness: 0.96, // matte forest floor — minimal specular
     metalness: 0.0,
   });
-  addTerrainDetail(material, frame, burn);
+  addTerrainDetail(material, frame, burn, textured && TERRAIN_TEX.enabled);
 
   const mesh = new THREE.Mesh(geometry, material);
   mesh.name = 'terrain';
@@ -116,9 +118,11 @@ const SHADE_HI = 1.2; // brightest lit slope (toward the light)
 
 // --- Richer terrain colour (macro variation + autumn stands) -----------------
 const MACRO_SCALE = 0.0016; // broad tint-drift frequency (large patches across the map)
-const MACRO_AMOUNT = 0.08; // how far the macro tint pushes (subtle — reads as terrain, not stripes)
+const MACRO_AMOUNT = 0.12; // how far the macro tint pushes (colour pass 0.08→0.12 — more warm/cool drift across
+// the map so the floor isn't one flat green; still broad enough to read as terrain, not stripes)
 const AUTUMN_SCALE = 0.0055; // autumn-stand patch frequency
-const AUTUMN_THRESH = 0.66; // noise above this (in green biomes) turns to fall colour
+const AUTUMN_THRESH = 0.6; // noise above this (in green biomes) turns to fall colour. 0.66→0.6 → more gold/amber
+// stands dotting the forest, for colour variety against the green (the boreal fall look)
 const AUTUMN_BAND = 0.12; // soft edge of the autumn patch
 const AUTUMN_GOLD: [number, number, number] = [0.72, 0.46, 0.13]; // warm birch/tamarack gold
 
@@ -213,7 +217,7 @@ function reliefShadeGrid(heights: Float32Array, i: number, N: number, stepX: num
  *    and cliffs read as rough rock while the flats stay soft grass/forest floor.
  *  - **Color mottle** on the flats breaks up the uniform per-biome fill.
  */
-function addTerrainDetail(material: THREE.MeshStandardMaterial, frame?: FrameContext, burn?: TerrainBurn): void {
+function addTerrainDetail(material: THREE.MeshStandardMaterial, frame?: FrameContext, burn?: TerrainBurn, textured = false): void {
   const DETAIL_SCALE = 0.14; // fine grain frequency (world units → ~7u wavelength)
   const PATCH_SCALE = 0.018; // broad color-patch frequency
   const MOTTLE = 0.24; // albedo lighten/darken range on the flats
@@ -243,6 +247,20 @@ function addTerrainDetail(material: THREE.MeshStandardMaterial, frame?: FrameCon
       shader.uniforms.uBurnMin = { value: burn.min };
       shader.uniforms.uBurnSize = { value: burn.size };
     }
+    // Real ground/rock/scorch albedo (downloaded CC0). sRGB textures → the WebGL2 sampler returns
+    // linear RGB, so the in-shader multiply into diffuseColor (linear here) is colour-correct. Set
+    // once — no recompile; the maps are module-cached + shared across missions.
+    if (textured) {
+      shader.uniforms.uGroundTex = { value: loadAlbedo(TERRAIN_TEX.ground, 8) };
+      shader.uniforms.uRockTex = { value: loadAlbedo(TERRAIN_TEX.rock, 8) };
+      shader.uniforms.uScorchTex = { value: loadAlbedo(TERRAIN_TEX.scorch, 4) };
+      shader.uniforms.uTexScale = { value: TERRAIN_TEX.scale };
+      shader.uniforms.uGroundStr = { value: TERRAIN_TEX.groundStrength };
+      shader.uniforms.uGroundMid = { value: TERRAIN_TEX.groundMidLuma };
+      shader.uniforms.uRockStr = { value: TERRAIN_TEX.rockStrength };
+      shader.uniforms.uRockBright = { value: TERRAIN_TEX.rockBright };
+      shader.uniforms.uScorchStr = { value: TERRAIN_TEX.scorchStrength };
+    }
 
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vTerrWorld;\nvarying vec3 vTerrN;')
@@ -262,6 +280,7 @@ function addTerrainDetail(material: THREE.MeshStandardMaterial, frame?: FrameCon
         varying vec3 vTerrN;
         ${frame ? 'uniform float uTime, uCloudScale, uCloudSpeed, uCloudLo, uCloudHi, uCloudDark; uniform vec2 uWind;' : ''}
         ${burn ? 'uniform sampler2D uBurnTex; uniform float uBurnMin, uBurnSize;' : ''}
+        ${textured ? 'uniform sampler2D uGroundTex, uRockTex, uScorchTex; uniform float uTexScale, uGroundStr, uGroundMid, uRockStr, uRockBright, uScorchStr;' : ''}
         float h21(vec2 p){ p = fract(p * vec2(123.34, 345.45)); p += dot(p, p + 34.345); return fract(p.x * p.y); }
         float vnoise(vec2 p){
           vec2 i = floor(p), f = fract(p);
@@ -274,7 +293,13 @@ function addTerrainDetail(material: THREE.MeshStandardMaterial, frame?: FrameCon
         // pattern never stretches on a vertical face.
         float fbmTri(vec3 wp, vec3 bw, float s){
           return fbm2(wp.xz * s) * bw.y + fbm2(wp.zy * s) * bw.x + fbm2(wp.xy * s) * bw.z;
-        }`,
+        }
+        ${textured ? /* glsl */ `
+        // Triplanar ALBEDO: the three world-plane projections of a texture, blended by |normal|, so
+        // the photo grain projects onto cliffs without the top-down pattern smearing down the face.
+        vec3 triTex(sampler2D t, vec3 wp, vec3 bw, float s){
+          return texture2D(t, wp.xz * s).rgb * bw.y + texture2D(t, wp.zy * s).rgb * bw.x + texture2D(t, wp.xy * s).rgb * bw.z;
+        }` : ''}`,
       )
       .replace(
         '#include <lights_physical_fragment>',
@@ -305,6 +330,21 @@ function addTerrainDetail(material: THREE.MeshStandardMaterial, frame?: FrameCon
           diffuseColor.rgb *= 1.0 + ${MOTTLE.toFixed(2)} * mott;
           vec3 rock = mix(diffuseColor.rgb, vec3(${ROCK_COLOR}), 0.55) * (1.0 + 0.4 * (dh - 0.5) * 2.0);
           diffuseColor.rgb = mix(diffuseColor.rgb, rock, steep);
+          ${
+            textured
+              ? /* glsl */ `
+          // Real ground grain — modulates LIGHTNESS only (keeps the biome hue), normalised by the
+          // texture's mean luma so the multiply stays brightness-neutral on average. SINGLE planar tap
+          // (the flats dominate the screen and are ~horizontal, so triplanar buys nothing here — 1 tap not 3).
+          vec3 gT = texture2D(uGroundTex, vTerrWorld.xz * uTexScale).rgb;
+          float gLuma = dot(gT, vec3(0.299, 0.587, 0.114));
+          diffuseColor.rgb *= mix(1.0, gLuma / max(uGroundMid, 1e-3), uGroundStr);
+          // Steep faces blend toward real granite albedo (its own colour), scaled to a lit brightness.
+          // Triplanar HERE (cliffs are vertical, where a top-down tap would smear) — only on the steep minority.
+          vec3 rT = triTex(uRockTex, vTerrWorld, bw, uTexScale * 0.7) * uRockBright;
+          diffuseColor.rgb = mix(diffuseColor.rgb, rT, steep * uRockStr);`
+              : ''
+          }
         }
         ${
           frame
@@ -334,7 +374,9 @@ function addTerrainDetail(material: THREE.MeshStandardMaterial, frame?: FrameCon
             // dangerous wildfire leaves the ground deeply charred. Kept a hair off pure black so a
             // little hillshade relief still reads (a burned ridge stays distinct from a burned valley).
             float burnAmt = max(scorch, smoothstep(0.04, 0.45, heat));
-            diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.028, 0.024, 0.020), burnAmt * 0.9);
+            vec3 charCol = vec3(0.028, 0.024, 0.020);
+            ${textured ? 'charCol = mix(charCol, texture2D(uScorchTex, vTerrWorld.xz * uTexScale).rgb * 0.35, uScorchStr);' : ''}
+            diffuseColor.rgb = mix(diffuseColor.rgb, charCol, burnAmt * 0.9);
             // Ember underglow on actively-burning ground (HDR > 1 → feeds bloom): a deep orange-red
             // that brightens with heat, so the live front reads as a glowing continuous band.
             totalEmissiveRadiance += vec3(2.6, 0.62, 0.10) * heat * heat * 1.35;
@@ -346,5 +388,5 @@ function addTerrainDetail(material: THREE.MeshStandardMaterial, frame?: FrameCon
       );
   };
   material.customProgramCacheKey = () =>
-    `bmf-terrain-detail-v5${frame ? '-cloud' : ''}${burn ? '-burn' : ''}`;
+    `bmf-terrain-detail-v5${frame ? '-cloud' : ''}${burn ? '-burn' : ''}${textured ? '-tex' : ''}`;
 }

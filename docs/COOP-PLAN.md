@@ -1,8 +1,14 @@
 # Co-op Development Plan
 
-> **Status:** approved plan, not yet started. This is the canonical document a solo
-> dev executes from. It folds in every fixable issue raised by the adversarial review;
-> deferred items are called out honestly in §11.
+> **Status:** approved plan, **paused — sequenced AFTER the world-foundation pivot.** Do not
+> start the build until the rectangular-playfield / map-foundation / mission-factory work has
+> landed. **Dependency:** that pivot rebases the **fire grid from square 160² to rectangular
+> constant-`cellSize`** — so §4.4/§4.8/§8 references to "`FIRE3D.fireCells²` / 160² cells" and
+> the bandwidth/CPU math must be **refreshed against the new grid** before Phase 0 starts.
+> Phase 0's determinism hardening (dedicated `fireRng`, placement off `world.rng`,
+> tier-independent collider/fuel build) should be folded into the foundation work, not bolted
+> on after. This is the canonical document a solo dev executes from; it folds in every fixable
+> issue raised by the adversarial review (deferred items called out in §11).
 >
 > **All 6 product decisions are LOCKED (2026-06-05) — see §13.** Headlines: host-loss is
 > *graceful* (migration deferred); TURN ships *$0* (STUN+relay, hook unset); the deterministic

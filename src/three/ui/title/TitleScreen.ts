@@ -200,7 +200,7 @@ export class TitleScreen {
         opacity: '0.82',
         textShadow: '0 1px 14px rgba(0,0,0,0.7)',
       },
-      'A bucket, a chopper, a wildfire.',
+      'Fight the wildfire.',
     );
     const play = this.buildPlayButton();
 

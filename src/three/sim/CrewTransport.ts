@@ -27,6 +27,7 @@ export interface CrewZone {
   single: boolean; // single-use endpoint (counts toward `total`) vs reusable (the base)
   label: string;
   hover?: boolean; // deliver by HOLDING A HOVER over the spot for MISSIONS.hoverSec (airborne, near-still) vs landing
+  lowHover?: boolean; // precision low hover drill — hold near-ground AGL for MISSIONS.lowHoverSec, no crew
 }
 
 /** A zone as the renderer/HUD sees it — with live done/active flags for marker tinting. */
@@ -152,6 +153,7 @@ export class CrewTransport {
    */
   get mode(): 'boarding' | 'disembarking' | null {
     if (this.active < 0) return null;
+    if (this.zones[this.active].lowHover) return null; // drill only — no crew boarding animation
     return this._carrying ? 'disembarking' : 'boarding';
   }
 
@@ -170,9 +172,13 @@ export class CrewTransport {
   hint(): string | null {
     if (this._delivered >= this._total) return null;
     if (this.active >= 0) {
+      if (this.zones[this.active].lowHover) return 'Hold the hover — 3 ft off the ground, stay airborne';
       if (this.zones[this.active].hover) return 'Hold the hover steady — crew on the line';
       return this._carrying ? 'Crew disembarking — hold it on the deck' : 'Crew boarding — hold it on the deck';
     }
+    // nav hint toward next low-hover spot (no crew carry state)
+    const nextLH = this.zones.find((z, i) => z.lowHover && z.single && !(this.done[i] || this.lost[i]));
+    if (nextLH) return `Hover low over ${nextLH.label} — descend to 3 ft, hold it`;
     if (this._carrying) {
       const tgt = this.zones.find((z, i) => z.role === 'unload' && !(z.single && (this.done[i] || this.lost[i])));
       if (!tgt) return null;
@@ -217,7 +223,11 @@ export class CrewTransport {
     }
     this._dwell += dt;
     if (this._dwell >= this.needFor(target)) {
-      if (this._carrying) {
+      if (this.zones[target].lowHover) {
+        // pure drill — no crew, just mark the spot done and count it
+        if (this.zones[target].single) this.done[target] = true;
+        this._delivered++;
+      } else if (this._carrying) {
         this._carrying = false;
         if (this.zones[target].single) this.done[target] = true;
         this._delivered++;
@@ -230,15 +240,17 @@ export class CrewTransport {
     }
   }
 
-  /** Is the heli holding zone `i`? A HOVER zone needs an airborne, near-still hover under the ceiling; a normal
-   *  zone needs skids down and stopped. (The caller has already confirmed the heli is within `lzRadius`.) */
+  /** Is the heli holding zone `i`? A LOW HOVER zone needs near-ground AGL; a HOVER zone needs an
+   *  airborne mid-altitude hover; a normal zone needs skids down and stopped. */
   private holding(i: number, agl: number, speed: number): boolean {
+    if (this.zones[i].lowHover) return agl > 0 && agl <= MISSIONS.lowHoverAglMax && speed <= MISSIONS.lowHoverSpeed;
     if (this.zones[i].hover) return agl > MISSIONS.landAgl && agl <= MISSIONS.hoverAglMax && speed <= MISSIONS.hoverSpeed;
     return agl <= MISSIONS.landAgl && speed <= MISSIONS.landSpeed;
   }
 
-  /** Dwell seconds to satisfy zone `i`: a held-hover drop (`hoverSec`), or a landed board/drop. */
+  /** Dwell seconds to satisfy zone `i`. */
   private needFor(i: number): number {
+    if (this.zones[i].lowHover) return MISSIONS.lowHoverSec;
     if (this.zones[i].hover) return MISSIONS.hoverSec;
     return this._carrying ? MISSIONS.dropSec : MISSIONS.pickupSec;
   }
@@ -247,14 +259,26 @@ export class CrewTransport {
    * Is zone `i` THE next target given the current carry state? Single-use endpoints light ONE AT A
    * TIME, in array order (so a pickup leaves exactly one LZ lit — the guidance the player follows);
    * the reusable base is always available for its role (and is marked separately as "home").
+   *
+   * LOW HOVER zones are independent of carry state — they sequence as a pure drill, no crew needed.
    */
   private isTargetable(i: number): boolean {
     const zn = this.zones[i];
     if (zn.single && (this.done[i] || this.lost[i])) return false; // satisfied — or the fire took them
+    // lowHover zones: no crew-carry dependency — the first undone lowHover is always the target
+    if (zn.lowHover) return i === this.nextLowHoverIndex();
     const need: 'load' | 'unload' = this._carrying ? 'unload' : 'load';
     if (zn.role !== need) return false;
     if (!zn.single) return true; // the reusable base is always a valid endpoint for its role
     return i === this.nextSingleIndex(need); // single endpoints are sequential — only the next one
+  }
+
+  /** Index of the first not-done, not-lost lowHover zone (the next drill spot in sequence), or -1. */
+  private nextLowHoverIndex(): number {
+    for (let i = 0; i < this.zones.length; i++) {
+      if (this.zones[i].lowHover && this.zones[i].single && !this.done[i] && !this.lost[i]) return i;
+    }
+    return -1;
   }
 
   /** Array index of the first not-done, not-lost single-use zone of `role` (the next in sequence), or -1. */

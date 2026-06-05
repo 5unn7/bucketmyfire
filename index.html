@@ -17,40 +17,97 @@
     <meta name="theme-color" content="#1b2a1f" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/icon.svg" />
-    <title>Bucket My Fire — Helicopter Wildfire Game</title>
+    <title>Bucket My Fire — Helicopter Wildfire Flight Sim</title>
 
     <!-- SEO + social share. Open Graph / Twitter cards make the link unfurl with a
          title, blurb, and preview image on X / Discord / iMessage / Slack — which is
          how shared links actually pull in visitors. og:image MUST be an absolute URL. -->
     <meta
       name="description"
-      content="A helicopter, a slung bucket, and a wildfire in northern Saskatchewan. You scoop the lakes and stop the fire before it reaches the cabins. Free, in your browser."
+      content="Fly a helicopter, fill from the lakes, and fight the wildfire before it reaches the town. A real-feel helicopter flight sim, free in your browser."
     />
     <link rel="canonical" href="https://bucketmyfire.com/" />
 
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Bucket My Fire" />
     <meta property="og:url" content="https://bucketmyfire.com/" />
-    <meta property="og:title" content="Bucket My Fire — Helicopter Wildfire Game" />
+    <meta property="og:title" content="Bucket My Fire — Helicopter Wildfire Flight Sim" />
     <meta
       property="og:description"
-      content="A helicopter and a slung bucket against a northern Saskatchewan wildfire. Stop it before it reaches the cabins. Free, in your browser."
+      content="Fly a helicopter, fill from the lakes, and fight the wildfire before it reaches the town. A real-feel flight sim, free in your browser."
     />
     <meta property="og:image" content="https://bucketmyfire.com/og-image.jpg" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta
       property="og:image:alt"
-      content="A helicopter with a slung water bucket flying over a burning Saskatchewan forest."
+      content="A helicopter with a slung water bucket flying over a burning forest."
     />
 
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Bucket My Fire — Helicopter Wildfire Game" />
+    <meta name="twitter:title" content="Bucket My Fire — Helicopter Wildfire Flight Sim" />
     <meta
       name="twitter:description"
-      content="A helicopter and a slung bucket against a northern Saskatchewan wildfire. Stop it before it reaches the cabins. Free, in your browser."
+      content="Fly a helicopter, fill from the lakes, and fight the wildfire before it reaches the town. A real-feel flight sim, free in your browser."
     />
     <meta name="twitter:image" content="https://bucketmyfire.com/og-image.jpg" />
+
+    <!-- Structured data (SEO + AEO): lets search engines rank it and AI answer engines
+         (ChatGPT, Perplexity, Google AI Overviews, voice) cite what the game is, that it's
+         free, and how to play. Keep the description/FAQ answers in sync with the meta above. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": ["VideoGame", "SoftwareApplication"],
+            "name": "Bucket My Fire",
+            "alternateName": "Bucket My Fire — Helicopter Wildfire Flight Sim",
+            "url": "https://bucketmyfire.com/",
+            "image": "https://bucketmyfire.com/og-image.jpg",
+            "description": "Fly a helicopter, fill from the lakes, and fight the wildfire before it reaches the town. A real-feel helicopter flight sim, free in your browser.",
+            "genre": ["Flight simulator", "Helicopter game", "Wildfire firefighting game"],
+            "gamePlatform": "Web browser",
+            "applicationCategory": "GameApplication",
+            "operatingSystem": "Any modern web browser (iOS, Android, Windows, macOS)",
+            "playMode": "SinglePlayer",
+            "inLanguage": "en",
+            "author": { "@type": "Organization", "name": "Bucket My Fire" },
+            "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD", "availability": "https://schema.org/InStock" }
+          },
+          {
+            "@type": "FAQPage",
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "What is Bucket My Fire?",
+                "acceptedAnswer": { "@type": "Answer", "text": "Bucket My Fire is a free browser-based helicopter wildfire flight sim. You fly a helitanker, fill a slung bucket from lakes, and fight a spreading wildfire before it reaches the town." }
+              },
+              {
+                "@type": "Question",
+                "name": "Is Bucket My Fire free to play?",
+                "acceptedAnswer": { "@type": "Answer", "text": "Yes. It is completely free and runs in your web browser — no download, install, or sign-up required." }
+              },
+              {
+                "@type": "Question",
+                "name": "How do you play Bucket My Fire?",
+                "acceptedAnswer": { "@type": "Answer", "text": "Fly the helicopter low over a lake to fill your bucket, then drop the water on the fire. Keep the fire off the cabins and complete each mission's objectives." }
+              },
+              {
+                "@type": "Question",
+                "name": "What devices does Bucket My Fire run on?",
+                "acceptedAnswer": { "@type": "Answer", "text": "Any modern web browser on phone, tablet, or desktop. It is built mobile-first with touch controls and keyboard support." }
+              },
+              {
+                "@type": "Question",
+                "name": "Is there multiplayer?",
+                "acceptedAnswer": { "@type": "Answer", "text": "Co-op multiplayer is in development. Today the game is a single-player campaign with a global leaderboard." }
+              }
+            ]
+          }
+        ]
+      }
+    </script>
     <style>
       html,
       body {

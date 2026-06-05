@@ -1,7 +1,7 @@
 # 🚁 Bucket My Fire
 
-A bucket, a chopper, a wildfire. Fly northern Saskatchewan, scoop the lakes,
-and stop the fire before it reaches the cabins. Runs in your browser.
+A helicopter wildfire flight sim. Fly, fill from the lakes, and fight the fire
+before it reaches the town. Runs in your browser.
 
 ## Play / develop
 
@@ -40,5 +40,5 @@ See [CLAUDE.md](CLAUDE.md) for architecture.
 ## Status
 
 Live at [bucketmyfire.com](https://bucketmyfire.com) — full flight/bucket/fire physics,
-a 6-mission campaign, and 3 playable helicopters. (The original 2D Phaser prototype was
+an 8-mission campaign, and 3 playable helicopters. (The original 2D Phaser prototype was
 removed once the 3D build was proven.)

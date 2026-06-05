@@ -15,7 +15,7 @@ import type { FlowCtx } from './types';
 export function buildMapScreen(ctx: FlowCtx): HTMLElement {
   injectScrollStyles();
   const root = section({});
-  root.appendChild(screenHeading('Choose your map', 'One map flies today — the full northern-Saskatchewan campaign. More are inbound.'));
+  root.appendChild(screenHeading('Choose your map', 'Pick where you fly. More regions inbound.'));
 
   const scroller = div({ display: 'flex', gap: '14px', overflowX: 'auto', scrollSnapType: 'x mandatory', paddingBottom: '10px', margin: '0 -2px' });
   scroller.className = 'bmf-hscroll';
