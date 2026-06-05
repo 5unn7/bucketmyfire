@@ -153,3 +153,41 @@ export function validateCallsign(raw: string): CallsignResult {
 export function isReservedCallsign(name: string): boolean {
   return RESERVED.has(fold(cleanCallsign(name)));
 }
+
+// Themed words for an auto-generated "Quick Fly" callsign (audit FIX #10 — let first-timers fly
+// instantly instead of hitting the required-name wall; they can rename at score-submit). All are
+// clean and non-reserved, so the result always passes validateCallsign.
+const QUICK_WORDS = [
+  'Tanker',
+  'Bucket',
+  'Scoop',
+  'Rotor',
+  'Ember',
+  'Cinder',
+  'Maverick',
+  'Ripcord',
+  'Blaze',
+  'Skid',
+  'Drift',
+  'Halon',
+  'Ridgeline',
+  'Spotter',
+  'Waterdog',
+  'Firefly',
+  'Northstar',
+  'Bushpilot',
+];
+
+/**
+ * A fun, always-valid auto callsign for the "Quick Fly" path (e.g. "Rotor-7C2"). Lets a brand-new
+ * player launch a mission without the naming gate; the menu can offer a rename later. Uses Math.random
+ * (UI-side, not the deterministic world sim) and a short base-36 suffix to keep collisions rare.
+ */
+export function randomCallsign(): string {
+  const word = QUICK_WORDS[Math.floor(Math.random() * QUICK_WORDS.length)];
+  const suffix = Math.floor(Math.random() * 1296)
+    .toString(36)
+    .toUpperCase()
+    .padStart(2, '0'); // two base-36 chars: 00..ZZ
+  return cleanCallsign(`${word}-${suffix}`);
+}
