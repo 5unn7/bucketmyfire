@@ -67,7 +67,6 @@ export class Input {
   private sliderActive = false;
   private sliderLift = 0;
   private collectiveKnob!: HTMLDivElement;
-  private collectiveFill!: HTMLDivElement;
   private collectiveTrack!: HTMLDivElement;
 
   // Free-look ("eye" button): drag sets orbit VELOCITY, release eases back.
@@ -83,8 +82,6 @@ export class Input {
   private stickBase!: HTMLDivElement;
   private stickThumb!: HTMLDivElement;
   private stickTicks: HTMLDivElement[] = [];
-  private climbBtn!: HTMLDivElement;
-  private descendBtn!: HTMLDivElement;
   private dropBtn!: HTMLDivElement;
   private swapBtn!: HTMLDivElement;
   private detachBtn!: HTMLDivElement;
@@ -405,11 +402,29 @@ export class Input {
     root.appendChild(a);
   }
 
-  /** Right-hand cluster: a vertical collective pair (climb / descend) sitting just
-   *  left of the DROP hero, all sharing one baseline so they read as one group. */
+  /** Right-hand cluster:
+   *   - DETACH (✂) — small ember circle, top-left of the group, jettison the slung bucket.
+   *   - Collective slider — vertical frosted capsule (drag up = climb, drag down = descend).
+   *   - DROP hero — warm action button on the right.
+   */
   private buildCluster(root: HTMLElement): void {
-    const climb = button('▲', { position: 'relative' });
-    const descend = button('▼', { position: 'relative' });
+    // Small circular DETACH button — ember/fire register (cutting the rope is a real commitment).
+    const detach = button('✂', {
+      position: 'relative',
+      display: 'none',
+      background: 'radial-gradient(circle at 38% 32%, rgba(255,140,70,0.22), rgba(30,10,5,0.55))',
+      borderColor: 'rgba(255,130,60,0.65)',
+      color: '#ffd4a4',
+      fontWeight: FW.bold,
+      fontSize: '18px',
+      borderRadius: R.round,
+      boxShadow: `0 0 14px rgba(255,90,40,0.32), ${UI.shadowBtn}`,
+    });
+    this.detachBtn = detach;
+    holdButton(detach, (on) => (this.btnDetach = on), UI.ember);
+
+    const slider = this.buildCollectiveSlider();
+
     const drop = button('DROP', {
       position: 'relative',
       background: UI.warmGlass,
@@ -419,25 +434,161 @@ export class Input {
       letterSpacing: '1.5px',
       boxShadow: `0 0 18px rgba(255,90,60,0.28), ${UI.shadowBtn}`,
     });
-    this.climbBtn = climb;
-    this.descendBtn = descend;
     this.dropBtn = drop;
-    holdButton(climb, (on) => (this.btnUp = on));
-    holdButton(descend, (on) => (this.btnDown = on));
     holdButton(drop, (on) => (this.btnDrop = on), UI.warm);
 
-    const col = div({ display: 'flex', flexDirection: 'column', gap: 'var(--bmf-gap)', alignItems: 'center' });
-    col.appendChild(climb);
-    col.appendChild(descend);
-
+    // Bottom row: [slider | DROP], baseline-aligned.
     const row = div({ display: 'flex', flexDirection: 'row', alignItems: 'flex-end' });
-    row.appendChild(col);
+    row.appendChild(slider);
     row.appendChild(drop);
     this.clusterRow = row;
 
+    // Top row: detach circle left-aligned (hidden until Game shows it).
+    const topRow = div({ display: 'flex', alignItems: 'center', marginBottom: '6px' });
+    topRow.appendChild(detach);
+
+    const wrapper = div({ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' });
+    wrapper.appendChild(topRow);
+    wrapper.appendChild(row);
+
     const a = anchor('bottom-right');
-    a.appendChild(row);
+    a.appendChild(wrapper);
     root.appendChild(a);
+  }
+
+  /** Vertical collective slider — drag up to climb, drag down to descend; springs to neutral on release.
+   *  Styled as a cockpit throttle: frosted capsule track, cyan notch at centre, active fill
+   *  cyan (climb) or ember (sink), flat frosted knob. Keyboard I/J still work when inactive. */
+  private buildCollectiveSlider(): HTMLDivElement {
+    const track = div({
+      position: 'relative',
+      borderRadius: '13px',
+      background:
+        'linear-gradient(180deg, rgba(103,232,255,0.13) 0%, rgba(8,14,22,0.56) 36%, rgba(8,14,22,0.56) 64%, rgba(255,106,44,0.11) 100%)',
+      border: '1px solid rgba(103,232,255,0.22)',
+      boxShadow: 'inset 0 1px 16px rgba(0,0,0,0.45), 0 4px 16px rgba(0,0,0,0.35)',
+      pointerEvents: 'auto',
+      touchAction: 'none',
+      cursor: 'ns-resize',
+      overflow: 'hidden',
+    });
+    setBlur(track);
+
+    // Centre notch — the neutral-lift datum line.
+    track.appendChild(
+      div({
+        position: 'absolute',
+        left: '4px',
+        right: '4px',
+        height: '1px',
+        top: '50%',
+        transform: 'translateY(-0.5px)',
+        background: 'rgba(103,232,255,0.45)',
+        pointerEvents: 'none',
+      }),
+    );
+
+    // Avionics-style labels.
+    const mkLabel = (text: string, pos: 'top' | 'bottom', color: string): HTMLDivElement => {
+      const el = div({
+        position: 'absolute',
+        [pos]: '4px',
+        left: '0',
+        right: '0',
+        textAlign: 'center',
+        fontSize: '7px',
+        letterSpacing: '0.5px',
+        color,
+        fontFamily: 'monospace',
+        pointerEvents: 'none',
+      });
+      el.textContent = text;
+      return el;
+    };
+    track.appendChild(mkLabel('CLB', 'top', 'rgba(103,232,255,0.50)'));
+    track.appendChild(mkLabel('SNK', 'bottom', 'rgba(255,106,44,0.48)'));
+
+    // Active-direction fill bar.
+    const fill = div({
+      position: 'absolute',
+      left: '3px',
+      right: '3px',
+      height: '0',
+      top: '50%',
+      borderRadius: '4px',
+      background: 'rgba(103,232,255,0.28)',
+      pointerEvents: 'none',
+    });
+    track.appendChild(fill);
+
+    // Draggable knob — flat frosted pill.
+    const knob = div({
+      position: 'absolute',
+      left: '50%',
+      top: '50%',
+      transform: 'translate(-50%, -50%)',
+      borderRadius: '8px',
+      background: 'radial-gradient(circle at 40% 34%, rgba(255,255,255,0.55), rgba(150,182,202,0.24))',
+      border: `1.5px solid ${UI.accentSoft}`,
+      boxShadow: '0 2px 10px rgba(0,0,0,0.45)',
+      transition: 'box-shadow 0.12s ease, border-color 0.12s ease',
+      pointerEvents: 'none',
+    });
+    track.appendChild(knob);
+    this.collectiveKnob = knob;
+    this.collectiveTrack = track;
+
+    const setLift = (clientY: number): void => {
+      const rect = track.getBoundingClientRect();
+      const kh = knob.offsetHeight || 20;
+      const travel = rect.height - kh;
+      if (travel <= 0) return;
+      const relY = clamp(clientY - rect.top - kh / 2, 0, travel);
+      this.sliderLift = 1 - (relY / travel) * 2; // +1 at top (climb), -1 at bottom (sink)
+
+      knob.style.top = `${relY + kh / 2}px`;
+      knob.style.transform = 'translate(-50%, -50%)';
+
+      const centerY = rect.height / 2;
+      const knobCY = relY + kh / 2;
+      if (this.sliderLift >= 0) {
+        fill.style.top = `${knobCY}px`;
+        fill.style.height = `${Math.max(0, centerY - knobCY)}px`;
+        fill.style.background = 'rgba(103,232,255,0.28)';
+      } else {
+        fill.style.top = `${centerY}px`;
+        fill.style.height = `${Math.max(0, knobCY - centerY)}px`;
+        fill.style.background = 'rgba(255,106,44,0.22)';
+      }
+    };
+
+    const releaseSlider = (): void => {
+      this.sliderActive = false;
+      this.sliderLift = 0;
+      knob.style.top = '50%';
+      knob.style.transform = 'translate(-50%, -50%)';
+      fill.style.height = '0';
+      knob.style.borderColor = UI.accentSoft;
+      knob.style.boxShadow = '0 2px 10px rgba(0,0,0,0.45)';
+    };
+
+    let sliderId = -1;
+    track.addEventListener('pointerdown', (e) => {
+      sliderId = e.pointerId;
+      track.setPointerCapture(e.pointerId);
+      this.sliderActive = true;
+      setLift(e.clientY);
+      knob.style.borderColor = UI.accent;
+      knob.style.boxShadow = `0 0 14px ${UI.accentSoft}, 0 2px 10px rgba(0,0,0,0.45)`;
+    });
+    track.addEventListener('pointermove', (e) => {
+      if (e.pointerId !== sliderId) return;
+      setLift(e.clientY);
+    });
+    track.addEventListener('pointerup', releaseSlider);
+    track.addEventListener('pointercancel', releaseSlider);
+
+    return track;
   }
 
   // --- Free-look "eye" button -----------------------------------------------

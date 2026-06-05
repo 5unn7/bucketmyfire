@@ -72,6 +72,8 @@ const CONTROLS: Ctrl[] = [
   { action: 'Climb', touch: '▲', keys: ['I'] },
   { action: 'Descend', touch: '▼', keys: ['J'] },
   { action: 'Drop water', touch: 'DROP', keys: ['Space'] },
+  { action: 'Re-rig load (water ⇄ crew)', touch: 'SWAP', keys: ['G'] },
+  { action: 'Release bucket', touch: 'DETACH', keys: ['B'] },
   { action: 'Look around', touch: '👁 drag', keys: [] },
 ];
 
