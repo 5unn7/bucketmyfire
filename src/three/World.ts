@@ -197,12 +197,14 @@ export class World {
         }
       : null;
 
-    // Localized uplands (Cypress Hills): project each region upland to world XZ once. baseHeight adds a smooth
-    // radial bump at each — a single hill rising from the boreal flats, distinct from the whole-map mountain
-    // layer above. Empty on maps with none (the baseHeight loop then no-ops). Set BEFORE lakes (baseHeight feeds them).
+    // Localized uplands (Cypress Hills): project each region upland to world XZ once. Its REAL footprint (km)
+    // converts through the SAME projection scale as every distance (uPerKm → scales with the world), and its
+    // REAL prominence (m) through the vertical scale (MAPGEO.metresPerUnit) — so the size isn't hand-picked
+    // world units. baseHeight adds a smooth radial bump at each: a single hill rising from the boreal flats,
+    // distinct from the whole-map mountain layer above. Set BEFORE lakes (baseHeight feeds their water level).
     this.uplands = (this.region.uplands ?? []).map((u) => {
       const p = this.project(u.lat, u.lon);
-      return { x: p.x, z: p.z, r: u.radiusU, height: u.height };
+      return { x: p.x, z: p.z, r: u.radiusKm * this.uPerKm, height: u.prominenceM / MAPGEO.metresPerUnit };
     });
 
     // Lakes scattered across the world, count scaled to area so water density stays

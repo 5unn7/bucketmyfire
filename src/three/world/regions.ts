@@ -98,8 +98,9 @@ export interface RegionUpland {
   name: string;
   lat: number;
   lon: number;
-  radiusU: number; // footprint radius (world units) — the bump smoothsteps to 0 at the rim
-  height: number; // peak height added at the centre (world units above the surrounding base terrain)
+  radiusKm: number; // REAL footprint radius (km) → world units via the projection scale (uPerKm), so it scales
+  // with the world like every other distance; the bump smoothsteps to 0 at that rim
+  prominenceM: number; // REAL elevation above the surrounding plain (metres) → units via MAPGEO.metresPerUnit
 }
 
 /**
@@ -222,7 +223,7 @@ const SASKATCHEWAN_HIGHWAYS: readonly HighwayRoute[] = [
 // Cypress Hills — the lone "mini-mountain" in Saskatchewan's far SW corner (real ~49.6°N, 109.8°W, the highest
 // land between the Rockies and Labrador, rising ~600 m above the surrounding plains). A localized massif for
 // some real elevation flying, well south-west of the campaign band so it's pure scenery (no lakes/missions there).
-const SASKATCHEWAN_UPLANDS: readonly RegionUpland[] = [{ name: 'Cypress Hills', lat: 49.6, lon: -109.8, radiusU: 150, height: 52 }];
+const SASKATCHEWAN_UPLANDS: readonly RegionUpland[] = [{ name: 'Cypress Hills', lat: 49.6, lon: -109.8, radiusKm: 50, prominenceM: 590 }];
 
 // --- saskatchewan — the live campaign map (holds all 6 missions) -------------------------------
 // Real northern-SK places: the Churchill River chain, the Lac La Ronge country, the Athabasca

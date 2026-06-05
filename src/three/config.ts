@@ -38,6 +38,12 @@ export const MAPGEO = {
   lakeAreaMax: 7850, // km² — areas at/above this map to lakeMaxR (Lake Athabasca, the province's largest)
   lakeAreaDefault: 28, // km² assumed for anchor lakes with no published area (recreational river widenings) —
   // kept small so the unpublished Churchill-chain widenings near La Ronge stay tight and leave land between them
+  // The map's ONE real-elevation↔world-unit vertical scale: terrain reliefs and region uplands are authored in
+  // REAL metres and divided by this. Anchored so TERRAIN.baseAmplitude (9u) ≈ the shield's ~100 m of rolling
+  // relief → ~11 m/unit; the SAME scale converts an upland's real prominence (Cypress Hills ≈ 590 m → ~54u).
+  // Horizontal already has its scale (uPerKm, from the projection); this is its vertical companion, so an
+  // upland is REAL data (km + m) through consistent scales — not hand-picked world units.
+  metresPerUnit: 11,
 } as const;
 
 // Terrain heightfield profile (Track A1). Tuned to read like the northern-Saskatchewan
