@@ -28,9 +28,17 @@ export const WORLD3D = {
 // wilderness, muted on the radar so the map reads as Saskatchewan rather than a filled square.
 export const MAPGEO = {
   fill: 0.93, // province N–S extent fills this fraction of the square world height (leaves a rim margin)
-  boundsFill: 0.98, // 'bounds'-fit maps (true-shape rectangular playfield): the province's LONGEST projected
-  // axis fills this fraction of the world budget, so the boundary sits at the map edge with a slim rim that
-  // keeps the radar's dashed border from clipping. Only read when a region's geo opts in (geo.fit === 'bounds').
+  // ENGINE-DECIDED WORLD SIZE (D2): a true-shape ('bounds'-fit) map's size is its REAL extent at a
+  // CONSTANT real scale, not a fraction of a fixed budget — so every province shares one u/km and a
+  // km-authored mission transfers unchanged. `unitsPerKm` is that scale (≈ the square-fit scale, so
+  // Saskatchewan's ~1224 km long axis ≈ 2000u); the longest axis is then clamped into
+  // [worldSizeMin, worldSizeMax] (aspect preserved) so a tiny province isn't a postage stamp and a
+  // giant one can't blow the fire-cell / draw budget.
+  unitsPerKm: 1.63, // world units per real km for bounds-fit maps (SK long axis ≈ 2000u)
+  worldSizeMin: 1000, // smallest allowed longest-axis extent (units) — scale UP below this
+  worldSizeMax: 3000, // largest allowed longest-axis extent (units) — scale DOWN above this (caps the budget)
+  boundsFill: 0.98, // SUPERSEDED by unitsPerKm + the clamp above (kept for the radar/border comments); no longer
+  // sizes the world. Was: the province's LONGEST projected axis fills this fraction of a fixed budget.
   // Lake radius from REAL surface area (km²), compressed onto a playable band: radius = lerp(minR,maxR,t),
   // t = (√area − √areaMin)/(√areaMax − √areaMin) clamped 0..1. √area ∝ linear size, so a giant (Reindeer,
   // ~6650 km²) reads huge while a small lake stays scoopable — at true province scale a to-scale lake

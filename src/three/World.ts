@@ -1717,7 +1717,14 @@ function computeWorldFrame(geo: GeoFrame | null): WorldFrame {
   }
   const widthKm = Math.max(1e-3, maxX - minX);
   const heightKm = Math.max(1e-3, maxZ - minZ);
-  const uPerKm = (WORLD3D.size * MAPGEO.boundsFill) / Math.max(widthKm, heightKm);
+  // ENGINE-DECIDED SIZE (D2): a CONSTANT real scale (MAPGEO.unitsPerKm), so the world's extent IS the
+  // province's real bounding box at a fixed u/km. Then clamp the longest axis into
+  // [worldSizeMin, worldSizeMax] — scaling u/km (aspect preserved) so a tiny province isn't a dot and a
+  // giant one can't blow the fire-cell budget. SK's ~1224 km long axis × 1.63 ≈ 2000u (inside the band).
+  let uPerKm = MAPGEO.unitsPerKm;
+  const longest = Math.max(widthKm, heightKm) * uPerKm;
+  if (longest > MAPGEO.worldSizeMax) uPerKm *= MAPGEO.worldSizeMax / longest;
+  else if (longest < MAPGEO.worldSizeMin) uPerKm *= MAPGEO.worldSizeMin / longest;
   return {
     latCenter,
     lonCenter,
