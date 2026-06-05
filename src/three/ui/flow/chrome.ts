@@ -143,6 +143,48 @@ export function ghostButton(label: string, onClick: () => void): HTMLButtonEleme
   return b;
 }
 
+/**
+ * A prominent feature pill — a bordered, tinted action in the given accent. Higher-emphasis than
+ * `ghostButton` so the strategic actions (the Daily Burn retention hook, the Quick-fly instant-fun
+ * escape) don't read as plain text links lost in the header (#3).
+ */
+export function featureButton(label: string, color: string, onClick: () => void): HTMLButtonElement {
+  const b = el(
+    'button',
+    {
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: '6px',
+      background: `${color}1f`,
+      border: `1px solid ${color}66`,
+      color,
+      fontFamily: UI.font,
+      fontSize: FS.sm,
+      fontWeight: FW.heavy,
+      letterSpacing: '0.03em',
+      borderRadius: R.pill,
+      padding: '9px 15px',
+      cursor: 'pointer',
+      whiteSpace: 'nowrap',
+      transition: 'background 0.14s ease, border-color 0.14s ease, transform 0.12s ease',
+    },
+    label,
+  );
+  b.type = 'button';
+  b.addEventListener('pointerenter', () => {
+    b.style.background = `${color}33`;
+    b.style.borderColor = color;
+    b.style.transform = 'translateY(-1px)';
+  });
+  b.addEventListener('pointerleave', () => {
+    b.style.background = `${color}1f`;
+    b.style.borderColor = `${color}66`;
+    b.style.transform = 'none';
+  });
+  b.addEventListener('click', onClick);
+  return b;
+}
+
 /** Swap `host`'s content to `next`, with a gentle rise-in unless reduced-motion is set. */
 export function fadeSwap(host: HTMLElement, next: HTMLElement): void {
   injectFlowStyles();

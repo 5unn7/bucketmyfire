@@ -54,7 +54,7 @@ import { MissionDirector } from './missions/MissionDirector';
 import { recordWin, getProgress } from './missions/progress';
 import { isDailyId } from './missions/daily';
 import { recordDailyClear } from './missions/streak';
-import { newlyUnlockedHelis } from './ui/profile';
+import { newlyUnlockedHelis, markColdStartSeen } from './ui/profile';
 import { submitScore } from './leaderboard/client';
 import { cloudAutoSave } from './leaderboard/cloudSave';
 import { button, UI, FW } from './ui/theme';
@@ -818,6 +818,7 @@ export class Game {
       if (this.rotorRpm >= 1) {
         this.engineStarted = true;
         this.hud.hideEngineStart();
+        markColdStartSeen(); // #9: ritual done once → later sorties boot with the engine already running
       }
     }
 

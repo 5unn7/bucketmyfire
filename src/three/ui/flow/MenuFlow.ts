@@ -32,7 +32,7 @@ import {
 import { UI, div } from '../theme';
 import { randomCallsign } from '../callsign';
 import { section, creditsFooter } from '../menuShared';
-import { brandMark, stepDots, primaryButton, ghostButton, fadeSwap, type StepDots, type PrimaryButton } from './chrome';
+import { brandMark, stepDots, primaryButton, ghostButton, featureButton, fadeSwap, type StepDots, type PrimaryButton } from './chrome';
 import type { FlowCtx } from './types';
 import { buildIdentityScreen } from './ScreenIdentity';
 import { buildAircraftScreen } from './ScreenAircraft';
@@ -61,7 +61,12 @@ export class MenuFlow {
   private selHeli: CatalogItem;
   private selMap: CatalogItem;
 
-  constructor(parent: HTMLElement, catalog: MissionDef[], onSelect: (id: string) => void) {
+  constructor(
+    parent: HTMLElement,
+    catalog: MissionDef[],
+    onSelect: (id: string) => void,
+    opts: { skipToMissions?: boolean } = {},
+  ) {
     this.catalog = catalog;
     this.onSelect = onSelect;
     this.cleared = missionsCleared();
@@ -100,13 +105,14 @@ export class MenuFlow {
     // First-run "instant fly": skip the whole identity gate + wizard with an auto callsign (audit
     // FIX #10). Shown only to un-named first-time pilots on Screen 1; returning pilots use "Skip to
     // missions →" instead. The two never show together (one needs a named profile, the other not).
-    this.quickBtn = ghostButton('⚡ Quick fly', () => this.quickFly());
+    this.quickBtn = featureButton('⚡ Quick fly', UI.accent, () => this.quickFly());
     // Daily Burn — the retention hook: today's date-seeded "clear every fire" challenge + its own
     // board. Always available (navigates to ?daily), so there's a reason to come back tomorrow. A live
     // consecutive-day streak (≥2) rides on the label as a "don't break the chain" pull (audit VISION-3).
     const streak = dailyStreak();
     const dailyLabel = streak >= 2 ? `🔥 Daily Burn · ${streak}-day streak` : '🔥 Daily Burn';
-    this.dailyBtn = ghostButton(dailyLabel, () => this.playDaily());
+    this.dailyBtn = featureButton(dailyLabel, UI.fire, () => this.playDaily());
+    if (streak >= 2) this.dailyBtn.style.boxShadow = `0 0 14px ${UI.fire}55`; // live streak → a "don't break the chain" glow
 
     const header = section({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', margin: '0 auto 22px', flexWrap: 'wrap' });
     const actions = div({ display: 'flex', alignItems: 'center', gap: '8px' });
@@ -155,6 +161,12 @@ export class MenuFlow {
         this.persist();
       },
     };
+
+    // Smart landing (#1): a returning pilot (real saved callsign) who pressed PLAY jumps straight to
+    // the mission carousel instead of re-walking Identity → Aircraft → Map every visit — their next-up
+    // sortie is auto-scrolled into view, one tap from flying. The wizard is still reachable via Back.
+    // First-run pilots stay on Screen 1 (the callsign gate).
+    if (opts.skipToMissions && hasNamedProfile()) this.step = STEPS - 1;
 
     this.render();
     parent.appendChild(this.root);

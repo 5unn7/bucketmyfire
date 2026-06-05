@@ -20,7 +20,7 @@
 
 import type { TrackerItem, CommsSpeaker, CommsUrgency, MissionDef, ScoreBreakdown, ScoreGrade } from './missions/types';
 import type { FireFieldView } from './sim/FireSystem';
-import { UI, FS, FW, R, el, frosted, makeCanvas, clamp01, anchor, setBlur, scrim, prefersReducedMotion } from './ui/theme';
+import { UI, FS, FW, R, GRADE, el, frosted, makeCanvas, clamp01, anchor, setBlur, scrim, prefersReducedMotion } from './ui/theme';
 import { onLayout, type LayoutState } from './ui/layout';
 import { shareScoreCard } from './ui/shareCard';
 import { dailyStreak } from './missions/streak';
@@ -370,6 +370,7 @@ export class HUD {
     setPodHidden(this.fuelPod, true); // hidden until a mission supplies fuel
     setPodHidden(this.threatPod, true); // hidden until there are structures to defend
     setPodHidden(this.crewPod, true); // hidden until a crew-transport mission supplies a count
+    setPodHidden(this.compassPod, true); // #10 density: numeric heading is redundant with the heading-up radar — hidden to thin the in-flight strip (flip to false to restore)
     leftCol.appendChild(this.spine);
 
     // Objective checklist (campaign — populated each frame from the mission tracker).
@@ -976,7 +977,7 @@ export class HUD {
     }
     if (!working || !crew) return;
     const boarding = crew.mode === 'boarding';
-    const col = boarding ? UI.accent : '#5fe0a0'; // cyan picking up / green setting down (matches the home pad)
+    const col = boarding ? UI.accent : UI.ok; // cyan picking up / green setting down (#8: was an ad-hoc 3rd green, now the shared success token)
     this.crewBarLabel.textContent = boarding ? 'CREW BOARDING' : 'CREW DISEMBARKING';
     this.crewBarLabel.style.color = col;
     this.crewBarFill.style.background = col;
@@ -1025,15 +1026,23 @@ export class HUD {
     // Reactive closing line — reads the outcome, not a canned string.
     let sub: string;
     if (s.won) {
-      if (d && d.structTotal > 0 && d.structSaved === d.structTotal && d.firesOut >= d.firesTotal) sub = `Flawless mission, ${who}. Not a structure lost.`;
-      else if (d && d.structTotal > 0 && d.structSaved < d.structTotal) sub = `Mission complete — but the fire took ${d.structTotal - d.structSaved}.`;
-      else sub = `Good flying, ${who}.`;
+      const stars = d?.breakdown?.stars ?? 0;
+      if (d && d.structTotal > 0 && d.structSaved === d.structTotal && d.firesOut >= d.firesTotal) {
+        sub = `Textbook, ${who}. Every roof still standing — dispatch owes you a coffee.`;
+      } else if (d && d.structTotal > 0 && d.structSaved < d.structTotal) {
+        const lost = d.structTotal - d.structSaved;
+        sub = `We held the line, ${who}. The fire still took ${lost === 1 ? 'one' : lost} — but the town's standing.`;
+      } else if (stars >= 3) {
+        sub = `Now THAT was flying, ${who}. Knocked down clean — not a wisp left.`;
+      } else {
+        sub = `Fire's out, ${who}. That's how it's done.`;
+      }
     } else {
       // Loss: name what actually went wrong — straight, no theatrics, and own it. The cause is
       // resolved by Game (a crash carries its sub-cause; a mission-rule loss reads fuel/structures).
       switch (d?.cause) {
         case 'tree':
-          sub = 'You put it into the trees. You might want to avoid that';
+          sub = 'You put it into the trees. You might want to avoid that.';
           break;
         case 'impact':
           sub = 'Came in too hard. That was a rough landing, even for you.';
@@ -1042,7 +1051,7 @@ export class HUD {
           sub = 'You clipped the bridge. Scenic, sure — but you have to fit under it.';
           break;
         case 'airframe':
-          sub = 'Heli’s too damaged to fly. Fly with sanity.';
+          sub = 'Too much damage to keep her airborne. Easy does it next time.';
           break;
         case 'fuel':
           sub = 'Ran the tank dry. You knew the range.';
@@ -1113,6 +1122,20 @@ export class HUD {
       if (this.end.onLeaderboard) row2.appendChild(bannerButton('🏆 LEADERBOARD', UI.accent, this.end.onLeaderboard));
       row2.appendChild(this.shareButton(s));
       card.appendChild(row2);
+      // Win-only merch hook (#2) — surfaced at the highest-intent moment (just won, grade glowing). No
+      // store is wired yet, so this CAPTURES intent + acknowledges rather than dead-linking; swap the
+      // handler for the real Squadron Store URL once it's live.
+      if (s.won) {
+        let store: HTMLDivElement;
+        store = bannerButton('🪧 SQUADRON STORE', UI.warm, () => {
+          store.textContent = 'Patches, posters & decals — coming soon';
+          store.style.opacity = '0.7';
+          store.style.pointerEvents = 'none';
+        });
+        const storeRow = el('div', { display: 'flex', justifyContent: 'center', marginTop: '12px' });
+        storeRow.appendChild(store);
+        card.appendChild(storeRow);
+      }
     }
 
     back.appendChild(card);
@@ -1449,7 +1472,7 @@ export class HUD {
     if (!e) return;
     const r = clamp01(rpm);
     const full = r >= 1;
-    const col = full ? '#46d17a' : UI.accent;
+    const col = full ? AIRFRAME_OK : UI.accent; // #8: reuse the documented in-world green const (was a 4th inline copy of the same hex)
     e.ring.style.background = `conic-gradient(${col} ${r * 360}deg, rgba(255,255,255,0.08) ${r * 360}deg)`;
     e.sub.textContent = `${Math.round(r * 100)}%`;
     e.label.textContent = full ? 'READY' : 'START';
@@ -2282,28 +2305,28 @@ function unlockCallout(items: { name: string; tagline: string }[]): HTMLDivEleme
   return box;
 }
 
-/** Rank-letter colours: S gold (mastery) → A green → B cyan → C neutral → D red (a sloppy win). */
-const GRADE_COLORS: Record<ScoreGrade, string> = {
-  S: '#ffce54',
-  A: '#7cffb2',
-  B: UI.accent,
-  C: '#cfe6f2',
-  D: UI.warn,
-};
-
-/** The big rank-letter badge under the headline (win only) — the run's headline accolade, with
- *  the star medal (1..3) beneath it. */
+/** The run's headline accolade (win only). STARS are the hero (#5) — a big 1..3 gold star medal — with
+ *  the letter RANK demoted to a small chip beneath. Both paint off the ONE `GRADE` colour map in
+ *  theme.ts (#8: replaces a drifted local `GRADE_COLORS` copy that disagreed with it). Falls back to a
+ *  big rank letter only when no star count is available. */
 function gradeBadge(grade: ScoreGrade, stars: number | null): HTMLDivElement {
-  const c = GRADE_COLORS[grade];
-  const col = el('div', { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '7px', marginTop: '10px' });
-  const wrap = el('div', { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' });
-  wrap.appendChild(el('div', { fontSize: FS.sm, letterSpacing: '3px', color: UI.dim, fontWeight: FW.bold }, 'RANK'));
-  wrap.appendChild(el('div', { fontSize: FS.mega, fontWeight: FW.black, lineHeight: '1', color: c, textShadow: `0 0 18px ${c}66` }, grade));
-  col.appendChild(wrap);
-  if (stars) {
-    const row = el('div', { display: 'flex', gap: '3px', fontSize: FS.lg, lineHeight: '1' });
-    for (let i = 1; i <= 3; i++) row.appendChild(el('div', { color: i <= stars ? UI.warm : UI.faint }, i <= stars ? '★' : '☆'));
+  const c = GRADE[grade] ?? UI.accent;
+  const col = el('div', { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', marginTop: '12px' });
+  if (stars !== null) {
+    // Hero: the star medal, big and gold — the metric everyone reads at a glance and shares.
+    const row = el('div', { display: 'flex', gap: '8px', fontSize: FS.banner, lineHeight: '1' });
+    for (let i = 1; i <= 3; i++) {
+      const on = i <= stars;
+      row.appendChild(el('div', { color: on ? UI.gold : UI.faint, textShadow: on ? `0 0 16px ${UI.gold}66` : 'none' }, on ? '★' : '☆'));
+    }
     col.appendChild(row);
+    // Secondary: a small "RANK A" chip in the grade colour (the sim-serious flex, demoted).
+    const chip = el('div', { display: 'inline-flex', alignItems: 'baseline', gap: '6px', fontSize: FS.label, letterSpacing: '2px', fontWeight: FW.bold, color: UI.dim }, 'RANK');
+    chip.appendChild(el('span', { color: c, fontWeight: FW.heavy, fontSize: FS.body, letterSpacing: '0' }, grade));
+    col.appendChild(chip);
+  } else {
+    // No star count → fall back to the big rank letter as the hero.
+    col.appendChild(el('div', { fontSize: FS.mega, fontWeight: FW.black, lineHeight: '1', color: c, textShadow: `0 0 18px ${c}66` }, grade));
   }
   return col;
 }

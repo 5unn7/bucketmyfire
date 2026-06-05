@@ -245,3 +245,27 @@ export function clearProfile(): void {
     // ignore
   }
 }
+
+// --- Cold-start ritual seen-flag (#9) ---------------------------------------
+// The hold-to-spool engine start is a great fantasy beat the FIRST time and a speed bump by the sixth
+// sortie. We persist a one-bit "you've done it once" flag so the boot path skips the ritual on later
+// missions (booting with the engine already running, the same path QA/?autostart uses).
+const COLD_START_KEY = 'bmf.coldstart.v1';
+
+/** Has the pilot completed the hold-to-start ritual at least once? (Later sorties skip it.) */
+export function coldStartSeen(): boolean {
+  try {
+    return localStorage.getItem(COLD_START_KEY) === '1';
+  } catch {
+    return false; // storage blocked → just show the ritual each time (harmless)
+  }
+}
+
+/** Record that the cold-start ritual has been completed once. */
+export function markColdStartSeen(): void {
+  try {
+    localStorage.setItem(COLD_START_KEY, '1');
+  } catch {
+    /* storage unavailable — the ritual simply shows again next time */
+  }
+}

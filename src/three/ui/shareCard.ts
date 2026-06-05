@@ -144,8 +144,8 @@ export async function shareScoreCard(data: ScoreCardData): Promise<ShareOutcome>
   const place = data.location || data.missionName;
   const streak = typeof data.streak === 'number' && data.streak >= 2 ? ` 🔥 ${data.streak}-day streak!` : '';
   const text = data.won
-    ? `I saved ${place} with ${data.score.toLocaleString()} pts${starsText(data.stars)} in Bucket My Fire!${streak}`
-    : `I scored ${data.score.toLocaleString()} pts in Bucket My Fire!${streak}`;
+    ? `I saved ${place} with ${data.score.toLocaleString()} pts${starsText(data.stars)} in Bucket My Fire.${streak} Think you can beat it?`
+    : `I scored ${data.score.toLocaleString()} pts in Bucket My Fire.${streak} Think you can beat it?`;
 
   let blob: Blob | null = null;
   try {

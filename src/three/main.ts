@@ -8,6 +8,7 @@ import { TitleScreen } from './ui/title/TitleScreen';
 import { CAMPAIGN, missionById } from './missions/catalog';
 import { buildDailyMission, isDailyId } from './missions/daily';
 import { HELI_MODELS } from './meshes/heliModels';
+import { coldStartSeen } from './ui/profile';
 import { openLeaderboard } from './ui/Leaderboard';
 import { resetStaleStorage } from './storage/reset';
 import { installErrorBeacon } from './telemetry/errorBeacon';
@@ -78,7 +79,10 @@ function routeMission(): void {
     // name; returning pilots get a "Skip to missions →". Picking a mission navigates with `?m=` (a
     // reload). Headless/deep-link (?m= / ?autostart / ?qa) bypasses this branch and boots the game.
     new TitleScreen(container, CAMPAIGN, () => {
-      new MenuFlow(container, CAMPAIGN, (id) => gotoCampaign(id));
+      // Smart PLAY (#1): MenuFlow lands a RETURNING pilot straight on the mission carousel (it gates
+      // skipToMissions on a real saved callsign), so PLAY → pick a sortie in one tap. First-run pilots
+      // still start on Screen 1 (the callsign gate).
+      new MenuFlow(container, CAMPAIGN, (id) => gotoCampaign(id), { skipToMissions: true });
     });
   }
 }
@@ -199,7 +203,9 @@ function bootMission(mission: MissionDef): void {
 
   // Headless QA (?qa drives __game; ?autostart boots straight into a mission) skips the cold-start
   // ritual — the autopilot/teleport/screenshot flows expect a running, airborne aircraft.
-  const skipColdStart = params.has('qa') || params.has('autostart');
+  // Skip the hold-to-spool ritual for headless QA/autostart, AND once the pilot has completed it once
+  // before (#9) — after the first time it's a speed bump, so later sorties boot engine-running.
+  const skipColdStart = params.has('qa') || params.has('autostart') || coldStartSeen();
   // QA / dev: fly ANY airframe regardless of unlock progress with ?heli=<id> (bell-205a1 | bell-212 |
   // uh-60), e.g. ?m=first-light&autostart&heli=uh-60. Unknown ids fall back to the saved default.
   const heliOverride = params.get('heli');
