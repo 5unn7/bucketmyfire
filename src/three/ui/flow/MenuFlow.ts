@@ -48,6 +48,7 @@ export class MenuFlow {
   private readonly backBtn: HTMLButtonElement;
   private readonly skipBtn: HTMLButtonElement;
   private readonly quickBtn: HTMLButtonElement;
+  private readonly dailyBtn: HTMLButtonElement;
   private readonly ctx: FlowCtx;
 
   private readonly catalog: MissionDef[];
@@ -99,10 +100,13 @@ export class MenuFlow {
     // FIX #10). Shown only to un-named first-time pilots on Screen 1; returning pilots use "Skip to
     // missions →" instead. The two never show together (one needs a named profile, the other not).
     this.quickBtn = ghostButton('⚡ Quick fly', () => this.quickFly());
+    // Daily Burn — the retention hook: today's date-seeded "clear every fire" challenge + its own
+    // board. Always available (navigates to ?daily), so there's a reason to come back tomorrow.
+    this.dailyBtn = ghostButton('🔥 Daily Burn', () => this.playDaily());
 
     const header = section({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', margin: '0 auto 22px', flexWrap: 'wrap' });
     const actions = div({ display: 'flex', alignItems: 'center', gap: '8px' });
-    actions.append(this.quickBtn, this.skipBtn);
+    actions.append(this.dailyBtn, this.quickBtn, this.skipBtn);
     header.append(brandMark(), this.dots.el, actions);
     this.root.appendChild(header);
 
@@ -171,6 +175,14 @@ export class MenuFlow {
     }
     const first = this.catalog.find((m) => (m.map ?? '') === this.selMap.id) ?? this.catalog[0];
     this.onSelect(first.id);
+  }
+
+  /** Leave the wizard for today's Daily Burn (the date-seeded challenge + its own per-day board). */
+  private playDaily(): void {
+    const url = new URL(location.href);
+    url.searchParams.delete('m');
+    url.searchParams.set('daily', '1');
+    location.assign(url.toString());
   }
 
   private goTo(step: number): void {
