@@ -1,0 +1,25 @@
+Downloaded texture & HDRI assets — bucketmyfire
+================================================
+
+All assets below are from Poly Haven (https://polyhaven.com) and are released under
+the Creative Commons CC0 1.0 license (public domain). No attribution is legally
+required; credited here as a courtesy and per this project's asset convention.
+
+License: CC0 1.0 Universal — https://creativecommons.org/publicdomain/zero/1.0/
+Source:  https://polyhaven.com
+
+These sit BEHIND the procedural look as optional polish (the game renders fully
+without them). Resolution pulled at 1k for the mobile-60fps budget.
+
+HDRI (environment / reflections) — hdri/
+  autumn_field_puresky_1k.hdr   https://polyhaven.com/a/autumn_field_puresky   (clear daylight, pure sky)
+  autumn_forest_04_1k.hdr       https://polyhaven.com/a/autumn_forest_04       (golden forest sun)
+
+PBR textures (diffuse + nor_gl + rough, 1k jpg) — pbr/<slug>/
+  forest_ground_04     https://polyhaven.com/a/forest_ground_04     (pine-forest floor — terrain base)
+  forest_leaves_04     https://polyhaven.com/a/forest_leaves_04     (needle/leaf litter)
+  pine_bark            https://polyhaven.com/a/pine_bark            (conifer trunk bark)
+  rock_ground          https://polyhaven.com/a/rock_ground          (boreal-shield rock)
+  burned_ground_01     https://polyhaven.com/a/burned_ground_01     (scorched / fire-damaged ground)
+  brushed_concrete_03  https://polyhaven.com/a/brushed_concrete_03  (helipad deck)
+  snow_02              https://polyhaven.com/a/snow_02              (alpine / winter caps — BC profile)

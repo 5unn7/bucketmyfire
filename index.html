@@ -17,40 +17,97 @@
     <meta name="theme-color" content="#1b2a1f" />
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="apple-touch-icon" href="./icon.svg" />
-    <title>Bucket My Fire — Helicopter Firefighting Simulator</title>
+    <title>Bucket My Fire — Helicopter Wildfire Flight Sim</title>
 
     <!-- SEO + social share. Open Graph / Twitter cards make the link unfurl with a
          title, blurb, and preview image on X / Discord / iMessage / Slack — which is
          how shared links actually pull in visitors. og:image MUST be an absolute URL. -->
     <meta
       name="description"
-      content="Fly a helicopter over the northern Saskatchewan wilderness — scoop from lakes, drop on wildfires, and save the forest before it spreads. A free real-3D flight game that runs right in your browser, phone or desktop."
+      content="Fly a helicopter, fill from the lakes, and fight the wildfire before it reaches the town. A real-feel helicopter flight sim, free in your browser."
     />
     <link rel="canonical" href="https://bucketmyfire.com/" />
 
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Bucket My Fire" />
     <meta property="og:url" content="https://bucketmyfire.com/" />
-    <meta property="og:title" content="Bucket My Fire — Helicopter Firefighting Simulator" />
+    <meta property="og:title" content="Bucket My Fire — Helicopter Wildfire Flight Sim" />
     <meta
       property="og:description"
-      content="Fly a helicopter over northern Saskatchewan: scoop from lakes, drop on wildfires, save the forest. Free real-3D flight game in your browser."
+      content="Fly a helicopter, fill from the lakes, and fight the wildfire before it reaches the town. A real-feel flight sim, free in your browser."
     />
     <meta property="og:image" content="https://bucketmyfire.com/og-image.jpg" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta
       property="og:image:alt"
-      content="A helicopter with a slung water bucket flying over a burning Saskatchewan forest."
+      content="A helicopter with a slung water bucket flying over a burning forest."
     />
 
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Bucket My Fire — Helicopter Firefighting Simulator" />
+    <meta name="twitter:title" content="Bucket My Fire — Helicopter Wildfire Flight Sim" />
     <meta
       name="twitter:description"
-      content="Fly a helicopter over northern Saskatchewan: scoop from lakes, drop on wildfires, save the forest. Free real-3D flight game in your browser."
+      content="Fly a helicopter, fill from the lakes, and fight the wildfire before it reaches the town. A real-feel flight sim, free in your browser."
     />
     <meta name="twitter:image" content="https://bucketmyfire.com/og-image.jpg" />
+
+    <!-- Structured data (SEO + AEO): lets search engines rank it and AI answer engines
+         (ChatGPT, Perplexity, Google AI Overviews, voice) cite what the game is, that it's
+         free, and how to play. Keep the description/FAQ answers in sync with the meta above. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": ["VideoGame", "SoftwareApplication"],
+            "name": "Bucket My Fire",
+            "alternateName": "Bucket My Fire — Helicopter Wildfire Flight Sim",
+            "url": "https://bucketmyfire.com/",
+            "image": "https://bucketmyfire.com/og-image.jpg",
+            "description": "Fly a helicopter, fill from the lakes, and fight the wildfire before it reaches the town. A real-feel helicopter flight sim, free in your browser.",
+            "genre": ["Flight simulator", "Helicopter game", "Wildfire firefighting game"],
+            "gamePlatform": "Web browser",
+            "applicationCategory": "GameApplication",
+            "operatingSystem": "Any modern web browser (iOS, Android, Windows, macOS)",
+            "playMode": "SinglePlayer",
+            "inLanguage": "en",
+            "author": { "@type": "Organization", "name": "Bucket My Fire" },
+            "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD", "availability": "https://schema.org/InStock" }
+          },
+          {
+            "@type": "FAQPage",
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "What is Bucket My Fire?",
+                "acceptedAnswer": { "@type": "Answer", "text": "Bucket My Fire is a free browser-based helicopter wildfire flight sim. You fly a helitanker, fill a slung bucket from lakes, and fight a spreading wildfire before it reaches the town." }
+              },
+              {
+                "@type": "Question",
+                "name": "Is Bucket My Fire free to play?",
+                "acceptedAnswer": { "@type": "Answer", "text": "Yes. It is completely free and runs in your web browser — no download, install, or sign-up required." }
+              },
+              {
+                "@type": "Question",
+                "name": "How do you play Bucket My Fire?",
+                "acceptedAnswer": { "@type": "Answer", "text": "Fly the helicopter low over a lake to fill your bucket, then drop the water on the fire. Keep the fire off the cabins and complete each mission's objectives." }
+              },
+              {
+                "@type": "Question",
+                "name": "What devices does Bucket My Fire run on?",
+                "acceptedAnswer": { "@type": "Answer", "text": "Any modern web browser on phone, tablet, or desktop. It is built mobile-first with touch controls and keyboard support." }
+              },
+              {
+                "@type": "Question",
+                "name": "Is there multiplayer?",
+                "acceptedAnswer": { "@type": "Answer", "text": "Co-op multiplayer is in development. Today the game is a single-player campaign with a global leaderboard." }
+              }
+            ]
+          }
+        ]
+      }
+    </script>
     <style>
       html,
       body {
@@ -160,7 +217,7 @@
         }
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-CMtFeR1O.js"></script>
+    <script type="module" crossorigin src="./assets/index-DlIxj35f.js"></script>
   </head>
   <body>
     <!-- Instant-paint cold-start splash (see #bmf-splash in <style>). Static markup so the
@@ -197,9 +254,12 @@
     </noscript>
     <div id="game"></div>
     <script>
-      /* Remove the splash as soon as the renderer mounts a <canvas>. No game-code coupling:
-         a MutationObserver watches for the first canvas; a hard 12s fallback guarantees the
-         splash can never strand a visitor on the loading screen. */
+      /* Remove the splash once the game signals its FIRST rendered frame ('bmf:ready', fired from the
+         TitleScreen / mission render loop — and the fatal-message path — by splashSignal.ts). The old
+         trigger fired on canvas-MOUNT, which happens BEFORE the first frame composites, so on a slower
+         device the splash could fade onto a black canvas mid shader-compile. Waiting for the first real
+         frame hands the splash off to actual pixels. A hard 12s fallback can never strand a visitor on
+         the loading screen. No import — just a window event — so this stays in the static HTML. */
       (function () {
         var splash = document.getElementById('bmf-splash');
         if (!splash) return;
@@ -211,13 +271,8 @@
           setTimeout(function () {
             if (splash && splash.parentNode) splash.parentNode.removeChild(splash);
           }, 500);
-          if (obs) obs.disconnect();
         }
-        var obs = new MutationObserver(function () {
-          if (document.querySelector('canvas')) hide();
-        });
-        obs.observe(document.body, { childList: true, subtree: true });
-        if (document.querySelector('canvas')) hide();
+        window.addEventListener('bmf:ready', hide);
         setTimeout(hide, 12000); // safety net
       })();
     </script>
