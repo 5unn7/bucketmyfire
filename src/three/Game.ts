@@ -7,7 +7,8 @@ import { createRoadMesh } from './meshes/road';
 import { createYardPatch, createYardMaterial } from './meshes/clearing';
 import { createDock } from './meshes/dock';
 import { createHelipad } from './meshes/helipad';
-import { applyFoliageSway } from './meshes/foliageWind';
+import { applyFoliageSway, type LeafDetail } from './meshes/foliageWind';
+import { loadAlbedo } from './meshes/pbrTextures';
 import { createHelicopter, HelicopterMesh } from './meshes/helicopter';
 import { createBucket, BucketMesh } from './meshes/bucket';
 import { HelicopterSim } from './sim/HelicopterSim';
@@ -63,7 +64,7 @@ import { coached, coachBump } from './ui/hints';
 import type { MissionDef, MissionSignals, MissionAction, ZonePlacement, ScoreTally } from './missions/types';
 import type { EndScreenHooks } from './HUD';
 import { seedFires, structurePlan, crewZones, resolveCrewZone, igniteFromPlacement, backburnLine } from './missions/scenario';
-import { WORLD3D, FLIGHT, STARTUP, BUCKET3D, DROP_PHYSICS, DROP_FX, FIREHEAD, CAMERA, FIRE3D, WATER, WASH, SPRAY, SMOKE, EMBERS, INSTRUMENTS, ROADS, MISSIONS, COMMUNITIES, SCORE, FOREST, STRUCT_FIRE, CRASH, BRIDGE, resolveHeliClass } from './config';
+import { WORLD3D, FLIGHT, STARTUP, BUCKET3D, DROP_PHYSICS, DROP_FX, FIREHEAD, CAMERA, FIRE3D, WATER, WASH, SPRAY, SMOKE, EMBERS, INSTRUMENTS, ROADS, MISSIONS, COMMUNITIES, SCORE, FOREST, TREE_TEX, STRUCT_FIRE, CRASH, BRIDGE, resolveHeliClass } from './config';
 
 // Instrument calibration factors (world units → real-world HUD units). Derived from
 // the FLIGHT caps so the gauges stay consistent if those are retuned.
@@ -114,7 +115,8 @@ export class Game {
   private readonly wash = new RotorWash(); // C4: rotor-downwash signal (water/foliage/fire + ground effect)
   private readonly world: World; // built from the mission seed (assigned first in the ctor)
   private readonly fauna: Fauna; // wildlife (moose/deer/loons…) — depends on world
-  private readonly forest: TreeField; // chunked conifer forest — culled each frame to what's in view
+  private readonly forest: TreeField; // chunked conifer forest (DEFERRED) — culled each frame to what's in view
+  private readonly forestNear: TreeField; // small SYNCHRONOUS conifer patch around the spawn — present at first frame
   // Decorative accent fields, built one tick AFTER the first frame (see buildAccentFoliage): they're
   // not colliders and the sim is frozen on the briefing/cold-start deck while they pop in, so deferring
   // them off the construction critical path shaves the first-frame freeze with no visible cost. Null
@@ -506,19 +508,60 @@ export class Game {
     // world.rng and break determinism — an independent stream (like the groves/snags) makes deferral safe.
     // Same seed → same forest. (Decoupling also removes the world.rng tier-divergence flagged for co-op.)
     const forestDensityMul = tier.current.name === 'low' ? 1 : FOREST.densityMul;
+    const spawn = this.helipadXZ ?? { x: 0, z: 0 }; // the forest fills AROUND where the heli starts
+    const nearR = FOREST.nearRadius;
+    // Real CC0 leaf-litter detail blended into every canopy (TREE_TEX) — loaded once, module-cached + shared.
+    const leaf: LeafDetail | undefined = TREE_TEX.enabled
+      ? { tex: loadAlbedo(TREE_TEX.leaves), strength: TREE_TEX.leafStrength, repeat: TREE_TEX.leafRepeat }
+      : undefined;
+    const swayFoliage = (field: TreeField): void => {
+      const fol = field.object.getObjectByName('TreeFoliage') as THREE.Mesh | null;
+      if (fol) applyFoliageSway(fol.material as THREE.Material, this.frame, leaf); // B6 wind sway + leaf detail
+    };
+
+    // --- Near-spawn conifer patch (SYNCHRONOUS — present at the FIRST frame) -------------------------
+    // The full forest below is DEFERRED (streams over the spool), so without this the pad would start
+    // treeless. Build a small disc of conifers AROUND the spawn now (cheap vs the whole map) so cone trees
+    // are already standing as the rotors spool. Built around the origin then shifted onto the spawn; the
+    // full forest fades to 0 inside `nearR` so they don't double up. Static (not burnable/culled) — it's the
+    // defended home pad and it's always under the camera.
+    const fullDensity =
+      Math.round(FOREST.baseCandidates * forestDensityMul * (this.world.sizeX / 600) * (this.world.sizeZ / 600)) /
+      (this.world.sizeX * this.world.sizeZ);
+    const nearPatch = createTreeField({
+      candidates: Math.round(fullDensity * (2 * nearR) * (2 * nearR)), // box of candidates; radial cutoff below → disc
+      size: 2 * nearR,
+      heightAt: (x, z) => this.world.groundHeightAt(spawn.x + x, spawn.z + z), // local → world = spawn + local
+      sample: (x, z) => {
+        if (x * x + z * z > nearR * nearR) return { treeDensity: 0, treeTint: [0, 0, 0] }; // radial cutoff → a disc
+        const wx = spawn.x + x;
+        const wz = spawn.z + z;
+        const s = this.world.biomes.sample(wx, wz);
+        return { treeDensity: s.treeDensity * this.world.clearingFactor(wx, wz) * this.world.authoredFoliageMul(wx, wz), treeTint: s.treeTint };
+      },
+      rng: speciesRng(WORLD3D.seed ^ 0x1a2b3c4d),
+      burnable: false,
+    });
+    nearPatch.object.position.set(spawn.x, 0, spawn.z); // shift the origin-built patch onto the spawn
+    this.scene.add(nearPatch.object);
+    this.forestNear = nearPatch;
+    swayFoliage(nearPatch);
+    const nearColliders = nearPatch.colliders.map((c) => ({ ...c, x: c.x + spawn.x, z: c.z + spawn.z })); // → world XZ
+
+    // --- The full forest (DEFERRED, own rng) — fades to 0 inside the near patch so they don't overlap ----
     const forest = createTreeField({
-      // Scale candidates with world AREA (constant density as the map grows), off the FOREST.baseCandidates
-      // lever — trimmed so the enlarged world stays open + performant rather than doubling the tree count.
       candidates: Math.round(FOREST.baseCandidates * forestDensityMul * (this.world.sizeX / 600) * (this.world.sizeZ / 600)),
       size: this.world.sizeX,
       sizeZ: this.world.sizeZ,
       heightAt: (x, z) => this.world.groundHeightAt(x, z),
       sample: (x, z) => {
         const s = this.world.biomes.sample(x, z);
-        // clearingFactor thins trees in settlement yards/LZs; authoredFoliageMul is the map editor's
-        // hand-painted forest brush (1 = untouched, >1 denser, 0 = cleared).
+        // clearingFactor thins trees in settlement yards/LZs; authoredFoliageMul is the map editor's brush.
+        const dn = Math.hypot(x - spawn.x, z - spawn.z);
+        const t = Math.min(1, Math.max(0, (dn - nearR) / 90));
+        const nearFade = t * t * (3 - 2 * t); // 0 inside nearR (the near patch owns it) → 1 just past it
         return {
-          treeDensity: s.treeDensity * this.world.clearingFactor(x, z) * this.world.authoredFoliageMul(x, z),
+          treeDensity: s.treeDensity * this.world.clearingFactor(x, z) * this.world.authoredFoliageMul(x, z) * nearFade,
           treeTint: s.treeTint,
         };
       },
@@ -528,16 +571,13 @@ export class Game {
     });
     this.forest = forest;
     this.scene.add(forest.object); // present but EMPTY now — fills as the deferred stepper runs
-    // Bucket/heli collision starts on the BARE ground (no canopy) while the forest streams — the heli is
-    // parked on the cleared home pad through the spool, so there's nothing to snag yet. Rebuilt with the
-    // real tree colliders + the wind sway wired the moment the forest finishes (the stepper below).
-    this.obstacles = new Obstacles(this.world, []);
+    // Collision is live from frame 1 for the near patch; rebuilt to include the full forest when it finishes.
+    this.obstacles = new Obstacles(this.world, nearColliders);
     this.deferredBuild.push((budgetMs) => {
       const done = forest.buildStep!(budgetMs);
       if (done) {
-        this.obstacles = new Obstacles(this.world, forest.colliders); // canopy collision now live
-        const fol = forest.object.getObjectByName('TreeFoliage') as THREE.Mesh | null;
-        if (fol) applyFoliageSway(fol.material as THREE.Material, this.frame); // B6 canopy wind sway
+        this.obstacles = new Obstacles(this.world, [...nearColliders, ...forest.colliders]); // full canopy collision now live
+        swayFoliage(forest);
       }
       return done;
     });
@@ -559,7 +599,7 @@ export class Game {
     if (this.accentFoliageTimer) clearTimeout(this.accentFoliageTimer); // drop any pending deferred build first
     this.accentFoliageTimer = setTimeout(() => {
       this.accentFoliageTimer = null;
-      this.buildAccentFoliage(forestDensityMul);
+      this.buildAccentFoliage(forestDensityMul, leaf);
     }, 0);
 
     // C3 fire sim: World fields injected as callbacks (so the sim never imports
@@ -787,10 +827,10 @@ export class Game {
    * (No colliders — conifers are the snag the bucket catches.) Guarded against a dispose racing the
    * timer: if the scene's gone there's nothing to add to.
    */
-  private buildAccentFoliage(forestDensityMul: number): void {
+  private buildAccentFoliage(forestDensityMul: number, leafDetail: LeafDetail | undefined): void {
     if (this.disposed) return;
     this.groves = createTreeField({
-      candidates: Math.round(2200 * forestDensityMul * (this.world.sizeX / 600) * (this.world.sizeZ / 600)),
+      candidates: Math.round(2800 * forestDensityMul * (this.world.sizeX / 600) * (this.world.sizeZ / 600)), // bumped 2200→2800 (deferred — more birch/aspen)
       size: this.world.sizeX,
       sizeZ: this.world.sizeZ,
       heightAt: (x, z) => this.world.groundHeightAt(x, z),
@@ -801,10 +841,10 @@ export class Game {
     });
     this.scene.add(this.groves.object);
     const gFol = this.groves.object.getObjectByName('TreeFoliage') as THREE.Mesh | null;
-    if (gFol) applyFoliageSway(gFol.material as THREE.Material, this.frame);
+    if (gFol) applyFoliageSway(gFol.material as THREE.Material, this.frame, leafDetail);
 
     this.snags = createTreeField({
-      candidates: Math.round(700 * (this.world.sizeX / 600) * (this.world.sizeZ / 600)),
+      candidates: Math.round(950 * (this.world.sizeX / 600) * (this.world.sizeZ / 600)), // bumped 700→950 (more snags)
       size: this.world.sizeX,
       sizeZ: this.world.sizeZ,
       heightAt: (x, z) => this.world.groundHeightAt(x, z),
@@ -928,11 +968,12 @@ export class Game {
       const anyM = m as unknown as Record<string, unknown> & { uniforms?: Record<string, { value?: unknown }> };
       for (const slot of TEX_SLOTS) {
         const tex = anyM[slot];
-        if (tex instanceof THREE.Texture) tex.dispose();
+        if (tex instanceof THREE.Texture && !tex.userData?.shared) tex.dispose(); // skip module-cached PBR/albedo textures
       }
       if (anyM.uniforms) {
         for (const u of Object.values(anyM.uniforms)) {
-          if (u && (u.value as THREE.Texture)?.isTexture) (u.value as THREE.Texture).dispose();
+          const tex = u?.value as THREE.Texture | undefined;
+          if (tex?.isTexture && !tex.userData?.shared) tex.dispose(); // skip shared (loadAlbedo/loadPBR) textures
         }
       }
       m.dispose();
@@ -1421,6 +1462,7 @@ export class Game {
     // Forest LOD: only keep the tree chunks near the camera (frustum culling drops the
     // rest); centered on the eye so chunks ahead/behind toggle correctly.
     this.forest.cull(this.chase.camera.position.x, this.chase.camera.position.z);
+    this.forestNear.cull(this.chase.camera.position.x, this.chase.camera.position.z); // the sync near-spawn patch
     this.groves?.cull(this.chase.camera.position.x, this.chase.camera.position.z); // null until the deferred build runs
     this.snags?.cull(this.chase.camera.position.x, this.chase.camera.position.z);
     // C5: trees the fire field reaches ignite, char, and collapse into black snags.

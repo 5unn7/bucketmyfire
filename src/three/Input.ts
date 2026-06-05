@@ -81,6 +81,7 @@ export class Input {
   private dropBtn!: HTMLDivElement;
   private swapBtn!: HTMLDivElement;
   private detachBtn!: HTMLDivElement;
+  private clusterRow!: HTMLDivElement;
   private eyeBtn!: HTMLDivElement;
   private eyeSvg!: SVGElement;
   private helpBtn!: HTMLDivElement;
@@ -169,10 +170,7 @@ export class Input {
   /** Show/hide the DETACH (jettison-bucket) button. Game shows it on a water sortie while a bucket is
    *  attached — press it to release the slung bucket; you then RTB to a base for a fresh one. */
   setDetachVisible(on: boolean): void {
-    if (!this.detachBtn) return;
-    // Bento cell always occupies its slot — dim + disable rather than hide.
-    this.detachBtn.style.opacity = on ? '1' : '0.28';
-    this.detachBtn.style.pointerEvents = on ? 'auto' : 'none';
+    if (this.detachBtn) this.detachBtn.style.display = on ? 'flex' : 'none';
   }
 
   /** Show/hide the contextual SWAP-loadout button. Game calls this each frame: it's only
@@ -217,18 +215,22 @@ export class Input {
     });
     for (const t of this.stickTicks) t.style.transformOrigin = `1px ${R - 6}px`;
 
-    // Bento 2×2 cluster — all four cells equal size.
+    // Collective + DROP cluster.
     const cb = Math.round(set.clusterBtn * k);
-    const cellSz = `${cb}px`;
-    const cellFs = `${Math.round(cb * 0.28)}px`;
-    for (const el of [this.climbBtn, this.descendBtn, this.dropBtn, this.detachBtn]) {
-      Object.assign(el.style, { width: cellSz, height: cellSz, fontSize: cellFs });
+    for (const el of [this.climbBtn, this.descendBtn]) {
+      Object.assign(el.style, { width: `${cb}px`, height: `${cb}px`, fontSize: `${Math.round(cb * 0.29)}px` });
     }
+    const drop = Math.round(set.dropSize * k);
+    Object.assign(this.dropBtn.style, { width: `${drop}px`, height: `${drop}px`, fontSize: `${Math.round(drop * 0.16)}px` });
+    this.clusterRow.style.gap = `${Math.round(set.gap * 1.7)}px`;
 
-    // Free-look eye — sits in the lower-right, lifted above the bento cluster.
+    // Free-look eye — sits in the lower-right, lifted above the collective/DROP cluster.
     const eye = Math.round(set.eyeSize * k);
-    const bentoH = cb * 2 + 2; // 2px = grid gap
-    const clusterH = bentoH;
+    // The cluster's footprint above the bottom edge: the taller of the climb+descend
+    // column (2 buttons + their gap) vs the DROP hero. Float the eye that far up plus a
+    // separation gap, so it lands in the lower half and clears the buttons on any screen.
+    const colH = cb * 2 + set.gap;
+    const clusterH = Math.max(colH, drop);
     const lift = clusterH + Math.round(set.gap * 2.5);
     Object.assign(this.eyeBtn.style, { width: `${eye}px`, height: `${eye}px`, marginBottom: `${lift}px` });
     const glyph = Math.round(eye * 0.52);
@@ -261,8 +263,26 @@ export class Input {
     parent.appendChild(root);
   }
 
-  /** Contextual bottom-centre SWAP button (re-rig bucket↔crew at home base, mixed missions). */
+  /** Contextual bottom-centre action buttons, hidden until Game enables each:
+   *   - DETACH — jettison the slung bucket (shown on a water sortie while a bucket is attached).
+   *   - SWAP   — re-rig bucket↔crew (shown set down at the home base, on a mixed mission). */
   private buildSwapUI(root: HTMLElement): void {
+    const detach = button('⊗ RELEASE BUCKET', {
+      position: 'relative',
+      display: 'none',
+      padding: '0 16px',
+      height: '42px',
+      borderRadius: R.pill,
+      fontSize: FS.meta,
+      fontWeight: FW.bold,
+      letterSpacing: '1.2px',
+      color: '#ffe7df',
+      borderColor: UI.warmStroke,
+      boxShadow: `0 0 14px rgba(255,90,60,0.26), ${UI.shadowBtn}`,
+    });
+    this.detachBtn = detach;
+    holdButton(detach, (on) => (this.btnDetach = on), UI.warm);
+
     const swap = button('⇄ SWAP', {
       position: 'relative',
       display: 'none',
@@ -280,6 +300,7 @@ export class Input {
     holdButton(swap, (on) => (this.btnSwap = on));
 
     const col = div({ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', marginBottom: '14px' });
+    col.appendChild(detach);
     col.appendChild(swap);
     const a = anchor('bottom-center');
     a.appendChild(col);
@@ -383,92 +404,38 @@ export class Input {
     root.appendChild(a);
   }
 
-  /** Bento 2×2 cluster (bottom-right):
-   *
-   *   ┌──────┬──────┐
-   *   │  ▲   │ DROP │   ← cyan collective / warm DROP
-   *   ├──────┼──────┤
-   *   │  ▼   │  ✂   │   ← collective / release-bucket (dims when unavailable)
-   *   └──────┴──────┘
-   *
-   *  A single frosted container clips all four cells; the 2px grid gap becomes the
-   *  divider lines. All cells are the same size (cb × cb), sized per breakpoint. */
+  /** Right-hand cluster: a vertical collective pair (climb / descend) sitting just
+   *  left of the DROP hero, all sharing one baseline so they read as one group. */
   private buildCluster(root: HTMLElement): void {
-    // -- Cell helpers --
-    const cell = (extra: Partial<CSSStyleDeclaration> = {}): HTMLDivElement =>
-      button('', {
-        position: 'relative', // button() defaults to 'fixed'; cells live inside the grid
-        borderRadius: '0',
-        flexDirection: 'column',
-        gap: '4px',
-        ...extra,
-      });
-
-    const mkGlyph = (text: string, color: string): HTMLDivElement => {
-      const el = div({ fontSize: '22px', lineHeight: '1', color, pointerEvents: 'none' });
-      el.textContent = text;
-      return el;
-    };
-    const mkLabel = (text: string, color: string): HTMLDivElement => {
-      const el = div({ fontSize: '8px', letterSpacing: '1px', fontFamily: 'monospace', color, pointerEvents: 'none' });
-      el.textContent = text;
-      return el;
-    };
-
-    // UP cell — cockpit cyan register.
-    const climb = cell({ background: 'rgba(6,14,22,0.86)', borderColor: 'transparent' });
-    climb.appendChild(mkGlyph('▲', UI.accent));
-    climb.appendChild(mkLabel('CLB', 'rgba(103,232,255,0.45)'));
-    this.climbBtn = climb;
-    holdButton(climb, (on) => (this.btnUp = on));
-
-    // DOWN cell — subtle warm tint (descending toward fire).
-    const descend = cell({ background: 'rgba(10,7,4,0.90)', borderColor: 'transparent' });
-    descend.appendChild(mkGlyph('▼', 'rgba(255,130,60,0.80)'));
-    descend.appendChild(mkLabel('DES', 'rgba(255,106,44,0.40)'));
-    this.descendBtn = descend;
-    holdButton(descend, (on) => (this.btnDown = on));
-
-    // DROP cell — warm hero. Font size set in applyLayout to fill the cell.
-    const drop = cell({
+    const climb = button('▲', { position: 'relative' });
+    const descend = button('▼', { position: 'relative' });
+    const drop = button('DROP', {
+      position: 'relative',
       background: UI.warmGlass,
-      borderColor: 'transparent',
+      borderColor: UI.warmStroke,
       color: '#ffe7df',
       fontWeight: FW.bold,
       letterSpacing: '1.5px',
-      boxShadow: `inset 0 0 18px rgba(255,90,60,0.18)`,
+      boxShadow: `0 0 18px rgba(255,90,60,0.28), ${UI.shadowBtn}`,
     });
-    drop.appendChild(mkGlyph('●', 'rgba(255,90,40,0.70)'));
-    drop.appendChild(mkLabel('DROP', '#ffe7df'));
+    this.climbBtn = climb;
+    this.descendBtn = descend;
     this.dropBtn = drop;
+    holdButton(climb, (on) => (this.btnUp = on));
+    holdButton(descend, (on) => (this.btnDown = on));
     holdButton(drop, (on) => (this.btnDrop = on), UI.warm);
 
-    // RELEASE cell — ember/caution; dims (opacity 0.32) when not actionable.
-    const detach = cell({ background: 'rgba(14,6,2,0.90)', borderColor: 'transparent' });
-    detach.appendChild(mkGlyph('✂', 'rgba(255,120,50,0.80)'));
-    detach.appendChild(mkLabel('RELEASE', 'rgba(255,110,44,0.42)'));
-    this.detachBtn = detach;
-    holdButton(detach, (on) => (this.btnDetach = on), UI.ember);
+    const col = div({ display: 'flex', flexDirection: 'column', gap: 'var(--bmf-gap)', alignItems: 'center' });
+    col.appendChild(climb);
+    col.appendChild(descend);
 
-    // 2×2 bento container — background bleeds through the 2px gap as divider lines.
-    const bento = div({
-      display: 'grid',
-      gridTemplateColumns: '1fr 1fr',
-      gridTemplateRows: '1fr 1fr',
-      gap: '2px',
-      borderRadius: '16px',
-      overflow: 'hidden',
-      background: 'rgba(103,232,255,0.10)',
-      border: '1px solid rgba(103,232,255,0.14)',
-      boxShadow: UI.shadowBtn,
-    });
-    setBlur(bento);
-    bento.appendChild(drop);
-    bento.appendChild(climb);
-    bento.appendChild(detach);
-    bento.appendChild(descend);
+    const row = div({ display: 'flex', flexDirection: 'row', alignItems: 'flex-end' });
+    row.appendChild(col);
+    row.appendChild(drop);
+    this.clusterRow = row;
+
     const a = anchor('bottom-right');
-    a.appendChild(bento);
+    a.appendChild(row);
     root.appendChild(a);
   }
 
