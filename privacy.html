@@ -1,0 +1,181 @@
+<!doctype html>
+<!--
+  Plain-language privacy policy for bucketmyfire. Written to match the ACTUAL data flow in the
+  codebase (hashed-email cloud save, public callsign, cookieless Cloudflare analytics, anonymized
+  crash diagnostics, no payments/cookies). It is not legal advice — have it reviewed before scaling,
+  and set up the privacy@bucketmyfire.com contact (e.g. free Cloudflare Email Routing → your inbox).
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="index,follow" />
+    <title>Privacy Policy — Bucket My Fire</title>
+    <link rel="canonical" href="https://bucketmyfire.com/privacy.html" />
+    <style>
+      :root {
+        --bg: #0e160f;
+        --panel: #16241a;
+        --ink: #f4ead9;
+        --dim: #b9b2a3;
+        --accent: #ff7a2f;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        line-height: 1.65;
+        font-size: 17px;
+      }
+      .wrap {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 40px 22px 80px;
+      }
+      a {
+        color: var(--accent);
+      }
+      h1 {
+        font-size: 30px;
+        margin: 0 0 6px;
+      }
+      h2 {
+        font-size: 20px;
+        margin: 34px 0 8px;
+        color: var(--accent);
+      }
+      .meta {
+        color: var(--dim);
+        font-size: 14px;
+        margin-bottom: 26px;
+      }
+      .tldr {
+        background: var(--panel);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 12px;
+        padding: 16px 20px;
+        margin: 0 0 14px;
+      }
+      ul {
+        padding-left: 22px;
+      }
+      li {
+        margin: 6px 0;
+      }
+      .back {
+        display: inline-block;
+        margin-bottom: 26px;
+        text-decoration: none;
+        font-weight: 600;
+      }
+      footer {
+        margin-top: 40px;
+        color: var(--dim);
+        font-size: 14px;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        padding-top: 18px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <a class="back" href="/">← Back to the game</a>
+      <h1>Privacy Policy</h1>
+      <p class="meta">Bucket My Fire · Last updated 4 June 2026</p>
+
+      <div class="tldr">
+        <strong>The short version:</strong> Bucket My Fire is a free game you can play without giving
+        us anything. The only personal data we ever touch is a <em>callsign</em> you choose (shown
+        publicly on the leaderboard) and, <em>only if you opt in</em>, an email that is scrambled
+        (hashed) on your own device before it ever leaves your browser. No passwords, no payment
+        details, no advertising cookies, and we never sell your data.
+      </div>
+
+      <h2>Who we are</h2>
+      <p>
+        Bucket My Fire ("the game", "we", "us") is a free, browser-based game operated by an
+        independent developer based in Saskatchewan, Canada. Questions or requests:
+        <a href="mailto:privacy@bucketmyfire.com">privacy@bucketmyfire.com</a>.
+      </p>
+
+      <h2>What we collect</h2>
+      <ul>
+        <li>
+          <strong>Callsign</strong> — the name you choose. It is shown <strong>publicly</strong> on
+          the global leaderboard. Please don't use your real name or anything private if you want to
+          stay anonymous.
+        </li>
+        <li>
+          <strong>Email (optional)</strong> — only if you turn on cloud save. Your email is hashed
+          (SHA-256) <em>on your device</em> before it is sent; we store only that hash, never the
+          plain email, and we never send you marketing. It is used solely to save and restore your
+          progress across devices.
+        </li>
+        <li>
+          <strong>Gameplay data</strong> — scores, mission results and best times, linked to your
+          callsign so the leaderboard works.
+        </li>
+        <li>
+          <strong>Crash diagnostics</strong> — if the game errors, we may receive a technical error
+          message and your browser type/version (user-agent), with no name, email, or other personal
+          identifier attached, so we can fix bugs.
+        </li>
+        <li>
+          <strong>On-device storage</strong> — your progress and settings are kept in your browser's
+          local storage, on your device. Clearing your browser data removes them.
+        </li>
+        <li>
+          <strong>Aggregate analytics</strong> — privacy-first, <em>cookieless</em> visitor counts
+          via Cloudflare Web Analytics. No cookies, no cross-site tracking, no individual profiles.
+        </li>
+      </ul>
+
+      <h2>What we do NOT collect</h2>
+      <ul>
+        <li>No passwords.</li>
+        <li>
+          No payment information. If you buy merchandise, the purchase is handled entirely by a
+          third-party store with its own privacy policy — we never see your card details.
+        </li>
+        <li>No precise location, no advertising or tracking cookies, and we never sell your data.</li>
+      </ul>
+
+      <h2>Children</h2>
+      <p>
+        Bucket My Fire is not directed to children under 13, and we do not knowingly collect personal
+        information from children under 13. The email field is always optional and is never required
+        to play. If you believe a child has given us an email, contact
+        <a href="mailto:privacy@bucketmyfire.com">privacy@bucketmyfire.com</a> and we will delete it.
+      </p>
+
+      <h2>Where your data lives</h2>
+      <p>
+        Leaderboard and cloud-save data is stored with Supabase (a third-party database provider);
+        the site is delivered and analyzed via Cloudflare. These providers process data on our behalf
+        under their own security and privacy terms, and data may be stored on servers outside Canada.
+      </p>
+
+      <h2>Your rights</h2>
+      <p>
+        Consistent with Canadian privacy law (PIPEDA) and, where applicable, the GDPR/CCPA, you may
+        ask us to access, correct, or delete your personal data. To remove your cloud save or your
+        leaderboard entry, email <a href="mailto:privacy@bucketmyfire.com">privacy@bucketmyfire.com</a>
+        with your callsign and we will action it.
+      </p>
+
+      <h2>Changes</h2>
+      <p>
+        We may update this policy as the game grows; the "last updated" date above will change.
+        Material changes will be noted in the game.
+      </p>
+
+      <footer>
+        See also our <a href="/terms.html">Terms of Use</a>. © 2026 Bucket My Fire.
+      </footer>
+    </div>
+  </body>
+</html>

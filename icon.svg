@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Bucket My Fire — helicopter dropping water on a wildfire">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="40%" r="75%">
+      <stop offset="0%" stop-color="#1d2e21" />
+      <stop offset="100%" stop-color="#0e160f" />
+    </radialGradient>
+    <linearGradient id="flame" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffd27a" />
+      <stop offset="55%" stop-color="#ff7a2f" />
+      <stop offset="100%" stop-color="#e0431a" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)" />
+
+  <!-- wildfire -->
+  <path
+    d="M256 300 C 298 338 312 366 300 398 C 326 384 330 416 304 436 C 286 450 226 450 208 436 C 182 416 186 384 212 398 C 200 366 214 338 256 300 Z"
+    fill="url(#flame)"
+  />
+  <path
+    d="M256 352 C 280 374 286 392 278 410 C 294 402 296 422 280 434 C 270 442 242 442 232 434 C 216 422 218 402 234 410 C 226 392 234 374 256 352 Z"
+    fill="#ffe9b0"
+  />
+
+  <!-- helicopter -->
+  <g fill="#f4ead9">
+    <rect x="150" y="150" width="212" height="12" rx="6" />
+    <rect x="250" y="158" width="12" height="18" />
+    <ellipse cx="246" cy="196" rx="62" ry="26" />
+    <path d="M300 188 H392 a6 6 0 0 1 6 6 v4 a6 6 0 0 1 -6 6 H300 Z" />
+    <rect x="384" y="168" width="10" height="46" rx="5" />
+    <path d="M198 214 h96 v6 h-96 z" />
+    <rect x="206" y="220" width="8" height="16" rx="3" />
+    <rect x="278" y="220" width="8" height="16" rx="3" />
+  </g>
+  <path d="M188 190 q-14 6 -14 18 q14 6 24 2 z" fill="#7fc8d8" />
+
+  <!-- water drop -->
+  <g fill="#5fb6e6">
+    <path d="M256 236 c 7 10 11 16 11 22 a11 11 0 0 1 -22 0 c 0 -6 4 -12 11 -22 z" />
+    <circle cx="246" cy="280" r="7" opacity="0.85" />
+    <circle cx="266" cy="294" r="5" opacity="0.7" />
+  </g>
+</svg>
