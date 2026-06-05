@@ -171,7 +171,7 @@ export function coopTeaserCard(number: number): HTMLDivElement {
   card.appendChild(div({ fontSize: FS.title, fontWeight: FW.bold, margin: '7px 0 6px' }, '🤝 Co-op'));
   const blurb = div(
     { fontSize: FS.sm, lineHeight: '1.45', color: 'rgba(231,247,255,0.72)' },
-    '2–4 players. Thirty fires, three towns, eight crew drops, four rescues — one fire too big to fly alone. Bring friends.',
+    '2–4 players against one fire too big to fly alone — more towns, crews and rescues than a single pilot can hold. Bring friends.',
   );
   clamp(blurb, 2);
   card.appendChild(blurb);
@@ -213,7 +213,7 @@ export function injectScrollStyles(): void {
  * Credits / attribution footer — required by the asset licenses (CC-BY-4.0 and Sketchfab Standard
  * both mandate visible credit). Collapsed by default to stay out of the way.
  */
-export function creditsFooter(): HTMLDetailsElement {
+export function creditsFooter(): HTMLElement {
   const wrap = document.createElement('details');
   Object.assign(wrap.style, {
     maxWidth: COL,
@@ -249,5 +249,22 @@ export function creditsFooter(): HTMLDetailsElement {
     div({ marginTop: '10px', color: 'rgba(255,255,255,0.35)' }, 'Terrain, water, trees, fire, smoke and UI are procedural / zero-asset.'),
   );
   wrap.appendChild(body);
-  return wrap;
+
+  // Always-visible policy links (a monetized product must not hide its Privacy/Terms behind the
+  // collapsed credits). The <details> + this links row share a centred container.
+  const container = div({ maxWidth: COL, margin: '0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center' });
+  container.appendChild(wrap);
+  const policies = div({ marginTop: '12px', fontSize: FS.sm, display: 'flex', gap: '16px' });
+  const policyLink = (label: string, href: string): HTMLAnchorElement => {
+    const a = document.createElement('a');
+    a.textContent = label;
+    a.href = href;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    Object.assign(a.style, { color: UI.faint, textDecoration: 'underline', cursor: 'pointer' } as Partial<CSSStyleDeclaration>);
+    return a;
+  };
+  policies.append(policyLink('Privacy', '/privacy.html'), policyLink('Terms', '/terms.html'));
+  container.appendChild(policies);
+  return container;
 }
