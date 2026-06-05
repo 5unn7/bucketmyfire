@@ -745,11 +745,18 @@ export const FIRE3D = {
   // and their fuel; once a neighbour's accumulated pre-heat crosses the ignition
   // threshold it lights — a genuine advancing front that spots downwind and stalls at
   // firebreaks. The ≤maxActive flame MESHES are just a view of the hottest cell clusters.
-  fireCells: 160, // grid resolution per side (160² over the 2100u map ≈ 13.1u cells — bumped 128→160 so the
-  // bigger world keeps fire fronts about as crisp as before; the forest cut below funds the extra grid cost)
+  fireCells: 160, // grid resolution per side AT THE CANONICAL SQUARE WORLD (160² over the 2100u map ≈ 13.125u
+  // cells) — this fixes the CANONICAL CELL SIZE `CELL_U = WORLD3D.size / fireCells = 13.125u`. Rectangular /
+  // resized maps keep that SAME physical cell size (nx = round(sizeX/CELL_U), nz = round(sizeZ/CELL_U)) so the
+  // fire game never silently rescales — see `fireGridFor` in sim/FireSystem.ts. (bumped 128→160 earlier so the
+  // bigger world keeps fire fronts crisp; the forest cut below funds the extra grid cost)
+  maxCells: 25600, // 160² — the fire-grid CELL BUDGET (mobile cap on the per-frame Float32Array cost). A province
+  // larger than ~2100² at the canonical cell size would exceed this; `fireGridFor` then COARSENS the cell size
+  // (cellSize = max(CELL_U, √(area/maxCells))) so SK and bounds-SK are untouched and only oversized maps coarsen.
   blobCells: 24, // coarse grid the field is clustered into → up to maxActive rendered "fires"
   seedHeat: 0.2, // heat a freshly-ignited cell starts at (0..1) — a weak lick that must build
-  seedRadius: 1, // radius (cells) of the disc lit when a fire is seeded/spotted — start as a SPOT
+  seedRadiusU: 13, // radius (WORLD UNITS) of the disc lit when a fire is seeded/spotted — start as a SPOT.
+  // Authored in units (≈1 cell at CELL_U=13.125) not cells, so a coarser grid still seeds the same physical spot.
   cellRegrow: 0.03, // heat/sec a burning cell climbs toward its fuel ceiling — kept VERY LOW so a fire
   // barely re-heats: a cell you knock down but don't fully clear creeps back only slowly, so dousing makes
   // monotonic progress instead of racing a re-flare, and a fresh ignition builds gradually. (A wet cell's
@@ -790,9 +797,10 @@ export const FIRE3D = {
   // (can't re-light). So actively bucketing a fire puts it OUT (was 135 > the 100L tank → impossible to clear a hot
   // cell; eased again 45 → 35 so it's reliably easy). A fire wider than one disc is walked pass by pass (≈1–2 passes
   // for a typical fire with the wider dropRadius); bigger buckets (212/UH-60) clear more. Pairs with DROP_PHYSICS.extinguishLock.
-  cellsForFullSize: 46, // burning cells in a cluster that read as footprint size 1 (raised so flame/
-  // smoke scale tracks the now-larger sustained fronts)
-  cellsPerFire: 8, // cells ≈ one "fire" for the burned-out / doused scoring counters
+  fullSizeArea: 7924, // burning FOOTPRINT (world-u²) that reads as cluster size 1 (≈46 cells at CELL_U=13.125²).
+  // Authored as an AREA so re-resolution converts it to this map's cells (round(area/cellSize²)) and the flame/
+  // smoke scale tracks the same PHYSICAL footprint regardless of grid resolution. (raised earlier for the larger fronts)
+  fireArea: 1378, // world-u² that counts as one "fire" for the burned-out / doused scoring counters (≈8 cells at CELL_U²)
   repMinHeat: 0.15, // minimum clustered heat for a cluster to be a rendered fire (below → it's out)
   repCellMin: 0.06, // a cell must be at least this hot to count toward a render cluster
 

@@ -22,15 +22,18 @@ export interface Terrain {
 }
 
 /**
- * The live fire field (C5) the terrain samples to CHAR + GLOW: `tex` is the n×n RGBA DataTexture
- * (R=heat, G=scorch) from `FireFieldTexture`; `min`/`size` map world XZ → texture uv. When present,
- * the ground darkens to charcoal under the burn scar and glows orange (HDR → bloom) where it's
- * actively burning — so the fire reads as one CONTINUOUS advancing region, not isolated dots.
+ * The live fire field (C5) the terrain samples to CHAR + GLOW: `tex` is the nx×nz RGBA DataTexture
+ * (R=heat, G=scorch) from `FireFieldTexture`; `min`/`size` map world XZ → texture uv PER AXIS (so a
+ * rectangular map maps without skew). When present, the ground darkens to charcoal under the burn
+ * scar and glows orange (HDR → bloom) where it's actively burning — so the fire reads as one
+ * CONTINUOUS advancing region, not isolated dots.
  */
 export interface TerrainBurn {
   tex: THREE.Texture;
-  min: number; // worldMin (-size/2)
-  size: number; // world extent
+  minX: number; // worldMin X (-sizeX/2)
+  minZ: number; // worldMin Z (-sizeZ/2)
+  sizeX: number; // world extent X
+  sizeZ: number; // world extent Z
 }
 
 // Default segments per side (fallback). Higher resolves the carved SHORELINES and
@@ -244,8 +247,8 @@ function addTerrainDetail(material: THREE.MeshStandardMaterial, frame?: FrameCon
     // no recompile. uBurnMin/uBurnSize map world XZ → the field's 0..1 uv.
     if (burn) {
       shader.uniforms.uBurnTex = { value: burn.tex };
-      shader.uniforms.uBurnMin = { value: burn.min };
-      shader.uniforms.uBurnSize = { value: burn.size };
+      shader.uniforms.uBurnMin = { value: new THREE.Vector2(burn.minX, burn.minZ) };
+      shader.uniforms.uBurnSize = { value: new THREE.Vector2(burn.sizeX, burn.sizeZ) };
     }
     // Real ground/rock/scorch albedo (downloaded CC0). sRGB textures → the WebGL2 sampler returns
     // linear RGB, so the in-shader multiply into diffuseColor (linear here) is colour-correct. Set
@@ -279,7 +282,7 @@ function addTerrainDetail(material: THREE.MeshStandardMaterial, frame?: FrameCon
         varying vec3 vTerrWorld;
         varying vec3 vTerrN;
         ${frame ? 'uniform float uTime, uCloudScale, uCloudSpeed, uCloudLo, uCloudHi, uCloudDark; uniform vec2 uWind;' : ''}
-        ${burn ? 'uniform sampler2D uBurnTex; uniform float uBurnMin, uBurnSize;' : ''}
+        ${burn ? 'uniform sampler2D uBurnTex; uniform vec2 uBurnMin, uBurnSize;' : ''}
         ${textured ? 'uniform sampler2D uGroundTex, uRockTex, uScorchTex; uniform float uTexScale, uGroundStr, uGroundMid, uRockStr, uRockBright, uScorchStr;' : ''}
         float h21(vec2 p){ p = fract(p * vec2(123.34, 345.45)); p += dot(p, p + 34.345); return fract(p.x * p.y); }
         float vnoise(vec2 p){

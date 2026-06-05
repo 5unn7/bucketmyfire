@@ -1,5 +1,17 @@
 import * as THREE from 'three';
-import { FIRE3D, FOREST } from '../config';
+import { FIRE3D, FOREST, TREE_TEX } from '../config';
+import { loadAlbedo } from './pbrTextures';
+
+/** Drop the CC0 bark albedo onto a trunk material (tiled UP the trunk). No-op when TREE_TEX is off — the
+ *  material keeps its flat brown. The bark texture is module-cached + shared across every trunk. */
+export function applyBark(trunkMat: THREE.MeshStandardMaterial): void {
+  if (!TREE_TEX.enabled) return;
+  const bark = loadAlbedo(TREE_TEX.bark, 4);
+  bark.repeat.set(1, TREE_TEX.barkRepeat); // u wraps the trunk; tile v up its height
+  trunkMat.map = bark;
+  trunkMat.color.setHex(0xffffff); // let the bark albedo carry the colour
+  trunkMat.needsUpdate = true;
+}
 
 /**
  * A dense field of low-poly boreal conifers.
@@ -454,9 +466,11 @@ function bakeCanopyGradient(geo: THREE.BufferGeometry): void {
 function defaultConiferSpecies(): TreeSpecies {
   const trunkGeo = new THREE.CylinderGeometry(TRUNK_RADIUS * 0.7, TRUNK_RADIUS, TRUNK_HEIGHT, RADIAL_SEGMENTS);
   trunkGeo.translate(0, TRUNK_HEIGHT / 2, 0);
+  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5a4332, roughness: 1 });
+  applyBark(trunkMat); // real CC0 bark (no-op when TREE_TEX is off)
   return {
     trunkGeo,
-    trunkMat: new THREE.MeshStandardMaterial({ color: 0x5a4332, roughness: 1 }),
+    trunkMat,
     foliageGeo: buildFoliageGeometry(FOREST.canopyTiers, FOREST.radialSegments),
     foliageLodGeo: buildFoliageLOD(),
     // white base × per-instance biome tint × the baked canopy gradient (vertexColors).

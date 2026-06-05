@@ -63,6 +63,37 @@ export interface FireDeps {
   fuelAt(x: number, z: number): number;
   /** Seeded fire-start picker (world.placement.fireSite with `bound` captured). */
   pickSite(minFromOrigin: number): { x: number; z: number } | null;
+  /** Playfield extents (world units). Omit → the legacy square `WORLD3D.size` (byte-identical). */
+  sizeX?: number;
+  sizeZ?: number;
+}
+
+/** The canonical (finest) cell size — fixed by the square world so every map shares it. */
+export const CELL_U = WORLD3D.size / FIRE3D.fireCells; // 2100 / 160 = 13.125u
+
+/** A resolved rectangular fire grid: counts, the real cell size, and the half-extents it spans. */
+export interface FireGrid {
+  nx: number;
+  nz: number;
+  cellSize: number;
+  halfX: number;
+  halfZ: number;
+}
+
+/**
+ * Resolve the fire grid for a playfield of `sizeX × sizeZ` world units. The cell size is the
+ * CANONICAL `CELL_U` (so the fire game is scale-INVARIANT — a fire of N units is the same number
+ * of cells on every map), UNLESS the area would exceed `FIRE3D.maxCells` — then the cell size
+ * coarsens just enough to stay within the mobile budget (`cellSize = max(CELL_U, √(area/maxCells))`).
+ * Square SK (2100²) → 160×160 at 13.125u (byte-identical); bounds SK (1060×2058) → 81×157 at 13.125u;
+ * an oversized 3000² province → 160×160 at 18.75u (capped). Pure — shared by FireSystem, the fire
+ * DataTexture, and the campaign verifier so they can never disagree on the grid.
+ */
+export function fireGridFor(sizeX: number, sizeZ: number): FireGrid {
+  const cellSize = Math.max(CELL_U, Math.sqrt((sizeX * sizeZ) / FIRE3D.maxCells));
+  const nx = Math.max(1, Math.round(sizeX / cellSize));
+  const nz = Math.max(1, Math.round(sizeZ / cellSize));
+  return { nx, nz, cellSize, halfX: sizeX / 2, halfZ: sizeZ / 2 };
 }
 
 /** Minimal wind contract — the unit wind vector the front runs along. */
@@ -88,16 +119,22 @@ export interface FireTuning {
  * frame; don't mutate them or stash references across a streaming swap.
  */
 export interface FireFieldView {
-  readonly n: number; // cells per side (FIRE3D.fireCells)
+  readonly nx: number; // cells along X
+  readonly nz: number; // cells along Z (== nx on a square map)
   readonly cellSize: number; // world units per cell
-  readonly half: number; // half the world extent — the grid spans [-half, half]² in world XZ
-  readonly heat: Float32Array; // live fire 0..1 per cell (the actively-burning region)
+  readonly halfX: number; // half the X extent — the grid spans [-halfX, halfX] in world X
+  readonly halfZ: number; // half the Z extent — the grid spans [-halfZ, halfZ] in world Z
+  readonly heat: Float32Array; // live fire 0..1 per cell (the actively-burning region), row-major cz*nx+cx
   readonly scorch: Uint8Array; // 1 once a cell has burned out (the lasting burn scar)
 }
 
 export class FireSystem {
-  // --- The field (fixed-size grids over [-size/2, size/2]²) -------------------
-  private readonly n = FIRE3D.fireCells; // cells per side
+  // --- The field (fixed-size grids over [-halfX,halfX] × [-halfZ,halfZ]) ------
+  private readonly nx: number; // cells along X
+  private readonly nz: number; // cells along Z
+  private readonly cellSize: number; // world units per cell (CELL_U unless the map is coarsened)
+  private readonly halfX: number; // half the X extent
+  private readonly halfZ: number; // half the Z extent
   private readonly fuel: Float32Array; // remaining fuel per cell (0..1), sampled once
   private readonly heat: Float32Array; // live fire per cell (0..1)
   private readonly preheat: Float32Array; // accumulating ignition energy per cell
@@ -106,8 +143,10 @@ export class FireSystem {
   private readonly scorch: Uint8Array; // 1 once a cell's ground has charred (visual scar; a doused charred cell stays out)
   private readonly cellY: Float32Array; // ground height per cell (for spread slope + mesh Y)
 
-  private readonly half = WORLD3D.size / 2;
-  private readonly cellSize = WORLD3D.size / FIRE3D.fireCells;
+  // Scale-invariant cell counts derived from the authored AREAS (so a coarser grid uses fewer
+  // cells for the same PHYSICAL footprint — see FIRE3D.fullSizeArea / fireArea).
+  private readonly cellsForFullSize: number; // burning cells that read as cluster size 1
+  private readonly cellsPerFire: number; // cells ≈ one "fire" for the scoring counters
 
   // --- Render clusters (the coarse blob grid → ≤maxActive FireStates) ---------
   private readonly bn = FIRE3D.blobCells;
@@ -139,7 +178,18 @@ export class FireSystem {
 
   constructor(private readonly deps: FireDeps, tuning: FireTuning = {}) {
     this.spreadScale = Math.max(0, tuning.spreadScale ?? 1);
-    const N = this.n * this.n;
+    // Resolve the rectangular grid from the playfield extents (default = the legacy square world).
+    const grid = fireGridFor(deps.sizeX ?? WORLD3D.size, deps.sizeZ ?? WORLD3D.size);
+    this.nx = grid.nx;
+    this.nz = grid.nz;
+    this.cellSize = grid.cellSize;
+    this.halfX = grid.halfX;
+    this.halfZ = grid.halfZ;
+    // Authored AREAS → this map's cell counts (round-trips to 46 / 8 at the canonical CELL_U).
+    const cellArea = this.cellSize * this.cellSize;
+    this.cellsForFullSize = Math.max(1, Math.round(FIRE3D.fullSizeArea / cellArea));
+    this.cellsPerFire = Math.max(1, Math.round(FIRE3D.fireArea / cellArea));
+    const N = this.nx * this.nz;
     this.fuel = new Float32Array(N);
     this.heat = new Float32Array(N);
     this.preheat = new Float32Array(N);
@@ -149,11 +199,11 @@ export class FireSystem {
     this.cellY = new Float32Array(N);
 
     // Sample fuel + ground height per cell ONCE (the field's static terrain frame).
-    for (let cz = 0; cz < this.n; cz++) {
-      for (let cx = 0; cx < this.n; cx++) {
-        const i = cz * this.n + cx;
-        const wx = -this.half + (cx + 0.5) * this.cellSize;
-        const wz = -this.half + (cz + 0.5) * this.cellSize;
+    for (let cz = 0; cz < this.nz; cz++) {
+      for (let cx = 0; cx < this.nx; cx++) {
+        const i = cz * this.nx + cx;
+        const wx = -this.halfX + (cx + 0.5) * this.cellSize;
+        const wz = -this.halfZ + (cz + 0.5) * this.cellSize;
         this.cellY[i] = this.deps.groundHeightAt(wx, wz);
         this.fuel[i] = this.deps.isOverWater(wx, wz) ? 0 : Math.max(0, Math.min(1, this.deps.fuelAt(wx, wz)));
       }
@@ -171,12 +221,25 @@ export class FireSystem {
     }
 
     this.fieldViewObj = {
-      n: this.n,
+      nx: this.nx,
+      nz: this.nz,
       cellSize: this.cellSize,
-      half: this.half,
+      halfX: this.halfX,
+      halfZ: this.halfZ,
       heat: this.heat,
       scorch: this.scorch,
     };
+  }
+
+  /** World-unit length → cell count on THIS map's grid (≥1). Scenario size-classes / seed radii are
+   *  authored in units; this converts them so the same physical disc is lit at any cell size. */
+  cellsFromU(u: number): number {
+    return Math.max(1, Math.round(u / this.cellSize));
+  }
+
+  /** The resolved cell size (world units) — exposed for renderers/tests that map cells ↔ world. */
+  get cell(): number {
+    return this.cellSize;
   }
 
   /**
@@ -196,7 +259,7 @@ export class FireSystem {
     while (placed < count && guard++ < 500) {
       const site = this.deps.pickSite(minFromOrigin);
       if (!site) continue;
-      if (this.igniteDisc(site.x, site.z, FIRE3D.seedRadius)) placed++;
+      if (this.igniteDisc(site.x, site.z, this.cellsFromU(FIRE3D.seedRadiusU))) placed++;
     }
     this.rebuildReps();
   }
@@ -248,8 +311,9 @@ export class FireSystem {
     if (!Number.isFinite(dtMs) || dtMs <= 0) return;
     const dt = Math.min(dtMs / 1000, 0.1); // clamp big stalls so the front can't jump
 
-    const n = this.n;
-    const N = n * n;
+    const gnx = this.nx;
+    const gnz = this.nz;
+    const N = gnx * gnz;
     // Mission-scaled spread levers (the calm FIRE3D baseline × this mission's spreadScale).
     const spreadRate = FIRE3D.spreadRate * this.spreadScale;
     const spotChance = FIRE3D.spotChance * this.spreadScale;
@@ -296,17 +360,17 @@ export class FireSystem {
       if (nh <= 0.04) continue; // too weak to spread
 
       // Pre-heat the 8 neighbours, weighted by wind alignment + slope + their fuel.
-      const cx = i % n;
-      const cz = (i / n) | 0;
+      const cx = i % gnx;
+      const cz = (i / gnx) | 0;
       const yi = this.cellY[i];
       for (let oz = -1; oz <= 1; oz++) {
         const nz = cz + oz;
-        if (nz < 0 || nz >= n) continue;
+        if (nz < 0 || nz >= gnz) continue;
         for (let ox = -1; ox <= 1; ox++) {
           if (ox === 0 && oz === 0) continue;
           const nx = cx + ox;
-          if (nx < 0 || nx >= n) continue;
-          const j = nz * n + nx;
+          if (nx < 0 || nx >= gnx) continue;
+          const j = nz * gnx + nx;
           if (this.scorch[j] === 1) continue;
           const fj = this.fuel[j];
           if (fj < FIRE3D.minFuel) continue;
@@ -336,8 +400,8 @@ export class FireSystem {
       if (wlen > 0.5 && h > 0.75 && this.deps.rng() < spotChance * dt) {
         const dist = FIRE3D.spotDist * (0.5 + this.deps.rng());
         const ang = Math.atan2(wnz, wnx) + (this.deps.rng() - 0.5) * 0.7;
-        const sx = -this.half + (cx + 0.5) * this.cellSize + Math.cos(ang) * dist;
-        const sz = -this.half + (cz + 0.5) * this.cellSize + Math.sin(ang) * dist;
+        const sx = -this.halfX + (cx + 0.5) * this.cellSize + Math.cos(ang) * dist;
+        const sz = -this.halfZ + (cz + 0.5) * this.cellSize + Math.sin(ang) * dist;
         const sj = this.cellIndex(sx, sz);
         if (sj >= 0 && this.scorch[sj] === 0 && this.fuel[sj] >= FIRE3D.minFuel) {
           this.preheat[sj] += FIRE3D.igniteThreshold * 1.3; // very likely to catch next pass
@@ -393,22 +457,21 @@ export class FireSystem {
     // A wider disc (high release) spreads the SAME litres over more cells → each gets less.
     const refArea = BUCKET3D.dropRadius * BUCKET3D.dropRadius;
     const dilute = 1 + DROP_PHYSICS.areaFalloff * (r2 / refArea - 1); // >1 wide, <1 tight
-    const n = this.n;
-    const minCx = clampInt(Math.floor((x - radius + this.half) / this.cellSize), 0, n - 1);
-    const maxCx = clampInt(Math.floor((x + radius + this.half) / this.cellSize), 0, n - 1);
-    const minCz = clampInt(Math.floor((z - radius + this.half) / this.cellSize), 0, n - 1);
-    const maxCz = clampInt(Math.floor((z + radius + this.half) / this.cellSize), 0, n - 1);
+    const minCx = clampInt(Math.floor((x - radius + this.halfX) / this.cellSize), 0, this.nx - 1);
+    const maxCx = clampInt(Math.floor((x + radius + this.halfX) / this.cellSize), 0, this.nx - 1);
+    const minCz = clampInt(Math.floor((z - radius + this.halfZ) / this.cellSize), 0, this.nz - 1);
+    const maxCz = clampInt(Math.floor((z + radius + this.halfZ) / this.cellSize), 0, this.nz - 1);
     for (let cz = minCz; cz <= maxCz; cz++) {
-      const wz = -this.half + (cz + 0.5) * this.cellSize;
+      const wz = -this.halfZ + (cz + 0.5) * this.cellSize;
       for (let cx = minCx; cx <= maxCx; cx++) {
-        const wx = -this.half + (cx + 0.5) * this.cellSize;
+        const wx = -this.halfX + (cx + 0.5) * this.cellSize;
         const d2 = (wx - x) * (wx - x) + (wz - z) * (wz - z);
         if (d2 > r2) continue;
         // RADIAL COVERAGE: smoothstep falloff, 1 at center → edgeFloor at the rim. (s*s avoids pow.)
         const t = Math.sqrt(d2) / radius; // 0 center .. 1 rim
         const s = 1 - t * t * (3 - 2 * t); // smoothstep reversed: 1@center, 0@rim
         const cover = DROP_PHYSICS.edgeFloor + (1 - DROP_PHYSICS.edgeFloor) * s * s;
-        const i = cz * n + cx;
+        const i = cz * this.nx + cx;
         const h = this.heat[i];
         if (h > 0) {
           // INTENSITY RESISTANCE: a hotter cell absorbs less per litre → needs more passes.
@@ -455,12 +518,12 @@ export class FireSystem {
 
   /** Cells that consumed their fuel and self-extinguished, scaled to "fire" units. */
   get burnedOut(): number {
-    return Math.floor(this.burnedOutCells / FIRE3D.cellsPerFire);
+    return Math.floor(this.burnedOutCells / this.cellsPerFire);
   }
 
   /** Fires the player extinguished with water (not those that burned out) — for scoring. */
   get doused(): number {
-    return Math.floor(this.extinguishedCells / FIRE3D.cellsPerFire);
+    return Math.floor(this.extinguishedCells / this.cellsPerFire);
   }
 
   get totalIntensity(): number {
@@ -488,7 +551,7 @@ export class FireSystem {
   hottestPoint(): { x: number; z: number } | null {
     let best = 0;
     let bi = -1;
-    const N = this.n * this.n;
+    const N = this.nx * this.nz;
     for (let i = 0; i < N; i++) {
       if (this.heat[i] > best) {
         best = this.heat[i];
@@ -496,9 +559,9 @@ export class FireSystem {
       }
     }
     if (bi < 0) return null;
-    const cx = bi % this.n;
-    const cz = (bi / this.n) | 0;
-    return { x: -this.half + (cx + 0.5) * this.cellSize, z: -this.half + (cz + 0.5) * this.cellSize };
+    const cx = bi % this.nx;
+    const cz = (bi / this.nx) | 0;
+    return { x: -this.halfX + (cx + 0.5) * this.cellSize, z: -this.halfZ + (cz + 0.5) * this.cellSize };
   }
 
   /** True once a cell has burned out (fuel consumed) — a tree there should be a charred snag. */
@@ -511,20 +574,19 @@ export class FireSystem {
 
   /** Light a disc of cells (radius in cells) around a world point. Returns true if any caught. */
   private igniteDisc(x: number, z: number, radiusCells: number, heat: number = FIRE3D.seedHeat): boolean {
-    const n = this.n;
     const c0 = this.cellIndex(x, z);
     if (c0 < 0) return false;
-    const cx0 = c0 % n;
-    const cz0 = (c0 / n) | 0;
+    const cx0 = c0 % this.nx;
+    const cz0 = (c0 / this.nx) | 0;
     let caught = false;
     for (let oz = -radiusCells; oz <= radiusCells; oz++) {
       const cz = cz0 + oz;
-      if (cz < 0 || cz >= n) continue;
+      if (cz < 0 || cz >= this.nz) continue;
       for (let ox = -radiusCells; ox <= radiusCells; ox++) {
         const cx = cx0 + ox;
-        if (cx < 0 || cx >= n) continue;
+        if (cx < 0 || cx >= this.nx) continue;
         if (ox * ox + oz * oz > radiusCells * radiusCells) continue;
-        const i = cz * n + cx;
+        const i = cz * this.nx + cx;
         if (this.scorch[i] === 1 || this.fuel[i] < FIRE3D.minFuel) continue;
         this.heat[i] = Math.max(this.heat[i], Math.min(this.fuel[i], heat));
         caught = true;
@@ -535,11 +597,10 @@ export class FireSystem {
 
   /** World (x,z) → cell index, or -1 if outside the grid. */
   private cellIndex(x: number, z: number): number {
-    const n = this.n;
-    const cx = Math.floor((x + this.half) / this.cellSize);
-    const cz = Math.floor((z + this.half) / this.cellSize);
-    if (cx < 0 || cx >= n || cz < 0 || cz >= n) return -1;
-    return cz * n + cx;
+    const cx = Math.floor((x + this.halfX) / this.cellSize);
+    const cz = Math.floor((z + this.halfZ) / this.cellSize);
+    if (cx < 0 || cx >= this.nx || cz < 0 || cz >= this.nz) return -1;
+    return cz * this.nx + cx;
   }
 
   /**
@@ -548,7 +609,7 @@ export class FireSystem {
    * (sorted by blob index) so a rendered fire doesn't jump meshes frame-to-frame.
    */
   private rebuildReps(): void {
-    const n = this.n;
+    const gnx = this.nx;
     const bn = this.bn;
     const B = bn * bn;
     this.bHeat.fill(0);
@@ -556,17 +617,20 @@ export class FireSystem {
     this.bZ.fill(0);
     this.bFuel.fill(0);
     this.bCnt.fill(0);
-    const bcell = WORLD3D.size / bn;
+    // Per-axis blob cell size so the coarse cluster grid spans a rectangular world (square → WORLD3D.size/bn).
+    const bcellX = (this.halfX * 2) / bn;
+    const bcellZ = (this.halfZ * 2) / bn;
 
-    for (let i = 0; i < n * n; i++) {
+    const N = gnx * this.nz;
+    for (let i = 0; i < N; i++) {
       const h = this.heat[i];
       if (h < FIRE3D.repCellMin) continue;
-      const cx = i % n;
-      const cz = (i / n) | 0;
-      const wx = -this.half + (cx + 0.5) * this.cellSize;
-      const wz = -this.half + (cz + 0.5) * this.cellSize;
-      const bx = clampInt(Math.floor((wx + this.half) / bcell), 0, bn - 1);
-      const bz = clampInt(Math.floor((wz + this.half) / bcell), 0, bn - 1);
+      const cx = i % gnx;
+      const cz = (i / gnx) | 0;
+      const wx = -this.halfX + (cx + 0.5) * this.cellSize;
+      const wz = -this.halfZ + (cz + 0.5) * this.cellSize;
+      const bx = clampInt(Math.floor((wx + this.halfX) / bcellX), 0, bn - 1);
+      const bz = clampInt(Math.floor((wz + this.halfZ) / bcellZ), 0, bn - 1);
       const b = bz * bn + bx;
       this.bHeat[b] += h;
       this.bX[b] += wx * h;
@@ -596,7 +660,7 @@ export class FireSystem {
       rep.z = z;
       rep.y = this.deps.groundHeightAt(x, z);
       rep.intensity = FIRE3D.maxIntensity * Math.min(1, avgH);
-      rep.size = Math.min(1, cnt / FIRE3D.cellsForFullSize);
+      rep.size = Math.min(1, cnt / this.cellsForFullSize);
       rep.fuel = this.bFuel[b] / cnt;
       rep.alive = true;
     }

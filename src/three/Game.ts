@@ -15,7 +15,7 @@ import { HelicopterSim } from './sim/HelicopterSim';
 import { BucketSim } from './sim/BucketSim';
 import { Wind } from './sim/Wind';
 import { RotorWash } from './sim/RotorWash';
-import { FireSystem } from './sim/FireSystem';
+import { FireSystem, fireGridFor } from './sim/FireSystem';
 import { Structures } from './sim/Structures';
 import { createFire, FireMesh } from './meshes/fire';
 import { createStructure, StructureMesh } from './meshes/cabin';
@@ -150,7 +150,8 @@ export class Game {
   // C5 continuous burn: the live fire field packed into a DataTexture each frame, sampled by the
   // terrain (char + ember glow) and rasterized onto the radar (burn scar) — so the fire reads as
   // one advancing region, not ≤14 dots, and the ground it crosses chars + the minimap shades it.
-  private readonly fireField = new FireFieldTexture(FIRE3D.fireCells, WORLD3D.size);
+  // Sized to the world's RECTANGULAR fire grid → built in the ctor after `this.world` exists (TDZ).
+  private readonly fireField: FireFieldTexture;
   private readonly heroFire = new HeroFireLights(this.scene); // B3: fixed pool of fire lights
   // C3 stakes: structures to defend (engine-agnostic state) + a fixed pool of meshes
   // synced to them each frame. Lose when every structure burns down.
@@ -433,12 +434,27 @@ export class Game {
     this.skyDome = createSkyDome(this.frame, sky);
     this.scene.add(this.skyDome); // follows the camera each frame (see update)
 
+    // C5 fire field DataTexture — sized to the world's rectangular fire grid (square map = 160², the
+    // legacy 2100u mapping byte-identical). Built HERE (not as a field initializer) so `this.world`
+    // already exists; FireSystem resolves the SAME grid from world.sizeX/sizeZ below, so they agree.
+    const fireGrid = fireGridFor(this.world.sizeX, this.world.sizeZ);
+    this.fireField = new FireFieldTexture(
+      fireGrid.nx,
+      fireGrid.nz,
+      -fireGrid.halfX,
+      -fireGrid.halfZ,
+      fireGrid.nx * fireGrid.cellSize,
+      fireGrid.nz * fireGrid.cellSize,
+    );
+
     // Terrain (vertices displaced from the World heightfield, basins carved in) +
     // lake discs (each sits at the World's flat water level, inside its bowl) + forest.
     const terrain = createTerrain(this.world, tier.current.terrainSegments, this.frame, {
       tex: this.fireField.texture,
-      min: this.fireField.worldMin,
-      size: this.fireField.worldSize,
+      minX: this.fireField.worldMinX,
+      minZ: this.fireField.worldMinZ,
+      sizeX: this.fireField.worldSizeX,
+      sizeZ: this.fireField.worldSizeZ,
     }, tier.current.name !== 'low'); // real PBR ground grain on med/high; low stays fully procedural
     this.scene.add(terrain.mesh);
 
@@ -616,6 +632,8 @@ export class Game {
         isOverWater: (x, z) => this.world.isOverWater(x, z),
         fuelAt: (x, z) => this.world.placement.fuelAt(x, z),
         pickSite: (minFromOrigin) => this.world.placement.fireSite(this.world.rng, this.fireBoundX, minFromOrigin, this.fireBoundZ),
+        sizeX: this.world.sizeX, // rectangular fire grid (square map → WORLD3D.size, byte-identical)
+        sizeZ: this.world.sizeZ,
       },
       { spreadScale: this.mission.fire?.spreadScale }, // per-mission spread pacing (FIRE3D baseline × this)
     );

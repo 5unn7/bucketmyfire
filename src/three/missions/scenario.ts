@@ -12,13 +12,18 @@ import { WORLD3D } from '../config';
  * the SAME code — the verifier can't pass against logic the game doesn't actually run.
  */
 
-/** Fire size class → ignition disc radius (cells) + starting heat (0..1). */
+/**
+ * Fire size class → ignition disc radius (WORLD UNITS) + starting heat (0..1). Authored in units, not
+ * cells, so the same PHYSICAL disc is lit on any map resolution: `fire.cellsFromU(radius)` converts to
+ * this grid's cells at ignite time (round-trips to the old {1,2,3,4,6} cells at the canonical 13.125u
+ * cell — pinned by the round-trip assertion in verify-campaign). 13.125u = one canonical cell.
+ */
 export const SIZE_CLASS: Record<SizeClass, { radius: number; heat: number }> = {
-  spot: { radius: 1, heat: 0.2 },
-  small: { radius: 2, heat: 0.4 },
-  medium: { radius: 3, heat: 0.6 },
-  large: { radius: 4, heat: 0.85 },
-  mega: { radius: 6, heat: 1.0 },
+  spot: { radius: 13.125, heat: 0.2 }, // ≈1 cell
+  small: { radius: 26.25, heat: 0.4 }, // ≈2 cells
+  medium: { radius: 39.375, heat: 0.6 }, // ≈3 cells
+  large: { radius: 52.5, heat: 0.85 }, // ≈4 cells
+  mega: { radius: 78.75, heat: 1.0 }, // ≈6 cells
 };
 
 /** Tiny deterministic string→number — turns an anchor id into a stable fan-angle phase. */
@@ -183,8 +188,9 @@ export function igniteFromPlacement(
 ): void {
   {
     const cls = SIZE_CLASS[f.size];
+    const radiusCells = fire.cellsFromU(cls.radius); // world-u size class → this grid's cells
     if (f.at === 'point') {
-      fire.igniteAt(f.x, f.z, cls.radius, cls.heat);
+      fire.igniteAt(f.x, f.z, radiusCells, cls.heat);
     } else if (f.at === 'nearCommunity') {
       const base = communityPoint(world, f.community);
       const count = f.count ?? 1;
@@ -196,7 +202,7 @@ export function igniteFromPlacement(
         const ang = (i / count) * Math.PI * 2 + phase;
         const off = f.offset ?? 60;
         const target = fuelPointNear(world, base.x + Math.cos(ang) * off, base.z + Math.sin(ang) * off);
-        fire.igniteAt(target.x, target.z, cls.radius, cls.heat);
+        fire.igniteAt(target.x, target.z, radiusCells, cls.heat);
       }
     } else if (f.at === 'line') {
       // A continuous fire FRONT. Default axis is ⟂ to the wind, so the line's head spreads
@@ -229,7 +235,7 @@ export function igniteFromPlacement(
           dirZ = 0;
         }
       }
-      fire.igniteLine(c.x, c.z, dirX, dirZ, f.length ?? 90, cls.radius, cls.heat);
+      fire.igniteLine(c.x, c.z, dirX, dirZ, f.length ?? 90, radiusCells, cls.heat);
     } else if (f.at === 'cluster') {
       // An AUTHORED fire complex: a deterministic centre with `count` heads fanned within `spread`,
       // so it reads as ONE growing blaze (not scattered dots). Centre = anchor + bearing·distance.
@@ -270,14 +276,14 @@ export function igniteFromPlacement(
         const ang = (i / count) * Math.PI * 2 + bearing;
         const off = count > 1 ? spread : 0;
         const target = fuelPointNear(world, cx + Math.cos(ang) * off, cz + Math.sin(ang) * off);
-        fire.igniteAt(target.x, target.z, cls.radius, cls.heat);
+        fire.igniteAt(target.x, target.z, radiusCells, cls.heat);
       }
     } else {
       // random: fuel-biased sites, off the player's spawn.
       const min = f.minFromOrigin ?? 120;
       for (let i = 0; i < f.count; i++) {
         const site = world.placement.fireSite(world.rng, fireBound, min, fireBoundZ);
-        if (site) fire.igniteAt(site.x, site.z, cls.radius, cls.heat);
+        if (site) fire.igniteAt(site.x, site.z, radiusCells, cls.heat);
       }
     }
   }

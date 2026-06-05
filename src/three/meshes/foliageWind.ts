@@ -23,17 +23,31 @@ const SWAY_FREQ = 1.25; // oscillation rate (rad/s)
 const TREE_TOP = 6.0; // local foliage apex height (≈ trees.ts CANOPY_APEX) for the height factor
 const WASH_BEND = WASH.foliageBend; // max outward crown displacement under the downwash (units)
 
-export function applyFoliageSway(material: THREE.Material, frame: FrameContext): void {
+/** Optional CC0 leaf-litter detail blended into the canopy albedo (TREE_TEX) — see applyFoliageSway. */
+export interface LeafDetail {
+  tex: THREE.Texture; // forest_leaves_04 albedo (sRGB, RepeatWrapping)
+  strength: number; // 0 = procedural only, 1 = full photo modulation
+  repeat: number; // tiling across the cones
+}
+const LEAF_MID = 0.38; // ≈ mean luma of forest_leaves_04 — divides it out so the modulate is brightness-neutral
+
+export function applyFoliageSway(material: THREE.Material, frame: FrameContext, leaf?: LeafDetail): void {
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = frame.uTime;
     shader.uniforms.uWind = frame.uWind;
     shader.uniforms.uWash = frame.uWash;
+    if (leaf) {
+      shader.uniforms.uLeafTex = { value: leaf.tex };
+      shader.uniforms.uLeafStr = { value: leaf.strength };
+    }
 
     shader.vertexShader = shader.vertexShader
       .replace(
         '#include <common>',
-        '#include <common>\nuniform float uTime;\nuniform vec2 uWind;\nuniform vec4 uWash;',
+        '#include <common>\nuniform float uTime;\nuniform vec2 uWind;\nuniform vec4 uWash;' +
+          (leaf ? '\nvarying vec2 vLeafUv;' : ''),
       )
+      .replace('#include <begin_vertex>', '#include <begin_vertex>' + (leaf ? '\nvLeafUv = uv;' : ''))
       .replace(
         '#include <project_vertex>',
         /* glsl */ `
@@ -65,7 +79,25 @@ export function applyFoliageSway(material: THREE.Material, frame: FrameContext):
         vec4 mvPosition = viewMatrix * swayWorld;
         gl_Position = projectionMatrix * mvPosition;`,
       );
+
+    if (leaf) {
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          '#include <common>',
+          '#include <common>\nuniform sampler2D uLeafTex;\nuniform float uLeafStr;\nvarying vec2 vLeafUv;',
+        )
+        .replace(
+          '#include <color_fragment>',
+          /* glsl */ `#include <color_fragment>
+          { // CC0 leaf-litter detail — modulate the canopy LIGHTNESS by the leaf texture (keeps the biome
+            // tint/gradient), normalised by its mean luma so it stays brightness-neutral. Subtle by uLeafStr.
+            vec3 lt = texture2D(uLeafTex, vLeafUv * ${leaf.repeat.toFixed(2)}).rgb;
+            float ll = dot(lt, vec3(0.299, 0.587, 0.114));
+            diffuseColor.rgb *= mix(1.0, ll / ${LEAF_MID.toFixed(3)}, uLeafStr);
+          }`,
+        );
+    }
   };
-  material.customProgramCacheKey = () => 'bmf-foliage-sway-v2';
+  material.customProgramCacheKey = () => (leaf ? 'bmf-foliage-sway-v2-leaf' : 'bmf-foliage-sway-v2');
   material.needsUpdate = true;
 }

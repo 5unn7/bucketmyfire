@@ -1668,13 +1668,13 @@ export class HUD {
   setBurnField(view: FireFieldView): void {
     this.burnField = view;
     const c = document.createElement('canvas');
-    c.width = view.n;
-    c.height = view.n;
+    c.width = view.nx;
+    c.height = view.nz;
     const cx = c.getContext('2d');
     if (!cx) return;
     this.burnCanvas = c;
     this.burnCtx = cx;
-    this.burnImg = cx.createImageData(view.n, view.n);
+    this.burnImg = cx.createImageData(view.nx, view.nz);
     this.burnAge = 999;
   }
 
@@ -1683,9 +1683,9 @@ export class HUD {
    *  terrain reads through. Cheap (n² = 16k) and only run every few frames. */
   private rasterizeBurn(view: FireFieldView): void {
     if (!this.burnImg || !this.burnCtx) return;
-    const { n, heat, scorch } = view;
+    const { nx, nz, heat, scorch } = view;
     const d = this.burnImg.data;
-    for (let i = 0; i < n * n; i++) {
+    for (let i = 0; i < nx * nz; i++) {
       const o = i * 4;
       let r = 0;
       let g = 0;
@@ -1716,23 +1716,25 @@ export class HUD {
   }
 
   /** Blit the burn raster onto the radar using the SAME world→screen affine as the satellite map (so it
-   *  stays registered in either radar mode). `m` = [m00,m01,m10,m11,m0,m1]; burn pixel (0,0) is world
-   *  (−S/2,−S/2), so the blit transform is the affine pre-scaled by the burn cell size. */
-  private drawBurnOverlay(ctx: CanvasRenderingContext2D, m: number[], S: number): void {
+   *  stays registered in either radar mode). `m` = [m00,m01,m10,m11,m0,m1]; burn pixel (0,0) is the
+   *  field's world origin (−halfX,−halfZ) — per-axis now, so a rectangular field stays registered — and
+   *  the blit transform is the affine pre-scaled by the (square) burn cell size. */
+  private drawBurnOverlay(ctx: CanvasRenderingContext2D, m: number[]): void {
     const view = this.burnField;
     if (!view || !this.burnCanvas) return;
     if (this.burnAge++ >= 6) {
       this.burnAge = 0;
       this.rasterizeBurn(view);
     }
-    const k = view.cellSize; // world units per burn-canvas pixel (one cell)
+    const k = view.cellSize; // world units per burn-canvas pixel (one cell — square on every map)
     const [m00, m01, m10, m11, m0, m1] = m;
     const A = m00 * k;
     const B = m10 * k;
     const C = m01 * k;
     const D = m11 * k;
-    const E = m00 * (-S / 2) + m01 * (-S / 2) + m0;
-    const F = m10 * (-S / 2) + m11 * (-S / 2) + m1;
+    // Burn pixel (0,0) maps to the field origin (−halfX,−halfZ); fold that through the world→screen affine.
+    const E = m00 * -view.halfX + m01 * -view.halfZ + m0;
+    const F = m10 * -view.halfX + m11 * -view.halfZ + m1;
     ctx.save();
     ctx.setTransform(this.dpr * A, this.dpr * B, this.dpr * C, this.dpr * D, this.dpr * E, this.dpr * F);
     ctx.imageSmoothingEnabled = true;
@@ -1788,7 +1790,6 @@ export class HUD {
 
     // --- Satellite terrain backdrop: blit the baked world map through the SAME affine, so map + blips
     // stay registered in either mode. ---
-    const S = s.worldSize; // bounding square — used by the burn overlay (the fire field is square)
     // The satellite map covers the TRUE playfield rectangle (worldSizeX × worldSizeZ) over the minimap's
     // own pixel dims, so per-axis world-units-per-pixel (equal on a square map → identical to the old blit).
     const sx = s.worldSizeX;
@@ -1820,7 +1821,7 @@ export class HUD {
     }
 
     // C5: burnt-area scar + live front, registered to the map by the same affine.
-    this.drawBurnOverlay(ctx, [m00, m01, m10, m11, m0, m1], S);
+    this.drawBurnOverlay(ctx, [m00, m01, m10, m11, m0, m1]);
 
     // Forward field-of-view cone + range rings — only in the ego-centric local scope.
     if (!exp) {

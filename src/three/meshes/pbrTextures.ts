@@ -43,6 +43,7 @@ export function loadPBR(slug: string, repeat = 1, anisotropy = 4): PBRSet {
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
     t.repeat.set(repeat, repeat);
     t.anisotropy = anisotropy; // crisp at grazing angles (the deck seen from the air)
+    t.userData.shared = true; // module-cached + reused across missions → Game.dispose() must NOT free it
     return t;
   };
 
@@ -71,6 +72,7 @@ export function loadAlbedo(slug: string, anisotropy = 4): THREE.Texture {
   t.colorSpace = THREE.SRGBColorSpace;
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.anisotropy = anisotropy;
+  t.userData.shared = true; // module-cached + reused across missions → Game.dispose() must NOT free it
   albedoCache.set(slug, t);
   return t;
 }
