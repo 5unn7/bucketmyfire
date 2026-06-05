@@ -27,11 +27,15 @@ export class Placement {
    * and accept one with probability equal to its fuel. `rng` keeps it deterministic;
    * `minFromOrigin` keeps the first fires off the player's spawn. Returns null if no
    * fueled spot is found in the attempt budget (caller can retry or skip).
+   *
+   * `bound` is the X half-extent; `boundZ` (default = bound) the Z half-extent — so a true-shape
+   * rectangular world keeps random fires inside the actual playfield, not in the void off its narrow
+   * axis. Square maps pass one value → boundZ === bound → the rng stream + sites are byte-identical.
    */
-  fireSite(rng: () => number, bound: number, minFromOrigin = 0): { x: number; z: number } | null {
+  fireSite(rng: () => number, bound: number, minFromOrigin = 0, boundZ: number = bound): { x: number; z: number } | null {
     for (let i = 0; i < 80; i++) {
       const x = (rng() * 2 - 1) * bound;
-      const z = (rng() * 2 - 1) * bound;
+      const z = (rng() * 2 - 1) * boundZ;
       if (minFromOrigin > 0 && Math.hypot(x, z) < minFromOrigin) continue;
       const fuel = this.fuelAt(x, z);
       if (fuel <= 0) continue;

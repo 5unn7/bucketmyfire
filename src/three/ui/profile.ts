@@ -54,7 +54,7 @@ export const MAPS: CatalogItem[] = [
   {
     id: 'saskatchewan',
     name: 'Saskatchewan',
-    tagline: 'Boreal north · 6 missions',
+    tagline: 'Boreal north · 8 missions',
     blurb: 'Northern Saskatchewan: glacier-scoured granite, the Churchill River chain, and cold kettle lakes from La Ronge to the Athabasca. The full campaign flies here.',
     available: true,
     accent: '#3f7d4a',
@@ -141,7 +141,7 @@ export const HELIS: CatalogItem[] = [
     tagline: 'Supreme — a handful',
     blurb: 'A big four-blade utility ship: the fastest, biggest tank (double the 205), and toughest airframe. But heavy and twitchy down low — all that momentum overshoots, so it takes a confident hand. Supreme range and payload for an experienced pilot.',
     available: true,
-    unlockAfter: 4, // unlocks for Missions 5 & 6 — the set-piece + the finale
+    unlockAfter: 5, // unlocks from Mission 6 (Three Towns, the set-piece) through After Burn + the finale
     accent: '#5b6b50',
     glyph: '🚁',
     specs: [

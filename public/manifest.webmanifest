@@ -1,7 +1,7 @@
 {
-  "name": "Bucket My Fire — Helicopter Firefighting",
+  "name": "Bucket My Fire — Helicopter Wildfire Game",
   "short_name": "BucketMyFire",
-  "description": "Fly a helicopter over northern Saskatchewan: scoop from lakes, drop on wildfires, save the forest. A free real-3D flight game in your browser.",
+  "description": "A helicopter and a slung bucket against a northern Saskatchewan wildfire. Stop it before it reaches the cabins. Free, in your browser.",
   "id": "/",
   "start_url": "/",
   "scope": "/",

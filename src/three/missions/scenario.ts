@@ -1,6 +1,7 @@
 import { World, CommunitySite } from '../World';
 import type { FireSystem } from '../sim/FireSystem';
 import type { CrewZone } from '../sim/CrewTransport';
+import type { BackburnPoint } from '../sim/Backburn';
 import type { MissionDef, ZonePlacement, SizeClass, FirePlacement, CommunityRef } from './types';
 import { WORLD3D } from '../config';
 
@@ -98,6 +99,50 @@ export function crewZones(world: World, mission: MissionDef): CrewZone[] {
   return (mission.zones ?? []).map((z) => resolveCrewZone(world, z));
 }
 
+/**
+ * Resolve a mission's `controlLine` to a row of world-space backburn ignition points. The line is
+ * centred `offset` units from the community toward the head fire — UPWIND by default (the head runs
+ * downwind onto the town, so the firebreak goes between them), or along an explicit `bearingDeg` — and
+ * spans `length` units perpendicular to that axis, sampled into `points` evenly-spaced segments. Each
+ * is snapped to dry fuel (`fuelPointNear`) so its backfire catches. Pure + shared by Game AND the
+ * verifier, mirroring `crewZones`/`seedFires`, so the "lay the line" objective is tested against real
+ * geometry. Returns [] when the mission has no control line.
+ */
+export function backburnLine(world: World, mission: MissionDef, wind: { vx: number; vz: number }): BackburnPoint[] {
+  const cl = mission.controlLine;
+  if (!cl) return [];
+  const base = communityPoint(world, cl.community);
+  const offset = cl.offset ?? 110;
+  const length = cl.length ?? 140;
+  const n = Math.max(1, cl.points ?? 5);
+  // Direction community → line centre: an explicit compass bearing, else UPWIND (toward the head).
+  let dirX: number;
+  let dirZ: number;
+  if (cl.bearingDeg !== undefined) {
+    const b = cl.bearingDeg * (Math.PI / 180);
+    dirX = Math.sin(b); // 0 = N (−Z), 90 = E (+X) — matches the zone/lake bearing convention
+    dirZ = -Math.cos(b);
+  } else {
+    const wl = Math.hypot(wind.vx, wind.vz) || 1;
+    dirX = -wind.vx / wl; // upwind unit (the head is upwind; it runs downwind onto the town)
+    dirZ = -wind.vz / wl;
+  }
+  const cx = base.x + dirX * offset;
+  const cz = base.z + dirZ * offset;
+  // The line runs perpendicular to the community→centre axis (it spans the town's threatened flank).
+  const px = -dirZ;
+  const pz = dirX;
+  const pts: BackburnPoint[] = [];
+  for (let i = 0; i < n; i++) {
+    const t = n === 1 ? 0 : i / (n - 1) - 0.5; // −0.5 .. +0.5 across the span
+    const sx = cx + px * t * length;
+    const sz = cz + pz * t * length;
+    const snap = fuelPointNear(world, sx, sz);
+    pts.push({ x: snap.x, z: snap.z, label: `Control line ${i + 1}` });
+  }
+  return pts;
+}
+
 /** Seed every fire in the mission def at its resolved site + size class onto `fire`. */
 export function seedFires(
   world: World,
@@ -105,9 +150,10 @@ export function seedFires(
   mission: MissionDef,
   wind: { vx: number; vz: number },
   fireBound: number,
+  fireBoundZ: number = fireBound, // Z half-extent for `random` fires on a rectangular world (default = square)
 ): void {
   for (const f of mission.fires) {
-    igniteFromPlacement(world, fire, f, wind, fireBound);
+    igniteFromPlacement(world, fire, f, wind, fireBound, fireBoundZ);
   }
 }
 
@@ -122,6 +168,7 @@ export function igniteFromPlacement(
   f: FirePlacement,
   wind: { vx: number; vz: number },
   fireBound: number,
+  fireBoundZ: number = fireBound, // Z half-extent for `random` fires on a rectangular world (default = square)
 ): void {
   {
     const cls = SIZE_CLASS[f.size];
@@ -218,7 +265,7 @@ export function igniteFromPlacement(
       // random: fuel-biased sites, off the player's spawn.
       const min = f.minFromOrigin ?? 120;
       for (let i = 0; i < f.count; i++) {
-        const site = world.placement.fireSite(world.rng, fireBound, min);
+        const site = world.placement.fireSite(world.rng, fireBound, min, fireBoundZ);
         if (site) fire.igniteAt(site.x, site.z, cls.radius, cls.heat);
       }
     }

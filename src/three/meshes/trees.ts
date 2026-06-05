@@ -38,7 +38,8 @@ export interface TreeSpecies {
 
 export interface TreeFieldOptions {
   candidates: number; // how many positions to TRY (each accepted with its biome density)
-  size: number; // square area extent; scatter X,Z in [-size/2, +size/2]
+  size: number; // X area extent; scatter X in [-size/2, +size/2] (square maps: also the Z extent)
+  sizeZ?: number; // optional Z extent for a rectangular (true-shape) world; defaults to `size` (square)
   heightAt: (x: number, z: number) => number; // terrain surface Y at an XZ — place each tree trunk-base on the ground
   sample: (x: number, z: number) => TreeSample; // biome density + foliage tint at an XZ (A2)
   rng: () => number; // seeded PRNG → deterministic forest for a given world seed
@@ -119,6 +120,7 @@ const COLLIDE_RADIUS = 1.5 * 0.85; // widest foliage tier (1.5), trimmed so you 
 
 export function createTreeField(opts: TreeFieldOptions): TreeField {
   const { candidates, size, heightAt, sample, rng } = opts;
+  const sizeZ = opts.sizeZ ?? size; // rectangular maps scatter Z over a different extent than X
 
   const group = new THREE.Group();
   group.name = 'TreeField';
@@ -142,11 +144,12 @@ export function createTreeField(opts: TreeFieldOptions): TreeField {
 
   interface Cell { mats: THREE.Matrix4[]; cols: THREE.Color[]; xs: number[]; zs: number[]; cx: number; cz: number; }
   const cells = new Map<number, Cell>();
-  const cellsPerSide = Math.max(1, Math.ceil(size / CHUNK));
+  const cellsPerSideX = Math.max(1, Math.ceil(size / CHUNK));
+  const cellsPerSideZ = Math.max(1, Math.ceil(sizeZ / CHUNK));
 
   for (let i = 0; i < candidates; i++) {
-    const x = (rng() - 0.5) * size; // in [-half, +half]
-    const z = (rng() - 0.5) * size;
+    const x = (rng() - 0.5) * size; // in [-sizeX/2, +sizeX/2]
+    const z = (rng() - 0.5) * sizeZ; // in [-sizeZ/2, +sizeZ/2]
 
     // Biome density-rejection: accept this candidate with the biome's tree density
     // (dense in moist forest, sparse in meadow, ~none on rock or water). Consume the
@@ -168,12 +171,12 @@ export function createTreeField(opts: TreeFieldOptions): TreeField {
     const matrix = new THREE.Matrix4().compose(position, quaternion, scale);
     tint.setRGB(biome.treeTint[0], biome.treeTint[1], biome.treeTint[2]);
 
-    const ix = Math.min(cellsPerSide - 1, Math.max(0, Math.floor((x + size / 2) / CHUNK)));
-    const iz = Math.min(cellsPerSide - 1, Math.max(0, Math.floor((z + size / 2) / CHUNK)));
+    const ix = Math.min(cellsPerSideX - 1, Math.max(0, Math.floor((x + size / 2) / CHUNK)));
+    const iz = Math.min(cellsPerSideZ - 1, Math.max(0, Math.floor((z + sizeZ / 2) / CHUNK)));
     const key = ix * 4096 + iz;
     let cell = cells.get(key);
     if (!cell) {
-      cell = { mats: [], cols: [], xs: [], zs: [], cx: (ix + 0.5) * CHUNK - size / 2, cz: (iz + 0.5) * CHUNK - size / 2 };
+      cell = { mats: [], cols: [], xs: [], zs: [], cx: (ix + 0.5) * CHUNK - size / 2, cz: (iz + 0.5) * CHUNK - sizeZ / 2 };
       cells.set(key, cell);
     }
     cell.mats.push(matrix);

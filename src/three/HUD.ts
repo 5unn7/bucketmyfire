@@ -46,7 +46,9 @@ export interface HudState {
   windDir: number; // world angle (rad) the wind blows TOWARD
   fires: { x: number; z: number }[];
   lakes: { x: number; z: number; r: number }[];
-  worldSize: number;
+  worldSize: number; // bounding SQUARE extent (= the fire-field / burn-overlay grid span)
+  worldSizeX: number; // true playfield rect (X) — the satellite-map blit uses this so a 'bounds' map isn't stretched
+  worldSizeZ: number; // true playfield rect (Z)
   // C3 stakes: structures to defend, the threat gauge, lose state + final score.
   structures: { x: number; z: number; kind: 'cabin' | 'depot'; health: number; burning: boolean }[];
   bases?: { x: number; z: number }[]; // refuel bases (home + forward pads) — radar markers + low-fuel RTB cue
@@ -136,6 +138,7 @@ function ensureAlertStyles(): void {
 
 export class HUD {
   private readonly root: HTMLDivElement;
+  private unsubLayout: (() => void) | null = null; // onLayout unsubscribe — detached in dispose()
 
   // Instrument strip: ONE frosted capsule of compact icon + NUMBER "pods" laid out
   // as a horizontal, wrapping top band (water / airframe / fuel / fires / threat / compass /
@@ -607,7 +610,7 @@ export class HUD {
 
     // Size + place everything for the current breakpoint, and re-apply on every
     // resize / orientation change (event-driven — never per frame).
-    onLayout((s) => this.applyLayout(s));
+    this.unsubLayout = onLayout((s) => this.applyLayout(s));
   }
 
   /** Size the responsive instruments for the active breakpoint. Anchors own
@@ -1126,8 +1129,7 @@ export class HUD {
       // store is wired yet, so this CAPTURES intent + acknowledges rather than dead-linking; swap the
       // handler for the real Squadron Store URL once it's live.
       if (s.won) {
-        let store: HTMLDivElement;
-        store = bannerButton('🪧 SQUADRON STORE', UI.warm, () => {
+        const store: HTMLDivElement = bannerButton('🪧 SQUADRON STORE', UI.warm, () => {
           store.textContent = 'Patches, posters & decals — coming soon';
           store.style.opacity = '0.7';
           store.style.pointerEvents = 'none';
@@ -1491,6 +1493,24 @@ export class HUD {
     e.wrap.style.opacity = '0';
     e.wrap.style.transform = 'scale(0.85)';
     window.setTimeout(() => e.wrap.remove(), 320);
+  }
+
+  /**
+   * Teardown for an in-place mission switch: clear the tracked fade timers, detach the engine-start
+   * dial's window key listeners (via hideEngineStart) if it's still up, drop the layout subscription,
+   * and remove the HUD root — which detaches every pointer listener on the radar/pods/buttons inside
+   * it. (Untracked one-shot timers — briefing/comms/dial fades — only touch elements under the root,
+   * so they're harmless once it's gone.) Idempotent.
+   */
+  dispose(): void {
+    window.clearTimeout(this.gaugeFlashTimer);
+    window.clearTimeout(this.hintHideTimer);
+    window.clearTimeout(this.hintFadeTimer);
+    window.clearTimeout(this.hitFlashTimer);
+    if (this.engineStartEl) this.hideEngineStart();
+    this.unsubLayout?.();
+    this.unsubLayout = null;
+    this.root.remove();
   }
 
   // --- Tape builder ---------------------------------------------------------

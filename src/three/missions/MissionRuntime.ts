@@ -177,6 +177,12 @@ export class MissionRuntime {
         const secs = o.seconds ?? 0;
         return { timeLeft: Math.max(0, secs - s.elapsed), met: s.elapsed >= secs };
       }
+      case 'backburn': {
+        // Lay the backburn control line: every marked segment torched. `n` overrides the line length
+        // (else the scenario's resolved segment count, surfaced via the live signal once any is lit).
+        const target = o.n ?? Math.max(1, s.backburnLit);
+        return { current: Math.min(target, s.backburnLit), target, met: s.backburnLit >= target };
+      }
     }
   }
 
@@ -214,6 +220,8 @@ export class MissionRuntime {
         return `Evacuate ${o.n ?? ''} crews`.replace('  ', ' ');
       case 'survive':
         return 'Hold the line';
+      case 'backburn':
+        return o.n ? `Lay the backburn (${o.n} segments)` : 'Lay the backburn line';
     }
   }
 

@@ -20,7 +20,12 @@ import { clearCampaign } from '../missions/progress';
  */
 
 const EPOCH_KEY = 'bmf.epoch';
-const DATA_EPOCH = 3; // bump to force a one-time campaign-progress reset for every player
+// Epoch 4: the campaign grew from six to EIGHT missions — a new "Backburn" (helitorch) mission at
+// index 3 and an "After Burn" (mop-up) mission at index 6, shifting Doorstep/Three Towns/Everything
+// at Once down. Because the linear unlock walks `index-1`, a returning pilot's stored ids would leave
+// a beaten mission re-locked (its new predecessor is an uncleared new id) — so wipe campaign progress
+// once and let everyone fly the eight in order.
+const DATA_EPOCH = 4; // bump to force a one-time campaign-progress reset for every player
 
 export function resetStaleStorage(): void {
   try {

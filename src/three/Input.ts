@@ -86,17 +86,41 @@ export class Input {
   private eyeSvg!: SVGElement;
   private helpBtn!: HTMLDivElement;
   private help!: HelpModal;
+  // Teardown handles (in-place mission switch): the touch-UI root, the three window key listeners,
+  // and the layout subscription — all stored so dispose() can detach them and a dead game's input
+  // never lingers bound to window / firing on resize. (Listeners on elements INSIDE `root` go away
+  // for free when the root is removed.)
+  private root!: HTMLDivElement;
+  private readonly onKeyDown: (e: KeyboardEvent) => void;
+  private readonly onKeyUp: (e: KeyboardEvent) => void;
+  private readonly onBlur: () => void;
+  private readonly unsubLayout: () => void;
 
   constructor(parent: HTMLElement) {
-    window.addEventListener('keydown', (e) => {
+    this.onKeyDown = (e: KeyboardEvent): void => {
       this.held.add(e.code);
       if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
-    });
-    window.addEventListener('keyup', (e) => this.held.delete(e.code));
-    window.addEventListener('blur', () => this.held.clear());
+    };
+    this.onKeyUp = (e: KeyboardEvent): void => void this.held.delete(e.code);
+    this.onBlur = (): void => this.held.clear();
+    window.addEventListener('keydown', this.onKeyDown);
+    window.addEventListener('keyup', this.onKeyUp);
+    window.addEventListener('blur', this.onBlur);
 
     this.buildTouchUI(parent);
-    onLayout((s) => this.applyLayout(s)); // size + reflow now and on every resize/orientation change
+    this.unsubLayout = onLayout((s) => this.applyLayout(s)); // size + reflow now and on every resize/orientation change
+  }
+
+  /** Teardown for an in-place mission switch: detach the window listeners + layout subscription,
+   *  dispose the help modal (its body-level scrim), and remove the touch-UI overlay (which detaches
+   *  every pointer listener on the buttons/stick inside it). Idempotent. */
+  dispose(): void {
+    window.removeEventListener('keydown', this.onKeyDown);
+    window.removeEventListener('keyup', this.onKeyUp);
+    window.removeEventListener('blur', this.onBlur);
+    this.unsubLayout();
+    this.help?.dispose();
+    this.root?.remove();
   }
 
   read(): ControlState {
@@ -135,6 +159,12 @@ export class Input {
     this.prevDetach = detach;
 
     return { turn, throttle, lift, drop, dropPressed, swapPressed, detachPressed };
+  }
+
+  /** Relabel the primary action (DROP) button — Game sets it to "IGNITE" on a torch (helitorch) sortie,
+   *  where the same button lays a backburn instead of dropping water. Keyboard Space is unchanged. */
+  setActionLabel(label: string): void {
+    if (this.dropBtn) this.dropBtn.textContent = label;
   }
 
   /** Show/hide the DETACH (jettison-bucket) button. Game shows it on a water sortie while a bucket is
@@ -229,6 +259,7 @@ export class Input {
     this.buildLookUI(root);
     this.buildHelpUI(root);
 
+    this.root = root; // stored so dispose() can pull the whole overlay (and its listeners) at once
     parent.appendChild(root);
   }
 

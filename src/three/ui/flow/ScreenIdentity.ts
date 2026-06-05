@@ -75,7 +75,7 @@ export function buildIdentityScreen(ctx: FlowCtx): HTMLElement {
   hero.appendChild(createGridTitle('BUCKET MY FIRE'));
   root.appendChild(hero);
   root.appendChild(
-    div({ textAlign: 'center', fontSize: FS.meta, letterSpacing: '0.22em', textTransform: 'uppercase', color: UI.dim, margin: '0 0 28px' }, 'Helicopter firefighting sim'),
+    div({ textAlign: 'center', fontSize: FS.meta, letterSpacing: '0.22em', textTransform: 'uppercase', color: UI.dim, margin: '0 0 28px' }, 'A bucket, a chopper, a wildfire'),
   );
 
   // Callsign (required).

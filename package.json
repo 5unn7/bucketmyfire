@@ -2,7 +2,7 @@
   "name": "bucketmyfire",
   "version": "0.1.0",
   "private": true,
-  "description": "Mobile-browser helicopter simulator: fight forest fires in northern Saskatchewan with a slung water bucket.",
+  "description": "In-browser helicopter wildfire game: a slung bucket, northern Saskatchewan, and a fire headed for the cabins.",
   "type": "module",
   "scripts": {
     "dev": "vite",

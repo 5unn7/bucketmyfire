@@ -44,26 +44,40 @@ export function createTerrain(
 ): Terrain {
   // PlaneGeometry is built in the XY plane; we rotate it −90° about X so it lies
   // flat in XZ with +Y up. After the rotation, getX/getZ read true world X/Z.
-  const geometry = new THREE.PlaneGeometry(world.size, world.size, segments, segments);
+  // The plane spans the world's true extent — sizeX × sizeZ — so on a 'bounds'-fit (rectangular)
+  // map the ground IS the province's shape, not a square. Square maps: sizeX === sizeZ (unchanged).
+  const geometry = new THREE.PlaneGeometry(world.sizeX, world.sizeZ, segments, segments);
   geometry.rotateX(-Math.PI / 2);
 
   const pos = geometry.attributes.position as THREE.BufferAttribute;
   const colors = new Float32Array(pos.count * 3);
 
-  // Displace every vertex by the shared world height, then color it by BIOME (A2):
-  // meadow / forest / rock / shore from elevation × moisture × slope × water-distance, with
-  // (a) a RICHER-COLOUR pass — broad macro tint drift + occasional gold autumn stands so the
-  // forest floor isn't a uniform green — then (b) a baked BROAD-RELIEF hillshade (B5.1). The
-  // live sun barely shades this gentle terrain, which left the 3D map reading flat next to
-  // the crisp radar; baking the SAME directional hillshade the minimap uses (over a wide
-  // baseline so it tracks landforms, not micro-noise) gives ridges/valleys readable depth.
+  // PlaneGeometry gives a regular (segments+1)² grid, row-major (X across columns, Z down
+  // rows). We sample the (expensive) world height ONCE per vertex into `heights`, displace
+  // from it, then derive the baked hillshade from neighbouring GRID heights instead of four
+  // more world-height calls per vertex. groundHeightAt loops every lake/river/bridge-valley,
+  // so this drops the dominant terrain-build cost ~5× (5 calls/vertex → 1) with no visible
+  // change — the relief is read from the same surface, just reusing samples we already have.
+  const N = segments + 1; // vertices per side (same count both axes)
+  const stepX = world.sizeX / segments; // world units between adjacent grid vertices, across columns (X)
+  const stepZ = world.sizeZ / segments; // …and down rows (Z) — equal on square maps, differ on a rect map
+  const heights = new Float32Array(pos.count);
   for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i);
-    const z = pos.getZ(i);
-    pos.setY(i, world.groundHeightAt(x, z));
+    const h = world.groundHeightAt(pos.getX(i), pos.getZ(i));
+    heights[i] = h;
+    pos.setY(i, h);
+  }
 
-    const [r, g, b] = richerColor(world.biomes.sample(x, z).color, x, z);
-    const shade = reliefShade(world, x, z);
+  // Colour every vertex by BIOME (A2): meadow / forest / rock / shore from elevation ×
+  // moisture × slope × water-distance, with (a) a RICHER-COLOUR pass — broad macro tint drift
+  // + occasional gold autumn stands so the forest floor isn't a uniform green — then (b) a
+  // baked BROAD-RELIEF hillshade (B5.1). The live sun barely shades this gentle terrain, which
+  // left the 3D map reading flat next to the crisp radar; baking the SAME directional hillshade
+  // the minimap uses (over a wide baseline so it tracks landforms, not micro-noise) gives
+  // ridges/valleys readable depth. Read from `heights` so it's resolution-stable across tiers.
+  for (let i = 0; i < pos.count; i++) {
+    const [r, g, b] = richerColor(world.biomes.sample(pos.getX(i), pos.getZ(i)).color, pos.getX(i), pos.getZ(i));
+    const shade = reliefShadeGrid(heights, i, N, stepX, stepZ);
     colors[i * 3] = r * shade;
     colors[i * 3 + 1] = g * shade;
     colors[i * 3 + 2] = b * shade;
@@ -160,11 +174,28 @@ function smooth01(t: number): number {
   return c * c * (3 - 2 * c);
 }
 
-/** Directional hillshade in [SHADE_LO, SHADE_HI] from the broad local height gradient. */
-function reliefShade(world: World, x: number, z: number): number {
-  const e = SHADE_BASELINE;
-  const ex = (world.groundHeightAt(x + e, z) - world.groundHeightAt(x - e, z)) / (2 * e);
-  const ez = (world.groundHeightAt(x, z + e) - world.groundHeightAt(x, z - e)) / (2 * e);
+/**
+ * Directional hillshade in [SHADE_LO, SHADE_HI] from the broad local height gradient — read
+ * from the precomputed height grid instead of re-sampling the world. `heights` is the row-major
+ * (N×N) vertex grid; `i` is the vertex index; `step` is the world-unit spacing between adjacent
+ * vertices. We pick a neighbour stride `k` so `k·step ≈ SHADE_BASELINE` (the broad-landform
+ * baseline), keeping the relief resolution-stable: the same look at every quality tier. Borders
+ * clamp to the nearest in-grid neighbour and divide by the true span used (no edge artefacts).
+ */
+function reliefShadeGrid(heights: Float32Array, i: number, N: number, stepX: number, stepZ: number): number {
+  const ix = i % N;
+  const iz = (i / N) | 0;
+  // Per-axis neighbour stride so k·step ≈ the 11u baseline on each axis (cells differ on a rect map).
+  const kx = Math.max(1, Math.round(SHADE_BASELINE / stepX));
+  const kz = Math.max(1, Math.round(SHADE_BASELINE / stepZ));
+  // X gradient (across columns) — clamp the column index, divide by the actual span sampled.
+  const x0 = Math.max(0, ix - kx);
+  const x1 = Math.min(N - 1, ix + kx);
+  const ex = (heights[iz * N + x1] - heights[iz * N + x0]) / Math.max(1e-4, (x1 - x0) * stepX);
+  // Z gradient (down rows).
+  const z0 = Math.max(0, iz - kz);
+  const z1 = Math.min(N - 1, iz + kz);
+  const ez = (heights[z1 * N + ix] - heights[z0 * N + ix]) / Math.max(1e-4, (z1 - z0) * stepZ);
   const s = SHADE_BASE + (-ex * SHADE_LX - ez * SHADE_LZ) * SHADE_GAIN;
   return s < SHADE_LO ? SHADE_LO : s > SHADE_HI ? SHADE_HI : s;
 }

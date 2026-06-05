@@ -429,6 +429,13 @@ export class HelpModal {
     this.open_ ? this.close() : this.open();
   }
 
+  /** Teardown for an in-place mission switch: drop the body-level scrim and detach the (open-only)
+   *  keydown listener via close(). Idempotent; the modal is dead afterwards. */
+  dispose(): void {
+    this.close(); // removes the window 'keydown' if it was open
+    this.scrim.remove();
+  }
+
   // --- paging ---------------------------------------------------------------
 
   private goTo(i: number): void {

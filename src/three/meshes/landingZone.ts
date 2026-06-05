@@ -25,14 +25,16 @@ export interface LandingZoneMesh {
 
 // Pass `home: true` for the reusable BASE pad — it then renders a distinct green, ALWAYS lit, so
 // home is unmistakable regardless of the carry state (the player always knows where to return).
-export function createLandingZone(home = false): LandingZoneMesh {
+// `accent` overrides the active/inactive tint (default the cyan crew-LZ colour) — the backburn
+// control-line markers pass an ember-orange so they read as a "fire line", not a crew pad.
+export function createLandingZone(home = false, accent: number = MISSIONS.zoneSmoke): LandingZoneMesh {
   const group = new THREE.Group();
   group.name = 'landingZone';
 
   const ringR = MISSIONS.lzRadius * 0.72; // painted ring a little inside the trigger radius
   const ringMat = new THREE.MeshStandardMaterial({
-    color: MISSIONS.zoneSmoke,
-    emissive: MISSIONS.zoneSmoke,
+    color: accent,
+    emissive: accent,
     emissiveIntensity: 1.4,
     roughness: 0.7,
     metalness: 0,
@@ -57,7 +59,7 @@ export function createLandingZone(home = false): LandingZoneMesh {
   // Vertical beacon: a tall, soft, additive column visible across the map. Tapered cone so
   // it reads like a marker flare / smoke marker rising from the pad.
   const beaconMat = new THREE.MeshBasicMaterial({
-    color: MISSIONS.zoneSmoke,
+    color: accent,
     transparent: true,
     opacity: 0.28,
     depthWrite: false,
@@ -104,7 +106,7 @@ export function createLandingZone(home = false): LandingZoneMesh {
       ringMat.opacity = 0.45;
       beaconWanted = false;
     } else {
-      const tint = new THREE.Color(MISSIONS.zoneSmoke);
+      const tint = new THREE.Color(accent);
       ringMat.color.copy(tint);
       ringMat.emissive.copy(tint);
       const on = state === 'active';

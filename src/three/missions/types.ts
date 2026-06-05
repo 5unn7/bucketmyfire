@@ -91,12 +91,28 @@ export interface ZonePlacement {
 }
 
 /** Win requirements — ALL must complete for a mission win. */
-export type ObjectiveKind = 'extinguishAll' | 'extinguishCount' | 'deliver' | 'evacuate' | 'survive';
+export type ObjectiveKind = 'extinguishAll' | 'extinguishCount' | 'deliver' | 'evacuate' | 'survive' | 'backburn';
 export interface Objective {
   kind: ObjectiveKind;
-  n?: number; // target count (extinguishCount / deliver / evacuate); defaults to crewsTotal for crews
+  n?: number; // target count (extinguishCount / deliver / evacuate / backburn segments); defaults to crewsTotal for crews, the control line's length for backburn
   seconds?: number; // survive duration
   label?: string; // override the auto label
+}
+
+/**
+ * A backburn CONTROL LINE: an ordered row of ignition points the pilot lights (torch loadout) to lay
+ * a deliberate firebreak between an advancing head fire and a settlement. Resolved by `scenario.ts`
+ * (`backburnLine`) against the seeded World. Like fire/zone placements it's RELATIVE to a named
+ * feature so it stays seed-robust: the line is centred `offset` units from `community` toward the
+ * head (UPWIND by default, or along `bearingDeg`), spans `length` units, and is sampled into `points`
+ * evenly-spaced segments (each snapped to dry fuel so its backfire catches).
+ */
+export interface ControlLinePlacement {
+  community: CommunityRef; // the settlement the line protects (its head-side flank)
+  offset?: number; // distance from the community to the line centre (default ~110)
+  bearingDeg?: number; // compass bearing community→line centre (0 = N, 90 = E); omit → upwind (toward the head)
+  length?: number; // the line's world-unit span (default ~140)
+  points?: number; // how many segments to light (default 5)
 }
 
 /** Loss conditions — ANY triggers a mission loss. */
@@ -195,17 +211,22 @@ export interface MissionDef {
   // "spread according to the mission" is dialled, mirroring `wind.strengthScale`. (FireSystem reads it.)
   fire?: { spreadScale?: number };
   bucket?: 'bambi' | 'valve';
-  payload?: 'water' | 'crew'; // crew → no bucket/longline; the heli LANDS at zones to board/unload crew
-  // Available loadouts for a MIXED mission (ferry crew AND fight fire in one sortie). When >1, the
-  // pilot RE-RIGS the slung load bucket↔crew while set down at the home base (a deliberate swap, so
-  // the control scheme is never both at once). `payload` is the STARTING loadout; omit `loadouts`
-  // (or give one) → a single-loadout mission, exactly as before. Order is the swap cycle order.
-  loadouts?: ('water' | 'crew')[];
+  // The slung loadout. `water` = the Bambi/valve bucket (scoop + drop). `crew` = no bucket/longline;
+  // the heli LANDS at zones to board/unload crew. `torch` = a helitorch ignition rig: no scoop/drop,
+  // the DROP button becomes IGNITE and lays a backfire along a marked control line (see `controlLine`).
+  payload?: 'water' | 'crew' | 'torch';
+  // Available loadouts for a MIXED sortie (do more than one job in one flight). When >1, the pilot
+  // RE-RIGS the slung load while set down at the home base (a deliberate swap, so the control scheme is
+  // never two things at once). `payload` is the STARTING loadout; omit `loadouts` (or give one) → a
+  // single-loadout mission, exactly as before. Order is the swap cycle order. (e.g. ['torch','water']
+  // = backburn the line, then re-rig to the bucket to guard.)
+  loadouts?: ('water' | 'crew' | 'torch')[];
   startLoaded?: boolean; // crew payload: spawn with the FIRST crew already aboard (skip the opening base pickup → fly straight to the first LZ)
   fuel?: boolean; // enable the FuelSim range model
   fires: FirePlacement[];
   structures?: StructureSpec;
   zones?: ZonePlacement[];
+  controlLine?: ControlLinePlacement; // a backburn firebreak to lay (torch loadout + `backburn` objective)
   objectives: Objective[];
   fails?: FailCondition[];
   script?: MissionBeat[]; // the reactive arc: briefing/beats/debrief comms + world reactions
@@ -228,6 +249,7 @@ export interface MissionSignals {
   crewsDelivered: number;
   crewsTotal: number;
   crewsLost: number; // trapped families the FIRE reached before pickup (drives the `rescue` fail)
+  backburnLit: number; // backburn control-line segments laid so far (drives the `backburn` objective)
   elapsed: number; // seconds since the mission became active
   fuel: number; // 0..1 (1 when no FuelSim)
   starved: boolean; // ran the tank dry

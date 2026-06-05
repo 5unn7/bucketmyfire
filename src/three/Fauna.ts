@@ -46,6 +46,7 @@ const LAND_TOTAL_W = LAND_MIX.reduce((s, a) => s + a.w, 0);
 
 export class Fauna {
   private readonly critters: Critter[] = [];
+  private disposed = false; // set by dispose(): blocks the async pack load from populating a dead scene
   // Own seeded stream, so scattering wildlife doesn't perturb the world/tree/fire RNG.
   private readonly rng = mulberry32(WORLD3D.seed ^ 0x1f2e3d4c);
 
@@ -59,6 +60,12 @@ export class Fauna {
     // missing), saving the heaviest single asset on exactly the hardware that can least afford it.
     const highDetail = detectTier() !== 'low';
     void loadAnimalPack(highDetail).then((protos) => this.placeLand(protos));
+  }
+
+  /** Stop the (fire-and-forget) animal-pack load from populating the scene after an in-place mission
+   *  switch — the placeLand guard checks this. The critters themselves go with the disposed scene. */
+  dispose(): void {
+    this.disposed = true;
   }
 
   /** Loons floating on each lake (procedural — the pack has no waterfowl). */
@@ -94,9 +101,11 @@ export class Fauna {
 
   /** Scatter the ground herd over flammable/open land, seeded + deterministic. */
   private placeLand(protos: AnimalPrototypes): void {
-    const area = (this.world.size / 1000) * (this.world.size / 1000);
+    if (this.disposed) return; // the pack resolved after an in-place switch — don't touch the dead scene
+    const area = (this.world.sizeX / 1000) * (this.world.sizeZ / 1000);
     const count = Math.max(6, Math.round(FAUNA.ungulatePer1000 * area));
-    const bound = this.world.size / 2 - 60;
+    const boundX = this.world.sizeX / 2 - 60;
+    const boundZ = this.world.sizeZ / 2 - 60;
 
     for (let n = 0; n < count; n++) {
       // Find a valid spot: on land, gentle slope, off the spawn, where animals would live.
@@ -104,8 +113,8 @@ export class Fauna {
       let z = 0;
       let ok = false;
       for (let g = 0; g < 40 && !ok; g++) {
-        x = (this.rng() * 2 - 1) * bound;
-        z = (this.rng() * 2 - 1) * bound;
+        x = (this.rng() * 2 - 1) * boundX;
+        z = (this.rng() * 2 - 1) * boundZ;
         if (Math.hypot(x, z) < FAUNA.minFromOrigin) continue;
         if (this.world.isOverWater(x, z)) continue;
         if (this.world.slopeAt(x, z) > 0.4) continue; // not on cliffs

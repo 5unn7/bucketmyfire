@@ -305,8 +305,14 @@ export function swapInModel(heli: HelicopterMesh, heliId?: string): void {
 }
 
 // --- Procedural rotors (for merged models with no separable rotor) ------------
+// MODULE-LEVEL shared materials reused across every helicopter instance / Game. Flagged
+// `userData.shared` so Game.dispose()'s scene-teardown traversal SKIPS them — disposing a shared
+// singleton would break the rotors of the next in-place mission. Any future shared GPU resource
+// should carry the same flag.
 const PROC_BLADE = new THREE.MeshStandardMaterial({ color: 0x191b1f, roughness: 0.5, metalness: 0.3 });
 const PROC_HUB = new THREE.MeshStandardMaterial({ color: 0x70757d, roughness: 0.4, metalness: 0.7 });
+PROC_BLADE.userData.shared = true;
+PROC_HUB.userData.shared = true;
 
 /** A −90°-yawed mount under `group` carrying `tailRotor`, pivoted at `posLocal`, so that
  *  tailRotor.rotation.x sweeps the disc sideways (lateral hub axis = anti-torque). */

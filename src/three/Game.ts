@@ -47,6 +47,7 @@ import { createCrewFigures, CrewFigures } from './meshes/crewFigures';
 import { createLandingZone, LandingZoneMesh } from './meshes/landingZone';
 import { createBridge, computeBridgeSites, type Bridge } from './meshes/bridges';
 import { CrewTransport, CrewZone } from './sim/CrewTransport';
+import { Backburn } from './sim/Backburn';
 import { FuelSim } from './sim/FuelSim';
 import { HealthSim } from './sim/HealthSim';
 import { MissionRuntime } from './missions/MissionRuntime';
@@ -60,7 +61,7 @@ import { cloudAutoSave } from './leaderboard/cloudSave';
 import { button, UI, FW } from './ui/theme';
 import type { MissionDef, MissionSignals, MissionAction, ZonePlacement, ScoreTally } from './missions/types';
 import type { EndScreenHooks } from './HUD';
-import { seedFires, structurePlan, crewZones, resolveCrewZone, igniteFromPlacement } from './missions/scenario';
+import { seedFires, structurePlan, crewZones, resolveCrewZone, igniteFromPlacement, backburnLine } from './missions/scenario';
 import { WORLD3D, FLIGHT, STARTUP, BUCKET3D, DROP_PHYSICS, DROP_FX, FIREHEAD, CAMERA, FIRE3D, WATER, WASH, SPRAY, SMOKE, EMBERS, INSTRUMENTS, ROADS, MISSIONS, COMMUNITIES, SCORE, FOREST, STRUCT_FIRE, CRASH, BRIDGE, resolveHeliClass } from './config';
 
 // Instrument calibration factors (world units → real-world HUD units). Derived from
@@ -112,8 +113,14 @@ export class Game {
   private readonly world: World; // built from the mission seed (assigned first in the ctor)
   private readonly fauna: Fauna; // wildlife (moose/deer/loons…) — depends on world
   private readonly forest: TreeField; // chunked conifer forest — culled each frame to what's in view
-  private readonly groves: TreeField; // deciduous (birch/aspen) accent trees
-  private readonly snags: TreeField; // burnt dead-standing snags
+  // Decorative accent fields, built one tick AFTER the first frame (see buildAccentFoliage): they're
+  // not colliders and the sim is frozen on the briefing/cold-start deck while they pop in, so deferring
+  // them off the construction critical path shaves the first-frame freeze with no visible cost. Null
+  // until that deferred build runs (and again after dispose), so the per-frame use sites guard with `?.`.
+  private groves: TreeField | null = null; // deciduous (birch/aspen) accent trees
+  private snags: TreeField | null = null; // burnt dead-standing snags
+  private accentFoliageTimer: ReturnType<typeof setTimeout> | null = null;
+  private disposed = false; // set by dispose(): stops deferred work + per-frame stepping after teardown
   private readonly obstacles: Obstacles; // bucket collision height field (ground + tree canopy)
   private readonly frame = new FrameContext(); // shared time/wind/sun uniform bus (B0)
   private readonly ripples = new Ripples(); // 8-slot water ripple pool (B1)
@@ -221,14 +228,17 @@ export class Game {
   private readonly mission: MissionDef;
   private readonly runtime: MissionRuntime; // objective/fail evaluation (engine-agnostic)
   private readonly director: MissionDirector; // reactive beats: comms / flare-ups / wind shifts
-  private readonly fireBound = WORLD3D.size / 2 - 40; // valid-fire-site radius (matches scenario seeding)
+  private readonly fireBoundX: number; // valid-fire-site X half-extent (rect-aware; matches scenario seeding)
+  private readonly fireBoundZ: number; // …and Z half-extent (= fireBoundX on square maps)
   private inBriefing = true; // pre-flight briefing card up → sim + clock paused until BEGIN
-  private payloadMode: 'water' | 'crew'; // CURRENT slung loadout (mutable: mixed missions re-rig at base)
+  private payloadMode: 'water' | 'crew' | 'torch'; // CURRENT slung loadout (mutable: mixed missions re-rig at base)
   private bucketAttached = true; // water sorties: is the slung bucket rigged? DETACH jettisons it; a base re-rigs a fresh one
-  private readonly loadouts: ('water' | 'crew')[]; // loadouts the pilot can re-rig between; >1 → swap enabled
+  private readonly loadouts: ('water' | 'crew' | 'torch')[]; // loadouts the pilot can re-rig between; >1 → swap enabled
   private loadoutIdx = 0; // index into `loadouts` of the current payload
   private readonly bucketType: 'bambi' | 'valve';
   private readonly crew?: CrewTransport; // crew land-and-board transport (crew payload missions)
+  private backburn?: Backburn; // backburn control-line tracker (torch missions) — lit as you fly the line
+  private readonly backburnMeshes: LandingZoneMesh[] = []; // control-line segment markers (parallel to backburn.views)
   private readonly lzMeshes: LandingZoneMesh[] = []; // landing-zone markers (parallel to crew zones)
   private readonly crewFigures: CrewFigures[] = []; // animated crew at each zone (parallel to crew zones)
   private readonly crewZones: CrewZone[] = []; // resolved world-space crew endpoints (refined to flat landing spots)
@@ -481,12 +491,18 @@ export class Game {
     const forest = createTreeField({
       // Scale candidates with world AREA (constant density as the map grows), off the FOREST.baseCandidates
       // lever — trimmed so the enlarged world stays open + performant rather than doubling the tree count.
-      candidates: Math.round(FOREST.baseCandidates * forestDensityMul * (WORLD3D.size / 600) ** 2),
-      size: WORLD3D.size,
+      candidates: Math.round(FOREST.baseCandidates * forestDensityMul * (this.world.sizeX / 600) * (this.world.sizeZ / 600)),
+      size: this.world.sizeX,
+      sizeZ: this.world.sizeZ,
       heightAt: (x, z) => this.world.groundHeightAt(x, z),
       sample: (x, z) => {
         const s = this.world.biomes.sample(x, z);
-        return { treeDensity: s.treeDensity * this.world.clearingFactor(x, z), treeTint: s.treeTint };
+        // clearingFactor thins trees in settlement yards/LZs; authoredFoliageMul is the map editor's
+        // hand-painted forest brush (1 = untouched, >1 denser, 0 = cleared).
+        return {
+          treeDensity: s.treeDensity * this.world.clearingFactor(x, z) * this.world.authoredFoliageMul(x, z),
+          treeTint: s.treeTint,
+        };
       },
       rng: this.world.rng,
       burnable: true, // C5: conifers ignite + char + collapse when the fire field reaches them
@@ -509,44 +525,31 @@ export class Game {
       this.bridgePass.push({ under: false, enterU: 0, cd: 0 });
     }
 
-    // Mixed-forest variety: deciduous (birch/aspen) accents + burnt snags, each reusing
-    // the conifer's chunk/LOD machinery via the species slot, on its OWN seeded stream
-    // (so it doesn't perturb the conifer/fire layout) with its own tint. Birch sways too.
-    // (Their colliders are left out of the bucket field for now — conifers are the snag.)
-    this.groves = createTreeField({
-      candidates: Math.round(2200 * forestDensityMul * (WORLD3D.size / 600) ** 2),
-      size: WORLD3D.size,
-      heightAt: (x, z) => this.world.groundHeightAt(x, z),
-      sample: (x, z) => ({ treeDensity: this.world.biomes.sample(x, z).treeDensity * 0.38 * this.world.clearingFactor(x, z), treeTint: [0.62, 0.66, 0.33] }),
-      rng: speciesRng(WORLD3D.seed ^ 0x2bd1e995),
-      species: deciduousSpecies(),
-      burnable: true, // C5: birch/aspen groves burn too
-    });
-    this.scene.add(this.groves.object);
-    const gFol = this.groves.object.getObjectByName('TreeFoliage') as THREE.Mesh | null;
-    if (gFol) applyFoliageSway(gFol.material as THREE.Material, this.frame);
-
-    this.snags = createTreeField({
-      candidates: Math.round(700 * (WORLD3D.size / 600) ** 2),
-      size: WORLD3D.size,
-      heightAt: (x, z) => this.world.groundHeightAt(x, z),
-      sample: (x, z) => ({ treeDensity: this.world.biomes.sample(x, z).treeDensity * 0.07 * this.world.clearingFactor(x, z), treeTint: [0.3, 0.28, 0.25] }),
-      rng: speciesRng(WORLD3D.seed ^ 0x7f4a7c13),
-      species: snagSpecies(),
-    });
-    this.scene.add(this.snags.object);
+    // Mixed-forest variety (deciduous accents + burnt snags) is built one tick after the first
+    // frame paints — see buildAccentFoliage. Each is seeded off its OWN stream, so deferring it
+    // doesn't perturb the conifer/fire layout, and it's not a collider, so nothing gameplay-side
+    // waits on it. `forestDensityMul` is captured for the deferred closure. The sim is frozen on
+    // the briefing/cold-start deck while they pop in (a frame or two later), so it's invisible.
+    if (this.accentFoliageTimer) clearTimeout(this.accentFoliageTimer); // drop any pending deferred build first
+    this.accentFoliageTimer = setTimeout(() => {
+      this.accentFoliageTimer = null;
+      this.buildAccentFoliage(forestDensityMul);
+    }, 0);
 
     // C3 fire sim: World fields injected as callbacks (so the sim never imports
     // World). A fixed pool of fire meshes (size maxActive) is built once and synced
     // to the sim's active fires each frame — fires never add/remove scene objects.
-    const fireBound = WORLD3D.size / 2 - 40;
+    // Valid-fire-site half-extents — per axis so random fires stay inside the true-shape rectangle (on a
+    // square map both = WORLD3D.size/2 − 40, so seeding is byte-identical). Captured for the director beats too.
+    this.fireBoundX = this.world.sizeX / 2 - 40;
+    this.fireBoundZ = this.world.sizeZ / 2 - 40;
     this.fireSystem = new FireSystem(
       {
         rng: this.world.rng,
         groundHeightAt: (x, z) => this.world.groundHeightAt(x, z),
         isOverWater: (x, z) => this.world.isOverWater(x, z),
         fuelAt: (x, z) => this.world.placement.fuelAt(x, z),
-        pickSite: (minFromOrigin) => this.world.placement.fireSite(this.world.rng, fireBound, minFromOrigin),
+        pickSite: (minFromOrigin) => this.world.placement.fireSite(this.world.rng, this.fireBoundX, minFromOrigin, this.fireBoundZ),
       },
       { spreadScale: this.mission.fire?.spreadScale }, // per-mission spread pacing (FIRE3D baseline × this)
     );
@@ -559,7 +562,7 @@ export class Game {
     }
     // Seed the mission's fires at their chosen sites/sizes (vs the random sandbox seeding) via
     // the shared scenario resolver, then capture the active count as the "initial fires" baseline.
-    seedFires(this.world, this.fireSystem, this.mission, { vx: this.wind.vx, vz: this.wind.vz }, fireBound);
+    seedFires(this.world, this.fireSystem, this.mission, { vx: this.wind.vx, vz: this.wind.vz }, this.fireBoundX, this.fireBoundZ);
     this.firesInitial = this.fireSystem.activeCount;
 
     // C3 stakes: cabins + lakeside depot. The mission drives placement explicitly (which
@@ -568,7 +571,7 @@ export class Game {
     this.structures = new Structures({
       groundHeightAt: (x, z) => this.world.groundHeightAt(x, z),
       isOverWater: (x, z) => this.world.isOverWater(x, z),
-      pickSite: (minFromOrigin) => this.world.placement.fireSite(this.world.rng, fireBound, minFromOrigin),
+      pickSite: (minFromOrigin) => this.world.placement.fireSite(this.world.rng, this.fireBoundX, minFromOrigin, this.fireBoundZ),
       lakes: this.world.lakes.map((l) => ({ x: l.x, z: l.z, r: l.r })),
       rng: this.world.rng,
       communities: this.world.communities,
@@ -580,6 +583,16 @@ export class Game {
       m.group.rotation.y = i * 1.3; // deterministic per-index yaw for variety
       this.scene.add(m.group);
       this.structureMeshes.push(m);
+    });
+
+    // Authored decorative buildings (map editor): pure scenery dropped on the terrain — NOT pushed into
+    // structureMeshes (that array is index-paired with sim/Structures; a mismatch would crash the damage
+    // loop) and never a Structure, so they never burn-count or affect win/lose. Empty when none are painted.
+    this.world.authoredBuildings.forEach((b, i) => {
+      const m = createStructure(b.kind, 9000 + i);
+      m.group.position.set(b.x, this.world.groundHeightAt(b.x, b.z), b.z);
+      m.group.rotation.y = (b.rotationDeg * Math.PI) / 180;
+      this.scene.add(m.group);
     });
 
     // Dock (A5 polish): a jetty off EACH lakeside base, reaching out over its lake — sells every base
@@ -600,7 +613,9 @@ export class Game {
     // only to satisfy the field; it's never posed for crew (the bucket/rope block is water-gated).
     this.slung = this.bucket.group;
     this.slungAnchorY = this.bucket.topAnchorY;
-    if (this.payloadMode === 'crew') this.bucket.group.visible = false;
+    // Only a WATER sortie slings the bucket. Crew ride in the cabin; the torch (helitorch) lays fire
+    // from the aircraft itself — both hide the bucket + rope (the slung-bucket block is water-gated).
+    if (this.payloadMode !== 'water') this.bucket.group.visible = false;
     // The longline is drawn as a short chain of segments so it can BOW into a
     // catenary (a single straight segment can't sag). Endpoints + sag are set every
     // frame in update(); the depth of the sag scales with how full the bucket is.
@@ -613,7 +628,7 @@ export class Game {
     // never recompute it, so once the heli flies away from the origin the line
     // gets frustum-culled and vanishes. It's only two points — skip culling.
     this.rope.frustumCulled = false;
-    if (this.payloadMode === 'crew') this.rope.visible = false; // no longline in crew missions
+    if (this.payloadMode !== 'water') this.rope.visible = false; // no longline in crew / torch missions
     this.scene.add(this.rope);
     this.dropMarker = new DropMarker(this.scene); // predicted-impact ring (adds itself to the scene)
     this.fireHeads = new FireHeadMarkers(this.scene); // fire-head chevrons (adds itself to the scene)
@@ -642,6 +657,21 @@ export class Game {
       this.crew = new CrewTransport(this.crewZones, this.mission.startLoaded ?? false);
     }
 
+    // Backburn control line (torch missions): resolve the marked segments through the SAME scenario
+    // code the verifier uses, drop an ember-orange marker over each, and hand the points to the tracker.
+    // The pilot lights each by flying it low with IGNITE held (the per-frame torch block in update()).
+    const bbPoints = backburnLine(this.world, this.mission, { vx: this.wind.vx, vz: this.wind.vz });
+    if (bbPoints.length) {
+      for (const p of bbPoints) {
+        const gy = this.world.groundHeightAt(p.x, p.z);
+        const m = createLandingZone(false, MISSIONS.torchLineColor); // ember-orange "fire line" marker
+        m.group.position.set(p.x, gy, p.z);
+        this.scene.add(m.group);
+        this.backburnMeshes.push(m);
+      }
+      this.backburn = new Backburn(bbPoints);
+    }
+
     // Fuel/range model (Track C6) — only constructed when the mission opts in.
     // Fuel/range (C6) is now the UNIVERSAL pressure: every mission burns fuel and you return to a base
     // to top up. A mission may still opt out with `fuel: false` (e.g. a pure tutorial). The `fuelOut`
@@ -654,9 +684,10 @@ export class Game {
 
     this.chase = new ChaseCamera(aspect, this.world);
     this.input = new Input(container);
+    if (this.payloadMode === 'torch') this.input.setActionLabel('IGNITE'); // helitorch: DROP lays a backburn
     this.hud = new HUD(
       container,
-      buildMinimap(this.world, WORLD3D.size, 320),
+      buildMinimap(this.world, 320),
       {
         // Only label communities that were actually BUILT (the depot base + defended hamlets),
         // so a radar place-name always has a real settlement under it — no town names floating
@@ -699,6 +730,42 @@ export class Game {
       // engine-start dial — so the tutorial no longer stacks on top of the briefing card.
       this.input.openHelpFirstTime();
     });
+  }
+
+  /**
+   * Decorative accent foliage — deciduous (birch/aspen) groves + burnt snags — built one tick
+   * AFTER the first frame so it stays off the construction critical path (see the constructor's
+   * deferred schedule). Reuses the conifer's chunk/LOD machinery via the species slot, on its OWN
+   * seeded stream (so it never perturbs the conifer/fire layout) with its own tint. Birch sways too.
+   * (No colliders — conifers are the snag the bucket catches.) Guarded against a dispose racing the
+   * timer: if the scene's gone there's nothing to add to.
+   */
+  private buildAccentFoliage(forestDensityMul: number): void {
+    if (this.disposed) return;
+    this.groves = createTreeField({
+      candidates: Math.round(2200 * forestDensityMul * (this.world.sizeX / 600) * (this.world.sizeZ / 600)),
+      size: this.world.sizeX,
+      sizeZ: this.world.sizeZ,
+      heightAt: (x, z) => this.world.groundHeightAt(x, z),
+      sample: (x, z) => ({ treeDensity: this.world.biomes.sample(x, z).treeDensity * 0.38 * this.world.clearingFactor(x, z), treeTint: [0.62, 0.66, 0.33] }),
+      rng: speciesRng(WORLD3D.seed ^ 0x2bd1e995),
+      species: deciduousSpecies(),
+      burnable: true, // C5: birch/aspen groves burn too
+    });
+    this.scene.add(this.groves.object);
+    const gFol = this.groves.object.getObjectByName('TreeFoliage') as THREE.Mesh | null;
+    if (gFol) applyFoliageSway(gFol.material as THREE.Material, this.frame);
+
+    this.snags = createTreeField({
+      candidates: Math.round(700 * (this.world.sizeX / 600) * (this.world.sizeZ / 600)),
+      size: this.world.sizeX,
+      sizeZ: this.world.sizeZ,
+      heightAt: (x, z) => this.world.groundHeightAt(x, z),
+      sample: (x, z) => ({ treeDensity: this.world.biomes.sample(x, z).treeDensity * 0.07 * this.world.clearingFactor(x, z), treeTint: [0.3, 0.28, 0.25] }),
+      rng: speciesRng(WORLD3D.seed ^ 0x7f4a7c13),
+      species: snagSpecies(),
+    });
+    this.scene.add(this.snags.object);
   }
 
   get camera(): THREE.PerspectiveCamera {
@@ -779,6 +846,62 @@ export class Game {
   }
 
   /**
+   * Tear down for an in-place mission switch (no page reload). Detaches every owned external
+   * resource — the audio context (browsers cap them, so this MUST close), the input + HUD window
+   * listeners and DOM overlays, the deferred-foliage timer, the fire-and-forget fauna load — then
+   * disposes the scene's GPU geometries/materials/textures so VRAM doesn't grow per switch. The
+   * renderer + composer are owned by main.ts and reused (it re-points the composer at the new
+   * Game's scene). After this the instance is dead. Order: stop stepping → detach → free GPU.
+   */
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    if (this.accentFoliageTimer) clearTimeout(this.accentFoliageTimer);
+    this.audio.dispose(); // CLOSE the AudioContext — browsers cap ~6/page, so retries would go silent
+    this.input.dispose(); // window key listeners + the touch overlay (+ help modal scrim)
+    this.hud.dispose(); // HUD root + its layout subscription + engine-start key listeners
+    this.fauna.dispose(); // block the async animal pack from populating a dead scene
+    this.disposeSceneGPU(); // free geometries/materials/textures (skips module-shared singletons)
+  }
+
+  /**
+   * Free every GPU resource the scene holds: geometries, materials, and the textures those
+   * materials reference (standard map slots + ShaderMaterial uniform textures). THREE frees no GPU
+   * memory on GC — only dispose() does — so without this VRAM climbs every mission switch. Materials
+   * flagged `userData.shared` (the module-level procedural rotor mats) are SKIPPED: they're reused by
+   * the next Game. A `seen` set avoids re-disposing the shared-per-game materials (water/yard/gravel)
+   * that many meshes point at. Finally the fire-field DataTexture + the scene's children are dropped.
+   */
+  private disposeSceneGPU(): void {
+    const seenMat = new Set<THREE.Material>();
+    const TEX_SLOTS = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap', 'alphaMap', 'bumpMap', 'displacementMap', 'envMap'] as const;
+    const disposeMat = (m: THREE.Material): void => {
+      if (seenMat.has(m) || m.userData?.shared) return;
+      seenMat.add(m);
+      const anyM = m as unknown as Record<string, unknown> & { uniforms?: Record<string, { value?: unknown }> };
+      for (const slot of TEX_SLOTS) {
+        const tex = anyM[slot];
+        if (tex instanceof THREE.Texture) tex.dispose();
+      }
+      if (anyM.uniforms) {
+        for (const u of Object.values(anyM.uniforms)) {
+          if (u && (u.value as THREE.Texture)?.isTexture) (u.value as THREE.Texture).dispose();
+        }
+      }
+      m.dispose();
+    };
+    this.scene.traverse((obj) => {
+      const mesh = obj as Partial<THREE.Mesh> & { material?: THREE.Material | THREE.Material[] };
+      if (mesh.geometry) (mesh.geometry as THREE.BufferGeometry).dispose();
+      const mat = mesh.material;
+      if (Array.isArray(mat)) mat.forEach(disposeMat);
+      else if (mat) disposeMat(mat);
+    });
+    this.fireField.texture.dispose(); // per-game DataTexture (also referenced by the terrain uniform)
+    this.scene.clear();
+  }
+
+  /**
    * Refill the pooled fire-radar buffer in place from the live fires, trimmed to the live count, so
    * the per-frame HUD payload allocates nothing for the radar (the {x,z} objects are reused frame to
    * frame; only a change in fire count touches the pool). Returns the SAME array each frame — the HUD
@@ -802,6 +925,7 @@ export class Game {
   }
 
   update(dt: number): void {
+    if (this.disposed) return; // a frame slipped in after an in-place switch began — do nothing
     const dtMs = dt * 1000;
     this.elapsed += dt;
     const c = this.input.read();
@@ -1007,6 +1131,24 @@ export class Game {
                 : delivered > 0;
           figs.setMode(show ? 'standing' : 'hidden');
         }
+      }
+    }
+
+    // --- Backburn (torch missions): lay the control-line backfire. Fly each marked segment LOW with
+    // IGNITE (the DROP button) held; lighting a segment seeds a real backfire — it burns the fuel out and
+    // scorches a permanent firebreak that stalls the head — and its marker goes from ember-orange to
+    // spent. Laying the whole line meets the `backburn` objective (the win latches before the head lands). ---
+    if (this.backburn) {
+      if (!frozen && !this.heliSim.crashing && this.payloadMode === 'torch' && c.drop && this.heliSim.agl <= MISSIONS.torchAgl) {
+        const lit = this.backburn.tryLight(this.heliSim.position.x, this.heliSim.position.z, MISSIONS.torchLightRadius);
+        if (lit) {
+          this.fireSystem.igniteAt(lit.x, lit.z, MISSIONS.torchIgniteRadius, MISSIONS.torchIgniteHeat);
+          this.audio.playSquelch('info'); // a blip per segment laid
+        }
+      }
+      const bbViews = this.backburn.views;
+      for (let i = 0; i < this.backburnMeshes.length; i++) {
+        this.backburnMeshes[i].setState(bbViews[i].lit ? 'done' : 'active');
       }
     }
 
@@ -1232,12 +1374,12 @@ export class Game {
     // Forest LOD: only keep the tree chunks near the camera (frustum culling drops the
     // rest); centered on the eye so chunks ahead/behind toggle correctly.
     this.forest.cull(this.chase.camera.position.x, this.chase.camera.position.z);
-    this.groves.cull(this.chase.camera.position.x, this.chase.camera.position.z);
-    this.snags.cull(this.chase.camera.position.x, this.chase.camera.position.z);
+    this.groves?.cull(this.chase.camera.position.x, this.chase.camera.position.z); // null until the deferred build runs
+    this.snags?.cull(this.chase.camera.position.x, this.chase.camera.position.z);
     // C5: trees the fire field reaches ignite, char, and collapse into black snags.
     const fireHeatAt = (x: number, z: number): number => this.fireSystem.heatAt(x, z);
     this.forest.updateFire(dt, fireHeatAt);
-    this.groves.updateFire(dt, fireHeatAt);
+    this.groves?.updateFire(dt, fireHeatAt);
     this.fauna.update(dt, this.elapsed, this.chase.camera.position, fireHeatAt); // wildlife bob/wander/flee + cull
 
     // C5: BLINDING SMOKE — thicken a full-screen veil when the camera is downwind of (inside)
@@ -1413,7 +1555,9 @@ export class Game {
       windDir: this.wind.angle, // Wind.vx/vz = cos/sin(angle) → blows toward `angle`
       fires: this.refillFireRadar(activeFires),
       lakes: this.lakeRadar ?? (this.lakeRadar = this.lakes.map((l) => ({ x: l.x, z: l.z, r: l.r }))),
-      worldSize: WORLD3D.size,
+      worldSize: WORLD3D.size, // bounding square (= fire-field/burn-overlay extent), unchanged
+      worldSizeX: this.world.sizeX, // true playfield rect — drives the radar's satellite-map blit
+      worldSizeZ: this.world.sizeZ,
       // C3 stakes: structures to defend, the threat gauge, lose state + final score.
       structures: sList.map((s) => ({ x: s.x, z: s.z, kind: s.kind, health: s.health, burning: s.burning })),
       // Refuel bases (home + forward pads) — radar markers + the low-fuel RTB cue point to the nearest.
@@ -1480,7 +1624,7 @@ export class Game {
     } else if (a.do === 'ignite') {
       // Use the wind the gust is easing TOWARD (intended), so a fire lit in the same beat as a wind
       // shift orients to the NEW wind, not the pre-shift vector.
-      igniteFromPlacement(this.world, this.fireSystem, a.place, { vx: this.wind.intendedVx, vz: this.wind.intendedVz }, this.fireBound);
+      igniteFromPlacement(this.world, this.fireSystem, a.place, { vx: this.wind.intendedVx, vz: this.wind.intendedVz }, this.fireBoundX, this.fireBoundZ);
     } else if (a.do === 'wind') {
       this.wind.shiftTo(a.angle, a.strengthScale, a.ease);
     } else if (a.do === 'addObjective') {
@@ -1545,6 +1689,7 @@ export class Game {
       crewsDelivered: this.crew?.delivered ?? 0,
       crewsTotal: this.crew?.total ?? 0,
       crewsLost: this.crew?.lostCount ?? 0,
+      backburnLit: this.backburn?.lit ?? 0,
       elapsed: this.missionElapsed,
       fuel: this.fuelSim?.fuel ?? 1,
       starved: this.fuelSim?.starved ?? false,

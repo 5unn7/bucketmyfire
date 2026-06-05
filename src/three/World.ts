@@ -5,6 +5,8 @@ import { Placement } from './world/placement';
 import { createNameSource, NameSource } from './world/names';
 import { getRegion, Region, GeoFrame } from './world/regions';
 import { getTerrainProfile, TerrainProfile } from './world/terrainProfile';
+import { AuthoredField } from './world/authored';
+import type { BuildingKind } from './world/authored';
 
 /**
  * The unified heightfield — the single source of ground/water truth for the whole
@@ -106,6 +108,7 @@ export interface WorldOptions {
   regionId?: string; // region/map id (see world/regions.ts); omit → the default Saskatchewan map
   pins?: PlacePins; // mission-authored names laid over the seeded ones
   homeBase?: string; // which MapAnchor base is the operational HOME (spawn/refuel) — placed first; omit → region home
+  region?: Region; // a DRAFT region object to grow directly (map editor live preview), overriding regionId lookup
 }
 
 /** A river valley shaped under one bridge (set via setBridgeValleys) — local frame + derived dims. */
@@ -124,7 +127,18 @@ interface BridgeValley {
 }
 
 export class World {
-  readonly size = WORLD3D.size;
+  /**
+   * Playfield extents (world units), set once in the ctor from the region's geo frame (computeWorldFrame):
+   *   - SQUARE maps (the default): sizeX === sizeZ === WORLD3D.size — the legacy square world.
+   *   - 'bounds'-fit maps: the province's TRUE-SHAPE rectangle (its projected bounding box, longest axis =
+   *     WORLD3D.size·MAPGEO.boundsFill), so the boundary sits at the map edge instead of floating in a square.
+   * Consumers that need the real playfield (terrain mesh, scatter bounds, minimap, radar) read sizeX/sizeZ;
+   * `size` is the bounding SQUARE (= max(sizeX,sizeZ) = WORLD3D.size) kept for the few that want one conservative
+   * extent — notably the fire CELL grid + burn texture, which stay square and simply cover the rectangle.
+   */
+  readonly sizeX: number;
+  readonly sizeZ: number;
+  readonly size: number;
   readonly lakes: LakeRuntime[];
   /** Streams / mini rivers connecting lakes downhill + tiny tributaries (Track A4). */
   readonly rivers: RiverRuntime[];
@@ -150,6 +164,12 @@ export class World {
   private readonly mountainFbm: FbmParams | null;
   /** Localized uplands (e.g. Cypress Hills) projected to world XZ — baseHeight adds a smooth bump at each. */
   private readonly uplands: { x: number; z: number; r: number; height: number }[];
+  /** Hand-painted terrain height offset (map editor) baked into a load-time field; null = none authored. */
+  private readonly authoredTerrain: AuthoredField | null;
+  /** Hand-painted tree-density bias (map editor); null = none authored. Sampled by Game's forest scatter. */
+  private readonly authoredFoliage: AuthoredField | null;
+  /** Hand-placed decorative buildings (map editor) projected to world XZ; Game instantiates the meshes. */
+  readonly authoredBuildings: { x: number; z: number; kind: BuildingKind; rotationDeg: number }[];
   /** The active map's region (names + optional anchors); resolved once in the ctor. */
   private readonly region: Region;
   /** Which anchor base is the operational home this build (mission.homeBase); placed first. */
@@ -161,6 +181,10 @@ export class World {
   private readonly latCenter: number; // centre of the geo box — the projection origin
   private readonly lonCenter: number;
   private readonly uPerKm: number; // world units per real kilometre (geo N–S extent → MAPGEO.fill of world)
+  // 'bounds'-fit recentre (km): the projected-bounding-box centre, subtracted so the province sits centred at
+  // the world origin even though the cosine projection makes it asymmetric in X. Zero on square maps (no shift).
+  private readonly offsetXKm: number;
+  private readonly offsetZKm: number;
   /** River valleys shaped under the bridges (set after construction via setBridgeValleys); empty = no shaping. */
   private bridgeValleys: BridgeValley[] = [];
 
@@ -175,22 +199,26 @@ export class World {
     // Names draw from their own seeded streams (off the world seed) over the chosen region's pools
     // (world/regions.ts), independent of the main rng ordering — so picking a map and naming a
     // feature never shifts the rest of world generation.
-    this.region = getRegion(opts.regionId);
+    // A draft region (map-editor live preview) is grown verbatim; otherwise resolve the map by id.
+    this.region = opts.region ?? getRegion(opts.regionId);
     this.homeBaseId = opts.homeBase;
     // Real-world projection frame (anchored maps): scale the geo box's N–S extent to MAPGEO.fill of the
     // square world height, then project anchors with a cosine ("sinusoidal") projection — true distances
     // AND the province's converging-meridian trapezoid. Synthesised from the anchor bounds if a region
     // declares anchors but no explicit geo; null on procedural maps (project() is never called there).
     this.geo = resolveGeo(this.region);
-    if (this.geo) {
-      this.latCenter = (this.geo.latMin + this.geo.latMax) / 2;
-      this.lonCenter = (this.geo.lonMin + this.geo.lonMax) / 2;
-      this.uPerKm = (this.size * MAPGEO.fill) / ((this.geo.latMax - this.geo.latMin) * KM_PER_DEG_LAT);
-    } else {
-      this.latCenter = 0;
-      this.lonCenter = 0;
-      this.uPerKm = 1;
-    }
+    // One helper resolves the whole world frame from the geo box: the square fit (default — N–S fills
+    // MAPGEO.fill of a WORLD3D.size² playfield, no recentre) or the 'bounds' fit (the province's projected
+    // bounding box becomes a true-shape rectangle, recentred at the origin). Square maps come out byte-identical.
+    const frame = computeWorldFrame(this.geo);
+    this.latCenter = frame.latCenter;
+    this.lonCenter = frame.lonCenter;
+    this.uPerKm = frame.uPerKm;
+    this.offsetXKm = frame.offsetXKm;
+    this.offsetZKm = frame.offsetZKm;
+    this.sizeX = frame.sizeX;
+    this.sizeZ = frame.sizeZ;
+    this.size = Math.max(frame.sizeX, frame.sizeZ); // bounding square (= WORLD3D.size) for square-grid consumers
     this.nameSource = createNameSource(seed ^ 0x27d4eb2f, this.region.names);
     // Offset the noise seed off the rng seed so terrain and placement RNG don't correlate.
     this.noise = new Noise2D(seed ^ 0x9e3779b9);
@@ -229,6 +257,20 @@ export class World {
     this.uplands = (this.region.uplands ?? []).map((u) => {
       const p = this.project(u.lat, u.lon);
       return { x: p.x, z: p.z, r: u.radiusKm * this.uPerKm, height: u.prominenceM / MAPGEO.metresPerUnit };
+    });
+
+    // Authored map-editor layers (world/authored.ts) — hand-painted terrain/foliage/buildings pinned at real
+    // lat/lon, projected here ONCE through the same frame as uplands. All rng-free, so a region with no
+    // authored layers grows the byte-identical seeded world. Terrain is baked into baseHeight BEFORE lakes so
+    // each lake's water level (sampled once from baseHeight) sits on the edited ground.
+    this.authoredTerrain = this.buildAuthoredField(
+      this.region.terrain,
+      (d) => d.deltaM / MAPGEO.metresPerUnit, // real metres → world units (matches the upland vertical scale)
+    );
+    this.authoredFoliage = this.buildAuthoredField(this.region.foliage, (d) => d.density);
+    this.authoredBuildings = (this.region.buildings ?? []).map((b) => {
+      const p = this.project(b.lat, b.lon);
+      return { x: p.x, z: p.z, kind: b.kind, rotationDeg: b.rotationDeg ?? 0 };
     });
 
     // Lakes scattered across the world, count scaled to area so water density stays
@@ -322,9 +364,35 @@ export class World {
    * whole thing so the N–S extent fills MAPGEO.fill of the world. No-op origin on a map without geo.
    */
   private project(lat: number, lon: number): { x: number; z: number } {
-    const zKm = -(lat - this.latCenter) * KM_PER_DEG_LAT;
-    const xKm = (lon - this.lonCenter) * KM_PER_DEG_LAT * Math.cos(lat * DEG2RAD);
+    const zKm = -(lat - this.latCenter) * KM_PER_DEG_LAT - this.offsetZKm;
+    const xKm = (lon - this.lonCenter) * KM_PER_DEG_LAT * Math.cos(lat * DEG2RAD) - this.offsetXKm;
     return { x: xKm * this.uPerKm, z: zKm * this.uPerKm };
+  }
+
+  /** Does this map carry a real-world projection frame? False on procedural maps (the editor's lat/lon
+   *  authoring needs a geo frame; without one project() is a degenerate identity at the origin). */
+  get hasGeo(): boolean {
+    return !!this.geo;
+  }
+
+  /** World units per real kilometre (the projection scale) — the map editor converts brush km ↔ units. */
+  get unitsPerKm(): number {
+    return this.uPerKm;
+  }
+
+  /** Public projection (lat/lon → world XZ) for the map editor — wraps the private `project`. */
+  toWorld(lat: number, lon: number): { x: number; z: number } {
+    return this.project(lat, lon);
+  }
+
+  /** Inverse projection (world XZ → real lat/lon) for the map editor: it paints in XZ and stores dabs as
+   *  lat/lon. Exact inverse of `project` (latitude from z, then longitude using that latitude's cosine). */
+  toLatLon(x: number, z: number): { lat: number; lon: number } {
+    const zKm = z / this.uPerKm + this.offsetZKm;
+    const xKm = x / this.uPerKm + this.offsetXKm;
+    const lat = this.latCenter - zKm / KM_PER_DEG_LAT;
+    const lon = this.lonCenter + xKm / (KM_PER_DEG_LAT * Math.cos(lat * DEG2RAD));
+    return { lat, lon };
   }
 
   /**
@@ -469,9 +537,10 @@ export class World {
       const p = this.project(a.lat, a.lon);
       // Keep the lake on the map: clamp its centre so centre ± (short) radius stays inside the terrain. An
       // elongated long axis may overhang the rim — realistic, it just clips at the border like the real lake.
-      const lim = this.size / 2 - r - 30;
-      p.x = Math.max(-lim, Math.min(lim, p.x));
-      p.z = Math.max(-lim, Math.min(lim, p.z));
+      const limX = this.sizeX / 2 - r - 30;
+      const limZ = this.sizeZ / 2 - r - 30;
+      p.x = Math.max(-limX, Math.min(limX, p.x));
+      p.z = Math.max(-limZ, Math.min(limZ, p.z));
       // Drop a TOWN lake that would substantially overlap existing water (it attaches to that lake — the
       // connected Churchill chain near La Ronge becomes one big lake, not a pile of discs); bases keep theirs.
       if (!isBase && lakes.some((o) => Math.hypot(o.x - p.x, o.z - p.z) < o.r + r * 0.4)) continue;
@@ -480,13 +549,14 @@ export class World {
       lakes.push(lake);
     }
     const density = LAKES3D.length / (600 * 600); // curated lakes per unit² at the base size
-    const count = Math.max(LAKES3D.length, Math.round(density * this.size * this.size * this.profile.lakeDensityScale));
-    const bound = this.size / 2 - 60;
+    const count = Math.max(LAKES3D.length, Math.round(density * this.sizeX * this.sizeZ * this.profile.lakeDensityScale));
+    const boundX = this.sizeX / 2 - 60;
+    const boundZ = this.sizeZ / 2 - 60;
     const radii = LAKES3D.map((l) => l.r);
     let guard = 0;
     while (lakes.length < count && guard++ < count * 80) {
-      const x = (this.rng() * 2 - 1) * bound;
-      const z = (this.rng() * 2 - 1) * bound;
+      const x = (this.rng() * 2 - 1) * boundX;
+      const z = (this.rng() * 2 - 1) * boundZ;
       const r = radii[Math.floor(this.rng() * radii.length)];
       if (Math.hypot(x, z) < 90) continue; // keep the start area clear
       if (this.baseHeight(x, z) > this.profile.lakeMaxHeight) continue; // bias to lowlands/valleys (no ponds on ridgetops)
@@ -523,9 +593,10 @@ export class World {
       const elong = nl.elong && nl.elong > 1 ? nl.elong : 1;
       const r = elong > 1 ? reqR / Math.sqrt(elong) : reqR;
       const p = this.project(nl.lat, nl.lon);
-      const lim = this.size / 2 - r - 20;
-      p.x = Math.max(-lim, Math.min(lim, p.x));
-      p.z = Math.max(-lim, Math.min(lim, p.z));
+      const limX = this.sizeX / 2 - r - 20;
+      const limZ = this.sizeZ / 2 - r - 20;
+      p.x = Math.max(-limX, Math.min(limX, p.x));
+      p.z = Math.max(-limZ, Math.min(limZ, p.z));
       const lake: LakeRuntime = { x: p.x, z: p.z, r, waterLevel: this.baseHeight(p.x, p.z), shape: namedLakeShape(elong, bearingToElongAngle(nl.bearingDeg ?? 0), i), name: nl.name };
       this.applyOutline(lake, nl.outline); // authored freeform shore (if any) overrides the ellipse silhouette
       lakes.push(lake);
@@ -889,12 +960,13 @@ export class World {
   /** Scatter `COMMUNITIES.townCount` random forest hamlets on dry ground, off spawn + off existing
    *  sites — the procedural-map populated layer (unused on anchored maps). */
   private scatterAmbientTowns(out: CommunitySite[]): void {
-    const bound = this.size / 2 - 80;
+    const boundX = this.sizeX / 2 - 80;
+    const boundZ = this.sizeZ / 2 - 80;
     let towns = 0;
     let guard = 0;
     while (towns < COMMUNITIES.townCount && guard++ < 800) {
-      const x = (this.rng() * 2 - 1) * bound;
-      const z = (this.rng() * 2 - 1) * bound;
+      const x = (this.rng() * 2 - 1) * boundX;
+      const z = (this.rng() * 2 - 1) * boundZ;
       if (Math.hypot(x, z) < COMMUNITIES.minFromOrigin) continue; // off spawn
       if (this.lakeAt(x, z)) continue; // not in a lake
       if (this.nearestRiver(x, z)) continue; // not straddling a stream
@@ -1215,7 +1287,38 @@ export class World {
       const ridge = this.noise.ridged(wx, wz, this.ridgeFbm); // reuse the outcrop field for crest texture
       h += u.height * s * (1 + ridge * 0.18);
     }
+
+    // Hand-painted terrain (map editor): a baked offset field raises/lowers the ground. O(1) bilinear
+    // sample; null (no authored terrain) skips it entirely → the seeded world is unchanged.
+    if (this.authoredTerrain) h += this.authoredTerrain.sample(x, z);
     return h;
+  }
+
+  /**
+   * Build a load-time AuthoredField from a region's painted brush dabs (terrain or foliage), projecting
+   * each lat/lon to world XZ and its real km radius to units. Returns null when nothing is authored, so
+   * the per-frame samplers can short-circuit. Pure + rng-free (the determinism invariant).
+   */
+  private buildAuthoredField<T extends { lat: number; lon: number; radiusKm: number }>(
+    dabs: readonly T[] | undefined,
+    amp: (d: T) => number,
+  ): AuthoredField | null {
+    if (!dabs || !dabs.length) return null;
+    const proj = dabs.map((d) => {
+      const p = this.project(d.lat, d.lon);
+      return { x: p.x, z: p.z, r: d.radiusKm * this.uPerKm, amp: amp(d) };
+    });
+    return new AuthoredField(this.sizeX, this.sizeZ, proj);
+  }
+
+  /**
+   * Tree-density multiplier from the hand-painted foliage layer (map editor): max(0, 1 + field), so a
+   * painted dab of +1 doubles trees there and −1 clears them. 1 everywhere when nothing is authored.
+   * Game's forest scatter multiplies the biome density by this (alongside the clearing factor).
+   */
+  authoredFoliageMul(x: number, z: number): number {
+    if (!this.authoredFoliage) return 1;
+    return Math.max(0, 1 + this.authoredFoliage.sample(x, z));
   }
 
   // --- Ground (base + carved lake basins) -------------------------------------
@@ -1561,6 +1664,68 @@ function resolveGeo(region: Region): GeoFrame | null {
       { lat: latMax, lon: lonMax },
       { lat: latMax, lon: lonMin },
     ],
+  };
+}
+
+/** The resolved world frame: projection scale + recentre + playfield extents (see computeWorldFrame). */
+interface WorldFrame {
+  latCenter: number;
+  lonCenter: number;
+  uPerKm: number;
+  sizeX: number;
+  sizeZ: number;
+  offsetXKm: number;
+  offsetZKm: number;
+}
+
+/**
+ * Resolve the WORLD FRAME from a region's geo box — the rectangular-playfield seam. Two fits:
+ *
+ *   - default / 'square' (every existing map): the legacy SQUARE world. uPerKm scales the geo's N–S extent
+ *     to MAPGEO.fill of a WORLD3D.size² playfield; no recentre. sizeX === sizeZ === WORLD3D.size. This branch
+ *     is the EXACT old formula, so square maps stay byte-identical (and the campaign verifier is untouched).
+ *
+ *   - 'bounds' (true-shape maps): the world's extent BECOMES the province's projected bounding box. Project
+ *     the outline corners in km about the geo centre, take their bbox, scale so the LONGEST side fills
+ *     MAPGEO.boundsFill of the budget, and recentre on the bbox centroid so the (cosine-asymmetric) province
+ *     sits centred at the origin. sizeX/sizeZ are the rectangle's true extents → the boundary is at the edge.
+ *
+ * Null geo (procedural maps) → an identity frame at WORLD3D.size² (project() is never called there).
+ */
+function computeWorldFrame(geo: GeoFrame | null): WorldFrame {
+  if (!geo) {
+    return { latCenter: 0, lonCenter: 0, uPerKm: 1, sizeX: WORLD3D.size, sizeZ: WORLD3D.size, offsetXKm: 0, offsetZKm: 0 };
+  }
+  const latCenter = (geo.latMin + geo.latMax) / 2;
+  const lonCenter = (geo.lonMin + geo.lonMax) / 2;
+  if (geo.fit !== 'bounds') {
+    const uPerKm = (WORLD3D.size * MAPGEO.fill) / ((geo.latMax - geo.latMin) * KM_PER_DEG_LAT);
+    return { latCenter, lonCenter, uPerKm, sizeX: WORLD3D.size, sizeZ: WORLD3D.size, offsetXKm: 0, offsetZKm: 0 };
+  }
+  // 'bounds': project the outline in km (uPerKm = 1, no recentre) and take the bounding box.
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+  for (const c of geo.outline) {
+    const zKm = -(c.lat - latCenter) * KM_PER_DEG_LAT;
+    const xKm = (c.lon - lonCenter) * KM_PER_DEG_LAT * Math.cos(c.lat * DEG2RAD);
+    if (xKm < minX) minX = xKm;
+    if (xKm > maxX) maxX = xKm;
+    if (zKm < minZ) minZ = zKm;
+    if (zKm > maxZ) maxZ = zKm;
+  }
+  const widthKm = Math.max(1e-3, maxX - minX);
+  const heightKm = Math.max(1e-3, maxZ - minZ);
+  const uPerKm = (WORLD3D.size * MAPGEO.boundsFill) / Math.max(widthKm, heightKm);
+  return {
+    latCenter,
+    lonCenter,
+    uPerKm,
+    sizeX: widthKm * uPerKm,
+    sizeZ: heightKm * uPerKm,
+    offsetXKm: (minX + maxX) / 2,
+    offsetZKm: (minZ + maxZ) / 2,
   };
 }
 

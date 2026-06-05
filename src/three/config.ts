@@ -28,6 +28,9 @@ export const WORLD3D = {
 // wilderness, muted on the radar so the map reads as Saskatchewan rather than a filled square.
 export const MAPGEO = {
   fill: 0.93, // province N–S extent fills this fraction of the square world height (leaves a rim margin)
+  boundsFill: 0.98, // 'bounds'-fit maps (true-shape rectangular playfield): the province's LONGEST projected
+  // axis fills this fraction of the world budget, so the boundary sits at the map edge with a slim rim that
+  // keeps the radar's dashed border from clipping. Only read when a region's geo opts in (geo.fit === 'bounds').
   // Lake radius from REAL surface area (km²), compressed onto a playable band: radius = lerp(minR,maxR,t),
   // t = (√area − √areaMin)/(√areaMax − √areaMin) clamped 0..1. √area ∝ linear size, so a giant (Reindeer,
   // ~6650 km²) reads huge while a small lake stays scoopable — at true province scale a to-scale lake
@@ -1014,6 +1017,18 @@ export const MISSIONS = {
   // forgiving (a competent pilot who beelines for them gets there); raise the grace to soften.
   casualtyHeat: 0.5, // fire heat (0..1) at the family's spot that counts as "the fire's on them"
   casualtyGrace: 20, // seconds of sustained that-hot exposure before the family is lost (resets if doused)
+
+  // --- Backburn / helitorch (the `controlLine` + `torch` loadout mechanic) ---
+  // Lay a deliberate firebreak between an advancing head fire and a town: fly the marked control line
+  // LOW with IGNITE held; each segment within reach lights a real backfire that scorches a permanent
+  // break. `torchLightRadius` is how close the slung torch must pass a segment to light it; `torchAgl`
+  // is the ceiling to light (it's a low, raking drip-torch pass, not a high drop); the laid backfire is
+  // seeded at `torchIgniteRadius` cells / `torchIgniteHeat` starting heat (a modest catch that grows).
+  torchLightRadius: 18, // horizontal distance (units) within which a low IGNITE pass lights a control-line segment
+  torchAgl: 42, // radar altitude (units) below which the torch can light (a low pass; mirrors the drop band)
+  torchIgniteRadius: 2, // ignition disc (cells) of the seeded backfire at each lit segment (≈ a 'small' catch)
+  torchIgniteHeat: 0.5, // starting heat (0..1) of the seeded backfire — catches and grows into a firebreak
+  torchLineColor: 0xff7a2a, // control-line marker tint — a warm ember-orange (vs the cyan crew LZs), reads as "fire line"
 
   // --- Fuel / range (Track C6 — calibrated to the hero Bell 205A-1, 60× time compression:
   // full bucket + full power ≈ 2.5 min endurance, light loiter ≈ 4.2 min). Only missions

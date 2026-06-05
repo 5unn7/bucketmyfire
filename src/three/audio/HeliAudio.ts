@@ -80,6 +80,7 @@ export class HeliAudio {
   private startGain: GainNode | null = null; // its gain — ramped to 0 for a click-free abort
 
   private started = false; // a user gesture has unlocked + nodes are running
+  private disposed = false; // dispose() closed the context — stop any late decode/start touching it
   private pendingStart = false; // unlock happened before the clip finished loading
   private muted = loadMuted(); // persisted mute preference (button + 'M' key)
   private suspended = false; // tab hidden → AudioContext suspended (independent of user mute)
@@ -96,6 +97,7 @@ export class HeliAudio {
   private wasWon = false;
 
   private readonly unlockHandler!: () => void; // assigned only on the non-disabled path (see constructor)
+  private muteHandler?: (e: KeyboardEvent) => void; // 'M'-key toggle; stored so dispose() can detach it
 
   constructor() {
     const Ctx =
@@ -132,10 +134,37 @@ export class HeliAudio {
       window.addEventListener(ev, this.unlockHandler);
     }
 
-    // Mute toggle.
-    window.addEventListener('keydown', (e) => {
+    // Mute toggle (stored so dispose() can detach it — an in-place mission switch must not
+    // leave a dead game's 'M' handler bound to window).
+    this.muteHandler = (e: KeyboardEvent): void => {
       if (e.code === 'KeyM') this.toggleMute();
-    });
+    };
+    window.addEventListener('keydown', this.muteHandler);
+  }
+
+  /**
+   * Tear down for an in-place mission switch: stop the rotor/crank, detach every window listener,
+   * and CLOSE the AudioContext. Closing matters — browsers cap live AudioContexts (~6/page), so a
+   * few retries without this would leave the game permanently silent. Safe to call when disabled
+   * (no graph was built) and idempotent. After this the instance is dead; build a fresh HeliAudio.
+   */
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    if (this.muteHandler) window.removeEventListener('keydown', this.muteHandler);
+    if (this.disabled) return; // no context/graph was ever built
+    for (const ev of ['pointerdown', 'keydown', 'touchstart'] as const) {
+      window.removeEventListener(ev, this.unlockHandler); // in case a gesture never unlocked it
+    }
+    try {
+      this.rotorSrc?.stop();
+      this.startSrc?.stop();
+    } catch {
+      /* a node that never started throws on stop() — ignore */
+    }
+    this.rotorSrc = null;
+    this.startSrc = null;
+    void this.ctx.close().catch(() => {});
   }
 
   private async loadClips(): Promise<void> {
@@ -144,6 +173,7 @@ export class HeliAudio {
     await Promise.all([
       this.decode(ROTOR_LOOP_URL)
         .then((b) => {
+          if (this.disposed) return; // context closed mid-decode — don't touch it
           // Trim the clip's ramped ends BEFORE the seam crossfade (which blends tail→head), then loop.
           this.rotorBuffer = this.makeSeamlessLoop(this.trimEnds(b, ROTOR_TRIM_SEC));
           if (this.pendingStart) this.startRotor();
@@ -170,7 +200,7 @@ export class HeliAudio {
 
   /** Resume the context and start the rotor loop once a gesture has occurred. */
   ensureStarted(): void {
-    if (this.disabled) return;
+    if (this.disabled || this.disposed) return;
     if (this.ctx.state === 'suspended') void this.ctx.resume();
     if (this.started) return;
     this.started = true;

@@ -18,12 +18,13 @@ import { Wind } from '../src/three/sim/Wind';
 import { FireSystem } from '../src/three/sim/FireSystem';
 import { Structures } from '../src/three/sim/Structures';
 import { CrewTransport, CrewZone } from '../src/three/sim/CrewTransport';
+import { Backburn } from '../src/three/sim/Backburn';
 import { FuelSim } from '../src/three/sim/FuelSim';
 import { MissionRuntime } from '../src/three/missions/MissionRuntime';
 import { MissionDirector } from '../src/three/missions/MissionDirector';
 import { CAMPAIGN } from '../src/three/missions/catalog';
 import { buildDailyMission, dailyMissionId } from '../src/three/missions/daily';
-import { seedFires, structurePlan, crewZones, resolveCrewZone, igniteFromPlacement } from '../src/three/missions/scenario';
+import { seedFires, structurePlan, crewZones, resolveCrewZone, igniteFromPlacement, backburnLine } from '../src/three/missions/scenario';
 import type { MissionDef, MissionSignals } from '../src/three/missions/types';
 import { WORLD3D, BUCKET3D, DROP_PHYSICS, SCORE, MISSIONS } from '../src/three/config';
 
@@ -42,6 +43,7 @@ const PASS_INTERVAL = 12; // steps between bucket passes (~1.2s tight scoop-drop
 const DROP_LITRES = 160; // a full bucket delivered per pass (concentrated, scorches a patch)
 const DROPS_PER_FRONT = 2; // a realistic-size footprint (dropRadius=15) covers less, so a skilled pilot
 // walks each front with a couple of drops per pass (re-querying the hottest point between each)
+const BACKBURN_PASS = 8; // steps between lighting successive control-line segments (idealised fly-the-line)
 
 interface Rig {
   world: World;
@@ -55,6 +57,7 @@ interface Rig {
   // copy were ever removed (re-aliasing the arrays), the double-append would inflate `crew.views`
   // and trip the post-run consistency assertion below — so this whole bug CLASS is caught headlessly.
   crewZonesRef?: CrewZone[];
+  backburn?: Backburn; // the backburn control line (torch missions) — laid by the perfect player below
   fuel?: FuelSim;
   runtime: MissionRuntime;
   director: MissionDirector;
@@ -99,6 +102,9 @@ function build(mission: MissionDef): Rig {
   // tops up at a base when it dips (the `play` loop keeps it ≥ 0.5). Only `fuelOut`-fail missions
   // actually lose on a dry tank; elsewhere fuel never threatens the win.
   const fuel = mission.fuel === false ? undefined : new FuelSim();
+  // The backburn control line (torch missions) — resolved through the SAME scenario code the game uses.
+  const backburnPts = backburnLine(world, mission, { vx: wind.vx, vz: wind.vz });
+  const backburn = backburnPts.length ? new Backburn(backburnPts) : undefined;
   const base = world.getCommunity('base');
   return {
     world,
@@ -107,6 +113,7 @@ function build(mission: MissionDef): Rig {
     structures,
     crew,
     crewZonesRef,
+    backburn,
     fuel,
     runtime: new MissionRuntime(mission),
     director: new MissionDirector(mission),
@@ -131,6 +138,7 @@ function signals(r: Rig, elapsed: number): MissionSignals {
     crewsDelivered: r.crew?.delivered ?? 0,
     crewsTotal: r.crew?.total ?? 0,
     crewsLost: r.crew?.lostCount ?? 0,
+    backburnLit: r.backburn?.lit ?? 0,
     elapsed,
     fuel: r.fuel?.fuel ?? 1,
     starved: r.fuel?.starved ?? false,
@@ -204,6 +212,17 @@ function run(mission: MissionDef, mode: Mode): { r: Rig; elapsed: number; addedZ
           r.fire.douse(hp.x - dx + edgeBias, hp.z - dz, BUCKET3D.dropRadius, DROP_LITRES, 1);
         }
       }
+      // BACKBURN: the perfect player flies the control line and torches each segment in turn — the
+      // idealised "fly to the next marker, light it" (mirrors Game lighting + seeding a real backfire,
+      // via the SAME Backburn tracker + igniteAt). Laying the whole line meets the `backburn` objective;
+      // the head can't be doused (no water this sortie), so the win is the lay, won before it arrives.
+      if (r.backburn && !r.backburn.complete && step % BACKBURN_PASS === 0) {
+        const next = r.backburn.views.find((p) => !p.lit);
+        if (next) {
+          const lit = r.backburn.tryLight(next.x, next.z, MISSIONS.torchLightRadius);
+          if (lit) r.fire.igniteAt(lit.x, lit.z, MISSIONS.torchIgniteRadius, MISSIONS.torchIgniteHeat);
+        }
+      }
       // Keep the tank topped when it dips (a competent pilot returns to refuel).
       if (r.fuel) r.fuel.update(DT, { throttle01: 0.4, climbUp: 0, payloadRatio: 0, refueling: r.fuel.fuel < 0.5 });
     } else if (mode === 'starve') {
@@ -271,6 +290,7 @@ function trippingSignals(elapsed: number): MissionSignals {
     crewsDelivered: 0,
     crewsTotal: 0,
     crewsLost: 6, // trips the `rescue` fail too (this snapshot must latch EVERY constraint kind)
+    backburnLit: 0,
     elapsed,
     fuel: 0,
     starved: true,

@@ -17,6 +17,15 @@
  * it's exhausted, so a bigger pool just means more variety before the numbered fallback kicks in.
  */
 
+// Hand-painted map-editor layers (terrain raise/lower, foliage density, decorative buildings). Types +
+// the deterministic rasteriser live in world/authored.ts (dependency-free); a region just carries the data.
+export type { TerrainDab, FoliageDab, AuthoredBuilding } from './authored';
+import type { TerrainDab, FoliageDab, AuthoredBuilding } from './authored';
+// New maps live in their own files under maps/ and export a builder that RECEIVES the base region (it
+// imports only TYPES back from here, so there's no runtime import cycle / TDZ). Register one by calling
+// its builder in REGIONS below — that's the whole seam for adding a map without touching existing data.
+import { makeSaskatchewanTrue } from './maps/saskatchewan-true';
+
 /** The three place-name pools a region's `NameSource` draws from. */
 export interface RegionNames {
   lakes: readonly string[];
@@ -137,6 +146,15 @@ export interface GeoFrame {
   lonMin: number; // west edge (° — negative for west)
   lonMax: number; // east edge (° — negative for west)
   outline: readonly { lat: number; lon: number }[]; // boundary polygon (real coords), projected for the radar
+  /**
+   * How the world is fitted to this frame (the rectangular-playfield seam — see World.computeWorldFrame):
+   *   - undefined / 'square' (DEFAULT): the legacy SQUARE world — the province's N–S extent fills MAPGEO.fill
+   *     of a WORLD3D.size² playfield and floats in the middle (the off-province E/W margin is muted on the radar).
+   *   - 'bounds': a TRUE-SHAPE rectangular playfield — the world's extent BECOMES the province's projected
+   *     bounding box (longest axis = MAPGEO.boundsFill of the budget), so the boundary sits at the map edge.
+   * Default-square keeps every existing map byte-identical; a new map opts in with `fit: 'bounds'`.
+   */
+  fit?: 'square' | 'bounds';
 }
 
 /** One map's world identity. Extensible: terrain/biome/time-of-day slot in behind the same id. */
@@ -150,6 +168,9 @@ export interface Region {
   highwayRoutes?: readonly HighwayRoute[]; // real highway corridors through real towns (laid before the MST)
   uplands?: readonly RegionUpland[]; // localized massifs (e.g. Cypress Hills) added to baseHeight as relief
   rivers?: readonly RegionRiver[]; // authored named rivers (real lat/lon polylines) laid as carved channels
+  terrain?: readonly TerrainDab[]; // hand-painted raise/lower brush dabs (map editor → World.baseHeight offset)
+  foliage?: readonly FoliageDab[]; // hand-painted tree-density brush dabs (map editor → forest scatter bias)
+  buildings?: readonly AuthoredBuilding[]; // hand-placed decorative structures (map editor → Game meshes)
   geo?: GeoFrame; // real-world projection frame (bounding box + outline) for anchored maps
 }
 
@@ -503,8 +524,15 @@ const ALBERTA: Region = {
 
 export const DEFAULT_REGION_ID = 'saskatchewan';
 
+// SASKATCHEWAN_TRUE is the same Saskatchewan world grown on a TRUE-SHAPE rectangular playfield (geo.fit
+// 'bounds') — the province's boundary sits at the map edge instead of floating in a square. It reuses all
+// of SASKATCHEWAN's data verbatim (anchors/lakes/rivers/geo); only the fit changes. Built here, after
+// SASKATCHEWAN is defined, so the builder gets a fully-initialised base (no circular-import TDZ).
+const SASKATCHEWAN_TRUE = makeSaskatchewanTrue(SASKATCHEWAN);
+
 const REGIONS: Record<string, Region> = {
   [SASKATCHEWAN.id]: SASKATCHEWAN,
+  [SASKATCHEWAN_TRUE.id]: SASKATCHEWAN_TRUE,
   [BRITISH_COLUMBIA.id]: BRITISH_COLUMBIA,
   [ALBERTA.id]: ALBERTA,
   [ONTARIO.id]: ONTARIO,
@@ -513,4 +541,9 @@ const REGIONS: Record<string, Region> = {
 /** Resolve a region by id, falling back to the default Saskatchewan map for an unknown/missing id. */
 export function getRegion(id?: string): Region {
   return (id && REGIONS[id]) || REGIONS[DEFAULT_REGION_ID];
+}
+
+/** All registered map ids, in registry order — used by the map editor's map picker. */
+export function regionIds(): string[] {
+  return Object.keys(REGIONS);
 }

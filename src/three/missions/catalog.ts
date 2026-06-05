@@ -1,12 +1,16 @@
 import type { MissionDef } from './types';
 
 /**
- * The 6-mission solo campaign (pure SCENARIO data — no physics/visual tuning, no Three.js).
+ * The 8-mission solo campaign (pure SCENARIO data — no physics/visual tuning, no Three.js).
  * `Game` resolves each def's placement specs against the seeded `World`, hands it to a
  * `MissionRuntime` (objectives/fails) AND a `MissionDirector` (the reactive `script` — the briefing,
- * live radio comms, and world beats that make each mission talk + react). The arc teaches one idea at
- * a time — fight → ferry → defend → rescue-under-fire → scale-up → finale — and ramps from a calm
- * checkout flight to a re-flaring Class-F monster under a screaming, shifting wind.
+ * live radio comms, and world beats that make each mission talk + react). The arc teaches one idea at a
+ * time — fight → ferry → defend → backburn → rescue-under-fire → scale-up → mop-up → finale — and ramps
+ * from a calm checkout flight to a re-flaring Class-F monster under a screaming, shifting wind. Two
+ * missions make a real wildland tactic the SUBJECT, not a gotcha: BACKBURN (the helitorch / `torch`
+ * loadout — you can't out-bomb the head, so you lay a control-line backfire to STARVE it), and AFTER
+ * BURN (mop-up — a fire isn't out when the flames drop, only when the last holdover is drowned; it also
+ * introduces the fuel/range model right before the finale leans on it).
  *
  * SETTING: northern Saskatchewan. Each mission flies out of a real place — Weyakwin, Missinipe,
  * Denare Beach, Stanley Mission, the Île-à-la-Crosse chain, and La Ronge (the finale) — and `places`
@@ -135,9 +139,54 @@ export const CAMPAIGN: MissionDef[] = [
     ],
   },
   // ── 4 ─────────────────────────────────────────────────────────────────────────────────────────
+  // BACKBURN — the helitorch / aerial-ignition tactic. The campaign's one mission you canNOT win with
+  // water: a wind-driven head is running on Missinipe too big and too fast to out-bomb. The only way to
+  // stop it is to STARVE it — fly the torch loadout and lay a deliberate backfire along a control line
+  // between the head and the town, burning the fuel out ahead of it so the wildfire arrives at black
+  // ground and dies. Fly each control-line marker LOW with IGNITE held; the laid backfire scorches a
+  // permanent break (spent fuel can't re-ignite). The objective is simply to lay the whole line before
+  // the head reaches the homes — you win the instant the last segment catches. The gate that proves it:
+  // a no-op run never lays the line, the head runs into town, and `protect` trips → lost; the pilot who
+  // walks the line in time wins. Fighting fire WITH fire — the tactic every wildland crew respects.
+  {
+    id: 'backburn',
+    index: 3,
+    name: 'Backburn',
+    brief: "You can't out-bomb this head — it's too big, running downwind on Missinipe. Stop it with fire: fly the torch and lay a backburn along the control line, starving the wildfire before it reaches the homes. Fly the markers low, IGNITE held.",
+    tagline: 'Fight fire with fire. Lay a backburn and starve the head before it reaches town.',
+    intel:
+      "Water won't hold this one, Water-1 — the head's too big and the wind's behind it, driving it onto Missinipe. So we starve it. You're rigged with the helitorch today: fly the marked control line between the fire and the town and lay a backburn — a deliberate fire that burns the fuel out ahead of the wildfire. When the head arrives, it hits your black and lies down with nothing left to eat. Fly each marker LOW with IGNITE held to light it; walk the whole line before the head gets there. This is the tactic the ground crews respect most — fire against fire. Don't leave a gap.",
+    difficulty: 3,
+    seed: 89,
+    map: 'saskatchewan',
+    homeBase: 'missinipe',
+    timeOfDay: 'dusk', // a classic evening burn — the air lies down and the ember line glows orange
+    // Fixed wind angle so the head + the (upwind) control-line geometry are deterministic every run.
+    wind: { angle: 0.8, strengthScale: 1.1 },
+    fire: { spreadScale: 1.15 }, // a genuine running head bearing onto the homes — you can't douse it, only starve it
+    payload: 'torch', // the helitorch rig — no scoop/drop; DROP becomes IGNITE (single loadout, no swap)
+    // The HEAD: a wide Class-F front close on Missinipe's upwind flank — left alone it overruns the homes
+    // (a no-op run loses); you can't douse it, only starve it. This is a last-line-of-defence backburn.
+    fires: [{ at: 'line', community: 'missinipe', offset: 95, length: 150, size: 'mega' }],
+    structures: { depot: true, groups: [{ community: 'missinipe', cabins: 5 }] },
+    // The control line: 5 segments to torch, ~50u upwind of the town — between it and the head, the
+    // defensible line where you lay the backfire so the head meets black before it meets the homes.
+    controlLine: { community: 'missinipe', offset: 50, length: 150, points: 5 },
+    objectives: [{ kind: 'backburn', n: 5, label: 'Lay the backburn line (5 segments)' }],
+    fails: [{ kind: 'protect', min: 4, label: 'Keep the head off Missinipe' }],
+    script: [
+      { id: 'start', trigger: { at: 'start' }, actions: [{ do: 'comms', speaker: 'dispatch', text: "Water-1, you can't out-bomb this one — she's too big and the wind's behind her. We starve her instead. You're on the helitorch: fly the control line and lay a backburn. Light each marker low, IGNITE held. Walk the whole line before she gets there." }] },
+      { id: 'catching', trigger: { at: 'time', seconds: 30 }, actions: [{ do: 'comms', speaker: 'crew', text: "Your line's catching — the backfire's drawing toward the head, just like it should. Keep walking it, don't leave a gap." }] },
+      // Threat-gated: only if the head is actually testing the town's flank (a fast, clean lay never hears it).
+      { id: 'testing', trigger: { at: 'threat', min: 0.5 }, actions: [{ do: 'comms', speaker: 'warning', urgency: 'alert', text: "The head's at your line — if there's a gap she'll punch through. Close it, NOW!" }] },
+      { id: 'drawing', trigger: { at: 'time', seconds: 60 }, actions: [{ do: 'comms', speaker: 'dispatch', text: "Wind's steady on the line and she's drawing your backfire in. Hold your nerve and finish the burn." }] },
+      { id: 'won', trigger: { at: 'won' }, actions: [{ do: 'comms', speaker: 'dispatch', text: "The head ran straight into your black and lay down — nothing left to burn. You stopped a wildfire with fire, Water-1. That's the one the crews tell stories about." }] },
+    ],
+  },
+  // ── 5 ─────────────────────────────────────────────────────────────────────────────────────────
   {
     id: 'doorstep',
-    index: 3,
+    index: 4,
     name: 'Doorstep',
     brief: 'The fire is at the doorsteps of Stanley Mission. Fight the heads near town — and when families are cut off, re-rig to the sling and pull them out while ember spot-fires light behind you.',
     tagline: "Fire at Stanley Mission's doors. Beat it back, lift the families clear.",
@@ -193,10 +242,10 @@ export const CAMPAIGN: MissionDef[] = [
       { id: 'won', trigger: { at: 'won' }, actions: [{ do: 'comms', speaker: 'dispatch', text: "Fires down and every family's out. You beat the fire to the last door, Water-1. Lives saved today." }] },
     ],
   },
-  // ── 5 ─────────────────────────────────────────────────────────────────────────────────────────
+  // ── 6 ─────────────────────────────────────────────────────────────────────────────────────────
   {
     id: 'three-towns',
-    index: 4,
+    index: 5,
     name: 'Three Towns',
     brief: 'Two fires near Beauval and Île-à-la-Crosse grow toward each other, MERGE, and the joined front runs at Buffalo Narrows. Triage all three — and pull out two families that get cut off.',
     tagline: 'Two fronts merge into one monster, running at Buffalo Narrows.',
@@ -250,10 +299,66 @@ export const CAMPAIGN: MissionDef[] = [
       { id: 'won', trigger: { at: 'won' }, actions: [{ do: 'comms', speaker: 'dispatch', text: 'All three towns standing, families out, fire dead. One helicopter against three towns — extraordinary, Water-1.' }] },
     ],
   },
-  // ── 6 ─────────────────────────────────────────────────────────────────────────────────────────
+  // ── 7 ─────────────────────────────────────────────────────────────────────────────────────────
+  // AFTER BURN — the morning-after MOP-UP (a deliberate breather before the finale, and the fuel/range
+  // model's first appearance — right before the finale leans on it). The campaign's defining truth made
+  // explicit: a fire is NOT out when the flames die down. A front has passed over Denare Beach and left a
+  // smoking black; the work now is mop-up — grid the burn scar, find every smouldering hotspot, and drown
+  // it before a hidden holdover re-flares out of the duff and runs again. Calm air, smoke-choked overcast
+  // light, a finite tank. The re-flare beats wake "sleeper" fires on YOUR progress, so the count is never
+  // fixed — you patrol, you don't clear a list. The gate that proves it: hotspots sit close enough to town
+  // that an IGNORED one re-establishes and runs at the cabins → a no-op run trips `protect` and loses,
+  // while the diligent pilot drowns them all and wins. The mop-up truth, encoded.
+  {
+    id: 'after-burn',
+    index: 6,
+    name: 'After Burn',
+    brief: 'The front has passed Denare Beach — now the long work. Grid the black for smouldering hotspots and drown every one before a holdover re-flares out of the duff and runs again. Finite fuel: patrol smart, refuel at base.',
+    tagline: "The fire isn't out when the flames die. Mop up the black before it wakes.",
+    intel:
+      'You held the line at Denare Beach, Water-1 — but a fire is never out when the flames die down. The front has passed and left a smoking black, and somewhere in it root systems and stumps are still burning underground. Those are holdovers: leave one and the noon wind will fan it back into a running fire on the town. Grid the burn scar, find every hotspot, and drown it cold. Use the valve to split a load across several spots — you don’t need a full dump on a smouldering stump. Watch your fuel and refuel at base; mop-up is a long patrol. Don’t call it out until every last one is dead.',
+    difficulty: 3,
+    seed: 144,
+    map: 'saskatchewan',
+    homeBase: 'denare-beach',
+    timeOfDay: 'overcast', // smoke-choked morning-after — grey, low light over the black
+    wind: { strengthScale: 0.4 }, // calm now — but a beat lifts it as the day heats up
+    fire: { spreadScale: 0.5 }, // hotspots SMOULDER, not run — but an ignored one re-establishes onto town
+    bucket: 'valve', // precise, splittable dabs — the mop-up tool
+    payload: 'water',
+    fuel: true, // first taste of the range model: mop-up is a long, fuel-hungry patrol
+    fires: [
+      // The burn scar: a patch of smouldering hotspots in the black, with a scoop source (Amisk Lake) on hand.
+      { at: 'cluster', anchor: { community: 'denare-beach' }, distance: 95, spread: 120, count: 5, size: 'small' },
+      // Two hotspots closer to the cabins — the dangerous ones that re-establish onto town if ignored.
+      { at: 'nearCommunity', community: 'denare-beach', offset: 60, size: 'small', count: 2 },
+    ],
+    structures: { depot: true, groups: [{ community: 'denare-beach', cabins: 5 }] },
+    objectives: [{ kind: 'extinguishAll' }],
+    fails: [
+      { kind: 'protect', min: 4, label: 'Keep the black off Denare Beach' },
+      { kind: 'fuelOut' },
+    ],
+    script: [
+      { id: 'start', trigger: { at: 'start' }, actions: [{ do: 'comms', speaker: 'dispatch', text: "Water-1, the front's through Denare Beach — but she's not out. The black's full of hotspots smouldering in the duff. Grid it and drown every one before the wind comes up. Mind your fuel out there." }] },
+      // Sleeper #1 wakes once you've put a couple down — the re-flare truth, made the whole job.
+      { id: 'sleeper1', trigger: { at: 'firesDoused', n: 2 }, actions: [{ do: 'ignite', place: { at: 'cluster', anchor: { community: 'denare-beach' }, bearing: 1.6, distance: 130, spread: 60, count: 1, size: 'small' } }, { do: 'comms', speaker: 'crew', text: 'Smoke just came up on the east edge — a stump woke back up. They hide for hours, this is the job.' }] },
+      // Encouragement — the methodical grind is working.
+      { id: 'gridding', trigger: { at: 'firesDoused', n: 4 }, actions: [{ do: 'comms', speaker: 'dispatch', text: "Good grid, Water-1 — you're walking it cold. Keep working the black." }] },
+      // Sleeper #2: a holdover carried under the line by a root system — closer to town, more urgent.
+      { id: 'sleeper2', trigger: { at: 'firesDoused', n: 5 }, actions: [{ do: 'ignite', place: { at: 'nearCommunity', community: 'denare-beach', offset: 55, size: 'small', count: 2 } }, { do: 'comms', speaker: 'warning', urgency: 'warn', text: 'Holdover by the cabins — root fire carried it back under the line. Get on it before it re-establishes.' }] },
+      // Threat-gated: only if a hotspot is actually re-establishing toward a home (a sharp pilot never hears it).
+      { id: 'reflare', trigger: { at: 'threat', min: 0.45 }, actions: [{ do: 'comms', speaker: 'warning', urgency: 'alert', text: "One's coming back up at the treeline — don't let her re-take that ground!" }] },
+      // The noon wind: the classic mop-up race — finish the black before the day heats up and fans the holdovers.
+      { id: 'noon-wind', trigger: { at: 'time', seconds: 120 }, actions: [{ do: 'wind', strengthScale: 0.9, ease: 8 }, { do: 'comms', speaker: 'dispatch', text: "Wind's lifting as the day heats up — that's what wakes the sleepers. Last hotspots now, Water-1." }] },
+      { id: 'fuel', trigger: { at: 'fuelBelow', frac: 0.25 }, actions: [{ do: 'comms', speaker: 'warning', urgency: 'warn', text: "Fuel's getting low — top up at base, then back on the patrol. Don't strand yourself out in the black." }] },
+      { id: 'won', trigger: { at: 'won' }, actions: [{ do: 'comms', speaker: 'dispatch', text: "Every hotspot cold — she's declared out, Water-1. That's how fires are really won: not when the flames drop, but when the last ember dies. Textbook mop-up." }] },
+    ],
+  },
+  // ── 8 ─────────────────────────────────────────────────────────────────────────────────────────
   {
     id: 'everything-at-once',
-    index: 5,
+    index: 7,
     name: 'Everything at Once',
     brief: 'The finale. A Class-F head on La Ronge, the depot itself threatened, a re-flaring monster, a finite tank — and a family to pull out. Everything you have learned, at once.',
     tagline: 'The finale. A firestorm on La Ronge, the depot burning, the tank near dry.',

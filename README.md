@@ -1,8 +1,7 @@
 # 🚁 Bucket My Fire
 
-A mobile-browser helicopter firefighting sim. Fly over northern Saskatchewan,
-scoop water from lakes with a slung bucket, and drop it on the forest fires
-before they spread.
+A bucket, a chopper, a wildfire. Fly northern Saskatchewan, scoop the lakes,
+and stop the fire before it reaches the cabins. Runs in your browser.
 
 ## Play / develop
 

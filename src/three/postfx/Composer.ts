@@ -92,6 +92,7 @@ const GRADE_SHADER = {
 
 export class Composer {
   private readonly composer: EffectComposer | null;
+  private renderPass: RenderPass | null = null; // stored so an in-place mission switch can re-aim it
   private readonly grade: ShaderPass | null = null;
   private readonly godrays: ShaderPass | null = null;
   private readonly haze: ShaderPass | null = null;
@@ -129,7 +130,8 @@ export class Composer {
     // now the QualityTier's adaptive lever, re-applied via `setPixelRatio` below.)
     this.composer.setPixelRatio(renderer.getPixelRatio());
     this.composer.setSize(size.x, size.y);
-    this.composer.addPass(new RenderPass(scene, camera));
+    this.renderPass = new RenderPass(scene, camera);
+    this.composer.addPass(this.renderPass);
 
     // God-rays first (operating on the lit HDR scene) so the shafts then bloom + tonemap with
     // everything else. Tier-gated automatically: this whole composer only exists on med/high.
@@ -159,6 +161,19 @@ export class Composer {
     grade.uniforms.uResolution.value.set(size.x, size.y);
     this.composer.addPass(grade);
     this.grade = grade;
+  }
+
+  /**
+   * Re-aim the chain at a new scene/camera for an in-place mission switch (no reload). When the
+   * composer is active (med/high) the RenderPass was built with the OLD scene/camera and ignores the
+   * args to render(), so it must be updated here; on low (bare renderer) render() already takes the
+   * live scene/camera each frame, so this is a harmless no-op there.
+   */
+  setScene(scene: THREE.Scene, camera: THREE.Camera): void {
+    if (this.renderPass) {
+      this.renderPass.scene = scene;
+      this.renderPass.camera = camera;
+    }
   }
 
   setSize(width: number, height: number): void {

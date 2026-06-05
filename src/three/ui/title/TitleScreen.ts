@@ -7,6 +7,7 @@ import { createGridTitle } from '../GridTitle';
 import { UI, FS, FW, R, el, div, prefersReducedMotion } from '../theme';
 import { utilityChip } from '../menuShared';
 import { openLeaderboard } from '../Leaderboard';
+import { signalFirstFrame } from '../../splashSignal';
 
 /**
  * TitleScreen — the home screen. It owns a lightweight WebGL renderer + animation loop driving the
@@ -116,6 +117,7 @@ export class TitleScreen {
     this.tier.sample(dt); // adaptive-DPR watchdog
     this.attract.update(dt);
     this.composer.render(this.renderer, this.attract.scene, this.attract.camera, this.attract.sunDir);
+    signalFirstFrame(); // first attract frame is on screen — let the cold-start splash fade to it
   };
 
   private readonly onResize = (): void => {
@@ -198,7 +200,7 @@ export class TitleScreen {
         opacity: '0.82',
         textShadow: '0 1px 14px rgba(0,0,0,0.7)',
       },
-      'Helicopter firefighting sim · northern Saskatchewan',
+      'A bucket, a chopper, a wildfire.',
     );
     const play = this.buildPlayButton();
 
