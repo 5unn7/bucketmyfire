@@ -15,6 +15,7 @@
  */
 
 import { getProgress } from '../missions/progress';
+import { mapCards } from '../maps/registry';
 
 export interface Profile {
   /** Pilot callsign — display only (shown on the end banner). */
@@ -46,65 +47,13 @@ export interface CatalogItem {
 }
 
 // --- Maps -------------------------------------------------------------------
-// The first entry is the live world; the rest are placeholders for FUTURE MAPS.
-// These ids are the COSMETIC picker side of a map; the WORLD-GENERATION side (place-name pools,
-// and later terrain/biome profile) lives under the SAME id in `world/regions.ts` (REGIONS). Keep
-// the ids in sync when adding a map: a card here + a region there.
-export const MAPS: CatalogItem[] = [
-  {
-    id: 'saskatchewan',
-    name: 'Saskatchewan',
-    tagline: 'Boreal north · 8 missions',
-    blurb: 'Northern Saskatchewan: glacier-scoured granite, the Churchill River chain, and cold kettle lakes from La Ronge to the Athabasca. The full campaign flies here.',
-    available: true,
-    accent: '#3f7d4a',
-    glyph: '🌲',
-    imageUrl: import.meta.env.BASE_URL + 'maps/Saskatchewan.webp',
-  },
-  {
-    // Same Saskatchewan world, grown on a TRUE-SHAPE rectangular playfield (region geo.fit = 'bounds'):
-    // the world's extent IS the province's bounding box, so the boundary sits at the map edge instead of
-    // floating in a square. Keep this id in sync with the region in world/maps/saskatchewan-true.ts.
-    id: 'saskatchewan-true',
-    name: 'Saskatchewan · True Shape',
-    tagline: 'The province, edge to edge',
-    blurb: 'The same northern-Saskatchewan world, fitted to the province’s real outline so the boundary sits at the map edge — no off-province margin. The full campaign flies here on Saskatchewan’s true silhouette.',
-    available: true,
-    accent: '#3f7d4a',
-    glyph: '🗺️',
-    imageUrl: import.meta.env.BASE_URL + 'maps/Saskatchewan.webp',
-  },
-  {
-    id: 'british-columbia',
-    name: 'British Columbia',
-    tagline: 'Interior fire country · soon',
-    blurb: 'Steep Interior valleys and deep cold lakes — the Cariboo, Thompson, and Okanagan. The wind funnels through the passes and runs fire uphill fast.',
-    available: false,
-    accent: '#4f86a8',
-    glyph: '🏔️',
-    imageUrl: import.meta.env.BASE_URL + 'maps/BritishColumbia.webp',
-  },
-  {
-    id: 'alberta',
-    name: 'Alberta',
-    tagline: 'Boreal & foothills · soon',
-    blurb: 'Alberta’s northern boreal and foothills — Fort McMurray, Slave Lake, the Peace country. Big seasons, fast crown runs through black spruce.',
-    available: false,
-    accent: '#c2702f',
-    glyph: '🏕️',
-    imageUrl: import.meta.env.BASE_URL + 'maps/Alberta.webp',
-  },
-  {
-    id: 'ontario',
-    name: 'Ontario',
-    tagline: 'Shield & boreal · soon',
-    blurb: 'Northern Ontario’s Canadian Shield: endless boreal forest and big cold lakes from Thunder Bay to the James Bay lowlands.',
-    available: false,
-    accent: '#2f8f7a',
-    glyph: '🛶',
-    imageUrl: import.meta.env.BASE_URL + 'maps/Ontario.webp',
-  },
-];
+// DERIVED from the maps/ registry (the single source of map identity — src/three/maps/). The map
+// DATA stays bundler-agnostic (BASE_URL-relative imageUrl); the UI prefixes BASE_URL here so the
+// Node verify bundle never sees import.meta.env. Add a map = a folder under src/three/maps/, not here.
+export const MAPS: CatalogItem[] = mapCards().map((c) => ({
+  ...c,
+  imageUrl: c.imageUrl ? import.meta.env.BASE_URL + c.imageUrl : undefined,
+}));
 
 // --- Helicopters ------------------------------------------------------------
 // Each entry maps to a glTF model in meshes/heliModels.ts (HELI_MODELS) by id AND to a

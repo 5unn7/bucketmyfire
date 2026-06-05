@@ -3,8 +3,8 @@ import { Noise2D, FbmParams } from './world/noise';
 import { Biomes } from './world/biomes';
 import { Placement } from './world/placement';
 import { createNameSource, NameSource } from './world/names';
-import { getRegion, Region, GeoFrame } from './world/regions';
-import { getTerrainProfile, TerrainProfile } from './world/terrainProfile';
+import { getRegion, getTerrainProfile } from './maps/registry';
+import type { Region, GeoFrame, TerrainProfile } from './maps/types';
 import { AuthoredField } from './world/authored';
 import type { BuildingKind } from './world/authored';
 

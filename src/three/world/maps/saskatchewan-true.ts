@@ -19,7 +19,7 @@
  * file exporting `makeXxx(base)` (or building from scratch), plus one registry line in regions.ts.
  */
 
-import type { Region, GeoFrame } from '../regions';
+import type { Region, GeoFrame } from '../../maps/types';
 
 /** The map id — mirrors the picker card in ui/profile.ts MAPS (keep the two in sync). */
 export const SASKATCHEWAN_TRUE_ID = 'saskatchewan-true';

@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { World } from '../World';
 import { WORLD3D, MAPGEO, ROADS } from '../config';
-import { getRegion, regionIds, type Region, type RegionRiver, type RegionLake } from '../world/regions';
+import { getRegion, regionIds } from '../maps/registry';
+import type { Region, RegionRiver, RegionLake } from '../maps/types';
 import {
   AuthoredField,
   BUILDING_KINDS,

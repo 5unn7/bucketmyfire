@@ -10,7 +10,7 @@
  * specific strings — so a mission can also PIN authored names over the top (see World pins).
  */
 
-import type { RegionNames } from './regions';
+import type { RegionNames } from '../maps/types';
 
 /** A no-repeat name drawer over one pool: a seeded shuffle, popped in order. */
 class NameDrawer {
