@@ -63,12 +63,6 @@ export class Input {
   private btnDetach = false;
   private prevDetach = false; // last frame's detach level, for press-edge detection
 
-  // Collective slider (replaces digital ▲/▼ buttons).
-  private sliderActive = false;
-  private sliderLift = 0;
-  private collectiveKnob!: HTMLDivElement;
-  private collectiveTrack!: HTMLDivElement;
-
   // Free-look ("eye" button): drag sets orbit VELOCITY, release eases back.
   private lookActive = false;
   private lookYawRate = 0;
@@ -82,10 +76,11 @@ export class Input {
   private stickBase!: HTMLDivElement;
   private stickThumb!: HTMLDivElement;
   private stickTicks: HTMLDivElement[] = [];
+  private climbBtn!: HTMLDivElement;
+  private descendBtn!: HTMLDivElement;
   private dropBtn!: HTMLDivElement;
   private swapBtn!: HTMLDivElement;
   private detachBtn!: HTMLDivElement;
-  private clusterRow!: HTMLDivElement;
   private eyeBtn!: HTMLDivElement;
   private eyeSvg!: SVGElement;
   private helpBtn!: HTMLDivElement;
@@ -142,14 +137,10 @@ export class Input {
     const turn = this.stickActive ? deadzone(this.stickTurn) : kTurn;
     const throttle = this.stickActive ? deadzone(this.stickThrottle) : kThrottle;
 
-    // Collective: analog slider (touch) or keyboard fallback.
+    // Collective: keyboard + buttons, clamped. (I = climb, J = descend.)
     let lift = 0;
-    if (this.sliderActive) {
-      lift = this.sliderLift;
-    } else {
-      if (k.has('KeyI') || this.btnUp) lift += 1;
-      if (k.has('KeyJ') || this.btnDown) lift -= 1;
-    }
+    if (k.has('KeyI') || this.btnUp) lift += 1;
+    if (k.has('KeyJ') || this.btnDown) lift -= 1;
 
     // Drop: Space (or the on-screen DROP button).
     const drop = this.btnDrop || k.has('Space');
@@ -178,7 +169,10 @@ export class Input {
   /** Show/hide the DETACH (jettison-bucket) button. Game shows it on a water sortie while a bucket is
    *  attached — press it to release the slung bucket; you then RTB to a base for a fresh one. */
   setDetachVisible(on: boolean): void {
-    if (this.detachBtn) this.detachBtn.style.display = on ? 'flex' : 'none';
+    if (!this.detachBtn) return;
+    // Bento cell always occupies its slot — dim + disable rather than hide.
+    this.detachBtn.style.opacity = on ? '1' : '0.28';
+    this.detachBtn.style.pointerEvents = on ? 'auto' : 'none';
   }
 
   /** Show/hide the contextual SWAP-loadout button. Game calls this each frame: it's only
@@ -223,31 +217,18 @@ export class Input {
     });
     for (const t of this.stickTicks) t.style.transformOrigin = `1px ${R - 6}px`;
 
-    // Collective slider + DROP cluster.
+    // Bento 2×2 cluster — all four cells equal size.
     const cb = Math.round(set.clusterBtn * k);
-    const drop = Math.round(set.dropSize * k);
-    Object.assign(this.dropBtn.style, { width: `${drop}px`, height: `${drop}px`, fontSize: `${Math.round(drop * 0.16)}px` });
-    this.clusterRow.style.gap = `${Math.round(set.gap * 1.7)}px`;
+    const cellSz = `${cb}px`;
+    const cellFs = `${Math.round(cb * 0.28)}px`;
+    for (const el of [this.climbBtn, this.descendBtn, this.dropBtn, this.detachBtn]) {
+      Object.assign(el.style, { width: cellSz, height: cellSz, fontSize: cellFs });
+    }
 
-    // Collective slider — same height footprint as the old two-button column.
-    const slH = cb * 2 + set.gap;
-    const slW = 26;
-    Object.assign(this.collectiveTrack.style, { width: `${slW}px`, height: `${slH}px` });
-    const kW = slW - 4;
-    const kH = Math.round(slW * 0.82);
-    Object.assign(this.collectiveKnob.style, { width: `${kW}px`, height: `${kH}px` });
-
-    // Detach circle — proportional to the cluster.
-    const det = Math.round(cb * 0.56);
-    Object.assign(this.detachBtn.style, { width: `${det}px`, height: `${det}px`, fontSize: `${Math.round(det * 0.44)}px` });
-
-    // Free-look eye — sits in the lower-right, lifted above the collective/DROP cluster.
+    // Free-look eye — sits in the lower-right, lifted above the bento cluster.
     const eye = Math.round(set.eyeSize * k);
-    // The cluster's footprint above the bottom edge: the taller of the climb+descend
-    // column (2 buttons + their gap) vs the DROP hero. Float the eye that far up plus a
-    // separation gap, so it lands in the lower half and clears the buttons on any screen.
-    const colH = cb * 2 + set.gap;
-    const clusterH = Math.max(colH, drop);
+    const bentoH = cb * 2 + 2; // 2px = grid gap
+    const clusterH = bentoH;
     const lift = clusterH + Math.round(set.gap * 2.5);
     Object.assign(this.eyeBtn.style, { width: `${eye}px`, height: `${eye}px`, marginBottom: `${lift}px` });
     const glyph = Math.round(eye * 0.52);
@@ -402,193 +383,92 @@ export class Input {
     root.appendChild(a);
   }
 
-  /** Right-hand cluster:
-   *   - DETACH (✂) — small ember circle, top-left of the group, jettison the slung bucket.
-   *   - Collective slider — vertical frosted capsule (drag up = climb, drag down = descend).
-   *   - DROP hero — warm action button on the right.
-   */
+  /** Bento 2×2 cluster (bottom-right):
+   *
+   *   ┌──────┬──────┐
+   *   │  ▲   │ DROP │   ← cyan collective / warm DROP
+   *   ├──────┼──────┤
+   *   │  ▼   │  ✂   │   ← collective / release-bucket (dims when unavailable)
+   *   └──────┴──────┘
+   *
+   *  A single frosted container clips all four cells; the 2px grid gap becomes the
+   *  divider lines. All cells are the same size (cb × cb), sized per breakpoint. */
   private buildCluster(root: HTMLElement): void {
-    // Small circular DETACH button — ember/fire register (cutting the rope is a real commitment).
-    const detach = button('✂', {
-      position: 'relative',
-      display: 'none',
-      background: 'radial-gradient(circle at 38% 32%, rgba(255,140,70,0.22), rgba(30,10,5,0.55))',
-      borderColor: 'rgba(255,130,60,0.65)',
-      color: '#ffd4a4',
-      fontWeight: FW.bold,
-      fontSize: '18px',
-      borderRadius: R.round,
-      boxShadow: `0 0 14px rgba(255,90,40,0.32), ${UI.shadowBtn}`,
-    });
-    this.detachBtn = detach;
-    holdButton(detach, (on) => (this.btnDetach = on), UI.ember);
-
-    const slider = this.buildCollectiveSlider();
-
-    const drop = button('DROP', {
-      position: 'relative',
-      background: UI.warmGlass,
-      borderColor: UI.warmStroke,
-      color: '#ffe7df',
-      fontWeight: FW.bold,
-      letterSpacing: '1.5px',
-      boxShadow: `0 0 18px rgba(255,90,60,0.28), ${UI.shadowBtn}`,
-    });
-    this.dropBtn = drop;
-    holdButton(drop, (on) => (this.btnDrop = on), UI.warm);
-
-    // Bottom row: [slider | DROP], baseline-aligned.
-    const row = div({ display: 'flex', flexDirection: 'row', alignItems: 'flex-end' });
-    row.appendChild(slider);
-    row.appendChild(drop);
-    this.clusterRow = row;
-
-    // Top row: detach circle left-aligned (hidden until Game shows it).
-    const topRow = div({ display: 'flex', alignItems: 'center', marginBottom: '6px' });
-    topRow.appendChild(detach);
-
-    const wrapper = div({ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' });
-    wrapper.appendChild(topRow);
-    wrapper.appendChild(row);
-
-    const a = anchor('bottom-right');
-    a.appendChild(wrapper);
-    root.appendChild(a);
-  }
-
-  /** Vertical collective slider — drag up to climb, drag down to descend; springs to neutral on release.
-   *  Styled as a cockpit throttle: frosted capsule track, cyan notch at centre, active fill
-   *  cyan (climb) or ember (sink), flat frosted knob. Keyboard I/J still work when inactive. */
-  private buildCollectiveSlider(): HTMLDivElement {
-    const track = div({
-      position: 'relative',
-      borderRadius: '13px',
-      background:
-        'linear-gradient(180deg, rgba(103,232,255,0.13) 0%, rgba(8,14,22,0.56) 36%, rgba(8,14,22,0.56) 64%, rgba(255,106,44,0.11) 100%)',
-      border: '1px solid rgba(103,232,255,0.22)',
-      boxShadow: 'inset 0 1px 16px rgba(0,0,0,0.45), 0 4px 16px rgba(0,0,0,0.35)',
-      pointerEvents: 'auto',
-      touchAction: 'none',
-      cursor: 'ns-resize',
-      overflow: 'hidden',
-    });
-    setBlur(track);
-
-    // Centre notch — the neutral-lift datum line.
-    track.appendChild(
-      div({
-        position: 'absolute',
-        left: '4px',
-        right: '4px',
-        height: '1px',
-        top: '50%',
-        transform: 'translateY(-0.5px)',
-        background: 'rgba(103,232,255,0.45)',
-        pointerEvents: 'none',
-      }),
-    );
-
-    // Avionics-style labels.
-    const mkLabel = (text: string, pos: 'top' | 'bottom', color: string): HTMLDivElement => {
-      const el = div({
-        position: 'absolute',
-        [pos]: '4px',
-        left: '0',
-        right: '0',
-        textAlign: 'center',
-        fontSize: '7px',
-        letterSpacing: '0.5px',
-        color,
-        fontFamily: 'monospace',
-        pointerEvents: 'none',
+    // -- Cell helpers --
+    const cell = (extra: Partial<CSSStyleDeclaration> = {}): HTMLDivElement =>
+      button('', {
+        borderRadius: '0',
+        flexDirection: 'column',
+        gap: '4px',
+        ...extra,
       });
+
+    const mkGlyph = (text: string, color: string): HTMLDivElement => {
+      const el = div({ fontSize: '22px', lineHeight: '1', color, pointerEvents: 'none' });
       el.textContent = text;
       return el;
     };
-    track.appendChild(mkLabel('CLB', 'top', 'rgba(103,232,255,0.50)'));
-    track.appendChild(mkLabel('SNK', 'bottom', 'rgba(255,106,44,0.48)'));
-
-    // Active-direction fill bar.
-    const fill = div({
-      position: 'absolute',
-      left: '3px',
-      right: '3px',
-      height: '0',
-      top: '50%',
-      borderRadius: '4px',
-      background: 'rgba(103,232,255,0.28)',
-      pointerEvents: 'none',
-    });
-    track.appendChild(fill);
-
-    // Draggable knob — flat frosted pill.
-    const knob = div({
-      position: 'absolute',
-      left: '50%',
-      top: '50%',
-      transform: 'translate(-50%, -50%)',
-      borderRadius: '8px',
-      background: 'radial-gradient(circle at 40% 34%, rgba(255,255,255,0.55), rgba(150,182,202,0.24))',
-      border: `1.5px solid ${UI.accentSoft}`,
-      boxShadow: '0 2px 10px rgba(0,0,0,0.45)',
-      transition: 'box-shadow 0.12s ease, border-color 0.12s ease',
-      pointerEvents: 'none',
-    });
-    track.appendChild(knob);
-    this.collectiveKnob = knob;
-    this.collectiveTrack = track;
-
-    const setLift = (clientY: number): void => {
-      const rect = track.getBoundingClientRect();
-      const kh = knob.offsetHeight || 20;
-      const travel = rect.height - kh;
-      if (travel <= 0) return;
-      const relY = clamp(clientY - rect.top - kh / 2, 0, travel);
-      this.sliderLift = 1 - (relY / travel) * 2; // +1 at top (climb), -1 at bottom (sink)
-
-      knob.style.top = `${relY + kh / 2}px`;
-      knob.style.transform = 'translate(-50%, -50%)';
-
-      const centerY = rect.height / 2;
-      const knobCY = relY + kh / 2;
-      if (this.sliderLift >= 0) {
-        fill.style.top = `${knobCY}px`;
-        fill.style.height = `${Math.max(0, centerY - knobCY)}px`;
-        fill.style.background = 'rgba(103,232,255,0.28)';
-      } else {
-        fill.style.top = `${centerY}px`;
-        fill.style.height = `${Math.max(0, knobCY - centerY)}px`;
-        fill.style.background = 'rgba(255,106,44,0.22)';
-      }
+    const mkLabel = (text: string, color: string): HTMLDivElement => {
+      const el = div({ fontSize: '8px', letterSpacing: '1px', fontFamily: 'monospace', color, pointerEvents: 'none' });
+      el.textContent = text;
+      return el;
     };
 
-    const releaseSlider = (): void => {
-      this.sliderActive = false;
-      this.sliderLift = 0;
-      knob.style.top = '50%';
-      knob.style.transform = 'translate(-50%, -50%)';
-      fill.style.height = '0';
-      knob.style.borderColor = UI.accentSoft;
-      knob.style.boxShadow = '0 2px 10px rgba(0,0,0,0.45)';
-    };
+    // UP cell — cockpit cyan register.
+    const climb = cell({ background: 'rgba(6,14,22,0.86)', borderColor: 'transparent' });
+    climb.appendChild(mkGlyph('▲', UI.accent));
+    climb.appendChild(mkLabel('CLB', 'rgba(103,232,255,0.45)'));
+    this.climbBtn = climb;
+    holdButton(climb, (on) => (this.btnUp = on));
 
-    let sliderId = -1;
-    track.addEventListener('pointerdown', (e) => {
-      sliderId = e.pointerId;
-      track.setPointerCapture(e.pointerId);
-      this.sliderActive = true;
-      setLift(e.clientY);
-      knob.style.borderColor = UI.accent;
-      knob.style.boxShadow = `0 0 14px ${UI.accentSoft}, 0 2px 10px rgba(0,0,0,0.45)`;
-    });
-    track.addEventListener('pointermove', (e) => {
-      if (e.pointerId !== sliderId) return;
-      setLift(e.clientY);
-    });
-    track.addEventListener('pointerup', releaseSlider);
-    track.addEventListener('pointercancel', releaseSlider);
+    // DOWN cell — subtle warm tint (descending toward fire).
+    const descend = cell({ background: 'rgba(10,7,4,0.90)', borderColor: 'transparent' });
+    descend.appendChild(mkGlyph('▼', 'rgba(255,130,60,0.80)'));
+    descend.appendChild(mkLabel('SNK', 'rgba(255,106,44,0.40)'));
+    this.descendBtn = descend;
+    holdButton(descend, (on) => (this.btnDown = on));
 
-    return track;
+    // DROP cell — warm hero. Font size set in applyLayout to fill the cell.
+    const drop = cell({
+      background: UI.warmGlass,
+      borderColor: 'transparent',
+      color: '#ffe7df',
+      fontWeight: FW.bold,
+      letterSpacing: '1.5px',
+      boxShadow: `inset 0 0 18px rgba(255,90,60,0.18)`,
+    });
+    drop.appendChild(mkGlyph('●', 'rgba(255,90,40,0.70)'));
+    drop.appendChild(mkLabel('DROP', '#ffe7df'));
+    this.dropBtn = drop;
+    holdButton(drop, (on) => (this.btnDrop = on), UI.warm);
+
+    // RELEASE cell — ember/caution; dims (opacity 0.32) when not actionable.
+    const detach = cell({ background: 'rgba(14,6,2,0.90)', borderColor: 'transparent' });
+    detach.appendChild(mkGlyph('✂', 'rgba(255,120,50,0.80)'));
+    detach.appendChild(mkLabel('RELEASE', 'rgba(255,110,44,0.42)'));
+    this.detachBtn = detach;
+    holdButton(detach, (on) => (this.btnDetach = on), UI.ember);
+
+    // 2×2 bento container — background bleeds through the 2px gap as divider lines.
+    const bento = div({
+      display: 'grid',
+      gridTemplateColumns: '1fr 1fr',
+      gridTemplateRows: '1fr 1fr',
+      gap: '2px',
+      borderRadius: '16px',
+      overflow: 'hidden',
+      background: 'rgba(103,232,255,0.10)',
+      border: '1px solid rgba(103,232,255,0.14)',
+      boxShadow: UI.shadowBtn,
+    });
+    setBlur(bento);
+    bento.appendChild(climb);
+    bento.appendChild(drop);
+    bento.appendChild(descend);
+    bento.appendChild(detach);
+    const a = anchor('bottom-right');
+    a.appendChild(bento);
+    root.appendChild(a);
   }
 
   // --- Free-look "eye" button -----------------------------------------------
