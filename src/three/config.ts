@@ -4,8 +4,9 @@
 // down from the old 2D pixel scale but preserving the same momentum "feel".
 
 export const WORLD3D = {
-  size: 1500, // square terrain extent, centered at origin — big enough that crossing it
-  // takes ~40s at cruise (the map should feel large); lakes/trees scale with this area.
+  size: 2100, // square terrain extent, centered at origin — ENLARGED 1500→2100 so the big lakes stop eating
+  // the land (anchors spread ~1.4× further apart, lakes keep their absolute size → more dry ground, esp. La
+  // Ronge). A side crossing is now ~70s at cruise (the map feels large). lakes/trees/fire-grid scale with this.
   seed: 1337, // one seed threads through noise/hydrology/placement/fire (determinism invariant)
   // Carved lake basins: each lake's water sits in a smoothstepped bowl so "descend
   // to scoop" is identical everywhere (the Phase-1 keystone). All in world units,
@@ -16,6 +17,28 @@ export const WORLD3D = {
   lakeBankWidth: 10, // radial width of that raised bank ring
   lakeBlendWidth: 22, // radial width over which the bank blends back into base terrain
 };
+
+// Real-world map projection + lake sizing (anchored maps like Saskatchewan). Anchors carry REAL
+// latitude/longitude; World projects them with a cosine ("sinusoidal") projection so true distances
+// AND the province's converging-meridian trapezoid (wider south, narrower north) come out right — see
+// world/regions.ts `geo` + `outline`. The province is scaled to fill `fill` of the square world's
+// height; everything outside the border (E/W margins, the open south reserved for v2) is off-province
+// wilderness, muted on the radar so the map reads as Saskatchewan rather than a filled square.
+export const MAPGEO = {
+  fill: 0.93, // province N–S extent fills this fraction of the square world height (leaves a rim margin)
+  // Lake radius from REAL surface area (km²), compressed onto a playable band: radius = lerp(minR,maxR,t),
+  // t = (√area − √areaMin)/(√areaMax − √areaMin) clamped 0..1. √area ∝ linear size, so a giant (Reindeer,
+  // ~6650 km²) reads huge while a small lake stays scoopable — at true province scale a to-scale lake
+  // would be an unscoopable dot, so the band trades literal scale for the right RELATIVE feel.
+  lakeMinR: 30, // smallest scoop-lake radius (units) — still scoopable, but leaves more dry ground: the boreal
+  // river-widening lakes that ring La Ronge floor here, so a lower floor opens up land between them
+  lakeMaxR: 105, // largest (Athabasca-class) lake radius — TRIMMED 135→105 so the giants stop dominating the
+  // (now larger) world; with the 2100u map the big lakes read big but no longer swallow the land around them
+  lakeAreaMin: 30, // km² — areas at/below this map to lakeMinR
+  lakeAreaMax: 7850, // km² — areas at/above this map to lakeMaxR (Lake Athabasca, the province's largest)
+  lakeAreaDefault: 28, // km² assumed for anchor lakes with no published area (recreational river widenings) —
+  // kept small so the unpublished Churchill-chain widenings near La Ronge stay tight and leave land between them
+} as const;
 
 // Terrain heightfield profile (Track A1). Tuned to read like the northern-Saskatchewan
 // Boreal/Taiga Shield: LOW glacially-scoured relief (modest amplitude — it's not
@@ -113,6 +136,27 @@ export const BIOMES = {
   tintSwamp: 0x3a4a30, // sickly dark green for swamp tamarack/black spruce
 } as const;
 
+// Forest realism (photoreal pass). The boreal canopy is the dominant low-poly "tell" from the
+// chase cam, so this block makes the conifers FULLER + DENSER and bakes a vertical light gradient
+// into each crown (dark, self-shadowed base → sun-caught tips) for depth — all without leaving the
+// instanced / chunked / distance-LOD / burnable machinery in meshes/trees.ts. DENSITY is the single
+// biggest realism lever; it is tier-gated in Game.ts (low-end devices keep the original count) and
+// the existing per-chunk frustum cull + distance LOD + the DPR watchdog hold 60fps. Revert to the
+// old stylized look in one place: densityMul 1, canopyTiers 3, aoGradient 0, topLift 1.
+export const FOREST = {
+  baseCandidates: 3200, // tree candidates at the 600u reference size (Game scales by world AREA). TRIMMED from
+  // the old hard-coded 5200 so the enlarged 2100u world doesn't 2× the tree load — fewer trees = some perf back
+  // AND a more open landscape (lower canopy density over more land), which is part of the "more land" goal.
+  densityMul: 2.0, // candidate-count multiplier on med/high (forest fullness) — low tier stays at 1
+  canopyTiers: 6, // overlapping cone tiers per conifer (was 3) — a fuller, denser spruce silhouette
+  radialSegments: 8, // near-LOD canopy roundness (was 7) — a rounder crown up close
+  bottomRadius: 1.75, // widest (lowest) tier radius — a broader, more grounded base (old fixed: 1.5)
+  topRadius: 0.42, // narrowest (apex) tier radius — a finer point
+  aoGradient: 0.5, // how dark the crown BASE is vs the tips (0 = flat/old look, 1 = black base) — fakes self-shadow/AO
+  topLift: 1.15, // brightness multiplier at the sun-caught apex (1 = no lift)
+  gradientJitter: 0.08, // subtle per-vertex brightness noise so the needles don't read as a smooth ramp
+} as const;
+
 // Flight model — momentum integrator with helicopter-style steering: the pilot
 // yaws the nose directly and applies variable throttle ALONG it; thrust adds to
 // velocity, drag bleeds it, speed is capped, and the airframe banks into turns /
@@ -152,18 +196,29 @@ export const FLIGHT = {
   // The fuselage tilts toward its acceleration: dive to speed up, flare to brake,
   // bank into turns. These cap how far it leans and how persistently it cruises
   // nose-down. See the attitude block in HelicopterSim.update().
-  maxBank: 0.8, // radians of roll at full lateral (turn) acceleration
-  maxPitch: 0.52, // radians of dive/flare at full fore/aft acceleration (deeper nose-over)
+  maxBank: 1.0, // radians of roll at full lateral (turn) acceleration (RAISED 0.8→1.0 for aerobatic banks ~57°)
+  maxPitch: 0.62, // radians of dive/flare at full fore/aft acceleration (RAISED 0.52→0.62 — deeper nose-over)
   cruisePitch: 0.14, // extra persistent nose-down at top speed (disc tilted to hold cruise)
-  bodyEase: 0.1, // how fast bank/pitch ease toward their targets (lower = softer/heavier)
+  bodyEase: 0.13, // how fast bank/pitch ease toward their targets (RAISED 0.1→0.13 — snappier aerobatic roll-in; lower = softer/heavier)
+  // --- Direct pilot attitude authority (AEROBATICS) — leans the airframe on the STICK,
+  // not just as a side effect of accelerating. This is what turns "it banks a little in a
+  // turn" into "I can throw it into a hard banked turn and dive-bomb a fire on command."
+  // Added on TOP of the acceleration-driven bank/pitch above, then clamped to the *Hard caps. ---
+  steerBank: 0.55, // radians of roll commanded directly by full turn stick (a real banked turn even at modest speed)
+  steerBankIdle: 0.35, // fraction of steerBank still present at a standstill (so a low-speed turn still drops a wing; full at cruise)
+  diveCommand: 0.6, // radians of nose-down commanded by full DOWN collective AT TOP SPEED — the dive-bomb tuck. The pitch→motion
+  // coupling (pitchThrust/pitchDive) then turns that nose-down into a real surging, sinking swoop; haul UP collective to flare out.
+  // Scaled by forward speed, so easing straight down onto a lake to scoop barely noses over (only a fast forward descent dives).
+  maxBankHard: 1.25, // hard clamp on TOTAL roll (~72°) so accel + stick combined can't tumble the airframe past a sane lean
+  maxPitchHard: 0.95, // hard clamp on TOTAL pitch (~54°) — bounds the steepest dive/flare
   // --- Pitch → motion coupling (cyclic-forward): the nose-down disc drives REAL flight,
   // not just a cosmetic tilt. Tucking the nose tilts the thrust vector forward and down,
   // so a dive surges AND descends — and a committed dive can outrun level cruise. Pull UP
   // collective to flare out of it. Raise these for a more aggressive, weightier dive.
-  pitchThrust: 66, // extra forward accel (units/s^2) per radian of nose-down disc — the speed surge
-  // (scaled down with maxSpeed so a committed dive stays proportional to the new, slower cruise)
-  pitchDive: 36, // sink rate (units/s) per radian of nose-down BEYOND the cruise trim — the descent
-  diveSpeedBoost: 0.28, // top-speed cap raised by up to this fraction in a full committed dive
+  pitchThrust: 92, // extra forward accel (units/s^2) per radian of nose-down disc — the speed surge (RAISED 66→92:
+  // a committed dive bomb really gets away from you, scaled to stay proportional to the slower cruise)
+  pitchDive: 50, // sink rate (units/s) per radian of nose-down BEYOND the cruise trim — the descent (RAISED 36→50 for a steeper plunge)
+  diveSpeedBoost: 0.42, // top-speed cap raised by up to this fraction in a full committed dive (RAISED 0.28→0.42 — the dive outruns cruise)
   // Collective: the pilot raises/lowers altitude directly. To scoop you simply
   // descend over a lake until the slung bucket dips into the water (no scoop
   // button — the fill is physical). Vertical speed EASES in (rotor inertia) instead
@@ -187,8 +242,11 @@ export const FLIGHT = {
   // in the surface-specific offset (canopy over land, scoop over water); these two
   // are an extra global band around it.
   minClearance: 0, // hover margin above the floor at full descent (0 = sit on the floor)
-  maxClearance: 555, // ceiling above the floor at full climb → 2500 ft at ~4.5 ft/unit (a real,
-  // tall band you can climb into; normal flying stays low near the floor)
+  maxClearance: 444, // ceiling above the floor at full climb → 2000 ft at ~4.5 ft/unit (LOWERED from
+  // 555/2500 ft — keep INSTRUMENTS.ceilingFt in lockstep so the altimeter scale stays right). A tall
+  // band you can climb into; normal flying stays low near the floor.
+  startClearance: 111, // AGL the QA / autostart spawn drops you in at (≈ 500 ft) — comfortably airborne
+  // in the working band, NOT pinned to the ceiling like before (which read as "starts at 2500 ft").
   canopyClearance: 8, // land floor = ground + this — keeps the rotor disc above the canopy
   scoopClearance: 2, // water floor = waterLevel + this — low enough that the slung bucket dips under
   // Landing pad (cold start): right around the base helipad the flight floor eases DOWN from the full
@@ -246,14 +304,15 @@ export const WASH = {
 } as const;
 
 // Instrument calibration — DISPLAY ONLY. Physics runs in world units (the feel is
-// tuned there); the HUD converts to real-world numbers for a light water-bomber
-// (AS350-class): 80 kt empty / ~66 kt full airspeed, 2500 ft ceiling. The factors
+// tuned there); the HUD converts to real-world numbers for a light helicopter
+// (AS350-class): 80 kt empty / ~66 kt full airspeed, 2000 ft ceiling. The factors
 // are derived from the FLIGHT caps so changing those keeps the gauges consistent.
 export const INSTRUMENTS = {
   topSpeedKt: 80, // empty FLIGHT.maxSpeed maps to this on the airspeed tape (lowered WITH maxSpeed,
   // 41→30, keeping the world→kt scale constant so the slower aircraft reads honestly; the faster
   // Black Hawk still tapes well above this)
-  ceilingFt: 2500, // top of the AGL band (FLIGHT.maxClearance) maps to this on the altimeter
+  ceilingFt: 2000, // top of the AGL band (FLIGHT.maxClearance) maps to this on the altimeter (LOWERED
+  // from 2500 with maxClearance 555→444 — same ~4.5 ft/unit scale, just a lower cap)
   maxVsiFpm: 1600, // full-collective climb (FLIGHT.climbSpeed) maps to this on the VSI
   lowAltFt: 250, // altimeter reads LOW (red) below this AGL
 };
@@ -551,7 +610,8 @@ export const FIRE3D = {
   // and their fuel; once a neighbour's accumulated pre-heat crosses the ignition
   // threshold it lights — a genuine advancing front that spots downwind and stalls at
   // firebreaks. The ≤maxActive flame MESHES are just a view of the hottest cell clusters.
-  fireCells: 128, // grid resolution per side (128² over a 1500u map ≈ 11.7u cells)
+  fireCells: 160, // grid resolution per side (160² over the 2100u map ≈ 13.1u cells — bumped 128→160 so the
+  // bigger world keeps fire fronts about as crisp as before; the forest cut below funds the extra grid cost)
   blobCells: 24, // coarse grid the field is clustered into → up to maxActive rendered "fires"
   seedHeat: 0.2, // heat a freshly-ignited cell starts at (0..1) — a weak lick that must build
   seedRadius: 1, // radius (cells) of the disc lit when a fire is seeded/spotted — start as a SPOT
@@ -636,6 +696,40 @@ export const STRUCTURES = {
   roofTints: [0x4a2f1c, 0x3c3a33, 0x55402a, 0x32302b], // shingle / tin / tar-paper roofs
   woodpileChance: 0.5, // chance a cabin gets a stacked-log woodpile beside it
   shedChance: 0.4, // chance a cabin gets a small lean-to shed
+} as const;
+
+// Burning structures (the stakes, made VISIBLE). A structure within fire range used to only get a
+// faint emissive tint; now a burning cabin/base grows REAL flames (the reused wildfire flame from
+// meshes/fire.ts, scaled to the building), an HDR wall-glow that blooms into a night beacon, its own
+// rooftop smoke column + sparks (fed into the shared pools), and it joins the HeroFireLights pool so
+// it casts ground light. Mobile-safe: each structure's flame is built once and hidden (visible=false)
+// until it catches — zero cost when not burning, no per-frame alloc, no shader recompiles. All in
+// meshes/cabin.ts (flame + glow + collapse) + a thin Game.ts sync (smoke/embers/light/comms).
+export const STRUCT_FIRE = {
+  // Flame footprint passed to the flame's setSize (0..1). The flame rises ~15u×size, so these scale
+  // the blaze to the building: a cabin burns modestly, the base goes up big.
+  cabinFlameSize: 0.16,
+  depotFlameSize: 0.4,
+  // Flame brightness ramps in the instant a building catches (a flare-up) and roars as it chars:
+  // intensity = clamp(flameBase + healthLost × flameGain).
+  flameBase: 0.5, // intensity at the moment of ignition — an immediate, visible flare
+  flameGain: 0.5, // extra intensity as it burns down toward destruction
+  glowHDR: 2.6, // peak emissive multiplier on the timber at full burn (HDR → blooms at night)
+  // Smoke + sparks thrown off a burning building into the shared pools (scaled by burn).
+  smokePuffsCabin: 2, // smoke puffs/burst off a burning cabin
+  smokePuffsDepot: 5, // the base belches a much heavier column
+  smokeCrownCabin: 4, // height (units) above the base where a cabin's smoke column starts
+  smokeCrownDepot: 6,
+  emberRateCabin: 0.5, // share of the per-burst ember budget a cabin throws (0..1)
+  emberRateDepot: 1.0, // the base showers sparks
+  // Progressive collapse: char + sag begin at this fraction of health lost and complete at
+  // destruction (was a single binary slump the instant before it was already gone).
+  collapseStart: 0.45,
+  // Relative heat a burning structure contributes to the HeroFireLights candidate pool, so a burning
+  // town actually lights the night (the base reads hotter and reaches farther).
+  lightHeatCabin: 0.5,
+  lightHeatDepot: 0.85,
+  igniteCooldown: 18, // seconds between pooled "cabins alight" callouts so a hamlet doesn't spam comms
 } as const;
 
 // Settlements (Track A5 — populated map). Beyond lone cabins, the world seeds a handful
@@ -785,8 +879,9 @@ export const MISSIONS = {
   // full bucket + full power ≈ 2.5 min endurance, light loiter ≈ 4.2 min). Only missions
   // with `fuel:true` construct a FuelSim; everything else ignores this block. ---
   startFuel: 1.0, // tank fraction at spawn (0..1)
-  idleBurn: 0.004, // fuel/sec floor at a hover (→ ~4.2-min max-endurance loiter)
-  thrustBurn: 0.002, // extra fuel/sec at full demand (½ throttle + ½ climb)
+  idleBurn: 0.0029, // fuel/sec floor at a hover — EASED 0.004→0.0029 (≈1.4× endurance) so range keeps pace with
+  // the 1.4× larger world (bases sit further apart now); ~5.7-min max-endurance loiter
+  thrustBurn: 0.0014, // extra fuel/sec at full demand (½ throttle + ½ climb) — eased 0.002→0.0014 with idleBurn
   payloadBurn: 0.35, // a full bucket adds this fraction to the thrust term (heavy-lift premium)
   lowWarn: 0.2, // fuel gauge flashes below this (≈ the real "30-min reserve")
   refuelRadius: 26, // grounded/slow within this of the depot refuels
@@ -820,9 +915,10 @@ export const FAUNA = {
 // (shadows, tessellation, post-fx). Render RESOLUTION is a SEPARATE, recompile-free
 // lever: a frame-time watchdog scales DPR within [dpr.floor .. dprCap] and — unlike
 // the old one-way tier ratchet — steps it back UP when there's headroom, so a brief
-// stall can't strand the device at a permanently blurry resolution. dprCap is a
-// uniform ceiling of 2 across tiers (a cheap scene at DPR 2 is sharp AND affordable;
-// resolution and scene cost are decoupled). Load-time-only fields (shadowMapSize,
+// stall can't strand the device at a permanently blurry resolution. dprCap is 2 on
+// med/high (a cheap scene at DPR 2 is sharp AND affordable) but 1 on low — a device
+// that classifies "low" starts sharp-enough at DPR 1 instead of janking ~2.5s at 2×
+// before the watchdog can step it down. Load-time-only fields (shadowMapSize,
 // waterSegments, terrainSegments) are read once at construction — changing them
 // would recompile, so the watchdog never touches them.
 export const QUALITY = {
@@ -832,7 +928,7 @@ export const QUALITY = {
     // bloom > 0 enables the post-fx composer (low skips it entirely → cheapest path).
     // msaa = composer multisample count (0 = none; the no-composer low path AAs via the
     // renderer's own antialias). dprCap = per-tier render-resolution ceiling.
-    low: { name: 'low', dprCap: 2, shadows: false, shadowMapSize: 512, waterSegments: 96, terrainSegments: 140, bloom: 0, msaa: 0 },
+    low: { name: 'low', dprCap: 1, shadows: false, shadowMapSize: 512, waterSegments: 96, terrainSegments: 140, bloom: 0, msaa: 0 }, // dprCap 1: low-end devices skip the ~2.5s startup jank of rendering at 2× before the watchdog steps down
     med: { name: 'med', dprCap: 2, shadows: true, shadowMapSize: 1024, waterSegments: 160, terrainSegments: 190, bloom: 1, msaa: 0 },
     high: { name: 'high', dprCap: 2, shadows: true, shadowMapSize: 2048, waterSegments: 224, terrainSegments: 248, bloom: 1, msaa: 4 },
   },
@@ -1200,3 +1296,37 @@ export const CAMERA = {
   bombingArmFireDist: 180, // engage only when the nearest active fire is within this (units)
   bombingEngageLerp: 0.05, // per-60fps ease of the 0..1 engage factor IN and OUT — glides, never snaps
 };
+
+// Title / attract screen — the home-screen 3D backdrop that renders BEHIND the menu (ui/title/
+// TitleScreen + menu/AttractScene). A lightweight, non-interactive scene: a gradient sky dome, a
+// gently rolling boreal floor, sun+hemi lighting, and a slow cinematic camera drift. Built once and
+// torn down the instant the player hits PLAY (the menu→mission jump is a full reload anyway), so it
+// never competes with the gameplay renderer. This block is the SINGLE source of its tuning — the
+// moving layers added in later phases (helicopter flyby, fire + smoke, drifting clouds, swaying
+// trees) extend it here rather than hard-coding values. Mobile-60: curated + low complexity, the
+// shared QualityTier caps DPR and gates shadows/post-fx exactly as in-game.
+export const TITLE = {
+  timeOfDay: 'golden', // SKY_PRESETS mood for the backdrop — the game's cinematic golden-hour default
+  // Camera — a composed, slightly elevated frame that looks out over the floor toward the low sun,
+  // sliding through a very slow sway+bob so the scene breathes without ever distracting from the menu.
+  camera: {
+    fov: 55, // vertical FOV (deg) — a touch tighter than the 60° chase cam for a posterish, composed frame
+    pos: { x: 12, y: 30, z: 108 }, // eye position (world units) — high enough to look down across a vista of rolling floor
+    target: { x: 0, y: 7, z: -48 }, // aim point tilts the lens DOWN (~8°) so the horizon sits low and the boreal floor reads as a vista; logo gets clear sky above
+    driftX: 9, // horizontal sway amplitude (units) of the idle orbit
+    driftY: 2.5, // vertical bob amplitude (units)
+    swayHz: 0.02, // sway frequency (cycles/sec) — ~50s per pass, hypnotically slow
+    bobHz: 0.014, // bob frequency (cycles/sec) — offset from sway so the motion never feels like a loop
+  },
+  // Rolling boreal floor — a single procedural plane, vertex-coloured by height (deep green hollows →
+  // lighter meadow rises, matching the BIOMES palette) and faded into the horizon by the preset fog.
+  ground: {
+    size: 2400, // floor extent (units) — runs well past the fog far-plane so no edge ever shows
+    segments: 100, // plane tessellation for the gentle roll (built once at load)
+    amplitude: 7, // vertical relief of the rolling hills (units) — low, shield-country relief
+    frequency: 0.012, // world→sine scale for the roll (lower = broader landforms)
+    colorLow: 0x2f5234, // deep boreal green in the hollows
+    colorHigh: 0x6f8f3f, // lighter meadow green on the rises
+  },
+  wind: { x: 0.35, z: 0.12 }, // gentle ambient wind fed to the shared uniform bus (drives foliage/smoke in later phases)
+} as const;

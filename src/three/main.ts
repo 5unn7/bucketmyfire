@@ -4,7 +4,10 @@ import { QualityTier } from './render/QualityTier';
 import { Composer } from './postfx/Composer';
 import { shouldAutostart, defaultProfile } from './ui/Onboarding';
 import { MenuFlow } from './ui/flow/MenuFlow';
+import { TitleScreen } from './ui/title/TitleScreen';
 import { CAMPAIGN, missionById } from './missions/catalog';
+import { buildDailyMission, isDailyId } from './missions/daily';
+import { HELI_MODELS } from './meshes/heliModels';
 import { openLeaderboard } from './ui/Leaderboard';
 import { resetStaleStorage } from './storage/reset';
 import { installErrorBeacon } from './telemetry/errorBeacon';
@@ -56,18 +59,27 @@ if (webglAvailable()) {
 /** Campaign router: a chosen mission (URL `?m=` / saved / autostart) boots the Game; otherwise we
  *  show the home-screen wizard. Pulled into a function so the WebGL guard above can gate it cleanly. */
 function routeMission(): void {
+  // Daily Burn: ?daily boots today's procedurally-seeded "clear every fire" challenge (FIX #1/#8) —
+  // a fresh shared map each day with its own per-day leaderboard. Bypasses the campaign router.
+  if (params.has('daily')) {
+    bootMission(buildDailyMission(new Date()));
+    return;
+  }
+
   let selectedId = params.get('m');
   if (!selectedId && shouldAutostart()) selectedId = CAMPAIGN[0].id;
 
   if (selectedId) {
     bootMission(missionById(selectedId) ?? CAMPAIGN[0]);
   } else {
-    // No `?m=` → the home screen: the guided pre-flight wizard (MenuFlow). Its Screen 1 IS the
-    // identity gate (a required callsign — launch requirement), so first-run players can't reach a
-    // mission without a name; returning pilots get a "Skip to missions →". Picking a mission
-    // navigates with `?m=` (a reload, no Three.js teardown). Headless/deep-link (?m= / ?autostart /
-    // ?qa) bypasses this branch entirely and boots straight into the game.
-    new MenuFlow(container, CAMPAIGN, (id) => gotoCampaign(id));
+    // No `?m=` → the home screen: the 3D TitleScreen (an attract-scene backdrop + ember logo + PLAY).
+    // PLAY tears the title down and mounts the guided pre-flight wizard (MenuFlow) — whose Screen 1 IS
+    // the identity gate (a required callsign), so first-run players can't reach a mission without a
+    // name; returning pilots get a "Skip to missions →". Picking a mission navigates with `?m=` (a
+    // reload). Headless/deep-link (?m= / ?autostart / ?qa) bypasses this branch and boots the game.
+    new TitleScreen(container, CAMPAIGN, () => {
+      new MenuFlow(container, CAMPAIGN, (id) => gotoCampaign(id));
+    });
   }
 }
 
@@ -113,6 +125,7 @@ function showFatalMessage(host: HTMLElement, title: string, body: string): void 
  */
 function gotoCampaign(missionId: string | null): void {
   const url = new URL(location.href);
+  url.searchParams.delete('daily'); // leaving Daily Burn → never carry ?daily into a campaign/menu nav
   if (missionId) {
     url.searchParams.set('m', missionId);
   } else {
@@ -124,6 +137,17 @@ function gotoCampaign(missionId: string | null): void {
 
 /** End-banner + in-game buttons: advance / retry / back to menu. */
 function endHooks(mission: MissionDef): EndScreenHooks {
+  // Daily Burn: no campaign NEXT; replay re-runs today's same-seed map for a better score, and the
+  // Leaderboard opens TODAY'S board (the daily mission is appended so its tab renders).
+  if (isDailyId(mission.id)) {
+    return {
+      hasNext: false,
+      onNext: () => location.reload(),
+      onRetry: () => location.reload(),
+      onMenu: () => gotoCampaign(null),
+      onLeaderboard: () => openLeaderboard([...CAMPAIGN, mission], mission.id),
+    };
+  }
   // Advance stays within the SAME map (each map owns its own campaign), so per-map indices are honoured.
   const next = CAMPAIGN.find((m) => (m.map ?? '') === (mission.map ?? '') && m.index === mission.index + 1);
   return {
@@ -176,7 +200,12 @@ function bootMission(mission: MissionDef): void {
   // Headless QA (?qa drives __game; ?autostart boots straight into a mission) skips the cold-start
   // ritual — the autopilot/teleport/screenshot flows expect a running, airborne aircraft.
   const skipColdStart = params.has('qa') || params.has('autostart');
-  const game = new Game(container, tier, mission, defaultProfile(), endHooks(mission), { skipColdStart });
+  // QA / dev: fly ANY airframe regardless of unlock progress with ?heli=<id> (bell-205a1 | bell-212 |
+  // uh-60), e.g. ?m=first-light&autostart&heli=uh-60. Unknown ids fall back to the saved default.
+  const heliOverride = params.get('heli');
+  const profile =
+    heliOverride && HELI_MODELS[heliOverride] ? { ...defaultProfile(), heliId: heliOverride } : defaultProfile();
+  const game = new Game(container, tier, mission, profile, endHooks(mission), { skipColdStart });
 
   // Bloom post-process (B3) — fire/sun glow, render path chosen by tier at load.
   const composer = new Composer(renderer, game.scene, game.camera, tier);

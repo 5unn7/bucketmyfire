@@ -91,12 +91,48 @@ export function buildMinimap(world: World, worldSize: number, px = 224): HTMLCan
     for (const rd of world.roads) {
       ctx.beginPath();
       for (let i = 0; i < rd.pts.length; i++) {
-        const [px, py] = toPx(rd.pts[i].x, rd.pts[i].z);
-        if (i === 0) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
+        const [rx, ry] = toPx(rd.pts[i].x, rd.pts[i].z);
+        if (i === 0) ctx.moveTo(rx, ry);
+        else ctx.lineTo(rx, ry);
       }
       ctx.stroke();
     }
+  }
+
+  // Province outline (anchored maps): mute everything OUTSIDE the real boundary and stroke the border,
+  // so the radar reads as the actual province (e.g. Saskatchewan's trapezoid) instead of a filled square.
+  const outline = world.provinceOutline();
+  if (outline && outline.length >= 3) {
+    const poly = outline.map((p) => toPx(p.x, p.z));
+    const trace = () => {
+      ctx.moveTo(poly[0][0], poly[0][1]);
+      for (let i = 1; i < poly.length; i++) ctx.lineTo(poly[i][0], poly[i][1]);
+      ctx.closePath();
+    };
+    // Shade the exterior: full-canvas rect MINUS the polygon (even-odd) → only off-province area fills.
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, canvas.width, canvas.height);
+    trace();
+    ctx.fillStyle = 'rgba(9,13,19,0.8)';
+    ctx.fill('evenodd');
+    ctx.restore();
+    // Provincial boundary: dark casing under a faded-parchment dashed line (an administrative border).
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    trace();
+    ctx.strokeStyle = 'rgba(6,9,13,0.9)';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([]);
+    ctx.stroke();
+    ctx.beginPath();
+    trace();
+    ctx.strokeStyle = 'rgba(208,190,150,0.85)';
+    ctx.lineWidth = 1.4;
+    ctx.setLineDash([6, 4]);
+    ctx.stroke();
+    ctx.setLineDash([]);
   }
 
   return canvas;

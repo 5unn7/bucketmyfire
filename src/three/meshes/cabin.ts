@@ -1,6 +1,7 @@
 import * as THREE from 'three';
-import { STRUCTURES } from '../config';
+import { STRUCTURES, STRUCT_FIRE } from '../config';
 import type { StructureKind } from '../sim/Structures';
+import { createFire } from './fire';
 
 /** Tiny seeded PRNG (mulberry32) so each cabin's variety is deterministic from its id. */
 function mkRng(seed: number): () => number {
@@ -35,13 +36,13 @@ function pick<T>(arr: readonly T[], rng: () => number): T {
 export interface StructureMesh {
   group: THREE.Group;
   setDamage(d: number): void; // 0 pristine → 1 destroyed
-  setBurning(b: number | boolean): void; // ember glow while threatened
+  setBurning(b: number | boolean): void; // flames + HDR glow while threatened
+  flicker(elapsedSeconds: number): void; // advance the building's flame animation (call each frame)
 }
 
 // Charred target the timber lerps toward as damage rises.
 const CHAR = new THREE.Color(0x14100c);
 const EMBER = new THREE.Color(0xff5a1e);
-const COLLAPSE_AT = 0.999; // damage at which the structure visibly slumps to ruin
 
 interface Part {
   mesh: THREE.Mesh;
@@ -89,7 +90,7 @@ function buildCabin(seed: number): StructureMesh {
   if (rng() < STRUCTURES.woodpileChance) addWoodpile(group, parts, rng, bw * 0.5 + s * 0.5, -bd * 0.2, s);
   if (rng() < STRUCTURES.shedChance) addShed(group, parts, logTint, roofTint, -bw * 0.5 - s * 0.7, bd * 0.15, s);
 
-  return finalize(group, parts, 1.0);
+  return finalize(group, parts, 0.78, 'cabin'); // a burnt cabin slumps to a low ruin (keeps some height)
 }
 
 /** A stacked-log woodpile: a few horizontal logs in two short rows beside the cabin. */
@@ -142,41 +143,77 @@ function buildDepot(): StructureMesh {
   addBox(group, parts, 0xe8eef2, padR * 0.18, markH, padR * 0.9, padX + padR * 0.35, 0.14, 0);
   addBox(group, parts, 0xe8eef2, padR * 0.7, markH, padR * 0.2, padX, 0.14, 0);
 
-  return finalize(group, parts, 0.55); // depot collapses less (concrete) — slumps gently
+  return finalize(group, parts, 0.55, 'depot'); // depot collapses less (concrete) — slumps gently
 }
 
 // --- Shared damage behavior -------------------------------------------------
 
-function finalize(group: THREE.Group, parts: Part[], collapseDrop: number): StructureMesh {
-  let burn = 0;
+function finalize(group: THREE.Group, parts: Part[], collapseDrop: number, kind: StructureKind): StructureMesh {
+  let burn = 0; // 0..1 from setBurning (a fire is within threatRadius)
+  let dmg = 0; // 0..1 from setDamage (1 − health)
+
+  // Reuse the wildfire flame, scaled to the building (a cabin burns modestly; the base goes up big).
+  // DROP its point light so a burning structure never changes the scene's light count (a shader
+  // recompile hazard) — the HeroFireLights pool lights burning structures on the ground instead. The
+  // flame is built once and hidden until the building catches, so it costs nothing while it's intact.
+  const flameSize = kind === 'depot' ? STRUCT_FIRE.depotFlameSize : STRUCT_FIRE.cabinFlameSize;
+  const flame = createFire();
+  flame.group.remove(flame.light);
+  flame.setSize(flameSize);
+  flame.setIntensity(0);
+  flame.group.visible = false;
+  group.add(flame.group);
+
+  // Flame intensity flares in the instant a building catches and roars as it chars to destruction.
+  function flameIntensity(): number {
+    return burn <= 0 ? 0 : clamp01(STRUCT_FIRE.flameBase + dmg * STRUCT_FIRE.flameGain);
+  }
+
+  // Re-apply flame + glow from the current (burn, dmg, collapse) state. Cheap; called by both setters.
+  function refresh(): void {
+    const fi = flameIntensity();
+    const lit = fi > 0.001;
+    flame.group.visible = lit;
+    if (lit) {
+      flame.setIntensity(fi);
+      // Counter the collapse scale so the flame stays full-height + upright while the building slumps.
+      flame.group.scale.set(1 / Math.max(0.1, group.scale.x), 1 / Math.max(0.1, group.scale.y), 1 / Math.max(0.1, group.scale.z));
+    }
+    for (const p of parts) {
+      // Char the timber toward black with damage; while burning, glow it HOT in HDR so the building
+      // blooms into a beacon at night (was a dull LDR tint that barely read).
+      p.material.color.copy(p.base).lerp(CHAR, dmg * 0.85);
+      p.material.emissive.copy(EMBER).multiplyScalar(lit ? STRUCT_FIRE.glowHDR * fi : 0);
+    }
+  }
 
   function setDamage(d: number): void {
-    const dd = clamp01(d);
-    for (const p of parts) {
-      p.material.color.copy(p.base).lerp(CHAR, dd * 0.85);
-      // Re-apply the ember on top of the (possibly re-charred) base each call.
-      p.material.emissive.copy(EMBER).multiplyScalar(burn * 0.6 * (0.4 + 0.6 * dd));
-    }
-    // Past the threshold the building is a ruin: slump it down and tilt slightly.
-    if (dd >= COLLAPSE_AT) {
-      group.scale.set(1, 1 - collapseDrop, 1);
-      group.rotation.z = 0.12;
-    } else {
-      group.scale.set(1, 1, 1);
-      group.rotation.z = 0;
-    }
+    dmg = clamp01(d);
+    // Progressive collapse: char + sag from collapseStart all the way to destruction (no longer a
+    // last-instant snap), so you can SEE a structure losing the fight and racing to save it matters.
+    const sag = smoothstep01((dmg - STRUCT_FIRE.collapseStart) / Math.max(0.001, 1 - STRUCT_FIRE.collapseStart));
+    group.scale.set(1 - 0.14 * sag, 1 - collapseDrop * sag, 1 - 0.14 * sag);
+    group.rotation.z = 0.13 * sag;
+    refresh();
   }
 
   function setBurning(b: number | boolean): void {
     burn = typeof b === 'number' ? clamp01(b) : b ? 1 : 0;
-    for (const p of parts) {
-      p.material.emissive.copy(EMBER).multiplyScalar(burn * 0.6);
-    }
+    refresh();
+  }
+
+  function flicker(elapsedSeconds: number): void {
+    if (flame.group.visible) flame.flicker(elapsedSeconds);
   }
 
   setBurning(0);
   setDamage(0);
-  return { group, setDamage, setBurning };
+  return { group, setDamage, setBurning, flicker };
+}
+
+function smoothstep01(x: number): number {
+  const t = x < 0 ? 0 : x > 1 ? 1 : x;
+  return t * t * (3 - 2 * t);
 }
 
 // --- Geometry helpers -------------------------------------------------------

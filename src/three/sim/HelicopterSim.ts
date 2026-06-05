@@ -86,7 +86,7 @@ export class HelicopterSim {
    * floor so the first integrated frame doesn't jump.
    */
   hoverAt(x: number, z: number, floorY: number): void {
-    const y = floorY + FLIGHT.maxClearance;
+    const y = floorY + FLIGHT.startClearance;
     this.position.set(x, y, z);
     this.altitude = y;
     this.altVel = 0;
@@ -96,7 +96,7 @@ export class HelicopterSim {
     this.turnInput = 0;
     this.throttleInput = 0;
     this.liftInput = 0;
-    this.agl = FLIGHT.maxClearance;
+    this.agl = FLIGHT.startClearance;
   }
 
   /** Horizontal speed (units/s). */
@@ -268,8 +268,34 @@ export class HelicopterSim {
     // A fast-cruising heli sits persistently nose-down (disc tilted forward to hold
     // speed against drag — `cruise`, computed above); the acceleration term then adds
     // the dive/flare on top.
-    const targetPitch = cruise - THREE.MathUtils.clamp(fwdAcc / aRef, -1, 1) * FLIGHT.maxPitch;
-    const targetBank = -THREE.MathUtils.clamp(rightAcc / aRef, -1, 1) * FLIGHT.maxBank;
+    let targetPitch = cruise - THREE.MathUtils.clamp(fwdAcc / aRef, -1, 1) * FLIGHT.maxPitch;
+    // NOTE: sign is MIRRORED (no leading minus) so a LEFT turn banks LEFT — left side drops,
+    // right side rides high. The steer term below uses the matching sign so both reinforce.
+    let targetBank = THREE.MathUtils.clamp(rightAcc / aRef, -1, 1) * FLIGHT.maxBank;
+
+    // --- Direct pilot attitude authority (AEROBATICS) — lean on the STICK, on TOP of the
+    // acceleration-driven tilt above. This is the "throw it into a hard banked turn and
+    // dive-bomb on command" layer; without it bank/pitch are only ever side effects. ---
+    // Steering rolls the airframe directly. The centripetal bank alone is weak at this
+    // game's slow cruise, so a turn barely dropped a wing — now the stick commands the
+    // roll, scaled up with speed (a hover pedal-turn still banks a little: steerBankIdle).
+    const moveFrac = THREE.MathUtils.clamp(this.speed / FLIGHT.maxSpeed, 0, 1);
+    const steerGain = FLIGHT.steerBankIdle + (1 - FLIGHT.steerBankIdle) * moveFrac;
+    targetBank += this.turnInput * FLIGHT.steerBank * steerGain;
+    // Dive-bomb: shoving the nose DOWN (down collective) while carrying forward speed tucks
+    // the airframe into a committed dive. The pitch→motion coupling above (which read last
+    // frame's pitch) then turns this deeper nose-down into a real surging, sinking swoop next
+    // frame; haul UP collective to kill the dive and flare out. Scaled by forward speed, so
+    // easing straight down onto a lake to scoop barely noses over — only a fast forward
+    // descent opens a dive. `lift` is the smoothed collective demand (−1 down … +1 up).
+    const diveFwd = THREE.MathUtils.clamp(fwdSpeed / FLIGHT.maxSpeed, 0, 1);
+    const diveCmd = Math.max(0, -lift) * diveFwd;
+    targetPitch -= diveCmd * FLIGHT.diveCommand;
+
+    // Hard envelope: accel + stick combined can't tumble the airframe past a sane lean.
+    targetBank = THREE.MathUtils.clamp(targetBank, -FLIGHT.maxBankHard, FLIGHT.maxBankHard);
+    targetPitch = THREE.MathUtils.clamp(targetPitch, -FLIGHT.maxPitchHard, FLIGHT.maxPitchHard);
+
     this.bank = THREE.MathUtils.lerp(this.bank, targetBank, FLIGHT.bodyEase);
     this.pitch = THREE.MathUtils.lerp(this.pitch, targetPitch, FLIGHT.bodyEase);
   }

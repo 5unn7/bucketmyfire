@@ -17,6 +17,21 @@ without breaking the procedural-first ethos or the locked `World` API.
 > placement below (Phase 1–3) is the **next** build; `Region.anchors` + `MissionDef.homeBase` are
 > already declared (additive, unused until World resolves them).
 
+> **Shipped (2026-06-04, real-coordinate upgrade):** anchored placement is now driven by **real
+> latitude/longitude**, not normalized 0..1 coords. `MapAnchor` carries `{ lat, lon }`; `Region.geo`
+> declares the province bounding box + boundary `outline`. `World` projects every anchor with a cosine
+> ("sinusoidal") projection (`project(lat, lon)`) sized so the geo box's N–S extent fills `MAPGEO.fill`
+> of the world height — so the 7 fire bases sit at their **true relative positions** and Saskatchewan
+> renders as its real **trapezoid** (wider south, narrower north), not a stretched square. Scoop-lake
+> radii come from each lake's **real surface area** (`scoop.areaKm2`) compressed onto a playable band
+> (`MAPGEO.lakeMinR..lakeMaxR`), so Reindeer Lake dwarfs Candle Lake while both stay scoopable. Towns
+> sharing the big La Ronge / Churchill water nudge to distinct dry-shore points (no stacking). The radar
+> (`world/minimap.ts`) shades the off-province exterior and strokes the provincial border, so the map
+> reads as Saskatchewan. The whole province (49°–60°N) is framed; the **open southern third is reserved
+> for v2** (Prince Albert / Hudson Bay are placed as markers but carry no campaign content yet).
+> `Game`/`verify-campaign` were untouched — the reprojection lives entirely behind the `World` API
+> (`verify:campaign` still 42/42). The normalized-`x`/`y` model in the sections below is **superseded**.
+
 ## The one capability we add
 
 Today the world is procedural-from-seed and place **names are drawn randomly and pinned

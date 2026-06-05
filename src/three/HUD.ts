@@ -22,6 +22,7 @@ import type { TrackerItem, CommsSpeaker, CommsUrgency, MissionDef, ScoreBreakdow
 import type { FireFieldView } from './sim/FireSystem';
 import { UI, FS, FW, R, el, frosted, makeCanvas, clamp01, anchor, setBlur, scrim, prefersReducedMotion } from './ui/theme';
 import { onLayout, type LayoutState } from './ui/layout';
+import { shareScoreCard } from './ui/shareCard';
 
 export interface HudState {
   water: number;
@@ -96,6 +97,9 @@ export interface EndScreenHooks {
 export interface MapLabels {
   communities: { name: string; x: number; z: number }[];
   lakes: { name: string; x: number; z: number }[];
+  landmarks?: { name: string; x: number; z: number; kind: 'city' | 'town' }[]; // decorative reference places
+  // (far-north settlements + southern cities) — drawn dimmer, on the expanded province map only
+  outline?: { x: number; z: number }[]; // real province boundary (world XZ); expanded radar fits + clips to it
 }
 
 // Design tokens + DOM helpers (el / frosted / makeCanvas / clamp01) now live in
@@ -107,6 +111,9 @@ const TAPE_W = 78; // jet tape canvas width
 const TAPE_H = 188; // jet tape canvas height (the scrolling window)
 const LOW_AGL_FT = 250; // altimeter reads LOW (red) below this AGL in feet
 const RANGE_NEAR = 160; // world units to the radar edge when collapsed (zoomed-in local map)
+const EXPAND_ZOOM = 0.6; // DEFAULT px per world unit in the expanded map — DRAG to pan, +/−/wheel/pinch to zoom
+const ZOOM_MIN = 0.22; // most zoomed-OUT (roughly the whole province in view)
+const ZOOM_MAX = 1.8; // most zoomed-IN (a base + its lake fill the panel)
 const HINT_VISIBLE_MS = 3600; // status hint flashes on, then auto-fades after this (no permanent nag)
 const HULL_OK = '#46d17a'; // healthy-hull bar green (matches the engine-ready green); turns red when low
 
@@ -174,7 +181,25 @@ export class HUD {
   private readonly minimap: HTMLCanvasElement; // baked satellite terrain (world-aligned)
   private readonly labels: MapLabels; // A5: static place names drawn screen-upright on the radar
   private readonly dpr = Math.min(window.devicePixelRatio || 1, 2);
-  private radarExpanded = false; // tap the radar to toggle local ↔ whole-world view
+  private radarExpanded = false; // tap the radar to toggle local ↔ pannable map view
+  // Expanded-map pan: a north-up readable map you DRAG to move around (the whole province won't fit at a
+  // legible zoom). panX/panZ = world point shown at the radar centre; set to the heli on expand, clamped.
+  private panX = 0;
+  private panZ = 0;
+  private dragging = false;
+  private dragMoved = false; // distinguishes a pan-drag from a tap (tap toggles expand)
+  private dragStartX = 0;
+  private dragStartY = 0;
+  private dragStartPanX = 0;
+  private dragStartPanZ = 0;
+  private expandZoom = EXPAND_ZOOM; // live px/world-unit in the expanded map (wheel / pinch / +/− buttons adjust it)
+  private pointers = new Map<number, { x: number; y: number }>(); // active pointers on the radar (for pinch-zoom)
+  private pinchDist0 = 1; // baseline finger spread + zoom + world-midpoint at the start of a pinch
+  private pinchZoom0 = EXPAND_ZOOM;
+  private pinchMidWX = 0;
+  private pinchMidWZ = 0;
+  private lastHeliX = 0; // last heli world pos — centres the map when you expand
+  private lastHeliZ = 0;
   // Responsive sizing — driven by applyLayout() from the layout controller (event-driven, not per-frame).
   private tapeGap = 70; // px from center to each flight tape
   private radarBase = 128; // collapsed radar side
@@ -412,11 +437,117 @@ export class HUD {
     });
     this.radarCanvas = radar.canvas;
     this.radarCtx = radar.ctx;
+    // Interaction model. Collapsed: a tap expands. Expanded: a tap collapses, a DRAG pans, the +/− corner
+    // buttons + mouse WHEEL + two-finger PINCH zoom. A pointerdown that moves < a few px counts as a tap.
+    const ptr = (e: { clientX: number; clientY: number }) => {
+      const r = this.radarCanvas.getBoundingClientRect();
+      return { x: e.clientX - r.left, y: e.clientY - r.top };
+    };
     this.radarCanvas.addEventListener('pointerdown', (e) => {
       e.stopPropagation();
-      this.radarExpanded = !this.radarExpanded;
-      this.sizeRadar();
+      try {
+        this.radarCanvas.setPointerCapture?.(e.pointerId);
+      } catch {
+        /* capture is best-effort — never let it abort the gesture */
+      }
+      const p = ptr(e);
+      this.pointers.set(e.pointerId, p);
+      // Zoom buttons (expanded): a tap on +/− zooms toward centre; not a pan or a collapse.
+      if (this.radarExpanded) {
+        const zb = this.hitZoomButton(p.x, p.y);
+        if (zb) {
+          const R = this.radarMax / 2;
+          this.zoomAt(R, R, zb > 0 ? 1.3 : 1 / 1.3);
+          this.dragging = false;
+          this.dragMoved = true;
+          return;
+        }
+      }
+      if (this.pointers.size >= 2) {
+        // Begin a pinch: cancel any single-finger pan, snapshot the spread + the world point at the midpoint.
+        this.dragging = false;
+        this.dragMoved = true;
+        const [a, b] = [...this.pointers.values()];
+        const R = this.radarMax / 2;
+        this.pinchDist0 = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+        this.pinchZoom0 = this.expandZoom;
+        this.pinchMidWX = this.panX + ((a.x + b.x) / 2 - R) / this.expandZoom;
+        this.pinchMidWZ = this.panZ + ((a.y + b.y) / 2 - R) / this.expandZoom;
+        return;
+      }
+      this.dragging = true;
+      this.dragMoved = false;
+      this.dragStartX = e.clientX;
+      this.dragStartY = e.clientY;
+      this.dragStartPanX = this.panX;
+      this.dragStartPanZ = this.panZ;
     });
+    this.radarCanvas.addEventListener('pointermove', (e) => {
+      if (!this.pointers.has(e.pointerId)) return;
+      this.pointers.set(e.pointerId, ptr(e));
+      if (this.radarExpanded && this.pointers.size >= 2) {
+        // Pinch zoom: keep the gesture's world midpoint under the live finger midpoint.
+        const [a, b] = [...this.pointers.values()];
+        const R = this.radarMax / 2;
+        const dist = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+        this.expandZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, this.pinchZoom0 * (dist / this.pinchDist0)));
+        this.panX = this.pinchMidWX - ((a.x + b.x) / 2 - R) / this.expandZoom;
+        this.panZ = this.pinchMidWZ - ((a.y + b.y) / 2 - R) / this.expandZoom;
+        this.clampPan();
+        this.dragMoved = true;
+        return;
+      }
+      if (!this.dragging) return;
+      const dx = e.clientX - this.dragStartX;
+      const dy = e.clientY - this.dragStartY;
+      if (Math.abs(dx) + Math.abs(dy) > 5) this.dragMoved = true;
+      if (this.radarExpanded) {
+        // Drag-to-pan: the world point under the finger stays put → the centre moves opposite the drag.
+        this.panX = this.dragStartPanX - dx / this.expandZoom;
+        this.panZ = this.dragStartPanZ - dy / this.expandZoom;
+        this.clampPan();
+      }
+    });
+    const endDrag = (e: PointerEvent) => {
+      try {
+        this.radarCanvas.releasePointerCapture?.(e.pointerId);
+      } catch {
+        /* best-effort */
+      }
+      this.pointers.delete(e.pointerId);
+      if (this.pointers.size >= 1) {
+        // A finger lifted but others remain (e.g. one pinch finger up) — don't pan/toggle until all are up.
+        this.dragging = false;
+        this.dragMoved = true;
+        return;
+      }
+      const wasTap = this.dragging && !this.dragMoved;
+      this.dragging = false;
+      if (wasTap) {
+        // Toggle local ↔ expanded; on expand, centre the map on the heli.
+        this.radarExpanded = !this.radarExpanded;
+        if (this.radarExpanded) {
+          this.panX = this.lastHeliX;
+          this.panZ = this.lastHeliZ;
+          this.clampPan();
+        }
+        this.sizeRadar();
+      }
+    };
+    this.radarCanvas.addEventListener('pointerup', endDrag);
+    this.radarCanvas.addEventListener('pointercancel', endDrag);
+    // Desktop wheel zoom, toward the cursor.
+    this.radarCanvas.addEventListener(
+      'wheel',
+      (e) => {
+        if (!this.radarExpanded) return;
+        e.preventDefault();
+        const p = ptr(e);
+        this.zoomAt(p.x, p.y, Math.exp(-e.deltaY * 0.0015));
+      },
+      { passive: false },
+    );
+    this.radarCanvas.style.touchAction = 'none'; // we own drag + pinch (no browser scroll/zoom)
     this.topRight = anchor('top-right');
     this.topRight.appendChild(radar.canvas);
     this.topRight.appendChild(this.commsWrap); // radio comms tuck in directly under the map
@@ -511,6 +642,89 @@ export class HUD {
     this.radarCanvas.style.width = `${size}px`;
     this.radarCanvas.style.height = `${size}px`;
     this.radarCtx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+  }
+
+  /** World-space bounding box of the active map's province outline, or null (procedural map). */
+  private outlineBBox(): { minX: number; maxX: number; minZ: number; maxZ: number } | null {
+    const o = this.labels.outline;
+    if (!o || o.length < 3) return null;
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minZ = Infinity;
+    let maxZ = -Infinity;
+    for (const p of o) {
+      minX = Math.min(minX, p.x);
+      maxX = Math.max(maxX, p.x);
+      minZ = Math.min(minZ, p.z);
+      maxZ = Math.max(maxZ, p.z);
+    }
+    return { minX, maxX, minZ, maxZ };
+  }
+
+  /** Keep the expanded-map pan centre over the province (a little overscan past the border is allowed). */
+  private clampPan(): void {
+    const bb = this.outlineBBox();
+    if (!bb) return;
+    const m = 80;
+    this.panX = Math.max(bb.minX - m, Math.min(bb.maxX + m, this.panX));
+    this.panZ = Math.max(bb.minZ - m, Math.min(bb.maxZ + m, this.panZ));
+  }
+
+  /** Zoom the expanded map by `factor` while keeping the world point under screen (sx,sy) fixed. */
+  private zoomAt(sx: number, sy: number, factor: number): void {
+    const R = this.radarMax / 2;
+    const z1 = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, this.expandZoom * factor));
+    if (z1 === this.expandZoom) return;
+    const wx = this.panX + (sx - R) / this.expandZoom; // world point currently under (sx,sy)
+    const wz = this.panZ + (sy - R) / this.expandZoom;
+    this.panX = wx - (sx - R) / z1; // re-centre so it stays under (sx,sy) at the new zoom
+    this.panZ = wz - (sy - R) / z1;
+    this.expandZoom = z1;
+    this.clampPan();
+  }
+
+  /** Geometry of the on-map +/− zoom buttons (bottom-right corner of the expanded panel), in CSS px. */
+  private zoomButtons(d: number): { rb: number; plus: { x: number; y: number }; minus: { x: number; y: number } } {
+    const rb = 13;
+    const m = 9;
+    const cx = d - m - rb;
+    return { rb, minus: { x: cx, y: d - m - rb }, plus: { x: cx, y: d - m - rb - (2 * rb + 6) } };
+  }
+
+  /** Which zoom button (if any) sits under screen (sx,sy): +1 in, −1 out, 0 none. */
+  private hitZoomButton(sx: number, sy: number): number {
+    const b = this.zoomButtons(this.radarMax);
+    if (Math.hypot(sx - b.plus.x, sy - b.plus.y) <= b.rb) return 1;
+    if (Math.hypot(sx - b.minus.x, sy - b.minus.y) <= b.rb) return -1;
+    return 0;
+  }
+
+  /** Draw the +/− zoom buttons over the expanded map (a frosted disc + glyph each). */
+  private drawZoomButtons(ctx: CanvasRenderingContext2D, d: number): void {
+    const b = this.zoomButtons(d);
+    for (const [c, sign] of [
+      [b.plus, 1],
+      [b.minus, -1],
+    ] as const) {
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, b.rb, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(10,16,22,0.66)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.32)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.strokeStyle = '#eaf6ff';
+      ctx.lineWidth = 1.8;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(c.x - 5, c.y);
+      ctx.lineTo(c.x + 5, c.y);
+      if (sign > 0) {
+        ctx.moveTo(c.x, c.y - 5);
+        ctx.lineTo(c.x, c.y + 5);
+      }
+      ctx.stroke();
+    }
   }
 
   /** C5: set the blinding-smoke veil opacity (0 clear → 1 fully socked in). */
@@ -826,26 +1040,19 @@ export class HUD {
   }
 
   private async shareRun(s: HudState, btn: HTMLDivElement): Promise<void> {
-    const url = 'https://bucketmyfire.com';
-    const mission = this.missionName || 'a wildfire';
-    const did = s.won ? `cleared "${mission}"` : `fought "${mission}"`;
-    const text = `I ${did} and scored ${s.score.toLocaleString()} in Bucket My Fire 🚁🔥`;
-    const nav = navigator as Navigator & { share?: (d: { title?: string; text?: string; url?: string }) => Promise<void> };
-    if (nav.share) {
-      try {
-        await nav.share({ title: 'Bucket My Fire', text, url });
-      } catch {
-        /* user dismissed the share sheet — no fallback needed */
-      }
-      return;
-    }
-    try {
-      await navigator.clipboard?.writeText(`${text} — play free at ${url}`);
-    } catch {
-      /* clipboard blocked — nothing more we can do quietly */
-    }
+    // Share an IMAGE score-card (it unfurls as a picture everywhere) instead of bare text — the
+    // single biggest virality upgrade (audit FIX #9). Web Share file -> clipboard image -> download
+    // -> text link is all handled in shareCard.ts; here we just reflect the outcome on the button.
+    const outcome = await shareScoreCard({
+      missionName: this.missionName || 'a wildfire',
+      score: s.score,
+      stars: s.debrief?.breakdown?.stars ?? undefined,
+      won: s.won,
+      callsign: this.pilotName || undefined,
+    });
+    if (outcome === 'shared' || outcome === 'failed') return; // native sheet handled it / nothing to confirm
     const orig = btn.textContent;
-    btn.textContent = '✓ COPIED';
+    btn.textContent = outcome === 'downloaded' ? '✓ SAVED' : '✓ COPIED';
     window.setTimeout(() => {
       btn.textContent = orig;
     }, 1600);
@@ -1337,18 +1544,10 @@ export class HUD {
     this.burnCtx.putImageData(this.burnImg, 0, 0);
   }
 
-  /** Blit the burn raster onto the radar using the SAME heading-up affine as the satellite map
-   *  (so it stays registered). `a,b,c,dd,tx,tz` are the map-blit basis from drawRadar. */
-  private drawBurnOverlay(
-    ctx: CanvasRenderingContext2D,
-    R: number,
-    a: number,
-    b: number,
-    c: number,
-    dd: number,
-    tx: number,
-    tz: number,
-  ): void {
+  /** Blit the burn raster onto the radar using the SAME world→screen affine as the satellite map (so it
+   *  stays registered in either radar mode). `m` = [m00,m01,m10,m11,m0,m1]; burn pixel (0,0) is world
+   *  (−S/2,−S/2), so the blit transform is the affine pre-scaled by the burn cell size. */
+  private drawBurnOverlay(ctx: CanvasRenderingContext2D, m: number[], S: number): void {
     const view = this.burnField;
     if (!view || !this.burnCanvas) return;
     if (this.burnAge++ >= 6) {
@@ -1356,12 +1555,13 @@ export class HUD {
       this.rasterizeBurn(view);
     }
     const k = view.cellSize; // world units per burn-canvas pixel (one cell)
-    const A = a * k;
-    const B = c * k;
-    const C = b * k;
-    const D = dd * k;
-    const E = R + a * tx + b * tz;
-    const F = R + c * tx + dd * tz;
+    const [m00, m01, m10, m11, m0, m1] = m;
+    const A = m00 * k;
+    const B = m10 * k;
+    const C = m01 * k;
+    const D = m11 * k;
+    const E = m00 * (-S / 2) + m01 * (-S / 2) + m0;
+    const F = m10 * (-S / 2) + m11 * (-S / 2) + m1;
     ctx.save();
     ctx.setTransform(this.dpr * A, this.dpr * B, this.dpr * C, this.dpr * D, this.dpr * E, this.dpr * F);
     ctx.imageSmoothingEnabled = true;
@@ -1369,90 +1569,102 @@ export class HUD {
     ctx.restore();
   }
 
-  /** Ego-centric radar: the heli is fixed at center pointing UP and the world
-   *  rotates around it (heading-up). Under the blips sits a baked SATELLITE terrain
-   *  map, cropped + rotated to the heli; then range rings, a soft forward cone,
-   *  glowing fires (rim chevrons when out of range), and a north tick. */
+  /** The radar is a SQUARE rounded panel with two modes. COLLAPSED: an ego-centric tactical scope — the
+   *  heli is fixed at centre pointing UP and the world rotates around it (heading-up). EXPANDED: a legible
+   *  NORTH-UP map you DRAG to pan around (the whole province won't fit at a readable zoom); the heli is a
+   *  moving marker and the cities read in their true orientation. */
   private drawRadar(s: HudState): void {
     const ctx = this.radarCtx;
     const dpr = this.dpr;
-    const d = this.radarExpanded ? this.radarMax : this.radarBase;
+    const exp = this.radarExpanded;
+    this.lastHeliX = s.heliX; // remember the heli so expanding centres the map on it
+    this.lastHeliZ = s.heliZ;
+    const d = exp ? this.radarMax : this.radarBase;
     const R = d / 2;
     const reach = R - 9;
-    // Collapsed = tight local map; expanded = (almost) the whole world.
-    const range = this.radarExpanded ? s.worldSize * 0.52 : RANGE_NEAR;
-    const scale = reach / range; // css px per world unit
     const cos = Math.cos(s.yaw);
     const sin = Math.sin(s.yaw);
     ctx.clearRect(0, 0, d, d);
+
+    // World→screen affine: px = m00·x + m01·z + m0, py = m10·x + m11·z + m1.
+    let m00: number, m01: number, m10: number, m11: number, m0: number, m1: number;
+    if (exp) {
+      // EXPANDED north-up map: panX/panZ is the world point shown at centre (+x east → right, +z south → down).
+      const z = this.expandZoom;
+      m00 = z;
+      m01 = 0;
+      m0 = R - z * this.panX;
+      m10 = 0;
+      m11 = z;
+      m1 = R - z * this.panZ;
+    } else {
+      // COLLAPSED ego-centric heading-up: heli at centre, nose up.
+      const scale = reach / RANGE_NEAR;
+      m00 = scale * sin;
+      m01 = scale * cos;
+      m0 = R - scale * (sin * s.heliX + cos * s.heliZ);
+      m10 = -scale * cos;
+      m11 = scale * sin;
+      m1 = R + scale * (cos * s.heliX - sin * s.heliZ);
+    }
+    const local = (wx: number, wz: number) => ({ x: m00 * wx + m01 * wz + m0, y: m10 * wx + m11 * wz + m1 });
+    // Expanded: draw every blip as a glyph (clipped to the panel, no rim chevrons); collapsed: chevrons past `reach`.
+    const effReach = exp ? d * 4 : reach;
 
     ctx.save();
     roundRectPath(ctx, 1, 1, d - 2, d - 2, 15);
     ctx.clip();
 
-    // --- Satellite terrain backdrop: blit the world map, cropped + rotated so the
-    // heli sits at center and the nose points up. The affine matches local() below
-    // exactly, so the map and the blips stay perfectly registered. ---
+    // --- Satellite terrain backdrop: blit the baked world map through the SAME affine, so map + blips
+    // stay registered in either mode. ---
     const S = s.worldSize;
     const k = S / this.minimap.width; // world units per source pixel
-    const a = scale * sin;
-    const b = scale * cos;
-    const c = -scale * cos;
-    const dd = scale * sin;
-    const tx = -S / 2 - s.heliX;
-    const tz = -S / 2 - s.heliZ;
-    const A = a * k;
-    const B = c * k;
-    const C = b * k;
-    const D = dd * k;
-    const E = R + a * tx + b * tz;
-    const F = R + c * tx + dd * tz;
     ctx.save();
-    ctx.setTransform(dpr * A, dpr * B, dpr * C, dpr * D, dpr * E, dpr * F);
+    ctx.setTransform(
+      dpr * m00 * k,
+      dpr * m10 * k,
+      dpr * m01 * k,
+      dpr * m11 * k,
+      dpr * (m00 * (-S / 2) + m01 * (-S / 2) + m0),
+      dpr * (m10 * (-S / 2) + m11 * (-S / 2) + m1),
+    );
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(this.minimap, 0, 0);
     ctx.restore(); // back to the dpr-scaled default; clip still active
 
-    // Darken + vignette over the map for contrast and a glass-lens edge falloff.
+    // Darken for contrast; the local scope also gets a glass-lens vignette.
     ctx.fillStyle = 'rgba(8,13,18,0.28)';
     ctx.fillRect(0, 0, d, d);
-    const g = ctx.createRadialGradient(R, R, reach * 0.55, R, R, R);
-    g.addColorStop(0, 'rgba(6,10,14,0)');
-    g.addColorStop(1, 'rgba(4,7,10,0.55)');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, d, d);
-
-    // C5: burnt-area scar + live front, registered to the map by the same affine basis.
-    this.drawBurnOverlay(ctx, R, a, b, c, dd, tx, tz);
-
-    // Forward field-of-view cone (points up).
-    const cone = ctx.createRadialGradient(R, R, 2, R, R, reach);
-    cone.addColorStop(0, 'rgba(103,232,255,0.14)');
-    cone.addColorStop(1, 'rgba(103,232,255,0)');
-    ctx.fillStyle = cone;
-    ctx.beginPath();
-    ctx.moveTo(R, R);
-    ctx.arc(R, R, reach, -Math.PI / 2 - 0.5, -Math.PI / 2 + 0.5);
-    ctx.closePath();
-    ctx.fill();
-
-    // Range rings.
-    ctx.strokeStyle = 'rgba(255,255,255,0.13)';
-    ctx.lineWidth = 1;
-    for (const rr of [0.5, 1]) {
-      ctx.beginPath();
-      ctx.arc(R, R, reach * rr, 0, Math.PI * 2);
-      ctx.stroke();
+    if (!exp) {
+      const g = ctx.createRadialGradient(R, R, reach * 0.55, R, R, R);
+      g.addColorStop(0, 'rgba(6,10,14,0)');
+      g.addColorStop(1, 'rgba(4,7,10,0.55)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, d, d);
     }
 
-    // World → ego-centric (heading-up) screen position (same math as the map affine).
-    const local = (wx: number, wz: number) => {
-      const dx = wx - s.heliX;
-      const dz = wz - s.heliZ;
-      const fwd = dx * cos + dz * -sin; // along nose
-      const rgt = dx * sin + dz * cos; // along right
-      return { x: R + rgt * scale, y: R - fwd * scale }; // up = forward
-    };
+    // C5: burnt-area scar + live front, registered to the map by the same affine.
+    this.drawBurnOverlay(ctx, [m00, m01, m10, m11, m0, m1], S);
+
+    // Forward field-of-view cone + range rings — only in the ego-centric local scope.
+    if (!exp) {
+      const cone = ctx.createRadialGradient(R, R, 2, R, R, reach);
+      cone.addColorStop(0, 'rgba(103,232,255,0.14)');
+      cone.addColorStop(1, 'rgba(103,232,255,0)');
+      ctx.fillStyle = cone;
+      ctx.beginPath();
+      ctx.moveTo(R, R);
+      ctx.arc(R, R, reach, -Math.PI / 2 - 0.5, -Math.PI / 2 + 0.5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.13)';
+      ctx.lineWidth = 1;
+      for (const rr of [0.5, 1]) {
+        ctx.beginPath();
+        ctx.arc(R, R, reach * rr, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
 
     // Refuel bases (home + forward pads) — a green helipad "H" marker. In range: an H glyph; out of
     // range: a chevron pinned to the rim. When fuel is LOW the NEAREST base turns amber + glows and a
@@ -1475,7 +1687,7 @@ export class HUD {
         const oy = p.y - R;
         const hot = low && b === near; // the RTB target, highlighted when low
         const col = hot ? UI.warn : PAD;
-        if (Math.hypot(ox, oy) <= reach) {
+        if (Math.hypot(ox, oy) <= effReach) {
           ctx.save();
           if (hot) {
             ctx.shadowColor = UI.warn;
@@ -1514,8 +1726,9 @@ export class HUD {
           ctx.restore();
         }
       }
-      // Low-fuel RTB needle: a dashed line from centre toward the nearest base.
-      if (low) {
+      // Low-fuel RTB needle: a dashed line from centre toward the nearest base (local scope only —
+      // in the fixed full-map view the centre isn't the heli, so the needle would point from nowhere).
+      if (low && !exp) {
         const p = local(near.x, near.z);
         const a = Math.atan2(p.y - R, p.x - R);
         ctx.save();
@@ -1533,7 +1746,7 @@ export class HUD {
     // Structures to defend — small squares: intact (accent), burning (amber), lost (dim).
     for (const st of s.structures) {
       const p = local(st.x, st.z);
-      if (Math.hypot(p.x - R, p.y - R) > reach) continue; // skip off-radar
+      if (Math.hypot(p.x - R, p.y - R) > effReach) continue; // skip off-radar
       const dead = st.health <= 0;
       const half = st.kind === 'depot' ? 4 : 3;
       const col = dead ? 'rgba(150,150,150,0.5)' : st.burning ? '#ffb24a' : UI.accent;
@@ -1566,7 +1779,7 @@ export class HUD {
         const p = local(zn.x, zn.z);
         const ox = p.x - R;
         const oy = p.y - R;
-        if (Math.hypot(ox, oy) > reach) {
+        if (Math.hypot(ox, oy) > effReach) {
           // Off the local radar: the ACTIVE target still gets a chevron pinned to the rim so you
           // always know which way to fly to reach it (the hint text fades, but the pointer stays).
           // Home direction is already carried by the green refuel-base markers, and done/inactive
@@ -1620,7 +1833,7 @@ export class HUD {
       const ox = p.x - R;
       const oy = p.y - R;
       const dist = Math.hypot(ox, oy);
-      if (dist <= reach) {
+      if (dist <= effReach) {
         ctx.fillStyle = 'rgba(255,42,42,0.32)'; // RED halo — a fire MARKER, distinct from the orange burn shade
         ctx.beginPath();
         ctx.arc(p.x, p.y, 5.5, 0, Math.PI * 2);
@@ -1653,54 +1866,89 @@ export class HUD {
     // Place names (A5) — drawn screen-UPRIGHT (the map under them is rotated, but text
     // must read level). Communities always; lake names only on the expanded radar (they'd
     // clutter the tight local view). A dark stroke keeps them legible over any terrain.
+    const placed: { x: number; y: number }[] = []; // de-collide: skip a label that overlaps an earlier one
     const drawLabel = (wx: number, wz: number, text: string, color: string, dy: number, size: number): void => {
+      if (!text) return;
       const p = local(wx, wz);
-      if (Math.hypot(p.x - R, p.y - R) > reach - 6) return; // off-radar
+      if (Math.hypot(p.x - R, p.y - R) > effReach - 6) return; // off-radar
+      const ly = p.y + dy;
+      for (const q of placed) if (Math.hypot(p.x - q.x, ly - q.y) < 13) return; // too close to an earlier label
+      placed.push({ x: p.x, y: ly });
       ctx.font = `600 ${size}px ${UI.font}`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.lineWidth = 2.4;
       ctx.lineJoin = 'round';
       ctx.strokeStyle = 'rgba(4,8,12,0.85)';
-      ctx.strokeText(text, p.x, p.y + dy);
+      ctx.strokeText(text, p.x, ly);
       ctx.fillStyle = color;
-      ctx.fillText(text, p.x, p.y + dy);
+      ctx.fillText(text, p.x, ly);
     };
-    if (this.radarExpanded) {
-      for (const lk of this.labels.lakes) drawLabel(lk.x, lk.z, lk.name, 'rgba(150,205,235,0.92)', 0, 8);
-    }
+    // Communities first (priority over lake names), then lake names on the expanded map only.
     for (const c of this.labels.communities) {
-      drawLabel(c.x, c.z, c.name, 'rgba(232,238,242,0.95)', this.radarExpanded ? -8 : -7, 9);
+      drawLabel(c.x, c.z, c.name, 'rgba(232,238,242,0.95)', exp ? -8 : -7, 9);
+    }
+    if (exp) {
+      for (const lk of this.labels.lakes) drawLabel(lk.x, lk.z, lk.name, 'rgba(150,205,235,0.92)', 0, 8);
+      // Reference places (far-north settlements + southern cities) — dimmer than the gameplay bases/towns and
+      // shown only on the expanded province map, so the WHOLE of Saskatchewan reads right without cluttering the
+      // tight local scope. Lowest label priority (drawn last → yields to a base/lake name it would overlap).
+      for (const lm of this.labels.landmarks ?? []) {
+        const city = lm.kind === 'city';
+        drawLabel(lm.x, lm.z, lm.name, city ? 'rgba(224,230,238,0.82)' : 'rgba(194,205,216,0.6)', -7, city ? 9 : 8);
+      }
     }
 
     ctx.restore(); // unclip
 
-    // Heli — fixed at center, pointing up.
+    // Heli marker.
     ctx.fillStyle = '#fff';
     ctx.shadowColor = UI.accent;
     ctx.shadowBlur = 10;
-    ctx.beginPath();
-    ctx.moveTo(R, R - 6);
-    ctx.lineTo(R - 4.5, R + 5);
-    ctx.lineTo(R, R + 2.5);
-    ctx.lineTo(R + 4.5, R + 5);
-    ctx.closePath();
-    ctx.fill();
+    if (exp) {
+      // Moving aircraft icon at the heli's map position, rotated to its heading (the map is fixed north-up).
+      const hp = local(s.heliX, s.heliZ);
+      ctx.save();
+      ctx.translate(hp.x, hp.y);
+      ctx.rotate(Math.atan2(-sin, cos)); // world forward (cos,−sin) on the north-up map
+      ctx.beginPath();
+      ctx.moveTo(7, 0);
+      ctx.lineTo(-4.5, -4.5);
+      ctx.lineTo(-1.5, 0);
+      ctx.lineTo(-4.5, 4.5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    } else {
+      // Fixed at centre, pointing up.
+      ctx.beginPath();
+      ctx.moveTo(R, R - 6);
+      ctx.lineTo(R - 4.5, R + 5);
+      ctx.lineTo(R, R + 2.5);
+      ctx.lineTo(R + 4.5, R + 5);
+      ctx.closePath();
+      ctx.fill();
+    }
     ctx.shadowBlur = 0;
 
-    // Rim + north marker (tracks where north sits as you turn).
+    // Rounded-square rim + north marker (expanded map is north-up → N pinned top; local scope tracks heading).
     ctx.strokeStyle = 'rgba(255,255,255,0.18)';
     ctx.lineWidth = 1;
     roundRectPath(ctx, 1, 1, d - 2, d - 2, 15);
     ctx.stroke();
-    const nx = -cos; // local screen dir of north (0,−Z)
-    const ny = -sin;
-    const nlen = Math.hypot(nx, ny) || 1;
     ctx.fillStyle = UI.accent;
     ctx.font = '700 9px ' + UI.font;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('N', R + (nx / nlen) * (reach - 4), R + (ny / nlen) * (reach - 4));
+    if (exp) {
+      ctx.fillText('N', R, 11);
+      this.drawZoomButtons(ctx, d); // +/− zoom controls (also wheel + pinch)
+    } else {
+      const nx = -cos; // local screen dir of north (0,−Z)
+      const ny = -sin;
+      const nlen = Math.hypot(nx, ny) || 1;
+      ctx.fillText('N', R + (nx / nlen) * (reach - 4), R + (ny / nlen) * (reach - 4));
+    }
     // (Wind moved to the top instrument strip's wind cell — no longer drawn on the radar.)
   }
 }

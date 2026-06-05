@@ -44,8 +44,8 @@ export const DAY: SkyPreset = {
   hemiSky: 0xc2dcf2,
   hemiGround: 0x46552f,
   hemiIntensity: 0.7,
-  fogNear: 130,
-  fogFar: 520,
+  fogNear: 950, // fog all but gone — past the playable world, so the whole scene reads crisp
+  fogFar: 2100, // only the far floor edge fades (masks the ground-plane edge; killing fog shows it)
   sunDir: new THREE.Vector3(0.5, 0.707, 0.5).normalize(),
 };
 
@@ -61,8 +61,8 @@ export const NOON: SkyPreset = {
   hemiSky: 0xcfe6fb,
   hemiGround: 0x49592f,
   hemiIntensity: 0.82,
-  fogNear: 205,
-  fogFar: 780,
+  fogNear: 1050, // the clearest preset — air essentially transparent
+  fogFar: 2200, // only the very far floor edge dissolves
   sunDir: new THREE.Vector3(0.2, 0.95, 0.26).normalize(), // nearly overhead
 };
 
@@ -78,8 +78,8 @@ export const DAWN: SkyPreset = {
   hemiSky: 0xbcd0e8,
   hemiGround: 0x4b5340,
   hemiIntensity: 0.64,
-  fogNear: 110, // a little misty near the ground
-  fogFar: 500,
+  fogNear: 880, // keeps the faintest hint of morning mist (it's the misty preset), otherwise clear
+  fogFar: 2050,
   sunDir: new THREE.Vector3(0.42, 0.25, -0.86).normalize(), // low, raking from the NE
 };
 
@@ -95,8 +95,8 @@ export const OVERCAST: SkyPreset = {
   hemiSky: 0xb3bcc4,
   hemiGround: 0x555c4a,
   hemiIntensity: 0.98, // the diffuse hemisphere fill carries the lighting, not the sun
-  fogNear: 120,
-  fogFar: 520,
+  fogNear: 900, // mood now comes from the grey sky/light, not a haze wall — air reads clear
+  fogFar: 2050,
   sunDir: new THREE.Vector3(0.22, 0.78, 0.58).normalize(), // high but soft (shadows stay faint)
 };
 
@@ -116,8 +116,8 @@ export const GOLDEN: SkyPreset = {
   hemiSky: 0xe6cfa6,
   hemiGround: 0x4a4a2e,
   hemiIntensity: 0.6,
-  fogNear: 175, // pushed out so the near + mid ground stays CRISP (was a milky wash at 120) —
-  fogFar: 720, // only the far ridgelines dissolve into the amber haze (true aerial perspective)
+  fogNear: 950, // fog all but gone — the amber comes from the sky/sun now, not a haze wall over the ground
+  fogFar: 2100, // only the far floor edge dissolves into the horizon (masks the ground-plane edge)
   // ~18° elevation low sun — preserves the original hard-coded look (normalize(150, 58, 95)).
   sunDir: new THREE.Vector3(150, 58, 95).normalize(),
 };
@@ -134,8 +134,8 @@ export const DUSK: SkyPreset = {
   hemiSky: 0xb98a86,
   hemiGround: 0x3a3326,
   hemiIntensity: 0.5,
-  fogNear: 150,
-  fogFar: 680,
+  fogNear: 920, // still ominous from the dark indigo sky + ember horizon, but no haze over the ground
+  fogFar: 2050,
   sunDir: new THREE.Vector3(0.8, 0.15, 0.58).normalize(), // ~9° — right on the deck
 };
 

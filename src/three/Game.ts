@@ -58,7 +58,7 @@ import { button, UI, FW } from './ui/theme';
 import type { MissionDef, MissionSignals, MissionAction, ZonePlacement, ScoreTally } from './missions/types';
 import type { EndScreenHooks } from './HUD';
 import { seedFires, structurePlan, crewZones, resolveCrewZone, igniteFromPlacement } from './missions/scenario';
-import { WORLD3D, FLIGHT, STARTUP, BUCKET3D, DROP_PHYSICS, DROP_FX, FIREHEAD, CAMERA, FIRE3D, WATER, WASH, SPRAY, SMOKE, EMBERS, INSTRUMENTS, ROADS, MISSIONS, COMMUNITIES, SCORE, resolveHeliClass } from './config';
+import { WORLD3D, FLIGHT, STARTUP, BUCKET3D, DROP_PHYSICS, DROP_FX, FIREHEAD, CAMERA, FIRE3D, WATER, WASH, SPRAY, SMOKE, EMBERS, INSTRUMENTS, ROADS, MISSIONS, COMMUNITIES, SCORE, FOREST, STRUCT_FIRE, resolveHeliClass } from './config';
 
 // Instrument calibration factors (world units → real-world HUD units). Derived from
 // the FLIGHT caps so the gauges stay consistent if those are retuned.
@@ -133,6 +133,11 @@ export class Game {
   // C3 stakes: structures to defend (engine-agnostic state) + a fixed pool of meshes
   // synced to them each frame. Lose when every structure burns down.
   private readonly structures: Structures;
+  // Burning-structure event tracking: edge-detect ignite/lost per structure for the radio callouts,
+  // with a cooldown so a whole hamlet catching doesn't spam comms. (Indices align with structures.list.)
+  private structIgniteTimer = 0;
+  private readonly structBurnPrev: boolean[] = [];
+  private readonly structDeadPrev: boolean[] = [];
   private readonly structureMeshes: StructureMesh[] = [];
 
   private water = 0;
@@ -447,9 +452,13 @@ export class Game {
     // Forest scattered by BIOME (A2): each candidate is accepted with the biome's
     // tree density (dense in moist forest, sparse in meadow, ~none on rock/water) and
     // tinted by biome. Seeded off the World rng so the same seed grows the same forest.
+    // Photoreal pass: a denser forest reads far more real. Gate the bump to med/high — low-end
+    // devices keep the original count (the per-chunk cull + distance LOD + DPR watchdog do the rest).
+    const forestDensityMul = tier.current.name === 'low' ? 1 : FOREST.densityMul;
     const forest = createTreeField({
-      // Scale candidates with world AREA so forest density stays constant as the map grows.
-      candidates: Math.round(5200 * (WORLD3D.size / 600) ** 2),
+      // Scale candidates with world AREA (constant density as the map grows), off the FOREST.baseCandidates
+      // lever — trimmed so the enlarged world stays open + performant rather than doubling the tree count.
+      candidates: Math.round(FOREST.baseCandidates * forestDensityMul * (WORLD3D.size / 600) ** 2),
       size: WORLD3D.size,
       heightAt: (x, z) => this.world.groundHeightAt(x, z),
       sample: (x, z) => {
@@ -473,7 +482,7 @@ export class Game {
     // (so it doesn't perturb the conifer/fire layout) with its own tint. Birch sways too.
     // (Their colliders are left out of the bucket field for now — conifers are the snag.)
     this.groves = createTreeField({
-      candidates: Math.round(2200 * (WORLD3D.size / 600) ** 2),
+      candidates: Math.round(2200 * forestDensityMul * (WORLD3D.size / 600) ** 2),
       size: WORLD3D.size,
       heightAt: (x, z) => this.world.groundHeightAt(x, z),
       sample: (x, z) => ({ treeDensity: this.world.biomes.sample(x, z).treeDensity * 0.38 * this.world.clearingFactor(x, z), treeTint: [0.62, 0.66, 0.33] }),
@@ -621,8 +630,15 @@ export class Game {
         // so a radar place-name always has a real settlement under it — no town names floating
         // over empty bush. `builtSites` is the same set that gets cleared yards + buildings.
         communities: builtSites.map((c) => ({ name: c.name, x: c.x, z: c.z })),
-        // Only label the larger lakes (smaller ponds would clutter the radar).
-        lakes: this.world.lakes.filter((l) => l.r >= 30).map((l) => ({ name: l.name, x: l.x, z: l.z })),
+        // Only label NAMED larger lakes — on the anchored SK map the random background ponds are
+        // nameless (World), so this is just the real pinned lakes; no fake names floating on the radar.
+        lakes: this.world.lakes.filter((l) => l.r >= 30 && l.name).map((l) => ({ name: l.name, x: l.x, z: l.z })),
+        // Decorative reference places (far-north settlements + southern cities) so the WHOLE province reads as
+        // Saskatchewan on the expanded radar — pure labels, no buildings/yards (not gameplay anchors).
+        landmarks: this.world.landmarks(),
+        // Real province boundary (world XZ) — the expanded radar fits + clips to this so the map reads
+        // as Saskatchewan's shape, north-up. Null on procedural maps (radar stays the local scope).
+        outline: this.world.provinceOutline() ?? undefined,
       },
       this.pilotName,
       this.end,
@@ -779,7 +795,7 @@ export class Game {
       this.wash.update(this.heliSim.agl, c.lift);
       // Fuel starvation (C6): a dry tank cuts engine power — zero throttle and force a
       // sinking collective, so the player makes a forced landing wherever they are.
-      let turn = c.turn;
+      const turn = c.turn;
       let throttle = c.throttle;
       let lift = c.lift;
       if (this.fuelSim?.starved) {
@@ -814,7 +830,9 @@ export class Game {
     // --- Pose the airframe from the sim (YZX: yaw about +Y, pitch +Z, roll +X) ---
     const g = this.heli.group;
     g.position.copy(this.heliSim.position);
-    g.rotation.set(this.heliSim.bank, this.heliSim.yaw, this.heliSim.pitch, 'YZX');
+    // bankSign flips the roll for a chirality-mirrored model (the UH-60 glTF) so every airframe banks
+    // the same way off the one shared `bank`; +1 for the rest. Pitch/yaw are mirror-invariant.
+    g.rotation.set(this.heliSim.bank * this.heli.bankSign, this.heliSim.yaw, this.heliSim.pitch, 'YZX');
     // Rotors spin at a rate scaled by the live RPM (0 on the cold deck → full once spooled).
     this.heli.rotor.rotation.y += FLIGHT.rotorSpin * this.rotorRpm * dt;
     this.heli.tailRotor.rotation.x += FLIGHT.tailRotorSpin * this.rotorRpm * dt;
@@ -955,21 +973,44 @@ export class Game {
       }
       if (this.healthSim.dead && !this.won && !this.lost) this.crashLoss();
     }
-    // Sync the structure meshes: char + collapse with damage, ember while burning.
+    // Sync the structure meshes: char + progressive collapse with damage, flames + HDR glow while
+    // burning, advance their flame animation, and edge-detect ignite/lost for the radio callouts.
     const sList = this.structures.list;
+    this.structIgniteTimer -= dt;
+    let newCabinIgnite = false;
     for (let i = 0; i < this.structureMeshes.length; i++) {
       const s = sList[i];
       const m = this.structureMeshes[i];
       m.setDamage(1 - s.health);
       m.setBurning(s.burning);
+      m.flicker(this.elapsed);
+      if (s.burning && !this.structBurnPrev[i]) {
+        // Just caught fire. The base always announces (it's the lifeline); cabins are pooled behind a
+        // cooldown so a hamlet lighting up doesn't spam the radio.
+        if (s.kind === 'depot') this.hud.pushComms('warning', 'The base is alight — we lose it, we lose our fuel and water. Get on it!', 'alert');
+        else newCabinIgnite = true;
+      }
+      if (s.destroyed && !this.structDeadPrev[i]) {
+        this.hud.pushComms('warning', s.kind === 'depot' ? 'We’ve lost the base!' : 'A cabin’s gone — we couldn’t hold it.', 'alert');
+      }
+      this.structBurnPrev[i] = s.burning;
+      this.structDeadPrev[i] = s.destroyed;
+    }
+    if (newCabinIgnite && this.structIgniteTimer <= 0) {
+      this.structIgniteTimer = STRUCT_FIRE.igniteCooldown;
+      this.hud.pushComms('crew', 'Fire’s into the cabins — structures alight down there.', 'warn');
     }
     // B3: point the fixed pool of hero fire-lights at the nearest hottest fires. Pass HEAT
     // (intensity × size) so a big blaze throws more, reachier light than a small spot.
-    this.heroFire.update(
-      activeFires.map((f) => ({ x: f.x, y: f.y, z: f.z, intensity: fireHeat(f) })),
-      this.heliSim.position,
-      this.elapsed,
-    );
+    const lightTargets = activeFires.map((f) => ({ x: f.x, y: f.y, z: f.z, intensity: fireHeat(f) }));
+    // A burning structure joins the candidate pool so a burning town actually lights the night (the
+    // base reads hotter). The fixed 5-light pool still picks the top few by heat×proximity.
+    for (const s of sList) {
+      if (!s.burning || s.destroyed) continue;
+      const heat = (s.kind === 'depot' ? STRUCT_FIRE.lightHeatDepot : STRUCT_FIRE.lightHeatCabin) * (0.5 + 0.5 * (1 - s.health));
+      lightTargets.push({ x: s.x, y: s.y + 2, z: s.z, intensity: heat });
+    }
+    this.heroFire.update(lightTargets, this.heliSim.position, this.elapsed);
 
     // B4 heat haze: refresh the pooled fire-crown list the postfx HeatHaze pass reads. Pooled
     // (no per-frame alloc); entries past hazeCount keep heat 0 so the pass skips them.
@@ -1000,6 +1041,14 @@ export class Game {
         const puffs = 2 + Math.round(heat * (SMOKE.maxPuffsPerBurst - 2));
         for (let k = 0; k < puffs; k++) this.smoke.emit(f.x, crown, f.z, heat);
       }
+      // Burning structures throw their own column off the rooftop — the base belches a heavy one.
+      for (const s of sList) {
+        if (!s.burning || s.destroyed) continue;
+        const heat = THREE.MathUtils.clamp(STRUCT_FIRE.flameBase + (1 - s.health) * STRUCT_FIRE.flameGain, 0, 1);
+        const crown = s.y + (s.kind === 'depot' ? STRUCT_FIRE.smokeCrownDepot : STRUCT_FIRE.smokeCrownCabin);
+        const puffs = s.kind === 'depot' ? STRUCT_FIRE.smokePuffsDepot : STRUCT_FIRE.smokePuffsCabin;
+        for (let k = 0; k < puffs; k++) this.smoke.emit(s.x, crown, s.z, heat);
+      }
     }
     this.smoke.update(dt, this.wind.vx, this.wind.vz);
 
@@ -1015,6 +1064,15 @@ export class Game {
         const crown = f.y + 1.5 + 6 * f.size; // sparks leave the flame body, low-to-mid
         const n = 1 + Math.round(heat * (EMBERS.maxPerBurst - 1));
         for (let k = 0; k < n; k++) this.embers.emit(f.x, crown, f.z, heat);
+      }
+      // Sparks off burning structures (the base showers more).
+      for (const s of sList) {
+        if (!s.burning || s.destroyed) continue;
+        const heat = THREE.MathUtils.clamp(STRUCT_FIRE.flameBase + (1 - s.health) * STRUCT_FIRE.flameGain, 0, 1);
+        const rate = s.kind === 'depot' ? STRUCT_FIRE.emberRateDepot : STRUCT_FIRE.emberRateCabin;
+        const n = Math.max(1, Math.round(heat * EMBERS.maxPerBurst * rate));
+        const crown = s.y + (s.kind === 'depot' ? 3 : 1.5);
+        for (let k = 0; k < n; k++) this.embers.emit(s.x, crown, s.z, heat);
       }
     }
     this.embers.update(dt, this.wind.vx, this.wind.vz, this.elapsed);

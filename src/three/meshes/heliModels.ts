@@ -79,6 +79,11 @@ export interface HeliModelSpec {
    *  repainted wholesale; a textured body is split by its diffuse map so only the painted
    *  panels are recoloured and the windows/gear keep their texture (see splitTexturedBody). */
   livery: Livery;
+  /** Visual roll sign. A chirality-MIRRORED glTF (left/right flipped — it renders fine, normals are
+   *  self-consistent, but the shared flight `bank` rolls it the WRONG way) sets this to −1 so Game
+   *  negates the roll for it. A lateral mirror leaves pitch/yaw untouched, so ONLY bank needs the flip.
+   *  Default +1 (the 205/212 roll correctly off the shared sign). */
+  bankSign?: number;
   /** Merged single-mesh model: slice the MAIN rotor out of the mesh by a geometry-local
    *  Y plane (triangles whose centroid Y ≥ this) so the model's real blades spin. */
   splitRotorMinY?: number;
@@ -138,6 +143,10 @@ export const HELI_MODELS: Record<string, HeliModelSpec> = {
     fuselageNode: 'Fuselage_6',
     mainRotorNode: 'main_rotor_prop_7',
     tailRotorNode: 'TAIL_ROTOR_4',
+    // This glTF is chirality-MIRRORED (left/right flipped) relative to the 205/212, so the shared
+    // flight `bank` rolls it the wrong way (a left turn lifted the wrong wing). Pitch/yaw read fine —
+    // a lateral mirror only inverts ROLL — so we just negate the roll for this airframe. See bankSign.
+    bankSign: -1,
     // Steel hi-vis: the spec-gloss army skin can't bind in modern three (renders clay), so it
     // repaints clean — bright steel roof, gunmetal flank, black belly, hi-vis safety-yellow line.
     livery: {
@@ -167,6 +176,10 @@ export function swapInModel(heli: HelicopterMesh, heliId?: string): void {
       const model = gltf.scene;
       model.name = 'heliModel';
       model.rotation.y = spec.yaw;
+      // Mirrored-glTF roll fix: a left/right-flipped model rolls backwards off the shared `bank`, so
+      // Game negates its roll. Set only now that the REAL model is in — a failed load keeps the +1
+      // default for the procedural Bell 205 fallback (which is NOT mirrored).
+      heli.bankSign = spec.bankSign ?? 1;
 
       // --- Livery materials (shared across this airframe) ------------------
       // Build the three materials of the High-Vis Hero scheme up front: the vertex-coloured

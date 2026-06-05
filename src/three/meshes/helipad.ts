@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { FLIGHT } from '../config';
 
 /**
- * A procedural concrete helipad for the bases — the deck the water-bomber cold-starts on and sets
+ * A procedural concrete helipad for the bases — the deck the helicopter cold-starts on and sets
  * down to refuel/re-rig. Zero binary assets: a chamfered concrete slab with a raised curb, painted
  * hi-vis markings (perimeter line, touchdown circle, "H", cardinal approach ticks), and a ring of
  * emissive green perimeter lights that bloom at the dawn/dusk/overcast missions so the pad reads as

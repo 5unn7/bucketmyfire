@@ -108,7 +108,7 @@ export const HELIS: CatalogItem[] = [
     id: 'bell-205a1',
     name: 'Bell 205A-1',
     tagline: 'The trainer',
-    blurb: 'Single-engine Huey in water-bomber livery. The forgiving one: stable and easy to place — but the slowest, with the smallest bucket (half the Black Hawk). Learn the slung-bucket feel here.',
+    blurb: 'Single-engine Huey in firefighting livery. The forgiving one: stable and easy to place — but the slowest, with the smallest bucket (half the Black Hawk). Learn the slung-bucket feel here.',
     available: true,
     accent: '#c8362a',
     glyph: '🚁',

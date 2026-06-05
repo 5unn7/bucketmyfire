@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { FIRE3D } from '../config';
+import { FIRE3D, FOREST } from '../config';
 
 /**
  * A dense field of low-poly boreal conifers.
@@ -325,28 +325,62 @@ export function createTreeField(opts: TreeFieldOptions): TreeField {
 }
 
 /**
- * Three green cones stacked into one tapering conifer, merged into a single
- * BufferGeometry. Each cone's base is dropped to where the previous tier's
- * mid-line sits so the tiers overlap like real boreal foliage. Base at y=0.
+ * A tapering stack of overlapping green cones merged into one conifer crown, filling
+ * FOLIAGE_BOTTOM → CANOPY_APEX. Tier count + roundness + base/apex radii come from the FOREST
+ * config so the canopy can be made fuller WITHOUT moving the apex — the collider contract
+ * (CANOPY_APEX) stays fixed regardless of tier count, because the tier step is derived to land the
+ * topmost cone's tip exactly on CANOPY_APEX. A vertical light gradient is then baked in
+ * (bakeCanopyGradient) for self-shadowed depth. Base at y=0.
  */
-function buildFoliageGeometry(): THREE.BufferGeometry {
-  const tiers = 3;
-  const radii = [1.5, 1.1, 0.7]; // widest at the bottom
-  const tierHeight = FOLIAGE_HEIGHT / tiers;
+function buildFoliageGeometry(tiers: number, segments: number): THREE.BufferGeometry {
+  const span = CANOPY_APEX - FOLIAGE_BOTTOM; // canopy vertical extent (fixed)
+  const tierStep = span / (tiers + 0.6); // chosen so the top cone's tip lands exactly on CANOPY_APEX
+  const coneH = tierStep * 1.6; // each cone overruns its step → tiers overlap like real boreal foliage
 
   const merged: THREE.BufferGeometry[] = [];
   for (let t = 0; t < tiers; t++) {
-    const cone = new THREE.ConeGeometry(radii[t], tierHeight * 1.6, RADIAL_SEGMENTS);
-    // Cone is centred on its own origin; lift so its base sits at this tier's
-    // start, with each tier overlapping the one below.
-    const baseY = FOLIAGE_BOTTOM + t * tierHeight;
-    cone.translate(0, baseY + (tierHeight * 1.6) / 2, 0);
+    // Radius tapers from a broad base to a fine point; the power curve keeps the lower tiers full.
+    const f = tiers === 1 ? 0 : t / (tiers - 1);
+    const r = FOREST.bottomRadius + (FOREST.topRadius - FOREST.bottomRadius) * Math.pow(f, 0.9);
+    const cone = new THREE.ConeGeometry(r, coneH, segments);
+    const baseY = FOLIAGE_BOTTOM + t * tierStep;
+    cone.translate(0, baseY + coneH / 2, 0);
     merged.push(cone);
   }
 
   const geo = mergeGeometries(merged);
   merged.forEach((g) => g.dispose());
+  bakeCanopyGradient(geo);
   return geo;
+}
+
+/**
+ * Bake a vertical light gradient into a crown geometry as a per-vertex `color` attribute: the base
+ * is darkened (FOREST.aoGradient — fakes the self-shadowing deep in a canopy) and the tips lift
+ * toward the sun (FOREST.topLift), with a little deterministic per-vertex jitter so it reads as
+ * needles rather than a smooth ramp. The foliage material is white + per-instance biome tint, so
+ * this gradient MULTIPLIES the tint (vertexColor × instanceColor) — free depth, no extra draw cost.
+ */
+function bakeCanopyGradient(geo: THREE.BufferGeometry): void {
+  const pos = geo.getAttribute('position');
+  const n = pos.count;
+  const colors = new Float32Array(n * 3);
+  const span = CANOPY_APEX - FOLIAGE_BOTTOM;
+  const base = 1 - FOREST.aoGradient;
+  for (let i = 0; i < n; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    const f = Math.min(1, Math.max(0, (y - FOLIAGE_BOTTOM) / span));
+    const ramp = base + (FOREST.topLift - base) * (f * f * (3 - 2 * f)); // smoothstep base→tip
+    const hash = Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453;
+    const frac = hash - Math.floor(hash); // deterministic [0,1)
+    const b = ramp * (1 + FOREST.gradientJitter * (frac - 0.5) * 2);
+    colors[i * 3] = b;
+    colors[i * 3 + 1] = b;
+    colors[i * 3 + 2] = b;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 }
 
 /** The default species — the boreal conifer (3-cone spruce + brown trunk). */
@@ -356,9 +390,10 @@ function defaultConiferSpecies(): TreeSpecies {
   return {
     trunkGeo,
     trunkMat: new THREE.MeshStandardMaterial({ color: 0x5a4332, roughness: 1 }),
-    foliageGeo: buildFoliageGeometry(),
+    foliageGeo: buildFoliageGeometry(FOREST.canopyTiers, FOREST.radialSegments),
     foliageLodGeo: buildFoliageLOD(),
-    foliageMat: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 }),
+    // white base × per-instance biome tint × the baked canopy gradient (vertexColors).
+    foliageMat: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, vertexColors: true }),
     apex: CANOPY_APEX,
     collideRadius: COLLIDE_RADIUS,
   };
@@ -372,8 +407,9 @@ function defaultConiferSpecies(): TreeSpecies {
  */
 function buildFoliageLOD(): THREE.BufferGeometry {
   const height = CANOPY_APEX - FOLIAGE_BOTTOM; // span the full canopy
-  const cone = new THREE.ConeGeometry(1.5, height, 5);
+  const cone = new THREE.ConeGeometry(FOREST.bottomRadius, height, 5);
   cone.translate(0, FOLIAGE_BOTTOM + height / 2, 0); // base at the foliage start, apex at CANOPY_APEX
+  bakeCanopyGradient(cone); // same gradient so the impostor matches the full crown across the LOD swap
   return cone;
 }
 

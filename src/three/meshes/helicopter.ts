@@ -3,7 +3,7 @@ import { swapInModel } from './heliModels';
 
 /**
  * Procedural HIGH-POLY Bell 205A-1 — the civilian single-engine derivative of the
- * UH-1H "Huey", in a northern-Saskatchewan water-bomber livery (white over fire-red).
+ * UH-1H "Huey", in a northern-Saskatchewan firefighting livery (white over fire-red).
  *
  * This is the game's hero model. Unlike the rest of the scene it is allowed real
  * geometry density: only ONE helicopter is ever on screen, so a few thousand
@@ -43,6 +43,10 @@ export interface HelicopterMesh {
   group: THREE.Group; // the whole aircraft
   rotor: THREE.Object3D; // MAIN rotor — caller spins this about its local Y each frame
   tailRotor: THREE.Object3D; // tail rotor — caller spins this about its local X each frame
+  /** Visual roll sign (+1 normal, −1 for a chirality-MIRRORED glTF whose left/right is flipped, so the
+   *  shared flight `bank` would roll it backwards). Game multiplies `bank` by this when posing. Set by
+   *  swapInModel once the real model is in; stays +1 for the procedural Bell 205 fallback. */
+  bankSign: number;
 }
 
 export function createHelicopter(heliId?: string): HelicopterMesh {
@@ -357,7 +361,7 @@ export function createHelicopter(heliId?: string): HelicopterMesh {
   navGreen.position.set(-1.1, 1.55, 1.18);
   group.add(navGreen);
 
-  const heli: HelicopterMesh = { group, rotor, tailRotor };
+  const heli: HelicopterMesh = { group, rotor, tailRotor, bankSign: 1 };
   // Try to swap in the selected downloaded glTF behind this same contract; the
   // procedural model above stays visible as the instant fallback if the load fails
   // (or if the chosen heli has no model — it falls back to the hero Bell 205A-1).
@@ -372,7 +376,7 @@ export function createHelicopter(heliId?: string): HelicopterMesh {
 /**
  * Loft a closed superellipse cross-section through every station to skin the whole
  * fuselage as ONE smooth, vertex-colored mesh. Livery is baked per-vertex: white
- * upper body, fire-red lower (the recognizable water-bomber split). Winding is chosen
+ * upper body, fire-red lower (the recognizable firefighting split). Winding is chosen
  * so computeVertexNormals() yields OUTWARD normals (CCW front faces); rings wrap
  * seamlessly (modulo R) and caps reuse ring verts so shading welds across the hull.
  */

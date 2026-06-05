@@ -1,9 +1,9 @@
-import { WORLD3D, FLIGHT, LAKES3D, LAKE_SHAPE, STREAM, COMMUNITIES, ROADS } from './config';
+import { WORLD3D, FLIGHT, LAKES3D, LAKE_SHAPE, STREAM, COMMUNITIES, ROADS, MAPGEO } from './config';
 import { Noise2D, FbmParams } from './world/noise';
 import { Biomes } from './world/biomes';
 import { Placement } from './world/placement';
 import { createNameSource, NameSource } from './world/names';
-import { getRegion, Region, MapAnchor } from './world/regions';
+import { getRegion, Region, GeoFrame } from './world/regions';
 import { getTerrainProfile, TerrainProfile } from './world/terrainProfile';
 
 /**
@@ -126,14 +126,19 @@ export class World {
   private readonly ridgeFbm: FbmParams;
   /** Optional high-relief massif layer; null on low-relief maps (so baseHeight skips it entirely). */
   private readonly mountainFbm: FbmParams | null;
+  /** Localized uplands (e.g. Cypress Hills) projected to world XZ — baseHeight adds a smooth bump at each. */
+  private readonly uplands: { x: number; z: number; r: number; height: number }[];
   /** The active map's region (names + optional anchors); resolved once in the ctor. */
   private readonly region: Region;
   /** Which anchor base is the operational home this build (mission.homeBase); placed first. */
   private readonly homeBaseId?: string;
   /** Placed authored anchors (bases + towns) for anchored maps; empty on procedural maps. */
   private resolvedAnchors: ResolvedAnchor[] = [];
-  /** Inset margin mapping normalized anchor coords into the world rect (keeps edge anchors off the border). */
-  private static readonly ANCHOR_MARGIN = 0.1;
+  /** Real-world projection frame for an anchored map (lat/lon → world XZ), or null on procedural maps. */
+  private readonly geo: GeoFrame | null;
+  private readonly latCenter: number; // centre of the geo box — the projection origin
+  private readonly lonCenter: number;
+  private readonly uPerKm: number; // world units per real kilometre (geo N–S extent → MAPGEO.fill of world)
 
   /**
    * @param seed world seed — threads through noise/hydrology/placement/fire RNG so the same
@@ -148,6 +153,20 @@ export class World {
     // feature never shifts the rest of world generation.
     this.region = getRegion(opts.regionId);
     this.homeBaseId = opts.homeBase;
+    // Real-world projection frame (anchored maps): scale the geo box's N–S extent to MAPGEO.fill of the
+    // square world height, then project anchors with a cosine ("sinusoidal") projection — true distances
+    // AND the province's converging-meridian trapezoid. Synthesised from the anchor bounds if a region
+    // declares anchors but no explicit geo; null on procedural maps (project() is never called there).
+    this.geo = resolveGeo(this.region);
+    if (this.geo) {
+      this.latCenter = (this.geo.latMin + this.geo.latMax) / 2;
+      this.lonCenter = (this.geo.lonMin + this.geo.lonMax) / 2;
+      this.uPerKm = (this.size * MAPGEO.fill) / ((this.geo.latMax - this.geo.latMin) * KM_PER_DEG_LAT);
+    } else {
+      this.latCenter = 0;
+      this.lonCenter = 0;
+      this.uPerKm = 1;
+    }
     this.nameSource = createNameSource(seed ^ 0x27d4eb2f, this.region.names);
     // Offset the noise seed off the rng seed so terrain and placement RNG don't correlate.
     this.noise = new Noise2D(seed ^ 0x9e3779b9);
@@ -177,6 +196,14 @@ export class World {
           gain: this.profile.mountainGain ?? 0.5,
         }
       : null;
+
+    // Localized uplands (Cypress Hills): project each region upland to world XZ once. baseHeight adds a smooth
+    // radial bump at each — a single hill rising from the boreal flats, distinct from the whole-map mountain
+    // layer above. Empty on maps with none (the baseHeight loop then no-ops). Set BEFORE lakes (baseHeight feeds them).
+    this.uplands = (this.region.uplands ?? []).map((u) => {
+      const p = this.project(u.lat, u.lon);
+      return { x: p.x, z: p.z, r: u.radiusU, height: u.height };
+    });
 
     // Lakes scattered across the world, count scaled to area so water density stays
     // constant as the map grows (the curated LAKES3D radii seed the size range). Each
@@ -261,13 +288,46 @@ export class World {
     return this.communities.filter((c) => c.kind === 'base');
   }
 
-  /** Map an anchor's normalized (x,y)∈[0,1] into world XZ: an inset rect (10% margin) so an edge
-   *  anchor still has airspace, with +y (north) → −Z (the radar's up). */
-  private anchorToWorld(a: MapAnchor): { x: number; z: number } {
-    const m = World.ANCHOR_MARGIN;
-    const lx = m + (1 - 2 * m) * a.x;
-    const ly = m + (1 - 2 * m) * a.y;
-    return { x: (lx - 0.5) * this.size, z: (0.5 - ly) * this.size };
+  /**
+   * Project a real (lat, lon) onto world XZ with a cosine ("sinusoidal") projection about the geo box
+   * centre: north → −Z (the radar's up), east (less-negative lon) → +X, and east–west scaled by the
+   * point's own latitude cosine so meridians converge toward the pole — the province renders as its
+   * real trapezoid (wider south, narrower north) rather than a stretched rectangle. uPerKm sizes the
+   * whole thing so the N–S extent fills MAPGEO.fill of the world. No-op origin on a map without geo.
+   */
+  private project(lat: number, lon: number): { x: number; z: number } {
+    const zKm = -(lat - this.latCenter) * KM_PER_DEG_LAT;
+    const xKm = (lon - this.lonCenter) * KM_PER_DEG_LAT * Math.cos(lat * DEG2RAD);
+    return { x: xKm * this.uPerKm, z: zKm * this.uPerKm };
+  }
+
+  /**
+   * Lake radius (units) from a real surface area (km²), compressed onto the MAPGEO playable band so a
+   * giant reads huge while a small lake stays scoopable (a true-scale lake would be an unscoopable dot
+   * at province scale). √area ∝ linear size; clamp to [areaMin, areaMax] then lerp [minR, maxR].
+   * Undefined area → MAPGEO.lakeAreaDefault (unpublished recreational/river-widening lakes).
+   */
+  private lakeRadiusFromArea(areaKm2?: number): number {
+    const a = Math.max(MAPGEO.lakeAreaMin, Math.min(MAPGEO.lakeAreaMax, areaKm2 ?? MAPGEO.lakeAreaDefault));
+    const sMin = Math.sqrt(MAPGEO.lakeAreaMin);
+    const t = (Math.sqrt(a) - sMin) / (Math.sqrt(MAPGEO.lakeAreaMax) - sMin);
+    return MAPGEO.lakeMinR + t * (MAPGEO.lakeMaxR - MAPGEO.lakeMinR);
+  }
+
+  /** The active map's real boundary projected to world XZ — the province outline the radar draws and
+   *  shades the exterior against. Null on procedural maps (no geo). */
+  provinceOutline(): { x: number; z: number }[] | null {
+    if (!this.geo) return null;
+    return this.geo.outline.map((c) => this.project(c.lat, c.lon));
+  }
+
+  /** Decorative place labels (far-north + southern reference points) projected to world XZ — pure radar labels,
+   *  NOT gameplay anchors/structures, so the whole province reads as Saskatchewan. Empty if the map has none. */
+  landmarks(): { name: string; x: number; z: number; kind: 'city' | 'town' }[] {
+    return (this.region.landmarks ?? []).map((pl) => {
+      const w = this.project(pl.lat, pl.lon);
+      return { name: pl.name, x: w.x, z: w.z, kind: pl.kind };
+    });
   }
 
   /** The LakeRuntime whose centre is nearest (x,z), or null if the map has no lakes. */
@@ -308,19 +368,38 @@ export class World {
    */
   private scatterLakes(): LakeRuntime[] {
     const lakes: LakeRuntime[] = [];
-    // Anchored maps: pin a GUARANTEED scoop lake at each scoop-bearing anchor BEFORE the random
-    // scatter, so every base/town that needs water has it on hand. They count toward `count` (below),
-    // displacing random water rather than inflating density; the random loop's overlap check skips them.
-    for (const a of this.region.anchors ?? []) {
-      if (!a.scoop) continue;
-      const r = a.scoop.radius ?? 120;
-      const p = this.anchorToWorld(a);
-      // Keep the whole lake on the map: clamp its centre so centre ± radius stays inside the terrain.
+    // Anchored maps: pin a GUARANTEED scoop lake at each scoop-bearing anchor BEFORE the random scatter,
+    // at its real projected position with a radius derived from the lake's real surface area. Process
+    // BASES first (a base must keep its own water), biggest lake first so the giants (Reindeer) claim
+    // their space; a TOWN lake whose centre falls inside an already-placed lake is dropped — the town
+    // then attaches to that neighbouring water (realistic for the connected Churchill chain). They count
+    // toward `count` (below), displacing random water; the random loop keeps clear of them.
+    const scoopAnchors = (this.region.anchors ?? []).filter((a) => a.scoop);
+    scoopAnchors.sort((a, b) => {
+      const abase = a.kind !== 'community';
+      const bbase = b.kind !== 'community';
+      if (abase !== bbase) return abase ? -1 : 1; // bases before towns
+      return this.lakeRadiusFromArea(b.scoop!.areaKm2) - this.lakeRadiusFromArea(a.scoop!.areaKm2); // biggest first
+    });
+    for (const a of scoopAnchors) {
+      const isBase = a.kind !== 'community';
+      const sc = a.scoop!;
+      const reqR = this.lakeRadiusFromArea(sc.areaKm2);
+      // A SIGNATURE lake (elong + bearing) keeps its real silhouette: split the equal-area radius into a short
+      // axis (the stored `r`) and a longer axis so the FOOTPRINT AREA is preserved while it sprawls in its true
+      // compass direction (Reindeer long N–S, Lac La Ronge canted NE). A plain lake stays a near-round disc.
+      const r = sc.elong ? reqR / Math.sqrt(sc.elong) : reqR;
+      const shape = sc.elong ? this.makeLakeShape({ elong: sc.elong, elongAngle: bearingToElongAngle(sc.bearingDeg ?? 0) }) : this.makeLakeShape();
+      const p = this.project(a.lat, a.lon);
+      // Keep the lake on the map: clamp its centre so centre ± (short) radius stays inside the terrain. An
+      // elongated long axis may overhang the rim — realistic, it just clips at the border like the real lake.
       const lim = this.size / 2 - r - 30;
       p.x = Math.max(-lim, Math.min(lim, p.x));
       p.z = Math.max(-lim, Math.min(lim, p.z));
-      if (lakes.some((o) => Math.hypot(o.x - p.x, o.z - p.z) < o.r + r + 40)) continue;
-      lakes.push({ x: p.x, z: p.z, r, waterLevel: this.baseHeight(p.x, p.z), shape: this.makeLakeShape(), name: a.scoop.lake });
+      // Drop a TOWN lake that would substantially overlap existing water (it attaches to that lake — the
+      // connected Churchill chain near La Ronge becomes one big lake, not a pile of discs); bases keep theirs.
+      if (!isBase && lakes.some((o) => Math.hypot(o.x - p.x, o.z - p.z) < o.r + r * 0.4)) continue;
+      lakes.push({ x: p.x, z: p.z, r, waterLevel: this.baseHeight(p.x, p.z), shape, name: sc.lake });
     }
     const density = LAKES3D.length / (600 * 600); // curated lakes per unit² at the base size
     const count = Math.max(LAKES3D.length, Math.round(density * this.size * this.size * this.profile.lakeDensityScale));
@@ -347,16 +426,43 @@ export class World {
         r,
         waterLevel: this.baseHeight(x, z),
         shape: this.makeLakeShape(),
-        name: this.nameSource.lake(),
+        // On an anchored map the ONLY named lakes are the real ones pinned at anchors — the random
+        // background ponds stay nameless so the radar never labels a real SK lake at a fake spot
+        // ("hallucinated" Wollaston/Knee/Hatchet Lakes scattered everywhere). Procedural maps keep names.
+        name: this.region.anchors?.length ? '' : this.nameSource.lake(),
       });
+    }
+
+    // Iconic GEOGRAPHIC lakes (far-north giants + southern reservoirs) at their REAL centroids. Appended AFTER
+    // the gameplay water so the central campaign layout — and the seeded RNG stream — stay byte-identical: their
+    // shapes come from a LOCAL deterministic generator (namedLakeShape), never this.rng. They make the radar read
+    // as Saskatchewan beyond the campaign band but belong to no mission. They may clip the province rim or kiss a
+    // hydrologically-connected neighbour (Athabasca↔Black) — both faithful to the real map.
+    const named = this.region.namedLakes ?? [];
+    for (let i = 0; i < named.length; i++) {
+      const nl = named[i];
+      const reqR = this.lakeRadiusFromArea(nl.areaKm2);
+      const elong = nl.elong && nl.elong > 1 ? nl.elong : 1;
+      const r = elong > 1 ? reqR / Math.sqrt(elong) : reqR;
+      const p = this.project(nl.lat, nl.lon);
+      const lim = this.size / 2 - r - 20;
+      p.x = Math.max(-lim, Math.min(lim, p.x));
+      p.z = Math.max(-lim, Math.min(lim, p.z));
+      lakes.push({ x: p.x, z: p.z, r, waterLevel: this.baseHeight(p.x, p.z), shape: namedLakeShape(elong, bearingToElongAngle(nl.bearingDeg ?? 0), i), name: nl.name });
     }
     return lakes;
   }
 
-  /** Generate one lake's seeded irregular boundary (elongation + angular lobes). */
-  private makeLakeShape(): LakeShape {
-    const elong = LAKE_SHAPE.elongMin + this.rng() * (LAKE_SHAPE.elongMax - LAKE_SHAPE.elongMin);
-    const elongAngle = this.rng() * Math.PI * 2;
+  /**
+   * Generate one lake's seeded irregular boundary (elongation + angular lobes). A signature lake passes an
+   * `override` to stamp its REAL silhouette (axis ratio + orientation); the random draws are still CONSUMED
+   * either way so the seeded world is identical regardless of which lakes carry an override.
+   */
+  private makeLakeShape(override?: { elong?: number; elongAngle?: number }): LakeShape {
+    const rElong = LAKE_SHAPE.elongMin + this.rng() * (LAKE_SHAPE.elongMax - LAKE_SHAPE.elongMin);
+    const rAngle = this.rng() * Math.PI * 2;
+    const elong = override?.elong ?? rElong;
+    const elongAngle = override?.elongAngle ?? rAngle;
     const harmonics = [];
     for (let i = 0; i < LAKE_SHAPE.harmonics; i++) {
       harmonics.push({
@@ -565,15 +671,18 @@ export class World {
       null;
     const anchors = chosen ? [chosen, ...all.filter((a) => a.id !== chosen.id)] : [...all];
     for (const a of anchors) {
-      const p = this.anchorToWorld(a);
+      const p = this.project(a.lat, a.lon);
       const lake = this.lakeAt(p.x, p.z) ?? this.nearestLakeRuntime(p.x, p.z);
       const isBase = a.kind === 'base' || a.kind === 'both';
       let site: { x: number; z: number } = p;
-      // Bases must sit on dry shore; nudge to the lake's shore on the side TOWARD map centre, so an
-      // edge anchor's base stays on the terrain (never out past the rim).
-      if ((isBase || this.isOverWater(p.x, p.z)) && lake) {
-        const s = this.lakeShorePointToward(lake, 0, 0) ?? this.lakeShorePoint(lake);
+      if (isBase && lake) {
+        // A base is a lakeside depot: seat it on the shore of its own (pinned) lake nearest its position.
+        const s = this.lakeShorePointNear(lake, p.x, p.z) ?? this.lakeShorePoint(lake);
         if (s) site = s;
+      } else if (!isBase && this.isOverWater(p.x, p.z)) {
+        // A town whose projected point lands on a (shared) lake nudges to the NEAREST dry land from its
+        // own spot — so towns ringing one big lake spread along its shore instead of collapsing to a point.
+        site = this.nudgeToDryLand(p.x, p.z);
       }
       out.push({
         name: a.name,
@@ -585,6 +694,48 @@ export class World {
         anchorId: a.id,
       });
       this.resolvedAnchors.push({ id: a.id, name: a.name, kind: a.kind, x: site.x, z: site.z, home: a.id === chosen?.id, lake });
+    }
+    this.separateTownSites(out);
+  }
+
+  /**
+   * Push apart any TOWN sites that landed too close (tight real clusters like the Churchill-chain
+   * villages around La Ronge, or two towns nudged onto the same shore arc) so each stays a distinct,
+   * readable marker rather than an overlapping blob. A few relaxation passes; each move re-snaps to dry
+   * land. Bases are left alone (they're far apart and pinned to their lake). `out` and `resolvedAnchors`
+   * are index-parallel, so both are updated together.
+   */
+  private separateTownSites(out: CommunitySite[]): void {
+    const MIN_SEP = 26; // ≈ a cluster radius — yards may kiss but centres read as separate
+    const towns = out.map((c, i) => ({ c, i })).filter((o) => o.c.kind === 'town');
+    for (let iter = 0; iter < 8; iter++) {
+      let moved = false;
+      for (let m = 0; m < towns.length; m++) {
+        for (let n = m + 1; n < towns.length; n++) {
+          const A = out[towns[m].i];
+          const B = out[towns[n].i];
+          const dx = B.x - A.x;
+          const dz = B.z - A.z;
+          const d = Math.hypot(dx, dz);
+          if (d >= MIN_SEP) continue;
+          // Deterministic fallback direction when two sites coincide exactly (index-derived, no RNG).
+          const ux = d > 1e-3 ? dx / d : Math.cos(towns[m].i);
+          const uz = d > 1e-3 ? dz / d : Math.sin(towns[m].i);
+          const push = (MIN_SEP - d) / 2 + 0.5;
+          const an = this.nudgeToDryLand(A.x - ux * push, A.z - uz * push);
+          const bn = this.nudgeToDryLand(B.x + ux * push, B.z + uz * push);
+          A.x = an.x;
+          A.z = an.z;
+          B.x = bn.x;
+          B.z = bn.z;
+          this.resolvedAnchors[towns[m].i].x = an.x;
+          this.resolvedAnchors[towns[m].i].z = an.z;
+          this.resolvedAnchors[towns[n].i].x = bn.x;
+          this.resolvedAnchors[towns[n].i].z = bn.z;
+          moved = true;
+        }
+      }
+      if (!moved) break;
     }
   }
 
@@ -667,10 +818,12 @@ export class World {
     return null;
   }
 
-  /** Dry shore point on the side of the lake TOWARD (tx,tz) — keeps an anchored base inward (toward
-   *  map centre) so an edge anchor never lands its base off the terrain. Falls back to null if landlocked. */
-  private lakeShorePointToward(lake: LakeRuntime, tx: number, tz: number): { x: number; z: number } | null {
-    const a0 = Math.atan2(tz - lake.z, tx - lake.x);
+  /** Dry shore point of `lake` NEAREST world (px,pz): ray-march outward from the lake centre THROUGH
+   *  that point to the first dry spot, so each anchor that shares a lake lands on its OWN side of the
+   *  shore (near its real position) instead of every anchor collapsing onto one point. When (px,pz) is
+   *  ~the lake centre (e.g. a base pinned at its lake) the angle defaults to +x. Null if landlocked. */
+  private lakeShorePointNear(lake: LakeRuntime, px: number, pz: number): { x: number; z: number } | null {
+    const a0 = Math.atan2(pz - lake.z, px - lake.x);
     const dx = Math.cos(a0);
     const dz = Math.sin(a0);
     const rr = this.lakeRadius(lake, a0);
@@ -682,15 +835,53 @@ export class World {
     return null;
   }
 
+  /** Nearest dry land to (px,pz): expanding-ring search in all directions (independent of any one lake's
+   *  centre), so a town sitting on shared water moves the SHORTEST way ashore near its real spot. Returns
+   *  the input unchanged if surrounded by water out to the search cap (heavily-watered country). */
+  private nudgeToDryLand(px: number, pz: number): { x: number; z: number } {
+    if (!this.isOverWater(px, pz)) return { x: px, z: pz };
+    for (let r = 8; r <= 180; r += 8) {
+      for (let k = 0; k < 12; k++) {
+        const a = (k / 12) * Math.PI * 2;
+        const x = px + Math.cos(a) * r;
+        const z = pz + Math.sin(a) * r;
+        if (!this.isOverWater(x, z)) return { x, z };
+      }
+    }
+    return { x: px, z: pz };
+  }
+
   /**
-   * Highway network: a minimum spanning tree over the community centers (Prim's), so
-   * every settlement is reachable with no redundant loops. Each MST edge becomes one
-   * draped, gently-meandering road, named after a northern-Sask provincial highway.
+   * Highway network. First lay any AUTHORED provincial-highway corridors the region declares — real routes
+   * through real towns (e.g. Hwy 2: Prince Albert → Weyakwin → La Ronge), so a named highway follows its true
+   * spine instead of a nearest-neighbour guess. Then connect whatever's still isolated with a minimum spanning
+   * tree (Prim's) over the community centers, so every settlement is reachable. Each edge becomes one draped,
+   * gently-meandering road; corridor edges carry their real name, the rest draw from the region's highway pool.
    */
   private makeRoads(): RoadRuntime[] {
     const nodes = this.communities;
     if (nodes.length < 2) return [];
     const roads: RoadRuntime[] = [];
+    const built = new Set<string>();
+    const edgeKey = (i: number, j: number) => (i < j ? `${i}-${j}` : `${j}-${i}`);
+    const nodeOf = (anchorId: string) => nodes.findIndex((n) => n.anchorId === anchorId);
+
+    // Authored corridors: connect consecutive anchors of each real highway route, named for that highway.
+    for (const route of this.region.highwayRoutes ?? []) {
+      let prev = -1;
+      for (const id of route.through) {
+        const i = nodeOf(id);
+        if (i < 0) continue;
+        if (prev >= 0 && prev !== i && !built.has(edgeKey(prev, i))) {
+          roads.push(this.buildRoad(nodes[prev], nodes[i], route.name));
+          built.add(edgeKey(prev, i));
+        }
+        prev = i;
+      }
+    }
+
+    // Connectivity MST (Prim's) over ALL nodes — guarantees every settlement is linked even when the corridors
+    // formed separate components. Edges already laid by a corridor are skipped (no duplicate road on top).
     const inTree = new Array(nodes.length).fill(false);
     inTree[0] = true;
     for (let added = 1; added < nodes.length; added++) {
@@ -711,13 +902,17 @@ export class World {
       }
       if (bj < 0) break;
       inTree[bj] = true;
-      roads.push(this.buildRoad(nodes[bi], nodes[bj]));
+      if (!built.has(edgeKey(bi, bj))) {
+        roads.push(this.buildRoad(nodes[bi], nodes[bj]));
+        built.add(edgeKey(bi, bj));
+      }
     }
     return roads;
   }
 
-  /** Resample a straight A→B run into a gently-meandering road polyline (drapes at draw). */
-  private buildRoad(a: CommunitySite, b: CommunitySite): RoadRuntime {
+  /** Resample a straight A→B run into a gently-meandering road polyline (drapes at draw). An authored
+   *  corridor passes its real highway `name`; otherwise the road draws one from the region's highway pool. */
+  private buildRoad(a: CommunitySite, b: CommunitySite, name?: string): RoadRuntime {
     const L = Math.hypot(b.x - a.x, b.z - a.z) || 1;
     const nx = -(b.z - a.z) / L; // unit perpendicular (lateral meander)
     const nz = (b.x - a.x) / L;
@@ -734,7 +929,7 @@ export class World {
       // perpendicular until it hits land (endpoints stay put — towns sit on shore).
       pts.push(k === 0 || k === segs ? p : this.dodgeWater(p, nx, nz));
     }
-    return { name: this.nameSource.highway(), pts, width: ROADS.width };
+    return { name: name ?? this.nameSource.highway(), pts, width: ROADS.width };
   }
 
   /**
@@ -798,6 +993,18 @@ export class World {
 
     // Muskeg: pull lowlands flatter so wet basins read level rather than as deep bowls.
     if (h < 0) h *= 1 - p.lowlandFlatten;
+
+    // Localized uplands (Cypress Hills): a smooth radial massif rising out of the flats. Applied AFTER the
+    // muskeg flatten (a hill is dry high ground, not a wet basin) and added on top, with a touch of ridged
+    // texture so the dome reads as rocky relief rather than a bald bump. Loop is empty on maps with no uplands.
+    for (const u of this.uplands) {
+      const d = Math.hypot(x - u.x, z - u.z);
+      if (d >= u.r) continue;
+      const t = 1 - d / u.r; // 1 at centre → 0 at rim
+      const s = t * t * (3 - 2 * t); // smoothstep falloff
+      const ridge = this.noise.ridged(wx, wz, this.ridgeFbm); // reuse the outcrop field for crest texture
+      h += u.height * s * (1 + ridge * 0.18);
+    }
     return h;
   }
 
@@ -978,6 +1185,79 @@ export class World {
     }
     return k;
   }
+}
+
+// --- Real-world projection (module-pure helpers) -------------------------------
+
+const KM_PER_DEG_LAT = 111.32; // mean km per degree of latitude (also the lon scale before cos(lat))
+const DEG2RAD = Math.PI / 180;
+
+/**
+ * Compass bearing of a lake's long axis (degrees, 0 = N–S, 90 = E–W) → the `elongAngle` (the `phi` where the
+ * boundary ellipse reaches farthest) in World's XZ convention: `phi = atan2(dz, dx)`, north = −Z, east = +X.
+ * A bearing β points (sin β, −cos β) in world XZ, so its phi is `atan2(−cos β, sin β)` (sign is irrelevant —
+ * the ellipse is symmetric about its axis).
+ */
+function bearingToElongAngle(bearingDeg: number): number {
+  const b = bearingDeg * DEG2RAD;
+  return Math.atan2(-Math.cos(b), Math.sin(b));
+}
+
+/**
+ * An irregular lake boundary for a PINNED geographic lake, generated WITHOUT World's seeded RNG — so appending
+ * these far-north/southern lakes never perturbs the campaign world (same ellipse + lobe-harmonic form as
+ * `makeLakeShape`, but the lobes are a deterministic function of the lake's index).
+ */
+function namedLakeShape(elong: number, elongAngle: number, idx: number): LakeShape {
+  const harmonics: { k: number; amp: number; phase: number }[] = [];
+  for (let i = 0; i < LAKE_SHAPE.harmonics; i++) {
+    const t = idx * 1.37 + i * 2.11 + 0.5;
+    harmonics.push({
+      k: 2 + ((idx + i) % 3), // 2..4 lobes
+      amp: LAKE_SHAPE.harmonicAmp * (0.55 + 0.45 * Math.abs(Math.sin(t * 1.7))),
+      phase: (t * 2.399) % (Math.PI * 2),
+    });
+  }
+  return { elong: Math.max(1, elong), elongAngle, harmonics };
+}
+
+/**
+ * The real-world projection frame for a region: its explicit `geo` if declared, else synthesised from
+ * the anchor lat/lon bounds (padded 10%) so any anchored map still projects without an authored frame.
+ * Null when the region has neither geo nor anchors (procedural maps — `project()` is never called there).
+ */
+function resolveGeo(region: Region): GeoFrame | null {
+  if (region.geo) return region.geo;
+  const anchors = region.anchors;
+  if (!anchors?.length) return null;
+  let latMin = Infinity;
+  let latMax = -Infinity;
+  let lonMin = Infinity;
+  let lonMax = -Infinity;
+  for (const a of anchors) {
+    latMin = Math.min(latMin, a.lat);
+    latMax = Math.max(latMax, a.lat);
+    lonMin = Math.min(lonMin, a.lon);
+    lonMax = Math.max(lonMax, a.lon);
+  }
+  const padLat = (latMax - latMin) * 0.1 || 0.1;
+  const padLon = (lonMax - lonMin) * 0.1 || 0.1;
+  latMin -= padLat;
+  latMax += padLat;
+  lonMin -= padLon;
+  lonMax += padLon;
+  return {
+    latMin,
+    latMax,
+    lonMin,
+    lonMax,
+    outline: [
+      { lat: latMin, lon: lonMin },
+      { lat: latMin, lon: lonMax },
+      { lat: latMax, lon: lonMax },
+      { lat: latMax, lon: lonMin },
+    ],
+  };
 }
 
 // --- Basin shaping (module-pure helpers) ---------------------------------------

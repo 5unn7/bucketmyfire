@@ -7,7 +7,7 @@
 
 ## TL;DR — where things stand
 
-- The game is a **mobile-browser helicopter water-bomber** (fly, scoop from lakes, drop on
+- The game is a **mobile-browser firefighting helicopter sim** (fly, scoop from lakes, drop on
   forest fires). It was **pivoted from a 2D Phaser prototype to real 3D Three.js.**
 - **The active build is `src/three/`** (entry: `index.html` → `src/three/main.ts`). The old
   Phaser code (`src/main.ts`, `src/scenes/`, `src/objects/`, `src/controls/`) and the `phaser`
