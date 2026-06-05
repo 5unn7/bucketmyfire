@@ -192,8 +192,13 @@ function bootMission(mission: MissionDef): void {
   // QA / dev: fly ANY airframe regardless of unlock progress with ?heli=<id> (bell-205a1 | bell-212 |
   // uh-60), e.g. ?m=first-light&autostart&heli=uh-60. Unknown ids fall back to the saved default.
   const heliOverride = params.get('heli');
-  const profile =
-    heliOverride && HELI_MODELS[heliOverride] ? { ...defaultProfile(), heliId: heliOverride } : defaultProfile();
+  // QA / dev: force the world MAP regardless of the saved pick with ?region=<id> (e.g.
+  // ?region=saskatchewan-true to fly the true-shape rectangular playfield). Unknown ids fall back to the
+  // default map inside World.getRegion, so a typo can't crash the boot.
+  const regionOverride = params.get('region');
+  let profile = defaultProfile();
+  if (heliOverride && HELI_MODELS[heliOverride]) profile = { ...profile, heliId: heliOverride };
+  if (regionOverride) profile = { ...profile, mapId: regionOverride };
 
   // The live Game. `let`, because RETRY and NEXT now rebuild it IN PLACE (no page reload): the
   // renderer, composer, window listeners, and the render loop below are created ONCE and reused, and

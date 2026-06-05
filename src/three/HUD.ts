@@ -1771,16 +1771,21 @@ export class HUD {
 
     // --- Satellite terrain backdrop: blit the baked world map through the SAME affine, so map + blips
     // stay registered in either mode. ---
-    const S = s.worldSize;
-    const k = S / this.minimap.width; // world units per source pixel
+    const S = s.worldSize; // bounding square — used by the burn overlay (the fire field is square)
+    // The satellite map covers the TRUE playfield rectangle (worldSizeX × worldSizeZ) over the minimap's
+    // own pixel dims, so per-axis world-units-per-pixel (equal on a square map → identical to the old blit).
+    const sx = s.worldSizeX;
+    const sz = s.worldSizeZ;
+    const kx = sx / this.minimap.width;
+    const kz = sz / this.minimap.height;
     ctx.save();
     ctx.setTransform(
-      dpr * m00 * k,
-      dpr * m10 * k,
-      dpr * m01 * k,
-      dpr * m11 * k,
-      dpr * (m00 * (-S / 2) + m01 * (-S / 2) + m0),
-      dpr * (m10 * (-S / 2) + m11 * (-S / 2) + m1),
+      dpr * m00 * kx,
+      dpr * m10 * kx,
+      dpr * m01 * kz,
+      dpr * m11 * kz,
+      dpr * (m00 * (-sx / 2) + m01 * (-sz / 2) + m0),
+      dpr * (m10 * (-sx / 2) + m11 * (-sz / 2) + m1),
     );
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(this.minimap, 0, 0);

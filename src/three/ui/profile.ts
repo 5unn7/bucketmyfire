@@ -62,6 +62,19 @@ export const MAPS: CatalogItem[] = [
     imageUrl: import.meta.env.BASE_URL + 'maps/Saskatchewan.webp',
   },
   {
+    // Same Saskatchewan world, grown on a TRUE-SHAPE rectangular playfield (region geo.fit = 'bounds'):
+    // the world's extent IS the province's bounding box, so the boundary sits at the map edge instead of
+    // floating in a square. Keep this id in sync with the region in world/maps/saskatchewan-true.ts.
+    id: 'saskatchewan-true',
+    name: 'Saskatchewan · True Shape',
+    tagline: 'The province, edge to edge',
+    blurb: 'The same northern-Saskatchewan world, fitted to the province’s real outline so the boundary sits at the map edge — no off-province margin. The full campaign flies here on Saskatchewan’s true silhouette.',
+    available: true,
+    accent: '#3f7d4a',
+    glyph: '🗺️',
+    imageUrl: import.meta.env.BASE_URL + 'maps/Saskatchewan.webp',
+  },
+  {
     id: 'british-columbia',
     name: 'British Columbia',
     tagline: 'Interior fire country · soon',
