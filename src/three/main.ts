@@ -225,6 +225,13 @@ function bootMission(mission: MissionDef): void {
     (window as unknown as Record<string, unknown>).__game = game;
   }
 
+  // Live tuning panel (dev only): an auto-generated slider board over every config.ts block.
+  // Toggle with the backtick key or the ⚙ button. Lazy-imported so it stays out of a player's
+  // bundle; gated like __game plus an explicit ?tune for opening it on a prod ?qa session.
+  if (import.meta.env.DEV || params.has('qa') || params.has('tune')) {
+    void import('./dev/ConfigPanel').then((m) => m.mountConfigPanel()).catch(() => {});
+  }
+
   function resize(): void {
     const w = container.clientWidth;
     const h = container.clientHeight;
