@@ -45,6 +45,13 @@ export class HelicopterSim {
   // what the airframe pitches/banks toward (see the attitude block in update()).
   private prevVelX = 0;
   private prevVelZ = 0;
+  // Low-passed acceleration that DRIVES the airframe's nose-tilt/bank. The raw
+  // per-frame difference is spiky (a throttle slam, the speed-cap clamp), and since
+  // nose-down feeds MORE forward thrust (pitchThrust), driving pitch off that raw
+  // signal porpoises ("see-saw"). Easing it first damps the loop — the commanded
+  // dive-bomb / steer-bank bypass this, so the deliberate aerobatics are unaffected.
+  private smFwdAcc = 0;
+  private smRightAcc = 0;
   // Eased control demands. Raw input (a key tap or stick flick) is a step; these
   // chase it with inertia so turns, throttle AND collective ramp in and roll out
   // smoothly. Smoothing the lift demand here (not just the resulting climb rate)
@@ -72,6 +79,8 @@ export class HelicopterSim {
     this.vel.set(0, 0, 0);
     this.prevVelX = 0;
     this.prevVelZ = 0;
+    this.smFwdAcc = 0;
+    this.smRightAcc = 0;
     this.turnInput = 0;
     this.throttleInput = 0;
     this.liftInput = 0;
@@ -93,6 +102,8 @@ export class HelicopterSim {
     this.vel.set(0, 0, 0);
     this.prevVelX = 0;
     this.prevVelZ = 0;
+    this.smFwdAcc = 0;
+    this.smRightAcc = 0;
     this.turnInput = 0;
     this.throttleInput = 0;
     this.liftInput = 0;
@@ -264,14 +275,21 @@ export class HelicopterSim {
     const fwdAcc = accX * fx + accZ * fz; // + = speeding up along the nose
     const rightAcc = accX * rx + accZ * rz; // + = pulled to the right (e.g. a right turn)
     const aRef = FLIGHT.enginePower; // normalize accel → roughly ±1 at full thrust
+    // Low-pass the raw per-frame acceleration before it tilts the airframe. The raw
+    // signal spikes on a throttle slam and at the speed cap, and because nose-down
+    // feeds MORE thrust (pitchThrust below), driving pitch off the raw value porpoises
+    // ("see-saw"). Easing it (framerate-independent) damps that loop into a smooth lean.
+    const accA = 1 - Math.pow(1 - FLIGHT.attitudeAccelSmoothing, dt * 60);
+    this.smFwdAcc += (fwdAcc - this.smFwdAcc) * accA;
+    this.smRightAcc += (rightAcc - this.smRightAcc) * accA;
 
     // A fast-cruising heli sits persistently nose-down (disc tilted forward to hold
     // speed against drag — `cruise`, computed above); the acceleration term then adds
     // the dive/flare on top.
-    let targetPitch = cruise - THREE.MathUtils.clamp(fwdAcc / aRef, -1, 1) * FLIGHT.maxPitch;
+    let targetPitch = cruise - THREE.MathUtils.clamp(this.smFwdAcc / aRef, -1, 1) * FLIGHT.maxPitch;
     // NOTE: sign is MIRRORED (no leading minus) so a LEFT turn banks LEFT — left side drops,
     // right side rides high. The steer term below uses the matching sign so both reinforce.
-    let targetBank = THREE.MathUtils.clamp(rightAcc / aRef, -1, 1) * FLIGHT.maxBank;
+    let targetBank = THREE.MathUtils.clamp(this.smRightAcc / aRef, -1, 1) * FLIGHT.maxBank;
 
     // --- Direct pilot attitude authority (AEROBATICS) — lean on the STICK, on TOP of the
     // acceleration-driven tilt above. This is the "throw it into a hard banked turn and

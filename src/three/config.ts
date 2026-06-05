@@ -197,9 +197,15 @@ export const FLIGHT = {
   // bank into turns. These cap how far it leans and how persistently it cruises
   // nose-down. See the attitude block in HelicopterSim.update().
   maxBank: 1.0, // radians of roll at full lateral (turn) acceleration (RAISED 0.8→1.0 for aerobatic banks ~57°)
-  maxPitch: 0.62, // radians of dive/flare at full fore/aft acceleration (RAISED 0.52→0.62 — deeper nose-over)
+  maxPitch: 0.42, // radians of dive/flare at full fore/aft acceleration (LOWERED 0.62→0.42 ≈ 24°: full throttle
+  // used to snap the nose 35° down and — via the pitchThrust feedback below — plunge + porpoise ("see-saw").
+  // This caps ONLY the acceleration-driven tilt; the commanded dive-bomb (diveCommand) is bounded by maxPitchHard, untouched.
   cruisePitch: 0.14, // extra persistent nose-down at top speed (disc tilted to hold cruise)
   bodyEase: 0.13, // how fast bank/pitch ease toward their targets (RAISED 0.1→0.13 — snappier aerobatic roll-in; lower = softer/heavier)
+  attitudeAccelSmoothing: 0.2, // EMA (per-60fps factor) on the acceleration that drives the nose-tilt/bank, BEFORE
+  // it leans the airframe. The raw per-frame accel spikes on a throttle slam and at the speed cap, and since
+  // nose-down feeds more thrust (pitchThrust), the unfiltered loop porpoises. Lower = smoother/laggier lean (kills
+  // the see-saw); 1 = the old raw, twitchy behavior. The commanded dive-bomb/steer-bank bypass this entirely.
   // --- Direct pilot attitude authority (AEROBATICS) — leans the airframe on the STICK,
   // not just as a side effect of accelerating. This is what turns "it banks a little in a
   // turn" into "I can throw it into a hard banked turn and dive-bomb a fire on command."
