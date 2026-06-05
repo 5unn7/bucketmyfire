@@ -623,10 +623,10 @@ export const BRIDGE = {
   nearAnchor: 'missinipe', // place it at the river point nearest THIS anchor id
   // --- Structure dimensions ---
   span: 50, // deck LENGTH bank-to-bank (across the channel) — wide enough to land its piers on dry banks
-  roadway: 11, // deck WIDTH along the flow = the front-to-back depth of the tunnel you thread
+  roadway: 14, // deck WIDTH along the flow = the front-to-back depth of the tunnel you thread
   deckClearance: 14, // height of the deck UNDERSIDE above the river surface = the headroom you fly under
   deckThickness: 2.4, // deck slab thickness
-  trussHeight: 6, // the triangulated truss rises this far ABOVE the deck (the superstructure)
+  trussHeight: 11, // the triangulated truss rises this far ABOVE the deck (the superstructure)
   trussBays: 6, // number of triangle panels per truss plane (the "5–6 triangle" Warren-truss look)
   trussBeam: 1.1, // truss member (chord/diagonal/post) cross-section thickness
   pierWidth: 12, // each bank pier's footprint across the span — sits at the span ENDS, leaving the centre clear
