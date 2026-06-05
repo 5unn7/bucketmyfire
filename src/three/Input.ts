@@ -63,6 +63,13 @@ export class Input {
   private btnDetach = false;
   private prevDetach = false; // last frame's detach level, for press-edge detection
 
+  // Collective slider (replaces digital ▲/▼ buttons).
+  private sliderActive = false;
+  private sliderLift = 0;
+  private collectiveKnob!: HTMLDivElement;
+  private collectiveFill!: HTMLDivElement;
+  private collectiveTrack!: HTMLDivElement;
+
   // Free-look ("eye" button): drag sets orbit VELOCITY, release eases back.
   private lookActive = false;
   private lookYawRate = 0;
@@ -138,10 +145,14 @@ export class Input {
     const turn = this.stickActive ? deadzone(this.stickTurn) : kTurn;
     const throttle = this.stickActive ? deadzone(this.stickThrottle) : kThrottle;
 
-    // Collective: keyboard + buttons, clamped. (I = climb, J = descend.)
+    // Collective: analog slider (touch) or keyboard fallback.
     let lift = 0;
-    if (k.has('KeyI') || this.btnUp) lift += 1;
-    if (k.has('KeyJ') || this.btnDown) lift -= 1;
+    if (this.sliderActive) {
+      lift = this.sliderLift;
+    } else {
+      if (k.has('KeyI') || this.btnUp) lift += 1;
+      if (k.has('KeyJ') || this.btnDown) lift -= 1;
+    }
 
     // Drop: Space (or the on-screen DROP button).
     const drop = this.btnDrop || k.has('Space');
@@ -215,14 +226,23 @@ export class Input {
     });
     for (const t of this.stickTicks) t.style.transformOrigin = `1px ${R - 6}px`;
 
-    // Collective + DROP cluster.
+    // Collective slider + DROP cluster.
     const cb = Math.round(set.clusterBtn * k);
-    for (const el of [this.climbBtn, this.descendBtn]) {
-      Object.assign(el.style, { width: `${cb}px`, height: `${cb}px`, fontSize: `${Math.round(cb * 0.29)}px` });
-    }
     const drop = Math.round(set.dropSize * k);
     Object.assign(this.dropBtn.style, { width: `${drop}px`, height: `${drop}px`, fontSize: `${Math.round(drop * 0.16)}px` });
     this.clusterRow.style.gap = `${Math.round(set.gap * 1.7)}px`;
+
+    // Collective slider — same height footprint as the old two-button column.
+    const slH = cb * 2 + set.gap;
+    const slW = 26;
+    Object.assign(this.collectiveTrack.style, { width: `${slW}px`, height: `${slH}px` });
+    const kW = slW - 4;
+    const kH = Math.round(slW * 0.82);
+    Object.assign(this.collectiveKnob.style, { width: `${kW}px`, height: `${kH}px` });
+
+    // Detach circle — proportional to the cluster.
+    const det = Math.round(cb * 0.56);
+    Object.assign(this.detachBtn.style, { width: `${det}px`, height: `${det}px`, fontSize: `${Math.round(det * 0.44)}px` });
 
     // Free-look eye — sits in the lower-right, lifted above the collective/DROP cluster.
     const eye = Math.round(set.eyeSize * k);
@@ -263,32 +283,11 @@ export class Input {
     parent.appendChild(root);
   }
 
-  /** Contextual bottom-centre action buttons, hidden until Game enables each:
-   *   - DETACH — jettison the slung bucket (shown on a water sortie while a bucket is attached).
-   *   - SWAP   — re-rig bucket↔crew (shown set down at the home base, on a mixed mission).
-   *  Stacked in ONE column so they never overlap — a hidden button takes no space (display:none),
-   *  so whichever is showing sits centred and both stack with a gap when (rarely) both are up. */
+  /** Contextual bottom-centre SWAP button (re-rig bucket↔crew at home base, mixed missions). */
   private buildSwapUI(root: HTMLElement): void {
-    // DETACH — a warm "caution" button (releasing your only water-delivery is a real commitment).
-    const detach = button('⊗ RELEASE BUCKET', {
-      position: 'relative',
-      display: 'none', // shown only when Game.setDetachVisible(true) — water sortie, bucket attached
-      padding: '0 16px',
-      height: '42px',
-      borderRadius: R.pill,
-      fontSize: FS.meta,
-      fontWeight: FW.bold,
-      letterSpacing: '1.2px',
-      color: '#ffe7df',
-      borderColor: UI.warmStroke,
-      boxShadow: `0 0 14px rgba(255,90,60,0.26), ${UI.shadowBtn}`,
-    });
-    this.detachBtn = detach;
-    holdButton(detach, (on) => (this.btnDetach = on), UI.warm); // edge-read in read() → one jettison per press
-
     const swap = button('⇄ SWAP', {
       position: 'relative',
-      display: 'none', // shown only when Game.setSwapVisible(true) — at base, on a mixed mission
+      display: 'none',
       padding: '0 18px',
       height: '46px',
       borderRadius: R.pill,
@@ -303,7 +302,6 @@ export class Input {
     holdButton(swap, (on) => (this.btnSwap = on));
 
     const col = div({ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', marginBottom: '14px' });
-    col.appendChild(detach);
     col.appendChild(swap);
     const a = anchor('bottom-center');
     a.appendChild(col);

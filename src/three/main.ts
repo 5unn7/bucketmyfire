@@ -209,6 +209,7 @@ function bootMission(mission: MissionDef): void {
   const tBoot = performance.now();
   let game = buildGame(mission);
   let firstFrameLogged = false;
+  let buildComplete = false; // deferred (lakes/rivers/roads) scene build — pumped a few ms/frame after first frame
   if (params.has('qa')) console.log('[boot] Game constructed in', Math.round(performance.now() - tBoot), 'ms');
 
   // Bloom post-process (B3) — fire/sun glow, render path chosen by tier at load. Re-aimed at the
@@ -285,6 +286,9 @@ function bootMission(mission: MissionDef): void {
       console.log('[boot] first frame at', Math.round(performance.now() - tBoot), 'ms (since Game ctor start)');
     }
     signalFirstFrame(); // first mission frame is on screen — fade out the cold-start splash
+    // Stream the deferred scene build (lakes/rivers/roads/yards) in a few ms/frame now that the first
+    // frame is up — it fills in under the cold-start spool instead of having frozen the boot.
+    if (!buildComplete) buildComplete = game.pumpBuild(6);
   });
 
   /** Construct a Game for `m` with its end-hooks + (dev/QA) debug handle. The renderer/composer/tier
@@ -306,6 +310,7 @@ function bootMission(mission: MissionDef): void {
   function switchMission(m: MissionDef): void {
     game.dispose();
     game = buildGame(m);
+    buildComplete = false; // the new Game has its own deferred queue to pump
     composer.setScene(game.scene, game.camera);
     applyEnvironment(game.scene, envTex); // re-point the cached env map at the freshly built scene
     const url = new URL(location.href);

@@ -233,3 +233,44 @@ begin
     execute 'revoke execute on function public.rls_auto_enable() from anon, authenticated, public';
   end if;
 end $$;
+
+-- ===========================================================================
+-- Leads — marketing/notify signups (Squadron Store waitlist, co-op interest, etc.)
+-- ===========================================================================
+-- UNLIKE cloud_saves (which hashes the email so we can never contact the player), this table
+-- intentionally stores a PLAINTEXT, emailable address — its whole purpose is to let us reach a
+-- player when a teased feature ships. Anyone (anon) may INSERT a bounded, well-formed row, but
+-- there is NO select/update/delete policy, so rows can't be enumerated or scraped through the REST
+-- API (same lock model as `scores`-insert + `client_errors`-read). The owner reads it from the
+-- Supabase dashboard (service role). This is an explicit, consented signup — the player typed their
+-- email into a "Notify me" field — so storing it plaintext is appropriate.
+
+create table if not exists public.leads (
+  id          bigint generated always as identity primary key,
+  email       text        not null,
+  source      text,                                   -- where the signup came from: 'shop' | 'coop' | ...
+  pilot       text,                                   -- the player's callsign at signup (optional)
+  client_id   text,                                   -- anonymous per-device id (dedupe aid)
+  created_at  timestamptz not null default now(),
+
+  constraint leads_email_len    check (char_length(email) between 5 and 254),
+  constraint leads_email_fmt    check (email ~* '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$'),
+  constraint leads_source_len   check (source    is null or char_length(source)    <= 24),
+  constraint leads_pilot_len    check (pilot     is null or char_length(pilot)     <= 24),
+  constraint leads_client_len   check (client_id is null or char_length(client_id) <= 64)
+);
+
+create index if not exists leads_created_idx on public.leads (created_at desc);
+
+alter table public.leads enable row level security;
+
+drop policy if exists "leads: anyone can insert" on public.leads;
+create policy "leads: anyone can insert"
+  on public.leads for insert
+  with check (
+    char_length(email) between 5 and 254
+    and email ~* '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$'
+  );
+
+-- No SELECT/UPDATE/DELETE policies → those are denied for anon by default (insert-only, unscrapable).
+grant insert on public.leads to anon;

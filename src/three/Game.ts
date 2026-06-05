@@ -122,6 +122,12 @@ export class Game {
   private snags: TreeField | null = null; // burnt dead-standing snags
   private accentFoliageTimer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false; // set by dispose(): stops deferred work + per-frame stepping after teardown
+  // Deferred scene build (load-perf): the heavy NON-critical meshing (lakes/rivers/roads/yards) is
+  // queued here as per-item closures and pumped a few-ms/frame by main.ts AFTER the first frame, so it
+  // streams in under the cold-start spool instead of freezing the boot. The CRITICAL scene (terrain,
+  // heli, pad, sky, fire, structures) is still built synchronously in the constructor.
+  private readonly deferredBuild: (() => void)[] = [];
+  private deferredIdx = 0;
   private readonly obstacles: Obstacles; // bucket collision height field (ground + tree canopy)
   private readonly frame = new FrameContext(); // shared time/wind/sun uniform bus (B0)
   private readonly ripples = new Ripples(); // 8-slot water ripple pool (B1)
@@ -197,7 +203,8 @@ export class Game {
   private rippleTimer = 0; // throttles ripple-ring spawns while scooping/dropping
   // Reused HUD-radar buffers so the per-frame HUD payload allocates NO new arrays/objects for the
   // radar (the mobile-60fps no-per-frame-alloc invariant). `fireRadar` is a pooled {x,z} list refilled
-  // in place and trimmed to the live fire count; `lakeRadar` is built once (lakes are immutable).
+  // in place and trimmed to the live fire count; `lakeRadar` is cached + invalidated once the deferred
+  // lake build drains (pumpBuild), since lakes now stream in over the first frames.
   private readonly fireRadar: { x: number; z: number }[] = [];
   private lakeRadar: { x: number; z: number; r: number }[] | null = null;
   private washRippleTimer = 0; // throttles the downwash ripple rings under a low heli (C4)
@@ -434,26 +441,21 @@ export class Game {
     // FrameContext (time/wind) + ripple pool. Disc tessellation scales with the tier.
     const waterMat = createWaterMaterial(this.frame, this.ripples);
     const waterSegments = tier.current.waterSegments;
+    // DEFERRED (one closure per lake) — ~58 tessellated discs, each sampling the shoreline, were a big
+    // chunk of the boot freeze. Streamed in a few per frame after first frame. Scooping is unaffected
+    // (it reads World.waterLevelAt, not the lake MESH), so a not-yet-built lake disc is purely cosmetic.
     for (const l of this.world.lakes) {
-      this.lakes.push(
-        new Lake(
-          this.scene,
-          l.x,
-          l.z,
-          l.r,
-          l.waterLevel,
-          waterSegments,
-          (phi) => this.world.lakeRadius(l, phi),
-          (x, z) => this.world.groundHeightAt(x, z),
-          waterMat,
+      this.deferredBuild.push(() =>
+        this.lakes.push(
+          new Lake(this.scene, l.x, l.z, l.r, l.waterLevel, waterSegments, (phi) => this.world.lakeRadius(l, phi), (x, z) => this.world.groundHeightAt(x, z), waterMat),
         ),
       );
     }
 
     // Streams / mini rivers (A4): a water ribbon per stream, sharing the same animated
-    // material as the lakes. You can scoop from them too (World.waterLevelAt generalizes).
+    // material as the lakes. You can scoop from them too (World.waterLevelAt generalizes). DEFERRED.
     for (const r of this.world.rivers) {
-      this.scene.add(createRiverMesh(r, (x, z) => this.world.groundHeightAt(x, z), waterMat));
+      this.deferredBuild.push(() => this.scene.add(createRiverMesh(r, (x, z) => this.world.groundHeightAt(x, z), waterMat)));
     }
 
     // Cleared yards (A5 polish): a packed-dirt clearing draped under each settlement, sharing
@@ -461,7 +463,7 @@ export class Game {
     // -1) so those layer cleanly on top; the forest already thinned here via clearingFactor.
     const yardMat = createYardMaterial();
     for (const c of builtSites) {
-      this.scene.add(createYardPatch(c.x, c.z, (x, z) => this.world.groundHeightAt(x, z), yardMat));
+      this.deferredBuild.push(() => this.scene.add(createYardPatch(c.x, c.z, (x, z) => this.world.groundHeightAt(x, z), yardMat))); // DEFERRED
     }
 
     // Highways (A5): draped GRAVEL ribbons linking the communities. The deck DRAPES on the
@@ -480,7 +482,7 @@ export class Game {
       return wl !== null ? wl + ROADS.bridgeLift : this.world.groundHeightAt(x, z) + ROADS.lift;
     };
     for (const rd of this.world.roads) {
-      this.scene.add(createRoadMesh(rd, roadSurfaceAt, gravelMat));
+      this.deferredBuild.push(() => this.scene.add(createRoadMesh(rd, roadSurfaceAt, gravelMat))); // DEFERRED
     }
 
     // Forest scattered by BIOME (A2): each candidate is accepted with the biome's
@@ -731,6 +733,24 @@ export class Game {
       // engine-start dial — so the tutorial no longer stacks on top of the briefing card.
       this.input.openHelpFirstTime();
     });
+  }
+
+  /**
+   * Pump the deferred (non-critical) scene build — lakes / rivers / roads / yards — for up to
+   * `budgetMs` per call, so it streams in AFTER the first frame (under the cold-start spool) instead
+   * of freezing the boot. `main.ts` calls this each frame until it returns true. When the queue drains
+   * the cached lake radar is invalidated so it rebuilds with the full lake set. No-op once disposed.
+   */
+  pumpBuild(budgetMs = 6): boolean {
+    if (this.disposed) return true;
+    const t0 = performance.now();
+    while (this.deferredIdx < this.deferredBuild.length) {
+      this.deferredBuild[this.deferredIdx++]();
+      if (performance.now() - t0 >= budgetMs) break;
+    }
+    const done = this.deferredIdx >= this.deferredBuild.length;
+    if (done) this.lakeRadar = null; // refresh the radar now that every lake disc exists
+    return done;
   }
 
   /**

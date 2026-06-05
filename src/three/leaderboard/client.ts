@@ -161,6 +161,42 @@ export async function submitScore(s: ScoreSubmission): Promise<boolean> {
   }
 }
 
+/**
+ * Capture a marketing lead — the player's PLAINTEXT email + where it came from (`source`, e.g.
+ * 'shop' / 'coop'). Unlike cloud-save (which hashes the email so we can NEVER contact them), this
+ * stores a real, emailable address in the insert-only `leads` table so we can actually reach them
+ * when the feature ships. Fire-and-forget: true on a 2xx, false on anything else. Never throws.
+ * Requires the `leads` table from supabase/schema.sql to be applied to the project.
+ */
+export async function submitLead(email: string, source: string, pilot?: string): Promise<boolean> {
+  if (!isConfigured()) return false;
+  const e = email.trim().toLowerCase();
+  if (e.length < 5 || e.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return false;
+  const clean = pilot ? cleanCallsign(pilot).slice(0, 24) : '';
+  const body = [
+    {
+      email: e,
+      source: source.slice(0, 24),
+      pilot: clean.length >= 2 ? clean : null,
+      client_id: getClientId(),
+    },
+  ];
+  const t = withTimeout(8000);
+  try {
+    const res = await fetch(`${URL_BASE}/rest/v1/leads`, {
+      method: 'POST',
+      headers: headers({ 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
+      body: JSON.stringify(body),
+      signal: t.signal,
+    });
+    return res.ok;
+  } catch {
+    return false;
+  } finally {
+    t.done();
+  }
+}
+
 /** A page of board rows plus the TOTAL number of ranked pilots (read from PostgREST's
  *  `Content-Range` header), so the UI can say "top 25 of 312" and compute percentiles. */
 export interface Board<E> {

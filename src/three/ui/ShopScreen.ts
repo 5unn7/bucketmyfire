@@ -1,6 +1,7 @@
 import { loadProfile } from './profile';
 import { MAX_CALLSIGN } from './callsign';
 import { isConfigured, saveToCloud } from '../leaderboard/cloudSave';
+import { submitLead } from '../leaderboard/client';
 import { UI, FS, FW, R, el, div, setBlur, prefersReducedMotion } from './theme';
 
 /**
@@ -163,19 +164,26 @@ class ShopScreen {
 
   private async doNotify(): Promise<void> {
     if (this.busy) return;
+    const email = this.email.value.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      this.showStatus('Enter a valid email address.', UI.warm);
+      return;
+    }
     this.busy = true;
     this.notifyBtn.style.opacity = '0.5';
     this.notifyBtn.style.pointerEvents = 'none';
     this.showStatus('Signing you up…', UI.dim);
-    // Reuses the cloud-save link: pins the player's profile to this email AND lands us the lead.
-    const res = await saveToCloud(this.callsign.value, this.email.value);
-    if (res.ok) {
+    // The lead — store the PLAINTEXT email so we can actually reach them when the store opens.
+    const lead = await submitLead(email, 'shop', this.callsign.value);
+    // Bonus — pin their progress to that email too (cloud save; hashed, separate from the lead).
+    void saveToCloud(this.callsign.value, email);
+    if (lead) {
       this.showStatus("✓ You're on the list. We'll email you when the store opens.", UI.ok);
     } else {
       this.busy = false;
       this.notifyBtn.style.opacity = '1';
       this.notifyBtn.style.pointerEvents = 'auto';
-      this.showStatus(res.reason, UI.warm);
+      this.showStatus("Couldn't reach the signup just now — try again in a moment.", UI.warm);
     }
   }
 
