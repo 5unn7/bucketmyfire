@@ -290,7 +290,35 @@ smoke/embers, terrain shading, models/foliage + tree LOD), Track **C** (fire dyn
 fire size classes, rotor wash + ground effect), and Track **D** (the 6-mission campaign, which
 also realized the C6 fuel/range model) are all marked **done**. Remaining/optional: C5 assists,
 C6 forward fuel caches, SSAO, and a few polish items — check the roadmap's status markers before
-starting. World scale is **decided: bounded ~1500u, streaming-ready behind the `World` API.**
+starting. World scale is **2100u** (enlarged from 1500 so the big anchored lakes stop swallowing the land),
+bounded and streaming-ready behind the `World` API.
 Consult it so a new feature lands in the right track. (Live Playwright visual passes are noted as
 "pending" on several phases — the MCP browser was repeatedly locked; see the **`bmf-verify`** skill
 for how to verify live anyway.)
+
+## Skill routing
+
+When the user's request matches an available skill, invoke it via the Skill tool. When in doubt, invoke the skill.
+
+Key routing rules (gstack):
+- Product ideas/brainstorming → invoke /office-hours
+- Strategy/scope → invoke /plan-ceo-review
+- Architecture → invoke /plan-eng-review
+- Design system/plan review → invoke /design-consultation or /plan-design-review
+- Full review pipeline → invoke /autoplan
+- Bugs/errors → invoke /investigate
+- QA/testing site behavior → invoke /qa or /qa-only
+- Code review/diff check → invoke /review
+- Visual polish → invoke /design-review
+- Ship/deploy/PR → invoke /ship or /land-and-deploy
+- Save progress → invoke /context-save
+- Resume context → invoke /context-restore
+
+Project skills (bucketmyfire-specific — see "Project-specific skills" above):
+- Verify a `src/three/` change (no test runner) → invoke /bmf-verify
+- Balance/tune a gameplay or visual value in `config.ts` → invoke /bmf-tune
+- Author/edit a campaign mission → invoke /bmf-mission
+- Add a procedural mesh / pooled VFX / shader / model → invoke /bmf-asset
+
+Deploy caveat: every push to `main` auto-deploys to prod (GitHub Pages). Treat /ship and any
+`git push` as outward-facing — confirm before pushing, since it goes live immediately.
