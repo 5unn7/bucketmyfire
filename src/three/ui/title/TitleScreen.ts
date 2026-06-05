@@ -218,8 +218,9 @@ export class TitleScreen {
   }
 
   private buildPlayButton(): HTMLButtonElement {
-    const base = `0 14px 40px ${UI.accent}55, inset 0 2px 0 rgba(255,255,255,0.5)`;
-    const hover = `0 18px 54px ${UI.accent}88, inset 0 2px 0 rgba(255,255,255,0.5)`;
+    // Fight register: PLAY is the brand's hero action, so it burns ember, not cockpit cyan.
+    const base = `0 14px 40px ${UI.ember}66, inset 0 2px 0 rgba(255,255,255,0.45)`;
+    const hover = `0 18px 54px ${UI.ember}99, inset 0 2px 0 rgba(255,255,255,0.45)`;
     const b = el('button', {
       pointerEvents: 'auto',
       marginTop: '6px',
@@ -236,8 +237,8 @@ export class TitleScreen {
       fontWeight: FW.heavy,
       letterSpacing: '0.16em',
       textTransform: 'uppercase',
-      color: '#04181d',
-      background: `linear-gradient(180deg, #8df0ff, ${UI.accent})`,
+      color: UI.ink,
+      background: `linear-gradient(180deg, ${UI.emberHi}, ${UI.ember})`,
       boxShadow: base,
       cursor: 'pointer',
       transition: 'transform 0.14s ease, box-shadow 0.22s ease',

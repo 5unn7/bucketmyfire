@@ -56,7 +56,7 @@ export function renderScoreCard(data: ScoreCardData): HTMLCanvasElement {
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, CARD_W, CARD_H);
   const glow = ctx.createRadialGradient(CARD_W / 2, CARD_H + 70, 50, CARD_W / 2, CARD_H + 70, 520);
-  glow.addColorStop(0, 'rgba(255,122,69,0.30)');
+  glow.addColorStop(0, 'rgba(255,122,69,0.42)'); // fight register: push the fire so it reads as the hero of the card
   glow.addColorStop(1, 'rgba(255,122,69,0)');
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, CARD_W, CARD_H);
@@ -79,7 +79,7 @@ export function renderScoreCard(data: ScoreCardData): HTMLCanvasElement {
 
   // Outcome eyebrow.
   ctx.font = '600 26px system-ui, sans-serif';
-  ctx.fillStyle = UI.accent;
+  ctx.fillStyle = UI.fire; // fight register: the card's eyebrow burns warm, not cockpit cyan
   ctx.fillText(data.won ? 'MISSION COMPLETE' : 'SORTIE FLOWN', 64, 152);
 
   // Hero score.

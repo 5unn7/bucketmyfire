@@ -12,23 +12,60 @@
 
 ---
 
+## Brand Platform
+
+> **Keystone: Fight the wildfire.**
+
+The fire is the enemy — alive, spreading, winning unless you stop it. The brand is not
+"firefighting," not "save the forest," not pilot heroics, not a cause lecture. There is a
+wildfire, and you fight it. Every surface below serves that one idea.
+
+- **The enemy has a face.** The fire is the antagonist everywhere: it spreads with wind, flanks
+  you, reaches the cabins. Frame it as a living threat, never a static target to tidy up.
+- **A fight you can lose.** That is the stake. No participation trophy, no softening.
+- **Voice: dry, direct, calm.** The fire is loud enough; say it straight. No hype, no preach, no
+  cosplay. (Same voice as the in-game dispatcher comms.)
+- **The two lines.** Essence (the rallying idea): **"Fight the wildfire."** Hook (the descriptive
+  setup): **"A bucket, a chopper, a wildfire."** — it sets the board; the fight is the command
+  under it.
+- **Anti-slop, brand-wide.** No "simulator" as the lead noun, no "save the forest / before it
+  spreads," no "battle raging wildfires," no console-grade / asserted-realism flexing. Plain,
+  declarative, factual. Let the cabins carry the gravity.
+
+### Two registers: the fight, and the instrument
+
+The keystone splits the UI into two registers. Holding both is the job.
+
+| Register | Where | Feel | Hero colour |
+|---|---|---|---|
+| **The fight** (warm) | title screen, ember logo, briefing, mission-end + share/score card, menu hero moments, OG/social, merch | warm, ember, alive, threatening | **fire / ember** |
+| **The instrument** (cool) | the in-flight HUD — instrument strip, flight tapes, radar, gauges | calm, dark, legible over a burning world | **cyan accent** |
+
+The hot→cool handoff is intentional, not drift: you leave the briefing and strap into the
+aircraft. Brand surfaces run warm; the cockpit stays cool so a digit never gets lost in the fire.
+New surface? Ask: is the player being **briefed / rewarded / sold** (warm), or **flying** (cool)?
+
+---
+
 ## Product Context
 
-- **What this is:** a mobile-browser helicopter wildfire simulator. Fly over
-  northern Saskatchewan, scoop from lakes, drop on fires before they spread.
+- **What this is:** a mobile-browser helicopter wildfire game. You fly over northern
+  Saskatchewan, scoop from the lakes, and fight a fire that's running at the cabins.
 - **Who it's for:** a phone-first player who wants a real flight *feel* in a browser, plus a
   6-mission campaign and a global leaderboard.
 - **Project type:** real-3D Three.js game with a DOM heads-up display and full-screen menus.
-- **The one thing to remember:** *this feels like flying a real aircraft, in a browser.* The UI
-  exists to sell that — instruments, not chrome. If a screen feels like a web app instead of a
-  cockpit, it's wrong even if it's "clean."
+- **The one thing to remember:** *fight the wildfire* (see Brand Platform). The in-flight UI sells
+  the cockpit — instruments, not chrome; the brand surfaces sell the fight. If an in-game screen
+  feels like a web app instead of a cockpit, it's wrong even if it's "clean."
 
 ## Aesthetic Direction: Glass Cockpit
 
 A modern EV-cluster / avionics look. Frosted-glass surfaces float over the live 3D world;
 information reads as backlit instruments, not boxed cards. Dark, calm, legible over bright
 terrain. One cyan accent does all the "alive / interactive" work; warm reds and oranges carry
-fire and danger. Light type, hairline strokes, generous blur.
+fire and danger. Light type, hairline strokes, generous blur. This is the **cockpit register**;
+brand surfaces (title, briefing, share card, merch) run **warm / fire-forward** — see Brand
+Platform → Two registers.
 
 **Principles**
 
@@ -43,9 +80,10 @@ fire and danger. Light type, hairline strokes, generous blur.
 
 ## Color
 
-All values below are the canonical tokens in `theme.ts → UI`. Hue family is cool (cyan/blue) for
-the system, warm (orange/red) for fire and danger. Neutrals are pure white at low alpha over a
-near-black world.
+All values below are the canonical tokens in `theme.ts → UI`. **Two registers (see Brand Platform):**
+in the **cockpit**, the hue family is cool (cyan/blue) for interactive/live and warm (orange/red)
+for fire/danger; on **brand surfaces** the warm **fire/ember** family is the HERO colour (the fight),
+with cyan demoted to quiet support. Neutrals are pure white at low alpha over a near-black world.
 
 ### Accent (cyan) — interactive / live
 
@@ -57,6 +95,19 @@ near-black world.
 | `glow` | `0 0 10px rgba(103,232,255,0.45)` | ambient accent glow |
 
 **Rule: cyan = you can act on it, or it is happening now.** Scanning a screen, the eye goes to cyan.
+(That rule governs the **cockpit**. On **brand surfaces**, the eye should go to the fire — see Ember below.)
+
+### Ember (fire) — the brand hero (warm register)
+
+| Token | Value | Use |
+|---|---|---|
+| `fire` / `warm` | `#ff7a45` | the fire / the DROP action; the base warm |
+| `ember` | `#ff6a2c` | brand hero ember — warm CTA gradients + brand accents on the fight register |
+| `emberHi` | `#ffc24a` | bright top stop for a warm CTA gradient / ember highlight |
+| `emberGlow` | `0 0 16px rgba(255,106,44,0.5)` | warm brand glow (the fight-register analog of `glow`) |
+
+**Rule: on a brand surface, fire is what the eye goes to** (the PLAY button, the score card, the
+logo). Inside the cockpit, that job stays with `accent` (cyan).
 
 ### State / semantic
 

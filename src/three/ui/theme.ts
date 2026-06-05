@@ -38,6 +38,11 @@ export const UI = {
   // burning-front shade of the burn overlay (the two were both orange and bled together). Distinct from
   // `warn` (the amber-red RTB / burning-structure highlight) so a fire dot ≠ a threatened building.
   warm: '#ff7a45', // Input's name for the DROP / fire accent (== fire)
+  // Ember — the BRAND HERO colour on the warm "fight" register (title / briefing / share card /
+  // merch). The cockpit's interactive accent stays cyan; fire is what the eye goes to on a brand
+  // surface (see DESIGN.md → Brand Platform / Two registers). NOT for in-flight instruments.
+  ember: '#ff6a2c', // deeper brand ember — warm CTA gradient base + brand accents
+  emberHi: '#ffc24a', // bright top stop for a warm CTA gradient / ember highlight
   water: '#56c4ee', // scoop water
   ok: '#63d68a', // success / "cleared" green (unified the menus' two greens; the in-world AIRFRAME gauge
   // keeps a deeper #46d17a tuned to read against bright terrain — a documented exception, see DESIGN.md)
@@ -77,7 +82,8 @@ export const UI = {
   shadow: '0 6px 28px rgba(0,0,0,0.32)', // HUD panels (subtle, in-world)
   shadowBtn: '0 6px 22px rgba(0,0,0,0.40)', // touch buttons
   shadowCard: '0 8px 30px rgba(0,0,0,0.45)', // overlay cards — stronger, lifts off a busy backdrop
-  glow: '0 0 10px rgba(103,232,255,0.45)',
+  glow: '0 0 10px rgba(103,232,255,0.45)', // ambient cyan accent glow (cockpit register)
+  emberGlow: '0 0 16px rgba(255,106,44,0.5)', // warm brand glow — the fight-register analog of `glow`
   font: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
 };
 
