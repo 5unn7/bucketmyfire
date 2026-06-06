@@ -5,7 +5,9 @@ import { AttractScene } from '../../menu/AttractScene';
 import type { MissionDef } from '../../missions/types';
 import { createGridTitle } from '../GridTitle';
 import { UI, FS, FW, R, el, div, prefersReducedMotion } from '../theme';
-import { utilityChip } from '../menuShared';
+import { makeButton, makeBadge } from '../components';
+import { loadProfile, missionsCleared } from '../profile';
+import { dailyStreak, bestDailyStreak } from '../../missions/streak';
 import { openLeaderboard } from '../Leaderboard';
 import { signalFirstFrame } from '../../splashSignal';
 
@@ -148,10 +150,22 @@ export class TitleScreen {
     this.onPlay();
   }
 
+  /** Jump straight to today's Daily Burn (the date-seeded challenge + its own per-day board). A full
+   *  reload via ?daily, so no teardown needed — the page reboots into the daily mission. */
+  private playDaily(): void {
+    const url = new URL(location.href);
+    url.searchParams.delete('m');
+    url.searchParams.set('daily', '1');
+    location.assign(url.toString());
+  }
+
   // --- DOM overlay ------------------------------------------------------------
 
   private buildOverlay(catalog: MissionDef[]): HTMLDivElement {
     const reduce = prefersReducedMotion();
+    const profile = loadProfile();
+    const cleared = missionsCleared();
+    const streak = dailyStreak();
 
     // Transparent layer over the canvas (click-through; interactive children opt back in). Holds a
     // fallback gradient only if the context is lost.
@@ -165,53 +179,94 @@ export class TitleScreen {
       overflow: 'hidden',
     });
 
-    // Utility chips, top-right, safe-area aware.
-    const utils = div({
-      position: 'absolute',
-      top: 'max(14px, env(safe-area-inset-top))',
-      right: 'max(16px, env(safe-area-inset-right))',
-      display: 'flex',
-      gap: '8px',
-      pointerEvents: 'auto',
-    });
-    utils.appendChild(utilityChip('🏆', 'Leaderboard', () => openLeaderboard(catalog)));
-    root.appendChild(utils);
+    // Cinematic legibility scrim — darkens the lower-left where the hero sits and the very bottom,
+    // letting the live 3D attract scene own the upper-right. Pure CSS, no extra draw cost.
+    root.appendChild(
+      div({
+        position: 'absolute',
+        inset: '0',
+        pointerEvents: 'none',
+        background:
+          'linear-gradient(105deg, rgba(6,10,14,0.80) 0%, rgba(6,10,14,0.46) 32%, rgba(6,10,14,0) 60%),' +
+          'linear-gradient(0deg, rgba(4,7,11,0.82) 0%, rgba(4,7,11,0) 38%)',
+      }),
+    );
 
-    // Centered hero column: logo → tagline → PLAY.
-    const col = div({
+    // Hero block — anchored LOWER-LEFT (game key-art composition), left-aligned, capped width.
+    const hero = div({
       position: 'absolute',
-      inset: '0',
+      left: 'max(28px, env(safe-area-inset-left))',
+      right: 'max(20px, env(safe-area-inset-right))',
+      bottom: 'max(34px, env(safe-area-inset-bottom))',
       display: 'flex',
       flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: '20px',
-      padding: 'max(24px, env(safe-area-inset-top)) 20px max(28px, env(safe-area-inset-bottom))',
-      boxSizing: 'border-box',
+      alignItems: 'flex-start',
+      gap: '14px',
+      maxWidth: '620px',
+      pointerEvents: 'none',
     });
 
-    const logo = createGridTitle('BUCKET MY FIRE', '520px');
-    const tagline = div(
+    // Kicker (the essence) over the wordmark.
+    const kicker = div(
       {
-        fontSize: FS.meta,
-        letterSpacing: '0.24em',
+        fontSize: FS.label,
+        letterSpacing: '0.34em',
         textTransform: 'uppercase',
-        color: UI.text,
-        opacity: '0.82',
-        textShadow: '0 1px 14px rgba(0,0,0,0.7)',
+        color: UI.ember,
+        fontWeight: FW.heavy,
+        textShadow: '0 1px 12px rgba(0,0,0,0.75)',
       },
-      'Fight the wildfire.',
+      'Fight the wildfire',
     );
+
+    // Ember wordmark — left-aligned (override the builder's auto-centering).
+    const logo = createGridTitle('BUCKET MY FIRE', '440px');
+    logo.style.margin = '0';
+
+    // The descriptive hook (brand platform), under the wordmark.
+    const hook = div(
+      { fontSize: FS.md, letterSpacing: '0.01em', color: UI.text, opacity: '0.9', textShadow: '0 1px 12px rgba(0,0,0,0.8)' },
+      'A bucket, a chopper, a wildfire.',
+    );
+
+    // Action cluster: the hero PLAY, today's Daily Burn (+ streak chip), and the leaderboard.
+    const actions = div({ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginTop: '6px', pointerEvents: 'auto' });
     const play = this.buildPlayButton();
+    actions.appendChild(play);
 
-    col.append(logo, tagline, play);
-    root.appendChild(col);
+    const dailyWrap = div({ display: 'flex', alignItems: 'center', gap: '8px' });
+    if (streak >= 1) {
+      const best = bestDailyStreak();
+      const chip = makeBadge(`🔥 ${streak}`, 'fire');
+      chip.style.fontSize = FS.sm;
+      chip.title = best > streak ? `${streak}-day Daily Burn streak · best ${best}` : `${streak}-day Daily Burn streak`;
+      dailyWrap.appendChild(chip);
+    }
+    dailyWrap.appendChild(makeButton({ label: 'Daily Burn', icon: '🔥', variant: 'secondary', register: 'fight', onClick: () => this.playDaily() }).el);
+    actions.appendChild(dailyWrap);
 
-    // Staggered entrance (gated on reduced-motion — GridTitle handles its own ember sweep regardless).
+    actions.appendChild(makeButton({ label: 'Leaderboard', icon: '🏆', variant: 'ghost', onClick: () => openLeaderboard(catalog) }).el);
+
+    hero.append(kicker, logo, hook, actions);
+
+    // Returning pilot: a quiet "welcome back" line under the actions.
+    if (profile?.name) {
+      hero.appendChild(
+        div(
+          { fontSize: FS.meta, color: UI.dim, marginTop: '2px', textShadow: '0 1px 10px rgba(0,0,0,0.7)' },
+          `Welcome back, ${profile.name}${cleared > 0 ? ` · ${cleared} sortie${cleared === 1 ? '' : 's'} flown` : ''}`,
+        ),
+      );
+    }
+
+    root.appendChild(hero);
+
+    // Staggered entrance (reduced-motion users get it static; GridTitle owns its ember sweep regardless).
     if (!reduce) {
-      logo.style.animation = 'bmf-title-rise 0.6s ease 0.05s both';
-      tagline.style.animation = 'bmf-title-rise 0.6s ease 0.20s both';
-      play.style.animation = 'bmf-title-rise 0.6s cubic-bezier(0.34,1.4,0.64,1) 0.36s both';
+      kicker.style.animation = 'bmf-title-rise 0.5s ease 0.02s both';
+      logo.style.animation = 'bmf-title-rise 0.6s ease 0.08s both';
+      hook.style.animation = 'bmf-title-rise 0.6s ease 0.22s both';
+      actions.style.animation = 'bmf-title-rise 0.6s cubic-bezier(0.34,1.4,0.64,1) 0.34s both';
     }
 
     return root;
