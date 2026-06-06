@@ -1,9 +1,6 @@
 import type { MissionDef } from '../../missions/types';
 import { UI, FS, FW, R, el, div, prefersReducedMotion } from '../theme';
-import { makeButton, makeBadge } from '../components';
 import { loadProfile, missionsCleared } from '../profile';
-import { dailyStreak, bestDailyStreak } from '../../missions/streak';
-import { openLeaderboard } from '../Leaderboard';
 import { signalFirstFrame } from '../../splashSignal';
 
 /**
@@ -28,11 +25,11 @@ export class TitleScreen {
   private splashTimer = 0;
   private disposed = false;
 
-  constructor(parent: HTMLElement, catalog: MissionDef[], onPlay: () => void) {
+  constructor(parent: HTMLElement, _catalog: MissionDef[], onPlay: () => void) {
     this.onPlay = onPlay;
     injectTitleStyles();
 
-    this.root = this.buildScene(catalog);
+    this.root = this.buildScene();
     parent.appendChild(this.root);
 
     // Hold the cold-start splash until the key art is decoded, so the home fades in fully painted.
@@ -65,21 +62,12 @@ export class TitleScreen {
     this.onPlay();
   }
 
-  /** Jump straight to today's Daily Burn (?daily → full reload, so no teardown needed). */
-  private playDaily(): void {
-    const url = new URL(location.href);
-    url.searchParams.delete('m');
-    url.searchParams.set('daily', '1');
-    location.assign(url.toString());
-  }
-
   // --- DOM scene -------------------------------------------------------------
 
-  private buildScene(catalog: MissionDef[]): HTMLDivElement {
+  private buildScene(): HTMLDivElement {
     const reduce = prefersReducedMotion();
     const profile = loadProfile();
     const cleared = missionsCleared();
-    const streak = dailyStreak();
 
     // Root: a flex-centred stage on a dark backing. On phones the frame fills it; on desktop the
     // frame is a centred rounded portrait CARD and this dark backing shows in the margins. (Layout
@@ -149,32 +137,23 @@ export class TitleScreen {
       'A bucket, a chopper, a wildfire.',
     );
 
-    // Action cluster: hero PLAY · Daily Burn (+ streak) · Leaderboard.
-    const actions = div({ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', flexWrap: 'wrap', marginTop: '8px', pointerEvents: 'auto' });
-    actions.appendChild(this.buildPlayButton());
+    hero.append(word, hook);
 
-    const dailyWrap = div({ display: 'flex', alignItems: 'center', gap: '8px' });
-    if (streak >= 1) {
-      const best = bestDailyStreak();
-      const chip = makeBadge(`🔥 ${streak}`, 'fire');
-      chip.style.fontSize = FS.sm;
-      chip.title = best > streak ? `${streak}-day Daily Burn streak · best ${best}` : `${streak}-day Daily Burn streak`;
-      dailyWrap.appendChild(chip);
-    }
-    dailyWrap.appendChild(makeButton({ label: 'Daily Burn', icon: '🔥', variant: 'secondary', register: 'fight', onClick: () => this.playDaily() }).el);
-    actions.appendChild(dailyWrap);
-    actions.appendChild(makeButton({ label: 'Leaderboard', icon: '🏆', variant: 'ghost', onClick: () => openLeaderboard(catalog) }).el);
-
-    hero.append(word, hook, actions);
-
+    // Returning pilot: a quiet "welcome back" line ABOVE the button.
+    let welcome: HTMLElement | null = null;
     if (profile?.name) {
-      hero.appendChild(
-        div(
-          { fontSize: FS.meta, color: UI.dim, marginTop: '2px', textShadow: '0 1px 12px rgba(0,0,0,0.8)' },
-          `Welcome back, ${profile.name}${cleared > 0 ? ` · ${cleared} sortie${cleared === 1 ? '' : 's'} flown` : ''}`,
-        ),
+      welcome = div(
+        { fontSize: FS.meta, color: UI.dim, marginTop: '4px', textShadow: '0 1px 12px rgba(0,0,0,0.8)' },
+        `Welcome back, ${profile.name}${cleared > 0 ? ` · ${cleared} sortie${cleared === 1 ? '' : 's'} flown` : ''}`,
       );
+      hero.appendChild(welcome);
     }
+
+    // The home is a single, unmistakable CTA — PLAY. (Daily Burn + Leaderboard live in the wizard.)
+    const play = this.buildPlayButton();
+    play.style.marginTop = '10px';
+    play.style.pointerEvents = 'auto';
+    hero.appendChild(play);
 
     frame.appendChild(hero);
     root.appendChild(frame);
@@ -182,7 +161,8 @@ export class TitleScreen {
     if (!reduce) {
       word.style.animation = 'bmf-title-rise 0.7s ease 0.06s both';
       hook.style.animation = 'bmf-title-rise 0.6s ease 0.20s both';
-      actions.style.animation = 'bmf-title-rise 0.6s cubic-bezier(0.34,1.4,0.64,1) 0.32s both';
+      if (welcome) welcome.style.animation = 'bmf-title-rise 0.6s ease 0.30s both';
+      play.style.animation = 'bmf-title-rise 0.6s cubic-bezier(0.34,1.4,0.64,1) 0.40s both';
     }
 
     return root;
