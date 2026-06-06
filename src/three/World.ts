@@ -479,6 +479,28 @@ export class World {
   }
 
   /**
+   * The nearest lake to (x,z) — a bucket SCOOP source — as a minimal POJO (centre, base radius, water
+   * level), or null on a lakeless map. Public read-only query for the mission FACTORY's MapContext
+   * (deciding where a fire can be fought from open water). Wraps the private nearestLakeRuntime.
+   */
+  nearestScoopLake(x: number, z: number): { x: number; z: number; r: number; waterLevel: number } | null {
+    const l = this.nearestLakeRuntime(x, z);
+    return l ? { x: l.x, z: l.z, r: l.r, waterLevel: l.waterLevel } : null;
+  }
+
+  /**
+   * Is there scoopable open water within `range` units of (x,z)? True if any lake's (nominal) shoreline is
+   * within range — so a pilot can refill the bucket nearby. The factory uses this to flag a town as
+   * DEFENSIBLE (a fire near it can actually be fought) before authoring a defend-the-town mission there.
+   */
+  isScoopWaterWithin(x: number, z: number, range: number): boolean {
+    for (const l of this.lakes) {
+      if (Math.hypot(l.x - x, l.z - z) - l.r <= range) return true;
+    }
+    return false;
+  }
+
+  /**
    * The world-XZ polyline of an authored named river (`region.rivers`, e.g. 'Churchill River'),
    * or null if this map has no such river. A read-only geo query — like `landmarks()`/`anchor()`,
    * it just re-projects the authored lat/lon points through the same `project()` the world used to

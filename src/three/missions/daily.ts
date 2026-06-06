@@ -13,7 +13,8 @@
  *
  * Engine-agnostic and pure (no Three.js / DOM) — same date in → same MissionDef out.
  */
-import type { MissionDef, TimeOfDay } from './types';
+import type { MissionDef } from './types';
+import { generateMission } from './factory';
 
 /** Days since the Unix epoch in UTC — the canonical "which day is it" key, shared world-wide so the
  *  Daily Burn rolls over at the same instant for everyone regardless of timezone. */
@@ -52,60 +53,27 @@ export function dailyDateLabel(date: Date): string {
   return `${months[m - 1]} ${d}, ${y}`;
 }
 
-/** A tiny mulberry32 PRNG so the daily PARAMETERS (fire load, wind, sky) vary deterministically per
- *  day, independent of the WORLD seed the def hands to World. Same date → same numbers. */
-function rng(seed: number): () => number {
-  let s = seed >>> 0;
-  return () => {
-    s = (s + 0x6d2b79f5) >>> 0;
-    let t = Math.imul(s ^ (s >>> 15), 1 | s);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-const TIMES: readonly TimeOfDay[] = ['dawn', 'day', 'noon', 'overcast', 'golden', 'dusk'];
-
 /**
- * Synthesize today's Daily Burn. A pure score chase: `extinguishAll` with NO hard-fail (so every
- * seed is winnable), the fire load / wind / sky varied by the day's seed for a fresh challenge. Fires
- * are lake-anchored clusters (a scoop source always on hand) plus a scatter of spots; both placement
- * specs snap to dry fuel and are seed-robust, so the day always catches and is always clearable.
+ * Synthesize today's Daily Burn via the mission FACTORY (Slice 3). The day seed picks + dials ONE
+ * archetype (extinguish / mop-up / hold-the-line), so each day is a fresh FLAVOR — not always the same
+ * clear-the-bush — on a fresh map, racing one shared board. Pure + deterministic (same date → same def),
+ * feature-relative placements (no World build → cheap on a phone boot), home base La Ronge (central, so
+ * every archetype's fires land in-province on the true-shape map). The factory wraps everything; here we
+ * only stamp the date-keyed id / branding.
+ *
+ * NOTE (product): rotating archetypes means a hold-the-line / mop-up daily CAN be lost, unlike the old
+ * always-winnable score-chase. To pin the daily back to the pure score race, force the archetype:
+ * `generateMission({ kind: 'daily', seed, archetypeId: 'extinguish' })`. Every generated daily is proven
+ * COMPLETABLE by the oracle sweep in verify-campaign.
  */
 export function buildDailyMission(date: Date): MissionDef {
   const seed = dailySeed(date);
-  const r = rng(seed ^ 0xa5a5a5a5);
-  const tier = r(); // 0..1 overall intensity for the day
-  const clusters = 2 + Math.floor(r() * 2); // 2..3 lake-anchored complexes
-  const spots = 2 + Math.floor(r() * 4); // 2..5 scattered spot fires
-  const spreadScale = 0.55 + tier * 0.6; // 0.55..1.15 — calm day to a real runner
-  const windScale = 0.4 + r() * 0.9; // 0.4..1.3
-  const windAngle = r() * Math.PI * 2;
-  const timeOfDay = TIMES[Math.floor(r() * TIMES.length)];
-  const size: 'small' | 'medium' = tier > 0.66 ? 'medium' : 'small';
   const label = dailyDateLabel(date);
-
+  const base = generateMission({ kind: 'daily', seed });
   return {
+    ...base,
     id: dailyMissionId(date),
-    index: 0,
     name: `Daily Burn — ${label}`,
-    brief:
-      "Today's burn: clear every fire across the bush. Fast, clean drops score highest — a fresh map every day, one shared board.",
     tagline: `Daily Burn · ${label}`,
-    difficulty: (1 + Math.round(tier * 4)) as 1 | 2 | 3 | 4 | 5,
-    seed,
-    map: 'saskatchewan',
-    homeBase: 'la-ronge',
-    timeOfDay,
-    wind: { angle: windAngle, strengthScale: windScale },
-    fire: { spreadScale },
-    bucket: 'bambi',
-    fires: [
-      { at: 'cluster', anchor: 'lake', spread: 60, count: clusters, size },
-      { at: 'random', count: spots, size: 'small', minFromOrigin: 120 },
-    ],
-    structures: { depot: true }, // a base to scoop/rearm near; no protect-fail (pure score chase)
-    objectives: [{ kind: 'extinguishAll' }],
-    fails: [], // every seed must be winnable — the daily is a score race, not a defense
   };
 }

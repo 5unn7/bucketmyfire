@@ -19,6 +19,9 @@ import { MissionRuntime } from '../src/three/missions/MissionRuntime';
 import { CAMPAIGN } from '../src/three/missions/catalog';
 import { buildDailyMission, dailyMissionId } from '../src/three/missions/daily';
 import { run, build, isCompletable } from '../src/three/missions/oracle';
+import { generateMission } from '../src/three/missions/factory';
+import { MapContext } from '../src/three/missions/factory/MapContext';
+import { World } from '../src/three/World';
 import { SIZE_CLASS } from '../src/three/missions/scenario';
 import type { MissionDef, MissionSignals } from '../src/three/missions/types';
 import { WORLD3D, BUCKET3D, FIRE3D } from '../src/three/config';
@@ -243,6 +246,45 @@ for (let i = 0; i < DAILY_DAYS; i++) {
   ok(`${dailyMissionId(date)}: completable`, won && seeded, `state=${r.runtime.state} @${elapsed.toFixed(0)}s`);
 }
 console.log(`  ${dailyWon}/${DAILY_DAYS} daily seeds cleared by a perfect player`);
+
+// --- Mission FACTORY (Slice 3): force each archetype across several seeds and prove construct-correctness:
+// a perfect player WINS, fires seed + land IN-PROVINCE, and the extinguish-objective archetypes are
+// genuinely hard (a no-op pilot can't clear fires that don't self-extinguish). Then exercise the build-time
+// MapContext path (hold-the-line targeting a real defensible town). This is the oracle backstop the spec
+// wants — generated missions are winnable by construction, asserted offline (never run on a phone). ---
+console.log('\nMission factory archetypes\n');
+{
+  const SEEDS = [101, 202, 303, 404, 505, 606];
+  for (const id of ['extinguish', 'mop-up', 'hold-the-line']) {
+    let win = 0;
+    let seeded = 0;
+    let offProv = 0;
+    let noopWon = 0;
+    for (const seed of SEEDS) {
+      const def = generateMission({ kind: 'daily', seed, archetypeId: id });
+      const res = isCompletable(def);
+      if (res.win) win++;
+      if (res.firesInitial > 0) seeded++;
+      if (res.noopWins) noopWon++;
+      const rig = build(def);
+      if (rig.fire.active().some((f) => !rig.world.isInProvince(f.x, f.z))) offProv++;
+    }
+    ok(`factory ${id}: completable on all seeds`, win === SEEDS.length, `${win}/${SEEDS.length}`);
+    ok(`factory ${id}: fires seeded on all seeds`, seeded === SEEDS.length, `${seeded}/${SEEDS.length}`);
+    ok(`factory ${id}: rendered fires in-province on all seeds`, offProv === 0, `${offProv} seeds off-province`);
+    // extinguishAll archetypes can NEVER be won by a no-op (fires don't self-extinguish) → genuine difficulty.
+    if (id !== 'hold-the-line') ok(`factory ${id}: a no-op pilot never wins (genuine difficulty)`, noopWon === 0, `noopWon=${noopWon}/${SEEDS.length}`);
+    console.log(`  ${win === SEEDS.length && offProv === 0 && seeded === SEEDS.length ? '✓' : '✗'} ${id.padEnd(14)} win ${win}/${SEEDS.length} · inProv ${SEEDS.length - offProv}/${SEEDS.length} · noopWon ${noopWon}/${SEEDS.length}`);
+  }
+  // Build-time MapContext path: a real World → defensible towns → hold-the-line targets one and stays winnable.
+  const w = new World(777, { regionId: 'saskatchewan' });
+  const ctx = new MapContext(w);
+  ok('factory MapContext: finds ≥1 defensible town', ctx.defensibleTowns().length > 0, `${ctx.defensibleTowns().length}/${ctx.towns.length} towns defensible`);
+  const coopDef = generateMission({ kind: 'coop', seed: 777, archetypeId: 'hold-the-line' }, ctx);
+  const coopRes = isCompletable(coopDef);
+  ok('factory hold-the-line (MapContext town): completable', coopRes.win, `state=${coopRes.state} @${coopRes.elapsed.toFixed(0)}s`);
+  console.log(`  ✓ MapContext: ${ctx.defensibleTowns().length} defensible towns; coop hold-the-line win=${coopRes.win}`);
+}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (failures.length) {
