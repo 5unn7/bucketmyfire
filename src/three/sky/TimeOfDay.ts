@@ -112,10 +112,10 @@ export const GOLDEN: SkyPreset = {
   horizon: 0xeec083, // rich amber haze band — distant terrain dissolves into this
   sunHalo: 0xffca78, // warm gold glow around the low sun
   sunColor: 0xffc784, // warm raking directional light
-  sunIntensity: 1.4,
-  hemiSky: 0xe6cfa6,
-  hemiGround: 0x4a4a2e,
-  hemiIntensity: 0.6,
+  sunIntensity: 1.62,
+  hemiSky: 0xebd6b0,
+  hemiGround: 0x524e30,
+  hemiIntensity: 0.78,
   fogNear: 950, // fog all but gone — the amber comes from the sky/sun now, not a haze wall over the ground
   fogFar: 2100, // only the far floor edge dissolves into the horizon (masks the ground-plane edge)
   // ~18° elevation low sun — preserves the original hard-coded look (normalize(150, 58, 95)).

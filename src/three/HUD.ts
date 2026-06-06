@@ -54,6 +54,7 @@ export interface HudState {
   structures: { x: number; z: number; kind: 'cabin' | 'depot'; health: number; burning: boolean }[];
   bases?: { x: number; z: number }[]; // refuel bases (home + forward pads) — radar markers + low-fuel RTB cue
   threat: number; // 0..1 — most-endangered structure (drives the THREAT gauge)
+  threatName?: string; // the most-threatened community's name — shown on the gauge at the critical moment
   lost: boolean; // every structure destroyed → mission failed
   score: number; // final score (shown on the end banner)
   // Campaign layer: the live objective checklist + optional fuel gauge. Empty / undefined
@@ -863,8 +864,12 @@ export class HUD {
     setPodHidden(this.threatPod, !hasStructures);
     if (hasStructures) {
       const threat = clamp01(s.threat);
-      this.threatPod.num.textContent = `${Math.round(threat * 100)}`;
       const threatHot = threat > 0.6;
+      const pct = Math.round(threat * 100);
+      // Name the threatened community at the critical moment ("Denare Beach 72") so the player knows
+      // WHERE to go; just the % otherwise, so the compact pod only widens when it actually matters.
+      this.threatPod.num.textContent = threatHot && s.threatName ? `${s.threatName} ${pct}` : `${pct}`;
+      this.threatPod.cell.title = s.threatName ?? '';
       this.threatPod.svg.setAttribute('stroke', threatHot ? UI.warn : '#eaf6ff'); // one attribute flip, gated
       this.threatPod.num.style.color = threatHot ? UI.warn : UI.text;
       this.threatPod.cell.style.textShadow = threatHot ? `0 0 8px ${UI.warn}` : 'none';
@@ -2004,12 +2009,27 @@ export class HUD {
       }
     }
 
-    // Fires — in range: glowing dot; out of range: chevron pinned to the rim.
-    for (const f of s.fires) {
+    // Fires — in range: glowing dot; out of range: chevron pinned to the rim. The NEAREST active fire
+    // is the "next target" WAYPOINT: a cyan (actionable, cockpit-register) ring on it in range, or a
+    // brighter cyan chevron off-radar — a clear go-here cue. One fire → it's trivially the waypoint.
+    let nearestIdx = -1;
+    let nearestD = Infinity;
+    for (let i = 0; i < s.fires.length; i++) {
+      const lp = local(s.fires[i].x, s.fires[i].z);
+      const d = Math.hypot(lp.x - R, lp.y - R);
+      if (d < nearestD) {
+        nearestD = d;
+        nearestIdx = i;
+      }
+    }
+    const wpPulse = 0.5 + 0.5 * Math.sin(performance.now() * 0.005); // gentle "you are here / go here" pulse
+    for (let i = 0; i < s.fires.length; i++) {
+      const f = s.fires[i];
       const p = local(f.x, f.z);
       const ox = p.x - R;
       const oy = p.y - R;
       const dist = Math.hypot(ox, oy);
+      const isWaypoint = i === nearestIdx;
       if (dist <= effReach) {
         ctx.fillStyle = 'rgba(255,42,42,0.32)'; // RED halo — a fire MARKER, distinct from the orange burn shade
         ctx.beginPath();
@@ -2022,18 +2042,29 @@ export class HUD {
         ctx.arc(p.x, p.y, 2.6, 0, Math.PI * 2);
         ctx.fill();
         ctx.shadowBlur = 0;
+        if (isWaypoint) {
+          ctx.save();
+          ctx.strokeStyle = UI.accent; // cyan = act on this (two-register: the cockpit's one interactive hue)
+          ctx.globalAlpha = 0.45 + 0.4 * wpPulse;
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 8 + 1.5 * wpPulse, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        }
       } else {
         const a = Math.atan2(oy, ox);
         const rx = R + Math.cos(a) * reach;
         const ry = R + Math.sin(a) * reach;
+        const sc = isWaypoint ? 1.6 : 1; // the nearest off-radar fire reads bigger + cyan: "head this way"
         ctx.save();
         ctx.translate(rx, ry);
         ctx.rotate(a);
-        ctx.fillStyle = UI.fireMarker;
+        ctx.fillStyle = isWaypoint ? UI.accent : UI.fireMarker;
         ctx.beginPath();
-        ctx.moveTo(2, 0);
-        ctx.lineTo(-3, -3);
-        ctx.lineTo(-3, 3);
+        ctx.moveTo(2 * sc, 0);
+        ctx.lineTo(-3 * sc, -3 * sc);
+        ctx.lineTo(-3 * sc, 3 * sc);
         ctx.closePath();
         ctx.fill();
         ctx.restore();

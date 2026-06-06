@@ -25,6 +25,7 @@ export interface StructureState {
   readonly z: number;
   readonly y: number; // ground surface height (mesh sits here)
   readonly kind: StructureKind;
+  readonly name?: string; // the community this belongs to (for the HUD threat label); undefined for lone bush cabins
   health: number; // 1 (pristine) → 0 (destroyed)
   burning: boolean; // a fire is currently within threatRadius
   destroyed: boolean;
@@ -37,6 +38,7 @@ export interface CommunityInput {
   kind: 'base' | 'town';
   radius: number;
   buildings: number;
+  name?: string; // display (pinned) place name — used to label the threatened structure on the HUD
 }
 
 export interface StructureDeps {
@@ -79,7 +81,7 @@ export class Structures {
     // old ray-march off the first lake (so the depot still appears on a bare-lake map).
     const base = this.deps.communities.find((c) => c.kind === 'base');
     if (STRUCTURES.depot) {
-      if (base) this.add('depot', base.x, base.z);
+      if (base) this.add('depot', base.x, base.z, base.name);
       else this.placeDepot();
     }
     // Forest hamlets: a tight cluster of cabins around each town center.
@@ -94,7 +96,7 @@ export class Structures {
   private buildFromPlan(plan: NonNullable<StructureDeps['plan']>): void {
     if (plan.depot) {
       const base = this.deps.communities.find((c) => c.kind === 'base');
-      if (base) this.add('depot', base.x, base.z);
+      if (base) this.add('depot', base.x, base.z, base.name);
       else this.placeDepot();
     }
     for (const g of plan.groups) {
@@ -135,6 +137,23 @@ export class Structures {
       if (d > t) t = d;
     }
     return t;
+  }
+
+  /** Community NAME of the most-threatened surviving structure — lets the HUD read "Denare Beach 70%"
+   *  instead of a bare number. Mirrors `threat`'s selection; undefined when nothing's named/threatened. */
+  get threatName(): string | undefined {
+    let t = -1;
+    let name: string | undefined;
+    for (const s of this.items) {
+      if (s.destroyed) continue;
+      const dmg = 1 - s.health;
+      const d = s.burning ? Math.max(0.45, dmg) : dmg * 0.5;
+      if (d > t) {
+        t = d;
+        name = s.name;
+      }
+    }
+    return name;
   }
 
   /** Apply this frame's fire damage: nearest fire within range drains health by intensity×proximity. */
@@ -201,7 +220,7 @@ export class Structures {
       const z = town.z + Math.sin(a) * rad;
       if (this.deps.isOverWater(x, z)) continue;
       if (this.tooClose(x, z, COMMUNITIES.cabinSpacing)) continue; // tight village spacing
-      this.add('cabin', x, z);
+      this.add('cabin', x, z, town.name);
       placed++;
     }
   }
@@ -227,13 +246,14 @@ export class Structures {
     return false;
   }
 
-  private add(kind: StructureKind, x: number, z: number): void {
+  private add(kind: StructureKind, x: number, z: number, name?: string): void {
     this.items.push({
       id: this.nextId++,
       x,
       z,
       y: this.deps.groundHeightAt(x, z),
       kind,
+      name,
       health: 1,
       burning: false,
       destroyed: false,

@@ -1670,6 +1670,7 @@ export class Game {
       // Refuel bases (home + forward pads) — radar markers + the low-fuel RTB cue point to the nearest.
       bases: this.baseSites,
       threat: this.structures.threat,
+      threatName: this.structures.threatName,
       lost: this.lost,
       score: this.finalScore,
       // Campaign layer: live objective checklist, fuel gauge, crew landing-zone radar blips.
