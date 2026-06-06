@@ -1,6 +1,8 @@
 import type { MissionDef } from '../../missions/types';
 import { UI, FS, FW, R, el, div, prefersReducedMotion } from '../theme';
+import { makeButton } from '../components';
 import { loadProfile, missionsCleared } from '../profile';
+import { openShop } from '../ShopScreen';
 import { signalFirstFrame } from '../../splashSignal';
 
 /**
@@ -157,11 +159,16 @@ export class TitleScreen {
 
     hero.append(hook);
 
-    // The home is a single, unmistakable CTA — PLAY, raised right under the tagline.
+    // The primary CTA — PLAY, raised right under the tagline.
     const play = this.buildPlayButton();
     play.style.marginTop = '6px';
     play.style.pointerEvents = 'auto';
     hero.appendChild(play);
+
+    // Secondary — Shop opens the Squadron Store (the "Notify me" email lead-capture screen).
+    const shop = makeButton({ label: 'Shop', icon: '🛍', variant: 'secondary', register: 'fight', onClick: () => openShop() });
+    shop.el.style.pointerEvents = 'auto';
+    hero.appendChild(shop.el);
 
     frame.appendChild(hero);
     root.appendChild(frame);
@@ -171,6 +178,7 @@ export class TitleScreen {
       if (welcome) welcome.style.animation = 'bmf-title-rise 0.6s ease 0.16s both';
       hook.style.animation = 'bmf-title-rise 0.6s ease 0.24s both';
       play.style.animation = 'bmf-title-rise 0.6s cubic-bezier(0.34,1.4,0.64,1) 0.36s both';
+      shop.el.style.animation = 'bmf-title-rise 0.6s ease 0.46s both';
     }
 
     return root;
