@@ -145,21 +145,21 @@ export class TitleScreen {
       'Ready to fight the fire?',
     );
 
-    hero.append(hook);
-
-    // Returning pilot: a quiet "welcome back" line ABOVE the button.
+    // Returning pilot: a quiet "welcome back" line ABOVE the tagline.
     let welcome: HTMLElement | null = null;
     if (profile?.name) {
       welcome = div(
-        { fontSize: FS.meta, color: UI.dim, marginTop: '4px', textShadow: '0 1px 12px rgba(0,0,0,0.8)' },
+        { fontSize: FS.meta, color: UI.dim, textShadow: '0 1px 12px rgba(0,0,0,0.8)' },
         `Welcome back, ${profile.name}${cleared > 0 ? ` · ${cleared} sortie${cleared === 1 ? '' : 's'} flown` : ''}`,
       );
       hero.appendChild(welcome);
     }
 
-    // The home is a single, unmistakable CTA — PLAY. (Daily Burn + Leaderboard live in the wizard.)
+    hero.append(hook);
+
+    // The home is a single, unmistakable CTA — PLAY, raised right under the tagline.
     const play = this.buildPlayButton();
-    play.style.marginTop = '10px';
+    play.style.marginTop = '6px';
     play.style.pointerEvents = 'auto';
     hero.appendChild(play);
 
@@ -168,9 +168,9 @@ export class TitleScreen {
 
     if (!reduce) {
       word.style.animation = 'bmf-title-rise 0.7s ease 0.06s both';
-      hook.style.animation = 'bmf-title-rise 0.6s ease 0.20s both';
-      if (welcome) welcome.style.animation = 'bmf-title-rise 0.6s ease 0.30s both';
-      play.style.animation = 'bmf-title-rise 0.6s cubic-bezier(0.34,1.4,0.64,1) 0.40s both';
+      if (welcome) welcome.style.animation = 'bmf-title-rise 0.6s ease 0.16s both';
+      hook.style.animation = 'bmf-title-rise 0.6s ease 0.24s both';
+      play.style.animation = 'bmf-title-rise 0.6s cubic-bezier(0.34,1.4,0.64,1) 0.36s both';
     }
 
     return root;
