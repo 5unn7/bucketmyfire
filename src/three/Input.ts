@@ -255,6 +255,7 @@ export class Input {
 
     this.buildStick(root);
     this.buildCluster(root);
+    this.buildDetachUI(root);
     this.buildSwapUI(root);
     this.buildLookUI(root);
     this.buildHelpUI(root);
@@ -263,15 +264,15 @@ export class Input {
     parent.appendChild(root);
   }
 
-  /** Contextual bottom-centre action buttons, hidden until Game enables each:
-   *   - DETACH — jettison the slung bucket (shown on a water sortie while a bucket is attached).
-   *   - SWAP   — re-rig bucket↔crew (shown set down at the home base, on a mixed mission). */
-  private buildSwapUI(root: HTMLElement): void {
-    const detach = button('⊗ RELEASE BUCKET', {
+  /** DETACH — top-left corner, hidden until Game calls setDetachVisible(true).
+   *  Top-left puts it as far as possible from the joystick (bottom-left) and the
+   *  action cluster (bottom-right), so it takes a deliberate upward reach to hit. */
+  private buildDetachUI(root: HTMLElement): void {
+    const detach = button('⊗  RELEASE BUCKET', {
       position: 'relative',
       display: 'none',
       padding: '0 16px',
-      height: '42px',
+      height: '40px',
       borderRadius: R.pill,
       fontSize: FS.meta,
       fontWeight: FW.bold,
@@ -283,6 +284,14 @@ export class Input {
     this.detachBtn = detach;
     holdButton(detach, (on) => (this.btnDetach = on), UI.warm);
 
+    const a = anchor('top-left');
+    a.appendChild(detach);
+    root.appendChild(a);
+  }
+
+  /** SWAP — bottom-centre, hidden until Game calls setSwapVisible(true).
+   *  Re-rig bucket↔crew at the home base (mixed crew+water missions). */
+  private buildSwapUI(root: HTMLElement): void {
     const swap = button('⇄ SWAP', {
       position: 'relative',
       display: 'none',
@@ -300,7 +309,6 @@ export class Input {
     holdButton(swap, (on) => (this.btnSwap = on));
 
     const col = div({ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', marginBottom: '14px' });
-    col.appendChild(detach);
     col.appendChild(swap);
     const a = anchor('bottom-center');
     a.appendChild(col);
