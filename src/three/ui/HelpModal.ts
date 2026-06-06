@@ -1,13 +1,14 @@
 /**
- * Help / quick-start modal — the "?" button's panel, a swipeable 3-page tutorial
- * in the shared cockpit visual language (same dark-glass gradient + cyan/fire/water
- * accents as the onboarding screen). It owns no Three.js and injects its own
- * stylesheet once so hover/scroll/keyframes/snap stay crisp.
+ * Help / "Field manual" modal — the "?" button's panel, a swipeable 3-page reference
+ * in the shared cockpit visual language. It is built on the component kit: the scrim,
+ * card, close ✕, ESC / scrim-click close, focus-trap and entrance all come from
+ * `openModal()`, and Back/Next are `makeButton()`s — so this module owns only the
+ * page CONTENT + a small layout stylesheet (token-driven, no hard-coded colour/blur).
  *
  *   PAGE 1 — The job: the four-beat loop (fly → scoop → drop → protect) plus a
  *            scoop diagram that shows you must descend until the bucket dips in.
  *   PAGE 2 — Fire & wind: an extinguish diagram (water douses every fire in the
- *            splash) and a wind tip — fire runs downwind, your water drifts.
+ *            splash) and a wind tip (fire runs downwind, your water drifts).
  *   PAGE 3 — Cockpit & controls: an annotated HUD diagram (gauges / radar / stick /
  *            DROP) + a "what to do" note, then the touch + keyboard reference.
  *
@@ -15,14 +16,18 @@
  * for desktop; the last page's button closes ("Let's fly"). The visuals are inline
  * SVG (vector, zero binary assets), matching the project's procedural-art ethos.
  *
- * Lifecycle: `Input` builds ONE instance, wires the "?" icon to `toggle()`, and
- * auto-`open()`s it once for a first-time pilot (gated by `hasSeenHelp()` /
- * `markHelpSeen()` in localStorage) so the greeting shows exactly once but stays
- * reopenable forever. The scrim mounts to `document.body` at a high z-index so it
- * layers above the HUD and the pre-flight briefing card.
+ * Lifecycle: `Input` builds ONE controller and wires the "?" icon to `toggle()`. The
+ * modal is created on `open()` (via `openModal`, which mounts its own scrim to
+ * `document.body`) and destroyed on `close()`. An optional `onReplay` handler adds a
+ * "Replay guided first flight" row that re-runs the interactive coach (wired by the
+ * host). The first-run TEACHER is now the interactive coach, not this reference.
  */
 
-import { UI } from './theme';
+import { UI, FS, FW, R } from './theme';
+import { openModal, type ModalHandle } from './components/Modal';
+import { makeButton, type ButtonHandle } from './components/Button';
+import { resetTutorial } from './coach/coachStore';
+import { CAMPAIGN } from '../missions/catalog';
 
 const SEEN_KEY = 'bmf.help.seen.v1';
 
@@ -54,10 +59,10 @@ interface Step {
   tone: 'cyan' | 'water' | 'fire';
 }
 const STEPS: Step[] = [
-  { glyph: '🚁', title: 'Fly the nose', body: 'Steer where the nose points and add throttle along it. She carries real momentum — ease off early to stop.', tone: 'cyan' },
+  { glyph: '🚁', title: 'Fly the nose', body: 'Steer where the nose points and add throttle along it. She carries her weight, so ease off early to stop.', tone: 'cyan' },
   { glyph: '💧', title: 'Fill the bucket', body: 'Descend low over a lake until the slung bucket dips in. It fills on its own (see below).', tone: 'water' },
   { glyph: '🔥', title: 'Drop on the fire', body: 'Line up over the flames and hit DROP. Fly straight and level so the water lands true.', tone: 'fire' },
-  { glyph: '🏠', title: 'Protect & win', body: 'Keep fires off the cabins and finish each mission’s objectives (top-left). When a FUEL gauge shows, land at a base before it runs dry.', tone: 'cyan' },
+  { glyph: '🏠', title: 'Keep it off the cabins', body: 'Keep fires off the cabins and finish each mission’s objectives (top-left). When a FUEL gauge shows, land at a base before it runs dry.', tone: 'cyan' },
 ];
 
 /** A control row: an action and the touch + keyboard ways to do it. */
@@ -86,7 +91,7 @@ interface Leg {
 }
 const HUD_LEGEND: Leg[] = [
   { n: '1', tone: 'cyan', label: 'Gauges', desc: 'water · airframe · fires-left · wind · heading' },
-  { n: '2', tone: 'water', label: 'Radar', desc: 'fires (red), lakes (blue), your base — tap to zoom' },
+  { n: '2', tone: 'water', label: 'Radar', desc: 'fires (red), lakes (blue), your base. Tap to zoom.' },
   { n: '3', tone: 'cyan', label: 'Fly stick', desc: 'steer the nose + throttle' },
   { n: '4', tone: 'fire', label: 'Cluster', desc: 'climb ▲ · descend ▼ · DROP' },
 ];
@@ -155,56 +160,22 @@ const HUD_SVG = `
 // --- styles (injected once) -------------------------------------------------
 
 let stylesInjected = false;
+/** Inject the page-CONTENT stylesheet once. The scrim / card / close / nav-button chrome lives in the
+ *  component kit; this is layout-only, and every colour/blur reads from a `theme.ts` token (no raw
+ *  literals — the `verify:ui` ratchet enforces it). Alpha variants use the `${UI.x}NN` hex-alpha
+ *  suffix so the SOURCE carries no `#hex`/`rgba(` literal. */
 function injectStyles(): void {
   if (stylesInjected) return;
   stylesInjected = true;
   const css = `
-  .bmf-help-scrim {
-    position: fixed; inset: 0; z-index: 60;
-    display: none; align-items: center; justify-content: center;
-    padding: 12px; box-sizing: border-box;
-    background: rgba(4,8,12,0.6);
-    -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
-    pointer-events: auto; touch-action: none;
-    font-family: ${UI.font}; color: ${UI.text};
-  }
-  .bmf-help-scrim.is-open { display: flex; animation: bmf-help-fade 0.22s ease both; }
-  .bmf-help-scrim * { box-sizing: border-box; }
-  @keyframes bmf-help-fade { from { opacity: 0; } to { opacity: 1; } }
-  @keyframes bmf-help-rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
-
-  .bmf-help-card {
-    position: relative; display: flex; flex-direction: column;
-    width: 100%; max-width: 540px; height: min(640px, calc(100dvh - 24px));
-    padding: 20px 0 14px; border-radius: 20px;
-    border: 1px solid rgba(255,255,255,0.14);
-    background:
-      radial-gradient(130% 70% at 50% -8%, rgba(103,232,255,0.12), transparent 60%),
-      radial-gradient(120% 80% at 85% 112%, rgba(255,122,69,0.10), transparent 55%),
-      linear-gradient(180deg, #0c1a15 0%, #0a1410 62%, #0e160f 100%);
-    box-shadow: 0 24px 70px rgba(0,0,0,0.6);
-    animation: bmf-help-rise 0.28s ease both;
-  }
-
-  .bmf-help-head { padding: 0 24px; flex: none; }
-  .bmf-help-kicker { font-size: 11px; letter-spacing: 0.26em; text-transform: uppercase; color: ${UI.accent}; opacity: 0.85; font-weight: 700; margin: 0; }
-  .bmf-help-title { margin: 4px 0 0; font-size: 23px; font-weight: 800; letter-spacing: 0.02em; }
-  .bmf-help-title .em { color: ${UI.fire}; }
-
-  .bmf-help-x {
-    position: absolute; top: 14px; right: 14px; width: 34px; height: 34px;
-    display: flex; align-items: center; justify-content: center;
-    border-radius: 50%; border: 1px solid rgba(255,255,255,0.16);
-    background: rgba(255,255,255,0.06); color: ${UI.text};
-    font-size: 18px; line-height: 1; cursor: pointer; padding: 0;
-    transition: background 0.15s, border-color 0.15s, transform 0.12s;
-  }
-  .bmf-help-x:hover { background: rgba(255,255,255,0.12); border-color: ${UI.accentSoft}; }
-  .bmf-help-x:active { transform: scale(0.94); }
+  /* Head: kicker + title (sits left of the kit's close ✕ in the modal head row) */
+  .bmf-help-head { display: flex; flex-direction: column; gap: 2px; }
+  .bmf-help-kicker { font-size: ${FS.meta}; letter-spacing: 0.26em; text-transform: uppercase; color: ${UI.accent}; opacity: 0.85; font-weight: ${FW.bold}; margin: 0; }
+  .bmf-help-title { margin: 0; font-size: ${FS.display}; font-weight: ${FW.heavy}; letter-spacing: 0.02em; color: ${UI.text}; }
 
   /* Paged track (swipe / scroll-snap) */
   .bmf-help-track {
-    flex: 1; min-height: 0; display: flex; margin-top: 12px;
+    flex: 1; min-height: 0; display: flex;
     overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory;
     overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
@@ -212,108 +183,93 @@ function injectStyles(): void {
   .bmf-help-track::-webkit-scrollbar { display: none; }
   .bmf-help-page {
     flex: 0 0 100%; width: 100%; scroll-snap-align: start; scroll-snap-stop: always;
-    overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 4px 24px 6px;
+    overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 4px 20px 8px;
   }
   .bmf-help-page::-webkit-scrollbar { width: 7px; }
-  .bmf-help-page::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.16); border-radius: 99px; }
+  .bmf-help-page::-webkit-scrollbar-thumb { background: ${UI.stroke}; border-radius: ${R.pill}; }
 
-  .bmf-help-sec { font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: ${UI.accent}; opacity: 0.8; font-weight: 700; margin: 4px 0 12px; }
+  .bmf-help-sec { font-size: ${FS.meta}; letter-spacing: 0.2em; text-transform: uppercase; color: ${UI.accent}; opacity: 0.8; font-weight: ${FW.bold}; margin: 4px 0 12px; }
   .bmf-help-sec.t-fire { color: ${UI.fire}; }
-  .bmf-help-sub { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: rgba(255,255,255,0.45); font-weight: 700; margin: 20px 0 10px; }
+  .bmf-help-sub { font-size: ${FS.meta}; letter-spacing: 0.16em; text-transform: uppercase; color: ${UI.dim}; font-weight: ${FW.bold}; margin: 20px 0 10px; }
 
   /* How-to-play steps */
   .bmf-help-steps { display: grid; gap: 11px; }
   .bmf-help-step { display: grid; grid-template-columns: 44px 1fr; gap: 13px; align-items: start; }
   .bmf-help-glyph {
-    width: 44px; height: 44px; border-radius: 13px; display: flex; align-items: center; justify-content: center;
-    font-size: 22px; background: rgba(103,232,255,0.10); border: 1px solid rgba(103,232,255,0.30);
-    box-shadow: inset 0 0 16px rgba(103,232,255,0.10);
+    width: 44px; height: 44px; border-radius: ${R.md}; display: flex; align-items: center; justify-content: center;
+    font-size: ${FS.hero}; background: ${UI.accentFill}; border: 1px solid ${UI.accent}4d;
+    box-shadow: inset 0 0 16px ${UI.accentFill};
   }
-  .bmf-help-glyph.t-water { background: rgba(86,196,238,0.12); border-color: rgba(86,196,238,0.34); box-shadow: inset 0 0 16px rgba(86,196,238,0.12); }
-  .bmf-help-glyph.t-fire { background: rgba(255,122,69,0.13); border-color: rgba(255,122,69,0.40); box-shadow: inset 0 0 16px rgba(255,122,69,0.14); }
-  .bmf-help-steptitle { font-size: 15px; font-weight: 700; margin: 2px 0 0; }
-  .bmf-help-stepbody { font-size: 12.5px; line-height: 1.45; color: rgba(231,247,255,0.72); margin: 3px 0 0; }
+  .bmf-help-glyph.t-water { background: ${UI.water}1f; border-color: ${UI.water}57; box-shadow: inset 0 0 16px ${UI.water}1f; }
+  .bmf-help-glyph.t-fire { background: ${UI.fire}21; border-color: ${UI.fire}66; box-shadow: inset 0 0 16px ${UI.fire}24; }
+  .bmf-help-steptitle { font-size: ${FS.lg}; font-weight: ${FW.bold}; margin: 2px 0 0; color: ${UI.text}; }
+  .bmf-help-stepbody { font-size: ${FS.sm}; line-height: 1.45; color: ${UI.textCool}; margin: 3px 0 0; }
 
   /* Visuals */
   .bmf-help-viz { margin: 4px auto 0; max-width: 300px; }
   .bmf-help-viz svg { width: 100%; height: auto; display: block; }
-  .bmf-help-cap { font-size: 12.5px; line-height: 1.5; color: rgba(231,247,255,0.78); margin: 8px 2px 0; text-align: center; }
+  .bmf-help-cap { font-size: ${FS.sm}; line-height: 1.5; color: ${UI.textCool}; margin: 8px 2px 0; text-align: center; }
   .bmf-help-cap b { color: ${UI.water}; }
 
   .bmf-help-tip {
     display: flex; gap: 11px; align-items: center; margin-top: 16px; padding: 12px 14px;
-    border-radius: 13px; background: rgba(255,122,69,0.08); border: 1px solid rgba(255,122,69,0.24);
+    border-radius: ${R.md}; background: ${UI.fire}14; border: 1px solid ${UI.fire}3d;
   }
   .bmf-help-tip .bmf-help-viz { margin: 0; flex: none; width: 96px; }
-  .bmf-help-tiptext { font-size: 12.5px; line-height: 1.5; color: rgba(231,247,255,0.82); }
+  .bmf-help-tiptext { font-size: ${FS.sm}; line-height: 1.5; color: ${UI.textCool}; }
   .bmf-help-tiptext b { color: ${UI.fire}; }
 
   /* HUD legend */
   .bmf-help-legend { display: grid; gap: 9px; margin-top: 12px; }
   .bmf-help-leg { display: grid; grid-template-columns: 22px 1fr; gap: 11px; align-items: baseline; }
   .bmf-help-num {
-    width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
-    font-size: 12px; font-weight: 800; color: #04181d; background: ${UI.accent};
+    width: 22px; height: 22px; border-radius: ${R.round}; display: flex; align-items: center; justify-content: center;
+    font-size: ${FS.sm}; font-weight: ${FW.heavy}; color: ${UI.ink}; background: ${UI.accent};
   }
   .bmf-help-num.t-water { background: ${UI.water}; }
   .bmf-help-num.t-fire { background: ${UI.fire}; }
-  .bmf-help-leg b { font-size: 13.5px; } .bmf-help-leg span { font-size: 12.5px; color: rgba(231,247,255,0.7); }
+  .bmf-help-leg b { font-size: ${FS.body}; color: ${UI.text}; } .bmf-help-leg span { font-size: ${FS.sm}; color: ${UI.textCool}; }
 
   .bmf-help-note {
     display: flex; gap: 10px; align-items: flex-start; margin-top: 14px; padding: 11px 13px;
-    border-radius: 12px; background: rgba(103,232,255,0.08); border: 1px solid rgba(103,232,255,0.22);
-    font-size: 12.5px; line-height: 1.5; color: rgba(231,247,255,0.82);
+    border-radius: ${R.md}; background: ${UI.accentFill}; border: 1px solid ${UI.accent}38;
+    font-size: ${FS.sm}; line-height: 1.5; color: ${UI.textCool};
   }
   .bmf-help-note b { color: ${UI.accent}; }
 
   /* Controls rows */
   .bmf-help-row {
     display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
-    padding: 8px 0; border-top: 1px solid rgba(255,255,255,0.07);
+    padding: 8px 0; border-top: 1px solid ${UI.hair};
   }
   .bmf-help-row:first-of-type { border-top: none; }
-  .bmf-help-act { font-size: 13.5px; color: rgba(255,255,255,0.82); }
+  .bmf-help-act { font-size: ${FS.body}; color: ${UI.text}; }
   .bmf-help-ctrls { display: flex; align-items: center; gap: 7px; }
   .bmf-help-touch {
-    display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 8px;
-    font-size: 12px; font-weight: 600; color: ${UI.text};
-    background: rgba(103,232,255,0.10); border: 1px solid rgba(103,232,255,0.26); white-space: nowrap;
+    display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: ${R.sm};
+    font-size: ${FS.sm}; font-weight: ${FW.semibold}; color: ${UI.text};
+    background: ${UI.accentFill}; border: 1px solid ${UI.accent}42; white-space: nowrap;
   }
-  .bmf-help-or { font-size: 11px; color: rgba(255,255,255,0.4); }
+  .bmf-help-or { font-size: ${FS.meta}; color: ${UI.dim}; }
   .bmf-help-key {
     display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 26px;
-    padding: 0 8px; border-radius: 7px; font-size: 12px; font-weight: 700; color: ${UI.text};
-    background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2);
-    box-shadow: 0 2px 0 rgba(0,0,0,0.35); margin-left: 4px;
+    padding: 0 8px; border-radius: ${R.sm}; font-size: ${FS.sm}; font-weight: ${FW.bold}; color: ${UI.text};
+    background: ${UI.track}; border: 1px solid ${UI.strokeStrong}; margin-left: 4px;
   }
   .bmf-help-key:first-of-type { margin-left: 0; }
 
-  /* Footer: dots + nav */
-  .bmf-help-foot { flex: none; padding: 12px 24px 0; margin-top: 4px; border-top: 1px solid rgba(255,255,255,0.08); }
+  /* Footer: dots + hint (Back/Next are kit buttons) */
   .bmf-help-nav { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .bmf-help-dots { display: flex; gap: 8px; }
-  .bmf-help-dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.22); border: none; padding: 0; cursor: pointer; transition: background 0.18s, transform 0.18s; }
+  .bmf-help-dot { width: 8px; height: 8px; border-radius: ${R.round}; background: ${UI.strokeStrong}; border: none; padding: 0; cursor: pointer; transition: background 0.18s, transform 0.18s; }
   .bmf-help-dot.is-on { background: ${UI.accent}; transform: scale(1.25); }
-  .bmf-help-back {
-    background: none; border: none; color: rgba(255,255,255,0.55); font-family: inherit; font-size: 13px;
-    cursor: pointer; padding: 8px 4px; min-width: 56px; text-align: left;
-  }
-  .bmf-help-back:hover { color: ${UI.text}; }
-  .bmf-help-next {
-    border: none; font-family: inherit; font-size: 14px; font-weight: 800; letter-spacing: 0.04em;
-    cursor: pointer; color: #04181d; padding: 11px 20px; border-radius: 12px; min-width: 120px;
-    background: linear-gradient(180deg, #8df0ff, ${UI.accent});
-    box-shadow: 0 8px 22px rgba(103,232,255,0.26); transition: transform 0.12s, box-shadow 0.2s;
-  }
-  .bmf-help-next:hover { transform: translateY(-2px); box-shadow: 0 12px 28px rgba(103,232,255,0.36); }
-  .bmf-help-next:active { transform: translateY(0); }
-  .bmf-help-hint { margin: 9px 0 0; text-align: center; font-size: 11px; color: rgba(255,255,255,0.38); }
+  .bmf-help-hint { margin: 0; text-align: center; font-size: ${FS.meta}; color: ${UI.faint}; }
 
   @media (max-width: 380px) {
-    .bmf-help-head, .bmf-help-page, .bmf-help-foot { padding-left: 16px; padding-right: 16px; }
-    .bmf-help-title { font-size: 21px; }
+    .bmf-help-page { padding-left: 16px; padding-right: 16px; }
+    .bmf-help-title { font-size: ${FS.title}; }
     .bmf-help-step { grid-template-columns: 38px 1fr; gap: 10px; }
-    .bmf-help-glyph { width: 38px; height: 38px; font-size: 19px; }
+    .bmf-help-glyph { width: 38px; height: 38px; font-size: ${FS.title}; }
   }
   `;
   const tag = document.createElement('style');
@@ -342,28 +298,65 @@ function viz(markup: string, extraClass = ''): HTMLDivElement {
 }
 
 export class HelpModal {
-  private readonly scrim: HTMLDivElement;
-  private readonly track: HTMLDivElement;
-  private readonly dots: HTMLButtonElement[] = [];
-  private readonly backBtn: HTMLButtonElement;
-  private readonly nextBtn: HTMLButtonElement;
-  private readonly onKey: (e: KeyboardEvent) => void;
+  private modal: ModalHandle | null = null;
+  private track: HTMLDivElement | null = null;
+  private dots: HTMLButtonElement[] = [];
+  private backBtn: ButtonHandle | null = null;
+  private nextBtn: ButtonHandle | null = null;
   private readonly pageCount = 3;
   private page = 0;
-  private open_ = false;
+
+  /** Arrow-key paging while open (the kit's `openModal` already owns Esc + the Tab focus-trap). */
+  private readonly onKey = (e: KeyboardEvent): void => {
+    if (!this.modal) return;
+    if (e.key === 'ArrowRight') { e.preventDefault(); this.goTo(this.page + 1); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); this.goTo(this.page - 1); }
+  };
 
   constructor() {
     injectStyles();
+  }
 
-    // Build the three pages, then the shell around them.
-    this.track = h('div', { className: 'bmf-help-track' }, [this.pageJob(), this.pageFireWind(), this.pageCockpit()]);
-    this.track.addEventListener('scroll', () => this.onScroll());
+  get isOpen(): boolean {
+    return this.modal !== null;
+  }
 
-    this.backBtn = h('button', { className: 'bmf-help-back', type: 'button', textContent: 'Back' });
-    this.nextBtn = h('button', { className: 'bmf-help-next', type: 'button', textContent: 'Next →' });
-    this.backBtn.addEventListener('click', () => this.goTo(this.page - 1));
-    this.nextBtn.addEventListener('click', () => (this.page >= this.pageCount - 1 ? this.close() : this.goTo(this.page + 1)));
+  open(): void {
+    if (this.modal) return;
+    const m = openModal({ width: '540px', dismissable: true });
+    this.modal = m;
+    // A fixed-height panel so the three equal-height pages snap cleanly (kit cards otherwise hug content).
+    m.card.style.height = 'min(640px, calc(100dvh - 24px))';
 
+    // Head: swap the kit's (empty) title for our kicker + title; the kit's close ✕ stays on the right.
+    const head = m.card.firstElementChild as HTMLElement;
+    head.querySelector('h2')?.remove();
+    head.insertBefore(
+      h('div', { className: 'bmf-help-head' }, [
+        h('p', { className: 'bmf-help-kicker', textContent: 'Field manual' }),
+        h('h2', { className: 'bmf-help-title', textContent: 'How to fly' }),
+      ]),
+      head.firstChild,
+    );
+
+    // Body becomes a flex column holding the horizontal scroll-snap track (fresh pages each open).
+    Object.assign(m.body.style, { padding: '0', display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: '0' });
+    this.page = 0;
+    this.dots = [];
+    const track = h('div', { className: 'bmf-help-track' }, [this.pageJob(), this.pageFireWind(), this.pageCockpit()]);
+    track.addEventListener('scroll', () => this.onScroll());
+    this.track = track;
+    m.body.appendChild(track);
+
+    // Footer: Back · dots · Next, then a hint line (+ an optional Replay row).
+    this.backBtn = makeButton({ label: 'Back', variant: 'ghost', register: 'cockpit', size: 'sm', onClick: () => this.goTo(this.page - 1) });
+    this.nextBtn = makeButton({
+      label: 'Next →',
+      variant: 'primary',
+      register: 'cockpit',
+      size: 'sm',
+      onClick: () => (this.page >= this.pageCount - 1 ? this.close() : this.goTo(this.page + 1)),
+    });
     const dotsRow = h('div', { className: 'bmf-help-dots' });
     for (let i = 0; i < this.pageCount; i++) {
       const d = h('button', { className: 'bmf-help-dot', type: 'button' });
@@ -372,75 +365,57 @@ export class HelpModal {
       this.dots.push(d);
       dotsRow.append(d);
     }
+    const nav = h('div', { className: 'bmf-help-nav' }, [this.backBtn.el, dotsRow, this.nextBtn.el]);
+    const hint = h('p', { className: 'bmf-help-hint', textContent: 'Swipe or use the dots · reopen anytime with “?” · Esc to close' });
+    Object.assign(m.footer.style, { flexDirection: 'column', alignItems: 'stretch', gap: '8px', justifyContent: 'flex-start' });
+    m.footer.append(nav, hint);
+    // Replay the interactive coach: clear its "done" flag and route to the first campaign mission,
+    // where the coach gate re-fires. A plain navigation (not the dev-gated in-place switch) so it
+    // works in prod too.
+    const replay = makeButton({
+      label: '↻ Replay guided first flight',
+      variant: 'secondary',
+      register: 'cockpit',
+      size: 'sm',
+      block: true,
+      onClick: () => {
+        resetTutorial();
+        const url = new URL(window.location.href);
+        url.searchParams.set('m', CAMPAIGN[0].id);
+        url.searchParams.delete('autostart');
+        url.searchParams.delete('qa');
+        window.location.assign(url.toString());
+      },
+    });
+    m.footer.append(replay.el);
 
-    const footer = h('div', { className: 'bmf-help-foot' }, [
-      h('div', { className: 'bmf-help-nav' }, [this.backBtn, dotsRow, this.nextBtn]),
-      h('p', { className: 'bmf-help-hint', textContent: 'Swipe or use the dots · reopen anytime with “?” · Esc to close' }),
-    ]);
-
-    const close = h('button', { className: 'bmf-help-x', type: 'button', textContent: '✕', title: 'Close' });
-    close.setAttribute('aria-label', 'Close help');
-    close.addEventListener('click', () => this.close());
-
-    const head = h('div', { className: 'bmf-help-head' }, [
-      h('p', { className: 'bmf-help-kicker', textContent: 'Quick start' }),
-      ((): HTMLElement => {
-        const t = h('h2', { className: 'bmf-help-title' });
-        t.innerHTML = 'How to fly the <span class="em">helicopter</span>';
-        return t;
-      })(),
-    ]);
-
-    const card = h('div', { className: 'bmf-help-card' }, [close, head, this.track, footer]);
-    card.addEventListener('pointerdown', (e) => e.stopPropagation()); // taps inside don't close
-
-    this.scrim = h('div', { className: 'bmf-help-scrim' }, [card]);
-    this.scrim.addEventListener('pointerdown', () => this.close()); // tap outside closes
-    document.body.appendChild(this.scrim);
-
-    this.onKey = (e: KeyboardEvent): void => {
-      if (!this.open_) return;
-      if (e.key === 'Escape') { e.preventDefault(); this.close(); }
-      else if (e.key === 'ArrowRight') { e.preventDefault(); this.goTo(this.page + 1); }
-      else if (e.key === 'ArrowLeft') { e.preventDefault(); this.goTo(this.page - 1); }
-    };
-  }
-
-  get isOpen(): boolean {
-    return this.open_;
-  }
-
-  open(): void {
-    if (this.open_) return;
-    this.open_ = true;
-    this.scrim.classList.add('is-open');
-    this.track.scrollLeft = 0; // always greet on page 1
-    this.page = 0;
     this.syncNav();
     window.addEventListener('keydown', this.onKey);
+    m.onClose(() => {
+      window.removeEventListener('keydown', this.onKey);
+      this.modal = null;
+      this.track = null;
+    });
   }
 
   close(): void {
-    if (!this.open_) return;
-    this.open_ = false;
-    this.scrim.classList.remove('is-open');
-    window.removeEventListener('keydown', this.onKey);
+    this.modal?.close(); // the onClose handler nulls modal/track and detaches the keydown listener
   }
 
   toggle(): void {
-    this.open_ ? this.close() : this.open();
+    if (this.modal) this.close();
+    else this.open();
   }
 
-  /** Teardown for an in-place mission switch: drop the body-level scrim and detach the (open-only)
-   *  keydown listener via close(). Idempotent; the modal is dead afterwards. */
+  /** Teardown for an in-place mission switch: close (which removes the kit scrim + keydown). Idempotent. */
   dispose(): void {
-    this.close(); // removes the window 'keydown' if it was open
-    this.scrim.remove();
+    this.close();
   }
 
   // --- paging ---------------------------------------------------------------
 
   private goTo(i: number): void {
+    if (!this.track) return;
     const n = Math.max(0, Math.min(this.pageCount - 1, i));
     this.track.scrollTo({ left: n * this.track.clientWidth, behavior: 'smooth' });
     this.page = n;
@@ -448,6 +423,7 @@ export class HelpModal {
   }
 
   private onScroll(): void {
+    if (!this.track) return;
     const w = Math.max(1, this.track.clientWidth);
     const i = Math.round(this.track.scrollLeft / w);
     if (i !== this.page) {
@@ -458,8 +434,8 @@ export class HelpModal {
 
   private syncNav(): void {
     this.dots.forEach((d, i) => d.classList.toggle('is-on', i === this.page));
-    this.backBtn.style.visibility = this.page === 0 ? 'hidden' : 'visible';
-    this.nextBtn.textContent = this.page >= this.pageCount - 1 ? 'Let’s fly ✓' : 'Next →';
+    if (this.backBtn) this.backBtn.el.style.visibility = this.page === 0 ? 'hidden' : 'visible';
+    this.nextBtn?.setLabel(this.page >= this.pageCount - 1 ? 'Let’s fly ✓' : 'Next →');
   }
 
   // --- pages ----------------------------------------------------------------
@@ -479,7 +455,7 @@ export class HelpModal {
       );
     }
     const cap = h('p', { className: 'bmf-help-cap' });
-    cap.innerHTML = '<b>Lower the bucket enough to fill.</b> Fly low over any lake and keep descending until the slung bucket dips into the water — it fills automatically. There is no fill button.';
+    cap.innerHTML = '<b>Lower the bucket enough to fill.</b> Fly low over any lake and keep descending until the slung bucket dips into the water. It fills automatically. There is no fill button.';
     return h('div', { className: 'bmf-help-page' }, [
       h('p', { className: 'bmf-help-sec', textContent: '1 · The job' }),
       steps,
@@ -492,7 +468,7 @@ export class HelpModal {
   /** Page 2 — how water extinguishes fire, and how wind changes the fight. */
   private pageFireWind(): HTMLDivElement {
     const cap = h('p', { className: 'bmf-help-cap' });
-    cap.innerHTML = 'Line up over the flames and hit <b>DROP</b>. Water knocks down every fire inside the splash — a big blaze re-flares, so give it a few passes until it is fully out.';
+    cap.innerHTML = 'Line up over the flames and hit <b>DROP</b>. Water knocks down every fire inside the splash. A big blaze re-flares, so give it a few passes until it is fully out.';
     const tip = h('div', { className: 'bmf-help-tip' }, [
       viz(WIND_SVG),
       ((): HTMLElement => {
@@ -516,12 +492,12 @@ export class HelpModal {
       legend.append(
         h('div', { className: 'bmf-help-leg' }, [
           h('div', { className: `bmf-help-num${l.tone === 'cyan' ? '' : ` t-${l.tone}`}`, textContent: l.n }),
-          h('div', {}, [h('b', { textContent: `${l.label} — ` }), h('span', { textContent: l.desc })]),
+          h('div', {}, [h('b', { textContent: `${l.label}: ` }), h('span', { textContent: l.desc })]),
         ]),
       );
     }
     const note = h('div', { className: 'bmf-help-note' });
-    note.innerHTML = 'Your <b>OBJECTIVES</b> (top-left) are the win condition — finish them to clear the sortie. Some missions add a <b>FUEL</b> gauge; land at a base before it runs dry.';
+    note.innerHTML = 'Your <b>OBJECTIVES</b> (top-left) are the win condition. Finish them to clear the sortie. Some missions add a <b>FUEL</b> gauge; land at a base before it runs dry.';
 
     const rows = CONTROLS.map((c) => {
       const ctrls = h('div', { className: 'bmf-help-ctrls' }, [h('span', { className: 'bmf-help-touch', textContent: c.touch })]);

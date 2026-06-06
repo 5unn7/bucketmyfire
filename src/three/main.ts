@@ -223,6 +223,10 @@ function bootMission(mission: MissionDef): void {
   // Skip the hold-to-spool ritual for headless QA/autostart, AND once the pilot has completed it once
   // before (#9) — after the first time it's a speed bump, so later sorties boot engine-running.
   const skipColdStart = params.has('qa') || params.has('autostart') || coldStartSeen();
+  // The interactive first-flight coach must be OFF under headless QA — it would interfere with the
+  // verify:render scoop→drop autopilot (a hard CI deploy gate). Real boots leave it on; the Game
+  // gates it further to a new pilot's first campaign sortie.
+  const disableCoach = params.has('qa') || params.has('autostart');
   // QA / dev: fly ANY airframe regardless of unlock progress with ?heli=<id> (bell-205a1 | bell-212 |
   // uh-60), e.g. ?m=first-light&autostart&heli=uh-60. Unknown ids fall back to the saved default.
   const heliOverride = params.get('heli');
@@ -326,7 +330,7 @@ function bootMission(mission: MissionDef): void {
   /** Construct a Game for `m` with its end-hooks + (dev/QA) debug handle. The renderer/composer/tier
    *  are the shared ones captured above — only the Game itself is per-mission. */
   function buildGame(m: MissionDef): Game {
-    const g = new Game(container, tier, m, profile, makeEndHooks(m), { skipColdStart });
+    const g = new Game(container, tier, m, profile, makeEndHooks(m), { skipColdStart, disableCoach });
     // Debug/QA hook: lets a test harness read flight/game/mission state. On in dev always; in a prod
     // build only when `?qa` is present — re-pointed so a switched-to mission stays inspectable.
     if (import.meta.env.DEV || params.has('qa')) {

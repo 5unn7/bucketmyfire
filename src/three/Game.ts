@@ -62,6 +62,9 @@ import { submitScore } from './leaderboard/client';
 import { cloudAutoSave } from './leaderboard/cloudSave';
 import { button, UI, FW } from './ui/theme';
 import { coached, coachBump } from './ui/hints';
+import { CoachDirector } from './ui/coach/CoachDirector';
+import { tutorialDone, markTutorialDone } from './ui/coach/coachStore';
+import { CAMPAIGN } from './missions/catalog';
 import type { MissionDef, MissionSignals, MissionAction, ZonePlacement, ScoreTally } from './missions/types';
 import type { EndScreenHooks } from './HUD';
 import { seedFires, structurePlan, crewZones, resolveCrewZone, igniteFromPlacement, backburnLine } from './missions/scenario';
@@ -246,6 +249,9 @@ export class Game {
   private readonly fireBoundX: number; // valid-fire-site X half-extent (rect-aware; matches scenario seeding)
   private readonly fireBoundZ: number; // …and Z half-extent (= fireBoundX on square maps)
   private inBriefing = true; // pre-flight briefing card up → sim + clock paused until BEGIN
+  private readonly coach: CoachDirector; // interactive first-flight tutorial (inert unless gated on)
+  private coachShown = false; // the coach overlay has been surfaced this game
+  private coachCompleted = false; // tutorial finished/skipped → stop driving the coach
   private payloadMode: 'water' | 'crew' | 'torch'; // CURRENT slung loadout (mutable: mixed missions re-rig at base)
   private bucketAttached = true; // water sorties: is the slung bucket rigged? DETACH jettisons it; a base re-rigs a fresh one
   private readonly loadouts: ('water' | 'crew' | 'torch')[]; // loadouts the pilot can re-rig between; >1 → swap enabled
@@ -278,9 +284,12 @@ export class Game {
     mission: MissionDef,
     profile?: Profile,
     end?: EndScreenHooks,
-    opts: { skipColdStart?: boolean } = {},
+    opts: { skipColdStart?: boolean; disableCoach?: boolean } = {},
   ) {
     this.mission = mission;
+    // Interactive first-flight coach: only the TRUE first sortie of a brand-new pilot, never under
+    // headless QA (it would interfere with the verify:render scoop→drop autopilot + deploy gate).
+    this.coach = new CoachDirector(!opts.disableCoach && !tutorialDone() && mission.id === CAMPAIGN[0].id);
     this.end = end;
     // Cold start (every mission) unless a headless QA boot opts out (?qa / ?autostart): then the
     // aircraft is already running and airborne at origin, so the existing autopilot/teleport flows
@@ -878,9 +887,8 @@ export class Game {
         this.hud.showEngineStart();
         this.chase.beginIntro();
       }
-      // First-time pilots now get the quick-start HERE — after the briefing, layered over the
-      // engine-start dial — so the tutorial no longer stacks on top of the briefing card.
-      this.input.openHelpFirstTime();
+      // First-time pilots are now taught by the interactive CoachDirector (driven in update once the
+      // rotors are up), not an auto-popped manual. The "?" reference modal stays reopenable anytime.
     });
   }
 
@@ -1016,6 +1024,16 @@ export class Game {
 
   resize(aspect: number): void {
     this.chase.setAspect(aspect);
+  }
+
+  /** "Skip tutorial" from the coach overlay: mark it done, fold the overlay + spotlight away, and
+   *  stop driving the coach for the rest of this game. */
+  private skipCoach(): void {
+    this.coach.skip();
+    this.coachCompleted = true;
+    markTutorialDone();
+    this.hud.hideCoach();
+    this.input.setHighlight(null);
   }
 
   /**
@@ -1693,6 +1711,46 @@ export class Game {
     this.frame.update(dt, this.wind.vx, this.wind.vz, this.sun.position, this.sun.target.position);
 
     const firesLeft = this.fireSystem.activeCount;
+
+    // --- Interactive first-flight coach: read the loop state we just computed and drive the overlay +
+    // control spotlight. Inert (active=false) on every mission but a new pilot's first sortie. ---
+    if (!this.coachCompleted && (this.coach.active || this.coachShown)) {
+      const cs = this.coach.update({
+        dt,
+        engineStarted: this.engineStarted,
+        inBriefing: this.inBriefing,
+        frozen,
+        speed: this.heliSim.speed,
+        yawRate: Math.abs(c.turn),
+        overWater,
+        scooping,
+        water: this.water,
+        capacity: this.capacity,
+        dropping,
+        firesLeft,
+        won: this.won,
+        lost: this.lost,
+      });
+      if (cs.kind === 'running') {
+        if (!this.coachShown) {
+          this.hud.showCoach({ onSkip: () => this.skipCoach() });
+          this.coachShown = true;
+        }
+        this.hud.setCoach(cs.prompt);
+        this.input.setHighlight(cs.prompt.highlight);
+      } else if (cs.kind === 'complete') {
+        this.coachCompleted = true;
+        markTutorialDone();
+        this.hud.completeCoach();
+        this.input.setHighlight(null);
+      } else if (this.coachShown) {
+        // Inactive after it had been running → the mission ended (loss); fold the coach away.
+        this.hud.hideCoach();
+        this.coachShown = false;
+        this.input.setHighlight(null);
+      }
+    }
+
     // Crew missions guide to the next zone; water missions warn on scrape, else guide the scoop. On a
     // mixed mission the hint follows the RIGGED loadout, and a "re-rig at base" cue shows once set down.
     const swapHint =

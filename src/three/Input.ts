@@ -27,6 +27,7 @@ import type { LookOffset } from './ChaseCamera';
 import { UI, FW, FS, R, div, button, setBlur, anchor } from './ui/theme';
 import { onLayout, type LayoutState } from './ui/layout';
 import { HelpModal, hasSeenHelp, markHelpSeen } from './ui/HelpModal';
+import type { HighlightId } from './ui/coach/CoachDirector';
 
 export interface ControlState {
   turn: number; // -1 turn left .. +1 turn right
@@ -89,6 +90,8 @@ export class Input {
   private eyeSvg!: SVGElement;
   private helpBtn!: HTMLDivElement;
   private help!: HelpModal;
+  /** The control currently spotlit by the coach (so a change clears the previous one). */
+  private highlighted: HTMLElement | null = null;
   // Teardown handles (in-place mission switch): the touch-UI root, the three window key listeners,
   // and the layout subscription — all stored so dispose() can detach them and a dead game's input
   // never lingers bound to window / firing on resize. (Listeners on elements INSIDE `root` go away
@@ -123,7 +126,26 @@ export class Input {
     window.removeEventListener('blur', this.onBlur);
     this.unsubLayout();
     this.help?.dispose();
+    this.setHighlight(null); // drop any coach spotlight class before the elements go
     this.root?.remove();
+  }
+
+  /** Spotlight one on-screen control for the interactive coach (or clear with `null`). Toggles a single
+   *  keyframed glow class on the existing stick/cluster/DROP elements — box-shadow only, so no relayout
+   *  and no pointer-capture change. One class add/remove per CHANGE, not per frame. Driven by Game. */
+  setHighlight(id: HighlightId | null): void {
+    injectPulseStyles();
+    const map: Record<HighlightId, HTMLElement | undefined> = {
+      stick: this.stickBase,
+      climb: this.climbBtn,
+      descend: this.descendBtn,
+      drop: this.dropBtn,
+    };
+    const next = id ? (map[id] ?? null) : null;
+    if (next === this.highlighted) return;
+    this.highlighted?.classList.remove('bmf-coach-pulse');
+    next?.classList.add('bmf-coach-pulse');
+    this.highlighted = next;
   }
 
   read(): ControlState {
@@ -541,6 +563,26 @@ export class Input {
 
 function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
+}
+
+// Coach spotlight — a soft cyan glow ring the interactive tutorial pulses onto a control. box-shadow
+// only (follows each element's own border-radius), injected once; reduced-motion gets a static ring.
+let pulseStylesInjected = false;
+function injectPulseStyles(): void {
+  if (pulseStylesInjected) return;
+  pulseStylesInjected = true;
+  const tag = document.createElement('style');
+  tag.textContent = `
+  @keyframes bmf-coach-pulse-kf {
+    0%, 100% { box-shadow: 0 0 0 2px rgba(103,232,255,0.5), 0 0 16px 2px rgba(103,232,255,0.32); }
+    50% { box-shadow: 0 0 0 3px rgba(103,232,255,0.95), 0 0 26px 7px rgba(103,232,255,0.55); }
+  }
+  .bmf-coach-pulse { animation: bmf-coach-pulse-kf 1.1s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) {
+    .bmf-coach-pulse { animation: none; box-shadow: 0 0 0 3px rgba(103,232,255,0.85), 0 0 18px 3px rgba(103,232,255,0.45); }
+  }
+  `;
+  document.head.appendChild(tag);
 }
 
 /** Eye glyph for the free-look button (stroked SVG, scales crisply at any size). */

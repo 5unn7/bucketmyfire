@@ -23,6 +23,8 @@ import { onLayout, type LayoutState } from './ui/layout';
 import { Radar } from './hud/Radar';
 import { EndScreen } from './hud/EndScreen';
 import { EngineStart } from './hud/engineStart';
+import { CoachOverlay } from './ui/coach/CoachOverlay';
+import type { CoachPrompt } from './ui/coach/CoachDirector';
 import { bannerButton, fmtTime, AIRFRAME_OK } from './hud/common';
 import type { HudState, EndScreenHooks, MapLabels } from './hud/types';
 
@@ -111,6 +113,7 @@ export class HUD {
   private readonly radar: Radar;
   private readonly endScreen: EndScreen;
   private readonly engine: EngineStart;
+  private readonly coach: CoachOverlay;
 
   constructor(
     parent: HTMLElement,
@@ -358,6 +361,7 @@ export class HUD {
     // Mission end screen + cold-start dial — fire-once sub-systems mounted into the root on demand.
     this.endScreen = new EndScreen(this.root, end, this.pilotName);
     this.engine = new EngineStart(this.root);
+    this.coach = new CoachOverlay(this.root);
 
     parent.appendChild(this.root);
 
@@ -853,6 +857,28 @@ export class HUD {
     this.engine.hide();
   }
 
+  // --- Interactive first-flight coach — delegated to the coach overlay (driven by Game) -----------
+
+  /** Surface the coach card (Game calls this once when the tutorial goes live). */
+  showCoach(opts: { onSkip: () => void }): void {
+    this.coach.show(opts);
+  }
+
+  /** Render the current coach step. */
+  setCoach(prompt: CoachPrompt): void {
+    this.coach.set(prompt);
+  }
+
+  /** Swap to the completion sign-off, then fade the coach out. */
+  completeCoach(): void {
+    this.coach.complete();
+  }
+
+  /** Fold the coach away (mission loss / skip). */
+  hideCoach(): void {
+    this.coach.hide();
+  }
+
   /** C5: hand the radar the live fire field (FireSystem.fieldView) for the burnt-area overlay. */
   setBurnField(view: FireFieldView): void {
     this.radar.setBurnField(view);
@@ -871,6 +897,7 @@ export class HUD {
     window.clearTimeout(this.hintFadeTimer);
     window.clearTimeout(this.hitFlashTimer);
     this.engine.hide(); // detaches the dial's window key listeners if still up
+    this.coach.hide(); // fold the coach overlay (clears its hide timer); idempotent
     this.unsubLayout?.();
     this.unsubLayout = null;
     this.root.remove();
