@@ -318,6 +318,13 @@ the right block.
   helpers). The prose system — colour/state semantics, type scale, motion, anti-patterns — lives in
   **`DESIGN.md`** at the repo root; read it before any visual/UI change. Never add a second `UI`
   token object or hard-code a colour/blur/shadow in a module; add a token to `theme.ts` instead.
+- **No-scroll, single-viewport UI (hard rule).** The game is a fixed-viewport app, not a scrolling
+  web page — **the page itself must never scroll.** Lock the app surface to the viewport
+  (`100dvh`/`100svh`, body non-scrolling) and size every screen / menu / overlay to fit *above* the
+  fixed bottom rail + HUD. Design menus to **fit, not flow**: compress, use carousels, or paginate.
+  A bounded inner scroll region is permitted **only** for a genuinely long list (mission select,
+  leaderboard) and never for primary hub screens (home, title, briefing, debrief, settings) — those
+  always fit on a phone with zero scroll. Treat "user has to scroll to reach an action" as a bug.
 
 ## Roadmap
 

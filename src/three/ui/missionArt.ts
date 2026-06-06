@@ -11,8 +11,10 @@
 
 /** Mission id → poster path RELATIVE to public/ (BASE_URL is applied by `missionPoster`). */
 export const MISSION_POSTERS: Record<string, string> = {
-  // 'first-light': 'missions/first-light.jpg',
-  // 'crews-to-the-road': 'missions/crews-to-the-road.jpg',
+  'first-light': 'images/Saskatchewan/FirstLight.webp',
+  'hover-training': 'images/Saskatchewan/HoverDrill.webp',
+  'backburn': 'images/Saskatchewan/Backburn.webp',
+  'three-towns': 'images/Saskatchewan/ThreeTown.webp',
   // …add the rest as art lands.
 };
 

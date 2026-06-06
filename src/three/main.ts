@@ -6,7 +6,7 @@ import { loadEnvironment, applyEnvironment } from './render/Environment';
 import { ENV } from './config';
 import { shouldAutostart, defaultProfile } from './ui/Onboarding';
 import { MenuFlow } from './ui/flow/MenuFlow';
-import { TitleScreen } from './ui/title/TitleScreen';
+import { HomeScreen } from './ui/home/HomeScreen';
 import { CAMPAIGN, missionById } from './missions/catalog';
 import { buildDailyMission, isDailyId } from './missions/daily';
 import { HELI_MODELS } from './meshes/heliModels';
@@ -101,16 +101,22 @@ function routeMission(): void {
   if (selectedId) {
     bootMission(missionById(selectedId) ?? CAMPAIGN[0]);
   } else {
-    // No `?m=` → the home screen: the 3D TitleScreen (an attract-scene backdrop + ember logo + PLAY).
-    // PLAY tears the title down and mounts the guided pre-flight wizard (MenuFlow) — whose Screen 1 IS
-    // the identity gate (a required callsign), so first-run players can't reach a mission without a
-    // name; returning pilots get a "Skip to missions →". Picking a mission navigates with `?m=` (a
-    // reload). Headless/deep-link (?m= / ?autostart / ?qa) bypasses this branch and boots the game.
-    new TitleScreen(container, CAMPAIGN, () => {
-      // Smart PLAY (#1): MenuFlow lands a RETURNING pilot straight on the mission carousel (it gates
-      // skipToMissions on a real saved callsign), so PLAY → pick a sortie in one tap. First-run pilots
-      // still start on Screen 1 (the callsign gate).
-      new MenuFlow(container, CAMPAIGN, (id) => gotoCampaign(id), { skipToMissions: true });
+    // No `?m=` → the home HUB (HomeScreen): the branded dispatch board — pilot dossier, Daily Burn,
+    // Continue-mission card, and the bottom-rail menu (Maps / Hangar / Co-op / Board / Shop / Settings).
+    // Continue → boots the next mission (`?m=`), Daily → `?daily`, Campaign → the mission-select page.
+    // Headless/deep-link (?m= / ?autostart / ?qa) bypasses this branch and boots the game directly.
+    new HomeScreen(container, CAMPAIGN, {
+      onContinue: (id) => gotoCampaign(id),
+      onDaily: () => {
+        const url = new URL(location.href);
+        url.searchParams.set('daily', '1');
+        url.searchParams.delete('m');
+        location.assign(url.toString());
+      },
+      onCampaign: () => {
+        // The full mission carousel (the existing pre-flight page); picking a sortie reloads via `?m=`.
+        new MenuFlow(container, CAMPAIGN, (id) => gotoCampaign(id), { skipToMissions: true });
+      },
     });
   }
 }
