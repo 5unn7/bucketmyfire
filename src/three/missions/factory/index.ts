@@ -5,9 +5,11 @@
  * downstream changes — Game/runtime/scoring/HUD consume a generated def exactly like an authored one.
  *
  * Determinism: a single mulberry32 stream off `seed` drives the archetype pick, the intensity, the per-day
- * params, and the sky — same seed → same def (a pure POJO, no Date.now / Math.random in the emitted data).
- * The optional `MapContext` (build-time pre-bake / host-side co-op) lets town-defense archetypes target a
- * real defensible town; without it (the runtime daily) archetypes stay feature-relative + World-free.
+ * params, and the sky — same OPTS → same def (a pure POJO, no wall-clock / global-RNG in the emitted data).
+ * The archetype-pick + intensity draws are consumed UNCONDITIONALLY (then overridden by opts) so forcing an
+ * `archetypeId`/`intensity` doesn't shift the downstream stream — the def a forced pick yields matches the
+ * auto-picked one. The optional `MapContext` (build-time pre-bake / host-side co-op) lets town-defense
+ * archetypes target a real defensible town; without it (the runtime daily) archetypes stay World-free.
  */
 import type { MissionDef, TimeOfDay } from '../types';
 import { ARCHETYPES, archetypeById } from './archetypes';
@@ -43,12 +45,19 @@ export interface GenerateOpts {
  */
 export function generateMission(opts: GenerateOpts, ctx?: MapContext): MissionDef {
   const r = makeRng(opts.seed ^ 0xa5a5a5a5);
-  const arche = opts.archetypeId ? (archetypeById(opts.archetypeId) ?? ARCHETYPES[0]) : ARCHETYPES[Math.floor(r() * ARCHETYPES.length)];
-  const intensity = opts.intensity ?? r();
+  // Draw the pick + intensity UNCONDITIONALLY so forcing an archetype/intensity can't shift the stream that
+  // feeds build() + the sky — a forced extinguish daily yields the same def as an auto-picked one.
+  const pick = Math.floor(r() * ARCHETYPES.length);
+  const rolledIntensity = r();
+  const arche = opts.archetypeId ? (archetypeById(opts.archetypeId) ?? ARCHETYPES[pick]) : ARCHETYPES[pick];
+  const intensity = opts.intensity ?? rolledIntensity;
   const out = arche.build(r, intensity, ctx);
   const timeOfDay = TIMES[Math.floor(r() * TIMES.length)];
+  // A 'daily'-kind def carries a `daily-`-prefixed id so it FAILS SAFE under isDailyId (keeps daily wins out
+  // of campaign unlocks) even if a caller forgets to stamp the date id. buildDailyMission overrides it anyway.
+  const idPrefix = opts.kind === 'daily' ? 'daily-gen' : `gen-${opts.kind}`;
   return {
-    id: `gen-${opts.kind}-${opts.seed >>> 0}`,
+    id: `${idPrefix}-${opts.seed >>> 0}`,
     index: 0,
     name: out.flavor.kind,
     brief: out.flavor.brief,

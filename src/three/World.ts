@@ -442,12 +442,14 @@ export class World {
     return inside ? -d : d;
   }
 
-  /** Public boolean: is (x,z) inside the province polygon? True on procedural/square maps with no mask (geo
-   *  present but not bounds-fit) so callers don't special-case. Used by placement guards to keep lakes/fires/
-   *  structures off the lowered off-province band on a true-shape map. */
-  isInProvince(x: number, z: number): boolean {
+  /** Public boolean: is (x,z) at least `margin` units INSIDE the province polygon? True on procedural/square
+   *  maps with no mask (geo present but not bounds-fit) so callers don't special-case. Used by placement
+   *  guards to keep lakes/fires/structures off the lowered off-province band on a true-shape map. A positive
+   *  `margin` requires extra clearance so a fire DISC seeded here (whose rendered centroid can drift toward
+   *  the rim) still sits fully on real land — pass ≈ the fire's radius. */
+  isInProvince(x: number, z: number, margin = 0): boolean {
     if (!this.geo || this.geo.fit !== 'bounds') return true;
-    return this.insideProvince(x, z) < 0;
+    return this.insideProvince(x, z) < -margin;
   }
 
   /** Decorative place labels (far-north + southern reference points) projected to world XZ — pure radar labels,
@@ -476,16 +478,6 @@ export class World {
   /** Resolve an authored anchor by id to its placed world site (anchored maps only), or null. */
   anchor(id: string): ResolvedAnchor | null {
     return this.resolvedAnchors.find((a) => a.id === id) ?? null;
-  }
-
-  /**
-   * The nearest lake to (x,z) — a bucket SCOOP source — as a minimal POJO (centre, base radius, water
-   * level), or null on a lakeless map. Public read-only query for the mission FACTORY's MapContext
-   * (deciding where a fire can be fought from open water). Wraps the private nearestLakeRuntime.
-   */
-  nearestScoopLake(x: number, z: number): { x: number; z: number; r: number; waterLevel: number } | null {
-    const l = this.nearestLakeRuntime(x, z);
-    return l ? { x: l.x, z: l.z, r: l.r, waterLevel: l.waterLevel } : null;
   }
 
   /**

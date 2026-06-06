@@ -32,14 +32,16 @@ export class Placement {
    * rectangular world keeps random fires inside the actual playfield, not in the void off its narrow
    * axis. Square maps pass one value → boundZ === bound → the rng stream + sites are byte-identical.
    */
-  fireSite(rng: () => number, bound: number, minFromOrigin = 0, boundZ: number = bound): { x: number; z: number } | null {
+  fireSite(rng: () => number, bound: number, minFromOrigin = 0, boundZ: number = bound, provinceMargin = 0): { x: number; z: number } | null {
     for (let i = 0; i < 80; i++) {
       const x = (rng() * 2 - 1) * bound;
       const z = (rng() * 2 - 1) * boundZ;
       if (minFromOrigin > 0 && Math.hypot(x, z) < minFromOrigin) continue;
       // On a true-shape (bounds-fit) map keep fires inside the province — the off-province band is lowered +
-      // fogged, so a fire there reads as burning in the void. No-op on square maps (isInProvince → true).
-      if (!this.world.isInProvince(x, z)) continue;
+      // fogged, so a fire there reads as burning in the void. `provinceMargin` (≈ the fire's disc radius)
+      // keeps the seed far enough in that the rendered centroid doesn't drift past the rim. No-op on square
+      // maps (isInProvince → true).
+      if (!this.world.isInProvince(x, z, provinceMargin)) continue;
       const fuel = this.fuelAt(x, z);
       if (fuel <= 0) continue;
       if (rng() < fuel) return { x, z }; // accept in proportion to flammability

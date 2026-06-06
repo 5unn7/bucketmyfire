@@ -294,10 +294,12 @@ export function igniteFromPlacement(
         fire.igniteAt(target.x, target.z, radiusCells, cls.heat);
       }
     } else {
-      // random: fuel-biased sites, off the player's spawn.
+      // random: fuel-biased sites, off the player's spawn. The province margin (≈ the fire's disc radius +
+      // a cell) keeps a random spot far enough inside a true-shape map that its rendered centroid never
+      // drifts onto the lowered/fogged off-province band (no-op on square maps).
       const min = f.minFromOrigin ?? 120;
       for (let i = 0; i < f.count; i++) {
-        const site = world.placement.fireSite(world.rng, fireBound, min, fireBoundZ);
+        const site = world.placement.fireSite(world.rng, fireBound, min, fireBoundZ, cls.radius + 15);
         if (site) fire.igniteAt(site.x, site.z, radiusCells, cls.heat);
       }
     }

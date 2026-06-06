@@ -54,22 +54,22 @@ export function dailyDateLabel(date: Date): string {
 }
 
 /**
- * Synthesize today's Daily Burn via the mission FACTORY (Slice 3). The day seed picks + dials ONE
- * archetype (extinguish / mop-up / hold-the-line), so each day is a fresh FLAVOR — not always the same
- * clear-the-bush — on a fresh map, racing one shared board. Pure + deterministic (same date → same def),
- * feature-relative placements (no World build → cheap on a phone boot), home base La Ronge (central, so
- * every archetype's fires land in-province on the true-shape map). The factory wraps everything; here we
- * only stamp the date-keyed id / branding.
+ * Synthesize today's Daily Burn via the mission FACTORY (Slice 3). PINNED to the `extinguish` archetype:
+ * the Daily Burn is the retention loop's score race, so it stays ALWAYS-WINNABLE (extinguishAll, no
+ * hard-fail) and never idle-winnable (fires don't self-extinguish, so doing nothing never "wins"). The day
+ * seed still varies the fire load / wind / sky for a fresh map each day on one shared board.
  *
- * NOTE (product): rotating archetypes means a hold-the-line / mop-up daily CAN be lost, unlike the old
- * always-winnable score-chase. To pin the daily back to the pure score race, force the archetype:
- * `generateMission({ kind: 'daily', seed, archetypeId: 'extinguish' })`. Every generated daily is proven
- * COMPLETABLE by the oracle sweep in verify-campaign.
+ * Why pinned (not rotated): the factory's `hold-the-line`/`mop-up` archetypes are losable, and a lost daily
+ * records no streak/board row — that breaks the "don't break the chain" loop on the most-played surface.
+ * Those archetypes are built + oracle-verified and reserved for a separately-labelled challenge / co-op
+ * mode once their difficulty floor + deterministic directional wind are tuned. To opt the daily into
+ * rotation later, drop `archetypeId` here. Pure + deterministic (same date → same def); feature-relative
+ * placements (no World build → cheap on a phone boot); home base La Ronge (central → fires land in-province).
  */
 export function buildDailyMission(date: Date): MissionDef {
   const seed = dailySeed(date);
   const label = dailyDateLabel(date);
-  const base = generateMission({ kind: 'daily', seed });
+  const base = generateMission({ kind: 'daily', seed, archetypeId: 'extinguish' });
   return {
     ...base,
     id: dailyMissionId(date),

@@ -244,6 +244,10 @@ for (let i = 0; i < DAILY_DAYS; i++) {
   if (won && seeded) dailyWon++;
   ok(`${dailyMissionId(date)}: fires seeded`, seeded, `firesInitial=${r.firesInitial}`);
   ok(`${dailyMissionId(date)}: completable`, won && seeded, `state=${r.runtime.state} @${elapsed.toFixed(0)}s`);
+  // Every rendered daily fire must be in-province (the random spots' centroids must not drift past the rim).
+  const drig = build(dm);
+  const dOff = drig.fire.active().filter((f) => !drig.world.isInProvince(f.x, f.z)).length;
+  ok(`${dailyMissionId(date)}: fires in-province`, dOff === 0, `${dOff} off-province`);
 }
 console.log(`  ${dailyWon}/${DAILY_DAYS} daily seeds cleared by a perfect player`);
 
@@ -254,7 +258,7 @@ console.log(`  ${dailyWon}/${DAILY_DAYS} daily seeds cleared by a perfect player
 // wants — generated missions are winnable by construction, asserted offline (never run on a phone). ---
 console.log('\nMission factory archetypes\n');
 {
-  const SEEDS = [101, 202, 303, 404, 505, 606];
+  const SEEDS = Array.from({ length: 30 }, (_, i) => 1009 + i * 137); // 30 seeds — wide enough to catch the ~12% off-province render the review found at 6
   for (const id of ['extinguish', 'mop-up', 'hold-the-line']) {
     let win = 0;
     let seeded = 0;

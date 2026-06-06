@@ -57,7 +57,7 @@ const extinguish: Archetype = {
       structures: { depot: true },
       bucket: 'bambi',
       fire: { spreadScale: lerp(0.55, 1.15, intensity) },
-      wind: { strengthScale: lerp(0.4, 1.3, rng()) },
+      wind: { angle: rng() * Math.PI * 2, strengthScale: lerp(0.4, 1.3, rng()) }, // deterministic heading → the shared daily is the SAME fight for everyone (Wind seeds from Math.random without an angle)
       difficulty: clampDiff(1 + intensity * 4),
       flavor: {
         kind: 'extinguish',
@@ -86,7 +86,7 @@ const mopUp: Archetype = {
       bucket: 'valve',
       fuel: true,
       fire: { spreadScale: lerp(0.35, 0.6, intensity) }, // smoulder, don't run
-      wind: { strengthScale: lerp(0.3, 0.7, rng()) },
+      wind: { angle: rng() * Math.PI * 2, strengthScale: lerp(0.3, 0.7, rng()) },
       difficulty: clampDiff(2 + intensity * 2),
       flavor: {
         kind: 'mop-up',
@@ -106,7 +106,8 @@ const holdTheLine: Archetype = {
     // Pick the place to defend: a random DEFENSIBLE town if we have a MapContext (build-time / co-op),
     // else the home base (always on a lake → scoopable, so always defensible without a World query).
     const towns = ctx?.defensibleTowns() ?? [];
-    const target = towns.length ? towns[Math.floor(rng() * towns.length)].ref : 'base';
+    const pickT = rng(); // always drawn so the rng stream is stable whether or not a MapContext is supplied
+    const target = towns.length ? towns[Math.floor(pickT * towns.length)].ref : 'base';
     const seconds = Math.round(lerp(150, 210, intensity)); // 2:30 .. 3:30 to hold
     return {
       // The front is authored as a cluster biased toward the defended place (self-snaps to dry fuel,
@@ -118,7 +119,7 @@ const holdTheLine: Archetype = {
       payload: 'water',
       bucket: 'valve',
       fire: { spreadScale: lerp(0.8, 1.0, intensity) },
-      wind: { strengthScale: lerp(1.1, 1.4, intensity) }, // it's blowing hard
+      wind: { angle: rng() * Math.PI * 2, strengthScale: lerp(1.1, 1.4, intensity) }, // it's blowing hard (TODO: bias toward the defended place so the front actually arrives — see review)
       difficulty: clampDiff(3 + intensity * 2),
       flavor: {
         kind: 'hold-the-line',
