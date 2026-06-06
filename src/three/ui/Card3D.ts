@@ -27,6 +27,9 @@ export interface TiltCardOptions {
   selected: boolean;
   /** Max tilt in degrees (source component used ±10.5°). */
   maxTilt?: number;
+  /** Selection-ring / hover colour. Defaults to the cockpit cyan; the home-wizard pickers pass the
+   *  warm `UI.menu` gold so the menu register stays warm (brand law). */
+  accent?: string;
   ariaLabel?: string;
   /** Click / Enter / Space when usable. */
   onSelect?: () => void;
@@ -77,11 +80,12 @@ export function tiltCard(opts: TiltCardOptions): TiltCardHandle {
   tilt.style.setProperty('-webkit-backdrop-filter', UI.blur);
   root.appendChild(tilt);
 
+  const acc = opts.accent ?? UI.accent;
   let isSel = opts.selected;
   let hover = false;
   const paintRing = (): void => {
-    tilt.style.borderColor = isSel ? UI.accent : hover && opts.usable ? `${UI.accent}66` : UI.stroke;
-    tilt.style.boxShadow = isSel ? `0 0 0 2px ${UI.accent}88, ${UI.shadowCard}` : UI.shadowCard;
+    tilt.style.borderColor = isSel ? acc : hover && opts.usable ? `${acc}66` : UI.stroke;
+    tilt.style.boxShadow = isSel ? `0 0 0 2px ${acc}88, ${UI.shadowCard}` : UI.shadowCard;
   };
   paintRing();
 

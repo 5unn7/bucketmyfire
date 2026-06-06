@@ -38,9 +38,9 @@ export function buildMapCard3D(map: CatalogItem, opts: MapCard3DOptions): MapCar
     if (!btn) return;
     if (isSel) {
       btn.textContent = '✓ SELECTED';
-      btn.style.background = `linear-gradient(180deg, #8df0ff, ${UI.accent})`;
-      btn.style.color = '#04181d';
-      btn.style.boxShadow = `0 6px 18px ${UI.accent}44`;
+      btn.style.background = UI.cta;
+      btn.style.color = UI.ctaInk;
+      btn.style.boxShadow = `0 8px 22px ${UI.ctaGlow}`;
     } else {
       btn.textContent = 'SELECT';
       btn.style.background = hover ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.12)';
@@ -53,6 +53,7 @@ export function buildMapCard3D(map: CatalogItem, opts: MapCard3DOptions): MapCar
     width: '100%',
     usable: opts.usable,
     selected: opts.selected,
+    accent: UI.menu, // warm gold ring — menu register (brand law)
     ariaLabel: `${map.name} — ${map.tagline}`,
     onSelect: opts.usable ? opts.onSelect : undefined,
     onSelectedChange: (on) => {
@@ -148,13 +149,28 @@ export function buildMapCard3D(map: CatalogItem, opts: MapCard3DOptions): MapCar
       map.name,
     ),
   );
-  titles.appendChild(
-    el(
-      'p',
-      { margin: '4px 0 0', fontSize: FS.meta, letterSpacing: '0.08em', textTransform: 'uppercase', color: UI.accent, opacity: '0.9', fontWeight: FW.semibold, transform: 'translateZ(26px)', textShadow: '0 1px 8px rgba(0,0,0,0.6)' },
-      map.tagline,
-    ),
-  );
+  // Headline province facts — the mockup's tree/area + drop/lakes stat rows. Falls back to the
+  // tagline when a map has no `stats` block yet.
+  if (map.stats) {
+    const statRow = (icon: string, text: string): HTMLDivElement => {
+      const row = div({ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '7px', transform: 'translateZ(26px)' });
+      row.appendChild(el('span', { fontSize: FS.body, lineHeight: '1', opacity: '0.95' }, icon));
+      row.appendChild(
+        el('span', { fontSize: FS.sm, fontWeight: FW.semibold, color: 'rgba(255,255,255,0.9)', textShadow: '0 1px 6px rgba(0,0,0,0.6)' }, text),
+      );
+      return row;
+    };
+    titles.appendChild(statRow('🌲', map.stats.area));
+    titles.appendChild(statRow('💧', map.stats.lakes));
+  } else {
+    titles.appendChild(
+      el(
+        'p',
+        { margin: '4px 0 0', fontSize: FS.meta, letterSpacing: '0.08em', textTransform: 'uppercase', color: UI.menu, opacity: '0.9', fontWeight: FW.semibold, transform: 'translateZ(26px)', textShadow: '0 1px 8px rgba(0,0,0,0.6)' },
+        map.tagline,
+      ),
+    );
+  }
   footer.appendChild(titles);
 
   if (opts.usable) {

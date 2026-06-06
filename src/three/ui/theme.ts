@@ -54,6 +54,18 @@ export const UI = {
   gold: '#ffd66b',
   silver: '#cfe0ee',
   bronze: '#e6a268',
+  // Menu / "fight" register — the warm GOLD accent for the home wizard + the map / aircraft / mission
+  // pickers (brand law: menu surfaces are warm, the cockpit stays cyan — see DESIGN.md → Two registers).
+  // The selection ring, the progress + carousel dots, the NEXT pill and the FLY cue use this on the menu;
+  // the in-flight HUD never does. `cta`/`ctaHi` are the gold gradient + its hover; `ctaInk` is the dark
+  // text that rides ON the gold; `ctaGlow` its drop shadow.
+  menu: '#ffc24a',
+  menuSoft: 'rgba(255,194,74,0.55)',
+  menuFill: 'rgba(255,194,74,0.12)',
+  cta: 'linear-gradient(180deg, #ffd45e 0%, #efaa2b 100%)',
+  ctaHi: 'linear-gradient(180deg, #ffdd76 0%, #f4b441 100%)',
+  ctaInk: '#3a2406',
+  ctaGlow: 'rgba(239,170,43,0.42)',
   // Text hierarchy
   text: 'rgba(255,255,255,0.94)',
   textCool: 'rgba(198,224,236,0.82)', // body text that wants a COOL cast without claiming "interactive" —

@@ -41,6 +41,8 @@ export interface CatalogItem {
   imageUrl?: string;
   /** Optional spec bars (helis) — value is 0..1, drives a little meter on the card. */
   specs?: { label: string; value: number }[];
+  /** Optional headline facts (maps) — pre-formatted province scale shown as stat rows on the card. */
+  stats?: { area: string; lakes: string };
   /** Campaign gate (helis): sorties that must be CLEARED before this airframe is
    *  flyable. 0/undefined → open from the start. See isHeliUnlocked(). */
   unlockAfter?: number;

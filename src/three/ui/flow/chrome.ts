@@ -25,6 +25,25 @@ export function screenHeading(title: string, sub?: string): HTMLDivElement {
   return wrap;
 }
 
+/**
+ * The premium CENTERED picker heading (map / aircraft / mission select) — an uppercase, wide-tracked
+ * title over a short gold accent rule, with an optional subtitle. The "MAP SELECT · Choose a province
+ * to begin" treatment from the comps; warm gold underline keeps it on the menu register.
+ */
+export function selectHeading(title: string, sub?: string): HTMLDivElement {
+  const wrap = div({ textAlign: 'center', margin: '0 0 20px' });
+  wrap.appendChild(
+    el(
+      'h2',
+      { margin: '0', fontSize: FS.display, fontWeight: FW.black, letterSpacing: '0.16em', textTransform: 'uppercase', color: UI.text },
+      title,
+    ),
+  );
+  wrap.appendChild(div({ width: '42px', height: '3px', borderRadius: R.pill, background: UI.menu, margin: '10px auto 0', boxShadow: UI.emberGlow }));
+  if (sub) wrap.appendChild(div({ marginTop: '10px', fontSize: FS.sm, color: UI.dim, lineHeight: '1.5' }, sub));
+  return wrap;
+}
+
 /** The small "BUCKET MY FIRE" wordmark for the top strip (the big ember grid logo lives on Screen 1). */
 export function brandMark(): HTMLDivElement {
   const w = div({ display: 'inline-flex', alignItems: 'baseline', fontSize: FS.body, fontWeight: FW.heavy, letterSpacing: '0.18em', userSelect: 'none' });
@@ -51,7 +70,7 @@ export function stepDots(total: number): StepDots {
     dots.forEach((d, i) => {
       const active = i === cur;
       d.style.width = active ? '26px' : '10px';
-      d.style.background = active ? UI.accent : i < cur ? `${UI.accent}66` : UI.track;
+      d.style.background = active ? UI.menu : i < cur ? `${UI.menu}66` : UI.track;
     });
   };
   set(0);
@@ -83,10 +102,10 @@ export function primaryButton(): PrimaryButton {
       letterSpacing: '0.1em',
       textTransform: 'uppercase',
       cursor: 'pointer',
-      color: '#04181d',
-      background: `linear-gradient(180deg, #8df0ff, ${UI.accent})`,
-      boxShadow: `0 10px 30px ${UI.accent}40`,
-      transition: 'transform 0.12s ease, box-shadow 0.2s ease, opacity 0.2s ease, filter 0.2s ease',
+      color: UI.ctaInk,
+      background: UI.cta,
+      boxShadow: `0 10px 30px ${UI.ctaGlow}`,
+      transition: 'transform 0.12s ease, box-shadow 0.2s ease, opacity 0.2s ease, filter 0.2s ease, background 0.2s ease',
     },
     'CONTINUE',
   );
@@ -94,12 +113,14 @@ export function primaryButton(): PrimaryButton {
   b.addEventListener('pointerenter', () => {
     if (!b.disabled) {
       b.style.transform = 'translateY(-2px)';
-      b.style.boxShadow = `0 14px 38px ${UI.accent}55`;
+      b.style.background = UI.ctaHi;
+      b.style.boxShadow = `0 16px 40px ${UI.ctaGlow}`;
     }
   });
   b.addEventListener('pointerleave', () => {
     b.style.transform = 'none';
-    b.style.boxShadow = `0 10px 30px ${UI.accent}40`;
+    b.style.background = UI.cta;
+    b.style.boxShadow = `0 10px 30px ${UI.ctaGlow}`;
   });
   b.addEventListener('click', () => {
     if (!b.disabled) action();

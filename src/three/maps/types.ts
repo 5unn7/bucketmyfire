@@ -32,10 +32,14 @@ export interface LatLon {
 export interface MapAnchor {
   id: string; // stable id missions reference via MissionDef.homeBase ('la-ronge', 'denare-beach', …)
   name: string; // display name, pinned over the seeded NameSource ('La Ronge')
-  kind: 'base' | 'community' | 'both'; // 'base' = spawn/refuel; 'community' = protectable; SK towns are 'both'
+  kind: 'base' | 'community' | 'both' | 'city'; // 'base' = spawn/refuel; 'community' = protectable; SK towns are 'both';
+  // 'city' = a large southern population centre (Saskatoon/Regina) — a road node + DENSE decorative skyline, but
+  // NOT a gameplay base or a mission town (excluded from the town index, so adding one never shifts mission refs).
   lat: number; // real latitude, decimal °N
   lon: number; // real longitude, decimal degrees — NEGATIVE for west (e.g. -105.284)
   home?: boolean; // the default cold-start base when a mission omits homeBase (exactly one per region)
+  urban?: boolean; // a BASE that also sits in a city (Prince Albert) → keeps its depot/refuel role but gets the
+  // dense 'city' decorative skyline instead of the medium base scatter. Ignored on non-base anchors.
   scoop?: { lake: string; areaKm2?: number; elong?: number; bearingDeg?: number; outline?: readonly LatLon[] }; // guarantee
   // an adjacent scoop lake; radius derived from real area (MAPGEO band). Omit areaKm2 for an unpublished/recreational
   // lake → MAPGEO.lakeAreaDefault. `elong`/`bearingDeg` give a SIGNATURE lake its real silhouette (long/short
@@ -201,6 +205,9 @@ export interface MapCard {
   accent: string;
   glyph: string;
   imageUrl?: string;
+  /** Headline province facts shown on the picker card (pre-formatted display strings, e.g.
+   *  '661,900 km²' / '100,000+ lakes'). Optional — a map without them just shows name + CTA. */
+  stats?: { area: string; lakes: string };
 }
 
 /** One playable map = world identity + terrain + picker card + (optional) campaign. `country` groups

@@ -73,7 +73,7 @@ function meter(label: string, value: number): HTMLDivElement {
   );
   const track = div({ height: '5px', borderRadius: R.xs, background: 'rgba(255,255,255,0.18)', overflow: 'hidden' });
   track.appendChild(
-    div({ height: '100%', width: `${Math.round(clamp01(value) * 100)}%`, borderRadius: R.xs, background: `linear-gradient(90deg, ${UI.accent}, #9fe9f7)` }),
+    div({ height: '100%', width: `${Math.round(clamp01(value) * 100)}%`, borderRadius: R.xs, background: `linear-gradient(90deg, ${UI.menu}, ${UI.emberHi})` }),
   );
   row.appendChild(track);
   return row;
@@ -89,9 +89,9 @@ export function buildHeliCard3D(heli: CatalogItem, opts: HeliCard3DOptions): Hel
     if (!btn) return;
     if (isSel) {
       btn.textContent = '✓ SELECTED';
-      btn.style.background = `linear-gradient(180deg, #8df0ff, ${UI.accent})`;
-      btn.style.color = '#04181d';
-      btn.style.boxShadow = `0 6px 18px ${UI.accent}44`;
+      btn.style.background = UI.cta;
+      btn.style.color = UI.ctaInk;
+      btn.style.boxShadow = `0 8px 22px ${UI.ctaGlow}`;
     } else {
       btn.textContent = 'SELECT';
       btn.style.background = hover ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.12)';
@@ -104,6 +104,7 @@ export function buildHeliCard3D(heli: CatalogItem, opts: HeliCard3DOptions): Hel
     width: '100%',
     usable: opts.usable,
     selected: opts.selected,
+    accent: UI.menu, // warm gold ring — menu register (brand law)
     ariaLabel: `${heli.name} — ${heli.tagline}`,
     onSelect: opts.usable ? opts.onSelect : undefined,
     onSelectedChange: (on) => {
@@ -191,7 +192,7 @@ export function buildHeliCard3D(heli: CatalogItem, opts: HeliCard3DOptions): Hel
   titles.appendChild(
     el(
       'p',
-      { margin: '4px 0 0', fontSize: FS.meta, letterSpacing: '0.08em', textTransform: 'uppercase', color: UI.accent, opacity: '0.9', fontWeight: FW.semibold, transform: 'translateZ(28px)', textShadow: '0 1px 8px rgba(0,0,0,0.55)' },
+      { margin: '4px 0 0', fontSize: FS.meta, letterSpacing: '0.08em', textTransform: 'uppercase', color: UI.menu, opacity: '0.9', fontWeight: FW.semibold, transform: 'translateZ(28px)', textShadow: '0 1px 8px rgba(0,0,0,0.55)' },
       heli.tagline,
     ),
   );

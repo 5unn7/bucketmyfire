@@ -10,6 +10,7 @@ const card: MapCard = {
   accent: '#c2702f',
   glyph: '🏕️',
   imageUrl: 'maps/Alberta.webp',
+  stats: { area: '661,190 km²', lakes: '100,000+ lakes' },
 };
 
 /** Alberta — future map (names-only region stub; default boreal terrain; not yet available). */

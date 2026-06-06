@@ -11,8 +11,8 @@ import type { MissionDef } from '../../missions/types';
 import { bestScore, bestStars, isUnlocked, getProgress } from '../../missions/progress';
 import { missionPoster } from '../missionArt';
 import { tiltCard } from '../Card3D';
-import { injectScrollStyles, section, starPips, clamp, coopTeaserCard } from '../menuShared';
-import { screenHeading } from './chrome';
+import { injectScrollStyles, section, starPips, clamp, coopTeaserCard, carouselDots } from '../menuShared';
+import { selectHeading } from './chrome';
 import { UI, FS, FW, R, el, div } from '../theme';
 import type { FlowCtx } from './types';
 
@@ -27,6 +27,7 @@ function buildMissionCard(ctx: FlowCtx, m: MissionDef, completed: Set<string>, i
     aspectRatio: '5 / 6',
     usable: unlocked,
     selected: isNext, // the accent ring marks the next-up sortie (not a toggle selection)
+    accent: UI.menu, // warm gold ring — menu register (brand law)
     ariaLabel: `Mission ${m.index + 1}: ${m.name}`,
     onSelect: unlocked ? () => ctx.flyMission(m.id) : undefined,
   });
@@ -67,7 +68,7 @@ function buildMissionCard(ctx: FlowCtx, m: MissionDef, completed: Set<string>, i
   );
   if (isNext) {
     header.appendChild(
-      div({ transform: 'translateZ(34px)', fontSize: FS.tag, fontWeight: FW.heavy, letterSpacing: '1.5px', color: UI.accent, background: UI.accentFill, border: `1px solid ${UI.accent}55`, borderRadius: R.pill, padding: '2px 8px' }, 'NEXT'),
+      div({ transform: 'translateZ(34px)', fontSize: FS.tag, fontWeight: FW.heavy, letterSpacing: '1.5px', color: UI.menu, background: UI.menuFill, border: `1px solid ${UI.menu}55`, borderRadius: R.pill, padding: '2px 8px' }, 'NEXT'),
     );
   } else {
     header.appendChild(div({ transform: 'translateZ(30px)', fontSize: FS.sm, color: UI.warm, letterSpacing: '1px', textShadow: '0 1px 6px rgba(0,0,0,0.6)' }, '🔥'.repeat(m.difficulty ?? 1)));
@@ -93,7 +94,7 @@ function buildMissionCard(ctx: FlowCtx, m: MissionDef, completed: Set<string>, i
   if (done) left.appendChild(starPips(bestStars(m.id)));
   statusRow.appendChild(left);
   statusRow.appendChild(
-    div({ fontWeight: FW.heavy, letterSpacing: '0.06em', color: unlocked ? UI.accent : UI.faint, textShadow: '0 1px 6px rgba(0,0,0,0.6)' }, unlocked ? (done ? 'REPLAY ▸' : 'FLY ▸') : '🔒'),
+    div({ fontWeight: FW.heavy, letterSpacing: '0.06em', color: unlocked ? UI.menu : UI.faint, textShadow: '0 1px 6px rgba(0,0,0,0.6)' }, unlocked ? (done ? 'REPLAY ▸' : 'FLY ▸') : '🔒'),
   );
   foot.appendChild(statusRow);
   content.appendChild(foot);
@@ -105,34 +106,46 @@ export function buildMissionScreen(ctx: FlowCtx): HTMLElement {
   injectScrollStyles();
   const root = section({});
   root.appendChild(
-    screenHeading('Select a mission', `Flying the ${ctx.currentHeli().name} over ${ctx.currentMap().name}. ${ctx.catalog.length} missions — hardest last. Fly them in order.`),
+    selectHeading('Mission Select', `Flying the ${ctx.currentHeli().name} over ${ctx.currentMap().name}. ${ctx.catalog.length} sorties — hardest last. Fly them in order.`),
   );
 
   const completed = new Set(getProgress().completed);
   const nextId = ctx.catalog.find((m) => isUnlocked(m, ctx.catalog) && !completed.has(m.id))?.id ?? null;
 
-  const scroller = div({ display: 'flex', alignItems: 'stretch', gap: '14px', overflowX: 'auto', scrollSnapType: 'x mandatory', paddingBottom: '10px', margin: '0 -2px' });
+  const scroller = div({
+    display: 'flex',
+    alignItems: 'stretch',
+    gap: '16px',
+    overflowX: 'auto',
+    scrollSnapType: 'x mandatory',
+    padding: '4px max(2px, calc(50% - 125px)) 10px',
+  });
   scroller.className = 'bmf-hscroll';
   root.appendChild(scroller);
 
+  const slots: HTMLDivElement[] = [];
   let nextEl: HTMLDivElement | undefined;
   for (const m of ctx.catalog) {
-    const slot = div({ flex: '0 0 auto', width: '250px', scrollSnapAlign: 'start' });
+    const slot = div({ flex: '0 0 auto', width: 'clamp(230px, 74vw, 250px)', scrollSnapAlign: 'center' });
     slot.appendChild(buildMissionCard(ctx, m, completed, m.id === nextId));
     if (m.id === nextId) nextEl = slot;
+    slots.push(slot);
     scroller.appendChild(slot);
   }
   // Co-op teaser closes the row (flat card; stretches to the carousel height).
-  const teaserSlot = div({ flex: '0 0 auto', width: '250px', scrollSnapAlign: 'start', display: 'flex' });
+  const teaserSlot = div({ flex: '0 0 auto', width: 'clamp(230px, 74vw, 250px)', scrollSnapAlign: 'center', display: 'flex' });
   const teaser = coopTeaserCard(ctx.catalog.length + 1);
   teaser.style.flex = '1';
   teaserSlot.appendChild(teaser);
+  slots.push(teaserSlot);
   scroller.appendChild(teaserSlot);
+
+  root.appendChild(carouselDots(scroller, slots));
 
   if (nextEl) {
     const target = nextEl;
     requestAnimationFrame(() => {
-      scroller.scrollLeft = Math.max(0, target.offsetLeft - 2);
+      scroller.scrollLeft = Math.max(0, target.offsetLeft - (scroller.clientWidth - target.offsetWidth) / 2);
     });
   }
 

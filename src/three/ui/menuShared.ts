@@ -181,6 +181,55 @@ export function coopTeaserCard(number: number): HTMLDivElement {
   return card;
 }
 
+/**
+ * Pagination dots for a horizontal snap carousel (map / aircraft / mission). Renders one warm-gold
+ * dot per slot and lights the one whose card is nearest the carousel's centre as it scrolls — the
+ * mockup's under-card position indicator. Purely presentational (the scroll itself stays the input);
+ * passes a `passive` scroll listener and coalesces repaints through rAF so it never costs a frame.
+ */
+export function carouselDots(scroller: HTMLElement, slots: HTMLElement[]): HTMLDivElement {
+  const row = div({ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '7px', marginTop: '14px' });
+  const dots = slots.map(() =>
+    div({ height: '7px', width: '7px', borderRadius: R.pill, background: UI.track, transition: 'width 0.2s ease, background 0.2s ease' }),
+  );
+  dots.forEach((d) => row.appendChild(d));
+
+  const paint = (): void => {
+    const mid = scroller.scrollLeft + scroller.clientWidth / 2;
+    let best = 0;
+    let bestDist = Infinity;
+    slots.forEach((s, i) => {
+      const c = s.offsetLeft + s.offsetWidth / 2;
+      const dist = Math.abs(c - mid);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = i;
+      }
+    });
+    dots.forEach((d, i) => {
+      const on = i === best;
+      d.style.width = on ? '22px' : '7px';
+      d.style.background = on ? UI.menu : UI.track;
+    });
+  };
+
+  let queued = false;
+  scroller.addEventListener(
+    'scroll',
+    () => {
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(() => {
+        queued = false;
+        paint();
+      });
+    },
+    { passive: true },
+  );
+  requestAnimationFrame(paint);
+  return row;
+}
+
 /** Clamp text to N lines (with an ellipsis) — keeps briefs from sprawling. */
 export function clamp(node: HTMLElement, lines: number): void {
   node.style.display = '-webkit-box';

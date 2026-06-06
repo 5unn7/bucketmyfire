@@ -7,22 +7,29 @@
 
 import { HELIS, isHeliUnlocked, type CatalogItem } from '../profile';
 import { buildHeliCard3D } from '../HeliCard3D';
-import { injectScrollStyles, section } from '../menuShared';
-import { screenHeading } from './chrome';
+import { injectScrollStyles, section, carouselDots } from '../menuShared';
+import { selectHeading } from './chrome';
 import { UI, FS, FW, R, div, frosted } from '../theme';
 import type { FlowCtx } from './types';
 
 export function buildAircraftScreen(ctx: FlowCtx): HTMLElement {
   injectScrollStyles();
   const root = section({});
-  root.appendChild(screenHeading('Select your aircraft', 'Three airframes — the forgiving trainer, a balanced twin, and the supreme handful. They fly, carry and survive differently.'));
+  root.appendChild(selectHeading('Aircraft Select', 'The forgiving trainer, a balanced twin, and the supreme handful — each flies, carries and survives differently.'));
 
-  const scroller = div({ display: 'flex', gap: '14px', overflowX: 'auto', scrollSnapType: 'x mandatory', paddingBottom: '10px', margin: '0 -2px' });
+  const scroller = div({
+    display: 'flex',
+    alignItems: 'stretch',
+    gap: '16px',
+    overflowX: 'auto',
+    scrollSnapType: 'x mandatory',
+    padding: '4px max(2px, calc(50% - 150px)) 10px',
+  });
   scroller.className = 'bmf-hscroll';
   root.appendChild(scroller);
 
   // Context panel — the selected airframe's name + blurb.
-  const panel = frosted({ marginTop: '16px', padding: '15px 18px', borderRadius: R.lg, maxWidth: '660px' });
+  const panel = frosted({ margin: '4px auto 0', padding: '15px 18px', borderRadius: R.lg, maxWidth: '660px', textAlign: 'center' });
   const ctxName = div({ fontSize: FS.lg, fontWeight: FW.bold, marginBottom: '5px' });
   const ctxBlurb = div({ fontSize: FS.sm, lineHeight: '1.55', color: UI.dim });
   panel.append(ctxName, ctxBlurb);
@@ -32,11 +39,12 @@ export function buildAircraftScreen(ctx: FlowCtx): HTMLElement {
   };
 
   const cards: { id: string; setSelected: (on: boolean) => void }[] = [];
+  const slots: HTMLDivElement[] = [];
   let selectedEl: HTMLDivElement | undefined;
 
   for (const heli of HELIS) {
     const usable = isHeliUnlocked(heli, ctx.cleared);
-    const slot = div({ flex: '0 0 auto', width: '240px', scrollSnapAlign: 'start' });
+    const slot = div({ flex: '0 0 auto', width: 'clamp(250px, 78vw, 300px)', scrollSnapAlign: 'center' });
     const handle = buildHeliCard3D(heli, {
       usable,
       selected: usable && heli.id === ctx.currentHeli().id,
@@ -50,15 +58,17 @@ export function buildAircraftScreen(ctx: FlowCtx): HTMLElement {
     slot.appendChild(handle.el);
     if (usable && heli.id === ctx.currentHeli().id) selectedEl = slot;
     cards.push({ id: heli.id, setSelected: handle.setSelected });
+    slots.push(slot);
     scroller.appendChild(slot);
   }
+  root.appendChild(carouselDots(scroller, slots));
   root.appendChild(panel);
   updateContext(ctx.currentHeli());
 
   if (selectedEl) {
     const target = selectedEl;
     requestAnimationFrame(() => {
-      scroller.scrollLeft = Math.max(0, target.offsetLeft - 2);
+      scroller.scrollLeft = Math.max(0, target.offsetLeft - (scroller.clientWidth - target.offsetWidth) / 2);
     });
   }
 
