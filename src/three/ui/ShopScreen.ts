@@ -1,16 +1,15 @@
 import { loadProfile } from './profile';
-import { MAX_CALLSIGN } from './callsign';
 import { isConfigured, saveToCloud } from '../leaderboard/cloudSave';
 import { submitLead } from '../leaderboard/client';
 import { UI, FS, FW, R, el, div, setBlur, prefersReducedMotion } from './theme';
 import { makeButton } from './components';
 
 /**
- * Squadron Store screen — the merch surface, currently a placeholder "fire in progress" screen
- * on the WARM brand register (this is the fight, not the cockpit, so it runs ember, not cyan).
- * A centered animated ASCII fire is the hero; below it a "Notify me" email capture that REUSES
- * the cloud-save flow (`saveToCloud`) so one tap both PINS the player's progress to that email
- * (profile sync) AND lands us their email as a lead. The real store content drops in here later.
+ * Merch Shop screen — the merch surface, currently an "in progress" waitlist on the WARM brand
+ * register (the fight, not the cockpit, so it runs ember, not cyan). A centered animated ASCII fire
+ * is the hero; below it a single EMAIL field + a "Notify me" CTA. Submitting lands the plaintext
+ * email as a lead (`submitLead`) so we can reach them when the merch is live; if the player already
+ * has a callsign we also pin their progress to that email (`saveToCloud`, hashed) as a silent bonus.
  *
  * Pure DOM, zero assets, self-disposing (✕ / backdrop tap / Esc). Degrades to an "offline" note
  * when Supabase isn't configured. `openShop()` owns its own element — callers don't manage lifecycle.
@@ -32,7 +31,6 @@ export function openShop(): void {
 class ShopScreen {
   private readonly root: HTMLDivElement;
   private readonly status: HTMLDivElement;
-  private readonly callsign: HTMLInputElement;
   private readonly email: HTMLInputElement;
   private readonly notifyBtn: HTMLButtonElement;
   private flameTimer = 0;
@@ -113,12 +111,12 @@ class ShopScreen {
 
     // Title + copy.
     panel.appendChild(
-      div({ fontSize: FS.hero, fontWeight: FW.heavy, letterSpacing: '0.5px', color: UI.emberHi }, 'SQUADRON STORE'),
+      div({ fontSize: FS.hero, fontWeight: FW.heavy, letterSpacing: '0.5px', color: UI.emberHi }, 'MERCH SHOP'),
     );
     panel.appendChild(
       div(
         { fontSize: FS.sm, lineHeight: '1.5', color: UI.dim, margin: '8px auto 16px', maxWidth: '320px' },
-        "Patches, posters and decals. The store's a fire in progress. Leave your email and we'll call you the moment it opens.",
+        "In progress. Leave your email and we'll notify you the moment it's available.",
       ),
     );
 
@@ -130,7 +128,6 @@ class ShopScreen {
         ),
       );
       this.status = div({});
-      this.callsign = document.createElement('input');
       this.email = document.createElement('input');
       this.notifyBtn = el('button', {});
       this.root.appendChild(panel);
@@ -138,27 +135,24 @@ class ShopScreen {
       return;
     }
 
-    const profileName = loadProfile()?.name ?? '';
-    this.callsign = this.field('CALLSIGN', 'Your pilot name', profileName, MAX_CALLSIGN);
     this.email = this.field('EMAIL', 'you@example.com', '', 254);
     this.email.type = 'email';
     this.email.autocomplete = 'email';
     this.email.inputMode = 'email';
-    panel.appendChild(this.callsign.parentElement as HTMLDivElement);
     panel.appendChild(this.email.parentElement as HTMLDivElement);
 
     this.status = div({ fontSize: FS.sm, fontWeight: FW.semibold, minHeight: '16px', margin: '4px 2px 12px' });
     panel.appendChild(this.status);
 
-    this.notifyBtn = this.actionBtn('🔔  Notify me', () => void this.doNotify());
+    this.notifyBtn = this.actionBtn('Notify me', () => void this.doNotify());
     panel.appendChild(this.notifyBtn);
     panel.appendChild(
-      div({ fontSize: FS.meta, color: UI.faint, marginTop: '12px', lineHeight: '1.45' }, 'No spam. One email when the store opens — and your progress is backed up to that address.'),
+      div({ fontSize: FS.meta, color: UI.faint, marginTop: '12px', lineHeight: '1.45' }, 'No spam — just one email when the merch is live.'),
     );
 
     this.root.appendChild(panel);
     document.body.appendChild(this.root);
-    queueMicrotask(() => (profileName ? this.email : this.callsign).focus());
+    queueMicrotask(() => this.email.focus());
   }
 
   // --- action ---------------------------------------------------------------
@@ -174,12 +168,13 @@ class ShopScreen {
     this.notifyBtn.style.opacity = '0.5';
     this.notifyBtn.style.pointerEvents = 'none';
     this.showStatus('Signing you up…', UI.dim);
-    // The lead — store the PLAINTEXT email so we can actually reach them when the store opens.
-    const lead = await submitLead(email, 'shop', this.callsign.value);
-    // Bonus — pin their progress to that email too (cloud save; hashed, separate from the lead).
-    void saveToCloud(this.callsign.value, email);
+    // The lead — store the PLAINTEXT email so we can actually reach them when the merch is live.
+    const name = loadProfile()?.name ?? '';
+    const lead = await submitLead(email, 'shop', name || undefined);
+    // Bonus — if they've set a callsign, pin their progress to that email too (hashed, separate lead).
+    if (name) void saveToCloud(name, email);
     if (lead) {
-      this.showStatus("✓ You're on the list. We'll email you when the store opens.", UI.ok);
+      this.showStatus("✓ You're on the list — we'll email you when the merch is live.", UI.ok);
     } else {
       this.busy = false;
       this.notifyBtn.style.opacity = '1';
