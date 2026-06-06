@@ -70,6 +70,24 @@ function routeMission(): void {
     return;
   }
 
+  // Dev tools hub (?dev) + helicopter viewer (?heliview) — lazy-loaded creator/inspector tools kept off the
+  // player bundle. The hub gathers the Map Editor, the heli viewer, and the live Config panel in one place.
+  if (params.has('dev')) {
+    void import('./dev/DevHub').then((m) => m.bootDevHub(container));
+    return;
+  }
+  if (params.has('heliview')) {
+    void import('./dev/HeliViewer').then((m) => m.bootHeliViewer(container));
+    return;
+  }
+
+  // Component-kit gallery (?kit): every kit component × state on one page — the visual-QA surface
+  // this repo lacks (no test runner). Lazy-loaded so it never ships in the player bundle.
+  if (params.has('kit')) {
+    void import('./ui/components/gallery').then((m) => m.mountKitGallery(container));
+    return;
+  }
+
   // Daily Burn: ?daily boots today's procedurally-seeded "clear every fire" challenge (FIX #1/#8) —
   // a fresh shared map each day with its own per-day leaderboard. Bypasses the campaign router.
   if (params.has('daily')) {
