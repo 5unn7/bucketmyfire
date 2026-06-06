@@ -5,7 +5,19 @@
  * route lazy-loads it), so it carries its own minimal styles rather than pulling the game's theme tokens.
  */
 
-type Tool = 'orbit' | 'raise' | 'lower' | 'paint-trees' | 'clear-trees' | 'building' | 'river' | 'lake' | 'select';
+type Tool =
+  | 'orbit'
+  | 'pan'
+  | 'raise'
+  | 'lower'
+  | 'paint-trees'
+  | 'clear-trees'
+  | 'building'
+  | 'erase'
+  | 'road'
+  | 'river'
+  | 'lake'
+  | 'select';
 
 export interface EditorUIOptions {
   mapId: string;
@@ -17,6 +29,7 @@ export interface EditorUIOptions {
   onTerrainStrength(v: number): void;
   onFoliageStrength(v: number): void;
   onBuildingKind(k: 'cabin' | 'depot'): void;
+  onBuildingDensity(v: number): void;
   onToggleLabels(on: boolean): void;
   onExport(): string;
   onDeleteSelected(): void;
@@ -27,22 +40,27 @@ export interface EditorUI {
   setMap(id: string): void;
   setTool(t: Tool): void;
   setNotice(msg: string): void;
-  setCounts(terrain: number, foliage: number, buildings: number): void;
+  setCounts(terrain: number, foliage: number, buildings: number, roads: number): void;
   setSelected(kind: string | null): void;
   nudgeBrush(delta: number): void;
 }
 
+// keys are matched case-insensitively against the keydown (digits + letters for the overflow tools)
 const TOOLS: { id: Tool; label: string; key: string }[] = [
   { id: 'orbit', label: '🧭 Orbit', key: '1' },
-  { id: 'raise', label: '⛰ Raise', key: '2' },
-  { id: 'lower', label: '🕳 Lower', key: '3' },
-  { id: 'paint-trees', label: '🌲 Trees +', key: '4' },
-  { id: 'clear-trees', label: '🪓 Trees −', key: '5' },
-  { id: 'building', label: '🏠 Building', key: '6' },
-  { id: 'river', label: '🌊 River', key: '7' },
-  { id: 'lake', label: '💧 Lake', key: '8' },
-  { id: 'select', label: '✋ Select', key: '9' },
+  { id: 'pan', label: '✥ Pan', key: '2' },
+  { id: 'raise', label: '⛰ Raise', key: '3' },
+  { id: 'lower', label: '🕳 Lower', key: '4' },
+  { id: 'paint-trees', label: '🌲 Trees +', key: '5' },
+  { id: 'clear-trees', label: '🪓 Trees −', key: '6' },
+  { id: 'building', label: '🏠 Bldg +', key: '7' },
+  { id: 'erase', label: '⌫ Erase', key: '8' },
+  { id: 'road', label: '🛣 Road', key: '9' },
+  { id: 'river', label: '🌊 River', key: 'R' },
+  { id: 'lake', label: '💧 Lake', key: 'L' },
+  { id: 'select', label: '✋ Select', key: 'S' },
 ];
+export const EDITOR_TOOL_KEYS: ReadonlyArray<{ id: Tool; key: string }> = TOOLS.map((t) => ({ id: t.id, key: t.key.toLowerCase() }));
 
 export function buildEditorUI(container: HTMLElement, opts: EditorUIOptions): EditorUI {
   injectStyles();
@@ -61,6 +79,7 @@ export function buildEditorUI(container: HTMLElement, opts: EditorUIOptions): Ed
     <label class="me-row me-bk"><span>Build kind</span>
       <select class="me-kind">${opts.buildingKinds.map((k) => `<option value="${k}">${k}</option>`).join('')}</select>
     </label>
+    <label class="me-row me-bd"><span>Density</span><input class="me-dens" type="range" min="1" max="10" step="1" value="3"><b class="me-dens-v">3</b></label>
     <label class="me-row"><span>Labels</span><input class="me-labels" type="checkbox" checked></label>
     <div class="me-sel"></div>
     <div class="me-counts"></div>
@@ -69,8 +88,9 @@ export function buildEditorUI(container: HTMLElement, opts: EditorUIOptions): Ed
       <button class="me-clear">Clear layers</button>
     </div>
     <div class="me-help">
-      <b>Left-drag</b> paints with the active tool · <b>Right-drag</b> rotates · <b>wheel</b> zoom · <b>arrows</b> pan.<br>
-      Keys <b>1–9</b> tools · <b>[ ]</b> brush size · <b>Del</b> remove selected building.<br>
+      <b>Left-drag</b> uses the active tool · <b>Right-drag</b> or <b>Space+drag</b> pans · <b>wheel</b> zoom.<br>
+      Keys <b>1–9 / R L S</b> tools · <b>[ ]</b> brush size · <b>Del</b> remove selected.<br>
+      <b>Bldg +</b>: drag to scatter (density). <b>Erase</b>: drag over buildings/roads. <b>Road</b>: drag to paint, release to lay.<br>
       <b>River</b>: click points, dbl-click/Enter finish. <b>Lake</b>: click to dig (brush = size).
     </div>`;
   container.appendChild(panel);
@@ -86,6 +106,8 @@ export function buildEditorUI(container: HTMLElement, opts: EditorUIOptions): Ed
   const fol = $<HTMLInputElement>('.me-fol');
   const folV = $<HTMLElement>('.me-fol-v');
   const kindSel = $<HTMLSelectElement>('.me-kind');
+  const dens = $<HTMLInputElement>('.me-dens');
+  const densV = $<HTMLElement>('.me-dens-v');
   const selBox = $<HTMLDivElement>('.me-sel');
   const counts = $<HTMLDivElement>('.me-counts');
 
@@ -115,6 +137,10 @@ export function buildEditorUI(container: HTMLElement, opts: EditorUIOptions): Ed
     opts.onFoliageStrength(+fol.value);
   };
   kindSel.onchange = () => opts.onBuildingKind(kindSel.value as 'cabin' | 'depot');
+  dens.oninput = () => {
+    densV.textContent = dens.value;
+    opts.onBuildingDensity(+dens.value);
+  };
   const labelsCb = $<HTMLInputElement>('.me-labels');
   labelsCb.onchange = () => opts.onToggleLabels(labelsCb.checked);
   $<HTMLButtonElement>('.me-clear').onclick = opts.onClearLayers;
@@ -123,6 +149,7 @@ export function buildEditorUI(container: HTMLElement, opts: EditorUIOptions): Ed
   function setTool(t: Tool): void {
     for (const id in toolBtns) toolBtns[id as Tool]!.classList.toggle('on', id === t);
     panel.classList.toggle('me-show-kind', t === 'building' || t === 'select');
+    panel.classList.toggle('me-show-dens', t === 'building');
   }
   setTool('orbit');
 
@@ -133,7 +160,8 @@ export function buildEditorUI(container: HTMLElement, opts: EditorUIOptions): Ed
       notice.textContent = msg;
       notice.style.display = msg ? 'block' : 'none';
     },
-    setCounts: (t, f, b) => (counts.innerHTML = `terrain <b>${t}</b> · foliage <b>${f}</b> · buildings <b>${b}</b>`),
+    setCounts: (t, f, b, r) =>
+      (counts.innerHTML = `terrain <b>${t}</b> · foliage <b>${f}</b> · bldgs <b>${b}</b> · roads <b>${r}</b>`),
     setSelected: (kind) => {
       selBox.innerHTML = kind
         ? `Selected <b>${kind}</b> — drag to move · <button class="me-del">Delete</button>`
@@ -202,6 +230,7 @@ function injectStyles(): void {
     cursor:pointer;font:inherit;font-size:12px}
   .me-tool:hover{background:#25323b}.me-tool.on{background:#4ea3ff;color:#05121d;border-color:#4ea3ff;font-weight:600}
   .me-bk{display:none}.me-show-kind .me-bk{display:flex}
+  .me-bd{display:none}.me-show-dens .me-bd{display:flex}
   .me-sel{color:#9fd9a0;font-size:12px;margin:4px 0;min-height:0}
   .me-sel .me-del,.me-clear{background:#3a1f1f;color:#ff9b9b;border:1px solid #6b2a2a;border-radius:5px;
     padding:3px 8px;cursor:pointer;font:inherit;font-size:12px;margin-left:6px}

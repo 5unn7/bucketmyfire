@@ -1,4 +1,4 @@
-import { WORLD3D, FLIGHT, LAKES3D, LAKE_SHAPE, STREAM, COMMUNITIES, ROADS, MAPGEO, BRIDGE } from './config';
+import { WORLD3D, FLIGHT, LAKES3D, LAKE_SHAPE, STREAM, COMMUNITIES, ROADS, MAPGEO, BRIDGE, HELIPAD } from './config';
 import { Noise2D, FbmParams } from './world/noise';
 import { Biomes } from './world/biomes';
 import { Placement } from './world/placement';
@@ -7,6 +7,7 @@ import { getRegion, getTerrainProfile } from './maps/registry';
 import type { Region, GeoFrame, TerrainProfile } from './maps/types';
 import { AuthoredField } from './world/authored';
 import type { BuildingKind } from './world/authored';
+import type { BridgeSite } from './meshes/bridges'; // TYPE-only (erased) — keeps World free of THREE / the bridge mesh
 
 /**
  * The unified heightfield — the single source of ground/water truth for the whole
@@ -59,17 +60,22 @@ export interface CommunitySite {
   name: string; // northern-Saskatchewan community name
   x: number;
   z: number;
-  kind: 'base' | 'town'; // 'base' = lakeside depot site; 'town' = forest hamlet
+  kind: 'base' | 'town' | 'city'; // 'base' = lakeside depot site; 'town' = forest hamlet; 'city' = big road-node
+  // population centre (Saskatoon/Regina) — excluded from the town index so mission `community: N` refs are stable
   radius: number; // cabins of a hamlet scatter within this of the center (units)
   buildings: number; // intended cabin count (towns); 0 for the base (depot only)
   anchorId?: string; // set when this site came from a region MapAnchor (links it back for getCommunity(id))
+  // DECORATIVE population tier (drives the non-gameplay building scatter in Game): 'city' = dense skyline,
+  // 'base' = medium cluster, 'community' = sparse hamlet. Derived from kind (+ a base's `urban` flag → 'city',
+  // so Prince Albert reads as a city while staying a refuel base). Decoration only — never a Structure.
+  tier?: 'city' | 'base' | 'community';
 }
 
 /** A region MapAnchor resolved to its placed world site (anchored maps). Exposed via World.anchor*(). */
 export interface ResolvedAnchor {
   id: string;
   name: string;
-  kind: 'base' | 'community' | 'both';
+  kind: 'base' | 'community' | 'both' | 'city';
   x: number;
   z: number;
   home: boolean;
@@ -124,6 +130,22 @@ interface BridgeValley {
   approach: number; // how far past the abutment the bank holds full height before tapering
   alongHalf: number; // half-length of the valley along the river before it fades out
   taper: number; // smooth taper distance at every outer edge
+}
+
+/**
+ * A coarse cost field over the playfield that the road router (World.makeRoads) runs A* across. Built once
+ * per world: `cost[iz*nx+ix]` is the per-cell traversal cost (`Infinity` = impassable lake / sub-water shelf;
+ * higher = river crossing or steep ground), and `occupied` marks cells already carrying a laid road so a later
+ * road can MERGE onto the shared corridor at a discount. Pure ints/floats, no THREE — determinism untouched.
+ */
+interface RoadGrid {
+  cost: Float32Array;
+  occupied: Uint8Array;
+  nx: number;
+  nz: number;
+  cell: number; // world units per grid cell
+  minX: number; // world X of the grid's lower-left corner (−sizeX/2)
+  minZ: number;
 }
 
 export class World {
@@ -187,6 +209,9 @@ export class World {
   private readonly offsetZKm: number;
   /** River valleys shaped under the bridges (set after construction via setBridgeValleys); empty = no shaping. */
   private bridgeValleys: BridgeValley[] = [];
+  /** Resolved scenic bridge sites (truss spans where a road crosses a river) — built in the ctor AFTER the
+   *  rivers so makeRoads can route a crossing onto each. Empty off-SK / when BRIDGE.enabled is false. */
+  private bridgeSiteList: BridgeSite[] = [];
   /** The province outline projected to world XZ, cached once (the projection frame is fixed at construction).
    *  `groundHeightAt` (per terrain vertex) + placement guards point-in-polygon against this, so it must NOT
    *  re-project the lat/lon ring every call. Null = not yet built or no geo. */
@@ -287,6 +312,14 @@ export class World {
     // Streams connect the lakes downhill (A4); built after lakes so the water
     // network exists before biomes (which read distance-to-water, now incl. rivers).
     this.rivers = this.makeRivers();
+
+    // Scenic bridges (truss spans where a road crosses a river). Resolved HERE — after the rivers, before
+    // the roads — so makeRoads can route each river crossing ONTO its bridge (so a road actually runs over
+    // the deck), and so each bridge's river VALLEY is shaped into the ground before the terrain mesh +
+    // structures sample it. Pure math (no THREE) so World stays engine-free + the verify bundle stays light.
+    // No rng → determinism is untouched. Empty off-SK / when BRIDGE.enabled is false.
+    this.bridgeSiteList = this.resolveBridgeSites();
+    this.setBridgeValleys(this.bridgeSiteList);
 
     // Settlements + highways (A5): named community sites, then a road network (MST) that
     // links them. Built after the hydrology so the base can sit on a real lake shore and
@@ -521,6 +554,19 @@ export class World {
    * Bank height + corridor width are DERIVED from the bridge config so they track any tuning. Uses no
    * rng and only raises ground, so determinism + the campaign verifier are untouched.
    */
+  /** Graded flat helipad sites (set by Game from the resolved base pads BEFORE the terrain mesh builds). */
+  private padLevels: { x: number; z: number; r: number; level: number }[] = [];
+
+  /**
+   * Register base helipad sites to GRADE FLAT: within `r` of each, `groundHeightAt` is leveled to `level` (the
+   * pad's own centre height) and blends smoothly back to natural terrain at the rim — so the flat concrete slab
+   * sits flush and a hillside can't poke through it (the "cutoff"). Pure, rng-free; levels TO the natural centre
+   * height so it barely perturbs anything. Empty = ungraded. Set by Game before `createTerrain` samples the mesh.
+   */
+  setPadLevels(pads: readonly { x: number; z: number; r: number; level: number }[]): void {
+    this.padLevels = pads.slice();
+  }
+
   setBridgeValleys(sites: readonly { x: number; z: number; ax: number; az: number; surfaceY: number }[]): void {
     if (!BRIDGE.enabled || !BRIDGE.valley.enabled) {
       this.bridgeValleys = [];
@@ -540,6 +586,81 @@ export class World {
       alongHalf: BRIDGE.valley.alongHalf,
       taper: BRIDGE.valley.taper,
     }));
+  }
+
+  /** The resolved scenic bridge sites (where a truss span crosses a river). Game reads these to build the
+   *  bridge meshes/colliders; resolved once in the ctor. Empty off-SK / when BRIDGE.enabled is false. */
+  bridgeSites(): BridgeSite[] {
+    return this.bridgeSiteList.slice();
+  }
+
+  /**
+   * Resolve every configured scenic bridge against this world: for each `BRIDGE.sites` entry, project its real
+   * lat/lon, find the nearest point on its named river polyline, take the segment direction as the flow tangent,
+   * and sample the water surface there. Mirrors `meshes/bridges.computeBridgeSites` but runs DURING construction
+   * (pure math, no THREE) so `makeRoads` can route a crossing onto the result. Sites whose river isn't on this
+   * map are skipped (empty off-SK / when disabled). No rng → determinism untouched.
+   */
+  private resolveBridgeSites(): BridgeSite[] {
+    if (!BRIDGE.enabled) return [];
+    const out: BridgeSite[] = [];
+    for (const spec of BRIDGE.sites) {
+      const path = this.namedRiverPath(spec.river);
+      if (!path) continue; // that river isn't on this map
+      const near = this.project(spec.near.lat, spec.near.lon);
+      let best: { x: number; z: number; ax: number; az: number } | null = null;
+      let bestD = Infinity;
+      for (let i = 0; i < path.length - 1; i++) {
+        const a = path[i];
+        const b = path[i + 1];
+        const dx = b.x - a.x;
+        const dz = b.z - a.z;
+        const l2 = dx * dx + dz * dz || 1;
+        let t = ((near.x - a.x) * dx + (near.z - a.z) * dz) / l2;
+        t = t < 0 ? 0 : t > 1 ? 1 : t;
+        const px = a.x + dx * t;
+        const pz = a.z + dz * t;
+        const d = (px - near.x) ** 2 + (pz - near.z) ** 2;
+        if (d < bestD) {
+          bestD = d;
+          const l = Math.hypot(dx, dz) || 1;
+          best = { x: px, z: pz, ax: dx / l, az: dz / l };
+        }
+      }
+      if (!best) continue;
+      const wl = this.waterLevelAt(best.x, best.z);
+      const surfaceY = wl ?? this.groundHeightAt(best.x, best.z);
+      out.push({ name: spec.name, x: best.x, z: best.z, surfaceY, ax: best.ax, az: best.az });
+    }
+    return out;
+  }
+
+  /**
+   * Route a road over each bridge: find the road's nearest INTERIOR point that's actually a river CROSSING (on
+   * the water) and within `BRIDGE.roadSnapDist`, and move it onto the bridge centre — so the carriageway crosses
+   * the deck rather than causeway-ing the river off to one side (Game then rides the road up onto the deck there).
+   * Only the single nearest crossing point is pulled, so a road that doesn't cross near a bridge is untouched (the
+   * span just stands over the river as before). Endpoints stay pinned to their towns. Pure geometry, no rng.
+   */
+  private snapRoadsToBridges(roads: RoadRuntime[]): void {
+    for (const b of this.bridgeSiteList) {
+      let bestRoad: RoadRuntime | null = null;
+      let bestI = -1;
+      let bestD: number = BRIDGE.roadSnapDist;
+      for (const road of roads) {
+        for (let i = 1; i < road.pts.length - 1; i++) {
+          const p = road.pts[i];
+          const d = Math.hypot(p.x - b.x, p.z - b.z);
+          if (d >= bestD) continue;
+          // Only snap a genuine water crossing (a dry near-town point would yank the road sideways).
+          if (!this.isOverWater(p.x, p.z) && !this.nearestRiver(p.x, p.z)) continue;
+          bestD = d;
+          bestRoad = road;
+          bestI = i;
+        }
+      }
+      if (bestRoad && bestI >= 0) bestRoad.pts[bestI] = { x: b.x, z: b.z };
+    }
   }
 
   /** All placed anchors (bases + towns) for the active map; empty on procedural maps. */
@@ -650,7 +771,26 @@ export class World {
       this.applyOutline(lake, nl.outline); // authored freeform shore (if any) overrides the ellipse silhouette
       lakes.push(lake);
     }
-    return lakes;
+    return this.applyNoLakeZones(lakes);
+  }
+
+  /**
+   * Drop NAMELESS procedural ponds whose centre falls inside a region `noLakeZones` exclusion — to clear a stray
+   * pond from a stretch that should read as open land/river. Named scoop + geographic lakes are ALWAYS kept.
+   * Applied AFTER the seeded scatter, so the rng stream — and thus every other lake — stays byte-identical; only
+   * the excluded ponds vanish. No-op when the region declares no zones (every other map is unchanged).
+   */
+  private applyNoLakeZones(lakes: LakeRuntime[]): LakeRuntime[] {
+    const zones = this.region.noLakeZones;
+    if (!zones?.length) return lakes;
+    return lakes.filter((l) => {
+      if (l.name) return true; // never remove a named scoop / geographic lake
+      for (const z of zones) {
+        const p = this.project(z.lat, z.lon);
+        if (Math.hypot(l.x - p.x, l.z - p.z) <= z.radiusKm * this.unitsPerKm) return false;
+      }
+      return true;
+    });
   }
 
   /**
@@ -941,13 +1081,14 @@ export class World {
       const p = this.project(a.lat, a.lon);
       const lake = this.lakeAt(p.x, p.z) ?? this.nearestLakeRuntime(p.x, p.z);
       const isBase = a.kind === 'base' || a.kind === 'both';
+      const isCity = a.kind === 'city';
       let site: { x: number; z: number } = p;
       if (isBase && lake) {
         // A base is a lakeside depot: seat it on the shore of its own (pinned) lake nearest its position.
         const s = this.lakeShorePointNear(lake, p.x, p.z) ?? this.lakeShorePoint(lake);
         if (s) site = s;
       } else if (!isBase && this.isOverWater(p.x, p.z)) {
-        // A town whose projected point lands on a (shared) lake nudges to the NEAREST dry land from its
+        // A town/city whose projected point lands on a (shared) lake nudges to the NEAREST dry land from its
         // own spot — so towns ringing one big lake spread along its shore instead of collapsing to a point.
         site = this.nudgeToDryLand(p.x, p.z);
       }
@@ -955,10 +1096,13 @@ export class World {
         name: a.name,
         x: site.x,
         z: site.z,
-        kind: isBase ? 'base' : 'town',
+        kind: isCity ? 'city' : isBase ? 'base' : 'town',
         radius: COMMUNITIES.clusterRadius,
-        buildings: isBase ? 0 : (COMMUNITIES.cabinsMin + COMMUNITIES.cabinsMax) >> 1,
+        buildings: isBase || isCity ? 0 : (COMMUNITIES.cabinsMin + COMMUNITIES.cabinsMax) >> 1,
         anchorId: a.id,
+        // Decoration tier: a 'city' anchor → dense skyline; a base reads as a city when it's `urban` (Prince
+        // Albert) else a medium base cluster; a community → a sparse hamlet.
+        tier: isCity ? 'city' : isBase ? (a.urban ? 'city' : 'base') : 'community',
       });
       this.resolvedAnchors.push({ id: a.id, name: a.name, kind: a.kind, x: site.x, z: site.z, home: a.id === chosen?.id, lake });
     }
@@ -1039,6 +1183,7 @@ export class World {
         kind: 'town',
         radius: COMMUNITIES.clusterRadius,
         buildings,
+        tier: 'community',
       });
       towns++;
     }
@@ -1065,6 +1210,7 @@ export class World {
         kind: 'base',
         radius: COMMUNITIES.clusterRadius,
         buildings: 0,
+        tier: 'base',
       });
     }
     return sites;
@@ -1120,16 +1266,25 @@ export class World {
   }
 
   /**
-   * Highway network. First lay any AUTHORED provincial-highway corridors the region declares — real routes
-   * through real towns (e.g. Hwy 2: Prince Albert → Weyakwin → La Ronge), so a named highway follows its true
-   * spine instead of a nearest-neighbour guess. Then connect whatever's still isolated with a minimum spanning
-   * tree (Prim's) over the community centers, so every settlement is reachable. Each edge becomes one draped,
-   * gently-meandering road; corridor edges carry their real name, the rest draw from the region's highway pool.
+   * Highway network. The TOPOLOGY (which towns connect) is a tree — any AUTHORED provincial-highway corridors
+   * the region declares (real routes through real towns, e.g. Hwy 2: Prince Albert → Weyakwin → La Ronge), then
+   * a minimum spanning tree (Prim's) over the community centers for whatever's still isolated. A tree means roads
+   * MERGE at the towns they share and never lay a redundant second edge between the same pair (no overlap).
+   *
+   * Each edge's PATH is then routed by a water-aware grid A* (`routeRoad`), not a straight line nudged sideways:
+   * the path goes AROUND lakes, crosses rivers short (then bridges them), prefers flatter ground, and coalesces
+   * onto an already-laid road when it runs close — then it's line-of-sight simplified into long straight runs, so
+   * there's no zig-zag. The cost grid is built once and shared by every edge. No rng → determinism untouched.
    */
   private makeRoads(): RoadRuntime[] {
+    if (!ROADS.enabled) return []; // roads are off — roadless bush (no grid, no A*, no meshes, no authored roads)
     const nodes = this.communities;
-    if (nodes.length < 2) return [];
     const roads: RoadRuntime[] = [];
+    if (nodes.length < 2) {
+      this.addAuthoredRoads(roads); // still lay hand-painted roads even on a community-sparse map
+      return roads;
+    }
+    const grid = this.buildRoadGrid(); // shared water/slope cost field; `occupied` accumulates as edges are laid
     const built = new Set<string>();
     const edgeKey = (i: number, j: number) => (i < j ? `${i}-${j}` : `${j}-${i}`);
     const nodeOf = (anchorId: string) => nodes.findIndex((n) => n.anchorId === anchorId);
@@ -1141,7 +1296,7 @@ export class World {
         const i = nodeOf(id);
         if (i < 0) continue;
         if (prev >= 0 && prev !== i && !built.has(edgeKey(prev, i))) {
-          roads.push(this.buildRoad(nodes[prev], nodes[i], route.name));
+          roads.push(this.routeRoad(grid, nodes[prev], nodes[i], route.name));
           built.add(edgeKey(prev, i));
         }
         prev = i;
@@ -1171,49 +1326,301 @@ export class World {
       if (bj < 0) break;
       inTree[bj] = true;
       if (!built.has(edgeKey(bi, bj))) {
-        roads.push(this.buildRoad(nodes[bi], nodes[bj]));
+        roads.push(this.routeRoad(grid, nodes[bi], nodes[bj]));
         built.add(edgeKey(bi, bj));
       }
     }
+    this.addAuthoredRoads(roads); // hand-painted roads (map editor) laid alongside the generated network
+    this.snapRoadsToBridges(roads); // pull each river crossing onto its bridge so a road runs over the deck
     return roads;
   }
 
-  /** Resample a straight A→B run into a gently-meandering road polyline (drapes at draw). An authored
-   *  corridor passes its real highway `name`; otherwise the road draws one from the region's highway pool. */
-  private buildRoad(a: CommunitySite, b: CommunitySite, name?: string): RoadRuntime {
-    const L = Math.hypot(b.x - a.x, b.z - a.z) || 1;
-    const nx = -(b.z - a.z) / L; // unit perpendicular (lateral meander)
-    const nz = (b.x - a.x) / L;
-    const segs = Math.max(4, Math.ceil(L / ROADS.resample));
-    const pts: { x: number; z: number }[] = [];
-    let dodgeSign = 0; // sticky lake-side bias: stay on ONE side across a contiguous water crossing (no flip-flop)
-    for (let k = 0; k <= segs; k++) {
-      const t = k / segs;
-      const px = a.x + (b.x - a.x) * t;
-      const pz = a.z + (b.z - a.z) * t;
-      // Lateral wander from noise, tapered to 0 at both ends so the road meets each town.
-      const off = this.noise.simplex(px * 0.015 - 5, pz * 0.015 + 9) * ROADS.meanderAmp * Math.sin(Math.PI * t);
-      const p = { x: px + nx * off, z: pz + nz * off };
-      // Lakes: ride AROUND them — slide the point along the road's perpendicular to dry land, committing to the
-      // side we're already on so a big lake (e.g. Diefenbaker) is arced around ONE end, not zigzagged through.
-      // Rivers are LEFT on the line — the road bridges them. Endpoints stay put (towns sit on shore).
-      if (k === 0 || k === segs) {
-        pts.push(p);
-        continue;
-      }
-      const hit = this.dodgeWater(p, nx, nz, dodgeSign);
-      dodgeSign = hit.sign;
-      pts.push({ x: hit.x, z: hit.z });
+  /**
+   * Lay each authored region road (a real lat/lon polyline from the map editor) as a draped `RoadRuntime`.
+   * The user painted the exact path, so the points are projected straight to world XZ (no meander, no MST) —
+   * the road mesh still drapes them on the ground/water surface in Game. `width` is the half-width (default
+   * `ROADS.width`); an unnamed road draws a designation from the region's highway pool. Uses NO rng.
+   */
+  private addAuthoredRoads(roads: RoadRuntime[]): void {
+    for (const def of this.region.roads ?? []) {
+      const pts = def.points.map((p) => this.project(p.lat, p.lon));
+      if (pts.length < 2) continue;
+      roads.push({ name: def.name ?? this.nameSource.highway(), pts, width: def.width ?? ROADS.width });
     }
-    this.smoothRoad(pts);
-    return { name: name ?? this.nameSource.highway(), pts, width: ROADS.width };
   }
 
   /**
-   * Laplacian smoothing of a road's INTERIOR points — relax each toward the average of its neighbours a few
-   * passes. This kills the high-frequency sawtooth `dodgeWater` leaves when a road threads between lakes (the
-   * "zigzag"), leaving long, gentle bends. A point is NEVER relaxed onto water (the dodged detour stays put
-   * there) and the endpoints stay pinned to their towns. Cheap, one-time at world build.
+   * Build the shared road cost grid once: a coarse field over the playfield where lakes (and their sub-water
+   * shore shelf) are IMPASSABLE, rivers cost extra (a short bridged crossing), and steep ground costs more, so
+   * an A* over it naturally goes around water and prefers gentle slopes. `occupied` starts empty and fills in as
+   * edges are laid, giving later roads a merge discount onto the shared corridor. Pure + deterministic (no rng).
+   */
+  private buildRoadGrid(): RoadGrid {
+    const cell = ROADS.routeCell;
+    const minX = -this.sizeX / 2;
+    const minZ = -this.sizeZ / 2;
+    const nx = Math.max(1, Math.ceil(this.sizeX / cell));
+    const nz = Math.max(1, Math.ceil(this.sizeZ / cell));
+    const cost = new Float32Array(nx * nz);
+    const occupied = new Uint8Array(nx * nz);
+    const bridges = this.bridgeSiteList; // resolved before makeRoads → roads can be funnelled onto each deck
+    const attract2 = ROADS.bridgeAttract * ROADS.bridgeAttract;
+    for (let iz = 0; iz < nz; iz++) {
+      const cz = minZ + (iz + 0.5) * cell;
+      for (let ix = 0; ix < nx; ix++) {
+        const cx = minX + (ix + 0.5) * cell;
+        const idx = iz * nx + ix;
+        if (this.roadCellBlocked(cx, cz)) {
+          cost[idx] = Infinity; // a lake or its sub-water shelf → the route must go around
+          continue;
+        }
+        // Bridge pull: near a bridge, river crossing is cheap (cross ON the deck) and the dry approach is
+        // discounted (funnel toward it), so a road that must cross the river does so at the bridge, not beside it.
+        let nearBridge = false;
+        for (const b of bridges) {
+          const dx = cx - b.x;
+          const dz = cz - b.z;
+          if (dx * dx + dz * dz <= attract2) {
+            nearBridge = true;
+            break;
+          }
+        }
+        let c = 1 + this.slopeAt(cx, cz) * ROADS.slopeCost; // prefer flatter ground
+        if (this.isOverWater(cx, cz)) {
+          c += nearBridge ? ROADS.bridgeCrossCost : ROADS.riverCrossCost; // a river (lakes excluded): cheap on a bridge, costly elsewhere
+        } else if (nearBridge) {
+          c *= ROADS.bridgeApproachDiscount; // funnel the dry approach toward the deck
+        }
+        cost[idx] = c;
+      }
+    }
+    return { cost, occupied, nx, nz, cell, minX, minZ };
+  }
+
+  /** Is (x, z) impassable to a road — inside a lake disc, or on the sub-water shore shelf carved below a nearby
+   *  lake's surface (a road there drapes at/under the waterline)? Rivers are NOT blocked (they get bridged). */
+  private roadCellBlocked(x: number, z: number): boolean {
+    if (this.lakeAt(x, z)) return true;
+    const g = this.groundHeightAt(x, z);
+    for (const lake of this.lakes) {
+      const dx = x - lake.x;
+      const dz = z - lake.z;
+      const reach = lake.r * 2.5 + WORLD3D.lakeBankWidth + WORLD3D.lakeBlendWidth;
+      if (dx * dx + dz * dz > reach * reach) continue;
+      if (g < lake.waterLevel + ROADS.shoreClear) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Route one road A→B over the cost grid: A* for a coarse cell path that avoids water + prefers gentle ground,
+   * mark its cells `occupied` so later roads merge onto it, then line-of-sight simplify the path into long
+   * straight runs (kills the zig-zag, arcs around lakes), resample to the mesh's ribbon spacing, and lightly
+   * smooth. Endpoints are pinned to the two towns. Falls back to a straight line only if A* finds no route.
+   */
+  private routeRoad(grid: RoadGrid, a: CommunitySite, b: CommunitySite, name?: string): RoadRuntime {
+    const sIdx = this.nearestOpenCell(grid, a.x, a.z);
+    const gIdx = this.nearestOpenCell(grid, b.x, b.z);
+    let coarse: { x: number; z: number }[];
+    const path = sIdx >= 0 && gIdx >= 0 ? this.aStarRoad(grid, sIdx, gIdx) : null;
+    if (path && path.length >= 2) {
+      for (const idx of path) grid.occupied[idx] = 1; // a later edge that runs close coalesces onto this corridor
+      coarse = path.map((idx) => this.cellCenter(grid, idx));
+      coarse[0] = { x: a.x, z: a.z }; // pin exact town endpoints (the grid cell centre is only an approximation)
+      coarse[coarse.length - 1] = { x: b.x, z: b.z };
+    } else {
+      // No route (or both towns share one cell) → a direct link. Mark the start cell so neighbours still merge.
+      if (sIdx >= 0) grid.occupied[sIdx] = 1;
+      coarse = [{ x: a.x, z: a.z }, { x: b.x, z: b.z }];
+    }
+    const straight = this.simplifyRoadPath(coarse);
+    const dense = this.resampleRoad(straight);
+    this.smoothRoad(dense);
+    return { name: name ?? this.nameSource.highway(), pts: dense, width: ROADS.width };
+  }
+
+  /** Grid A* (8-connected, binary-heap, lazy-deletion). Step cost = destination cell cost × step length, with a
+   *  merge discount on cells already carrying a road. Returns the cell-index path start→goal, or null if blocked. */
+  private aStarRoad(grid: RoadGrid, start: number, goal: number): number[] | null {
+    const { cost, occupied, nx, nz, cell } = grid;
+    const N = nx * nz;
+    const g = new Float32Array(N);
+    g.fill(Infinity);
+    const f = new Float32Array(N);
+    f.fill(Infinity);
+    const came = new Int32Array(N);
+    came.fill(-1);
+    const closed = new Uint8Array(N);
+    const gx = goal % nx;
+    const gz = (goal / nx) | 0;
+    const heur = (ix: number, iz: number) => Math.hypot((ix - gx) * cell, (iz - gz) * cell);
+    const heap: number[] = []; // cell indices, ordered by f via the closures below
+    const up = (c: number) => {
+      while (c > 0) {
+        const p = (c - 1) >> 1;
+        if (f[heap[p]] <= f[heap[c]]) break;
+        const t = heap[p];
+        heap[p] = heap[c];
+        heap[c] = t;
+        c = p;
+      }
+    };
+    const push = (i: number) => {
+      heap.push(i);
+      up(heap.length - 1);
+    };
+    const pop = (): number => {
+      const top = heap[0];
+      const last = heap.pop()!;
+      if (heap.length) {
+        heap[0] = last;
+        let c = 0;
+        for (;;) {
+          const l = 2 * c + 1;
+          const r = l + 1;
+          let s = c;
+          if (l < heap.length && f[heap[l]] < f[heap[s]]) s = l;
+          if (r < heap.length && f[heap[r]] < f[heap[s]]) s = r;
+          if (s === c) break;
+          const t = heap[s];
+          heap[s] = heap[c];
+          heap[c] = t;
+          c = s;
+        }
+      }
+      return top;
+    };
+    g[start] = 0;
+    f[start] = heur(start % nx, (start / nx) | 0);
+    push(start);
+    while (heap.length) {
+      const cur = pop();
+      if (closed[cur]) continue;
+      if (cur === goal) break;
+      closed[cur] = 1;
+      const cix = cur % nx;
+      const ciz = (cur / nx) | 0;
+      for (let dz = -1; dz <= 1; dz++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dz === 0) continue;
+          const nix = cix + dx;
+          const niz = ciz + dz;
+          if (nix < 0 || niz < 0 || nix >= nx || niz >= nz) continue;
+          const nIdx = niz * nx + nix;
+          if (closed[nIdx] || cost[nIdx] === Infinity) continue;
+          const stepLen = dx !== 0 && dz !== 0 ? cell * Math.SQRT2 : cell;
+          const cc = cost[nIdx] * (occupied[nIdx] ? ROADS.mergeDiscount : 1);
+          const tentative = g[cur] + cc * stepLen;
+          if (tentative < g[nIdx]) {
+            came[nIdx] = cur;
+            g[nIdx] = tentative;
+            f[nIdx] = tentative + heur(nix, niz);
+            push(nIdx);
+          }
+        }
+      }
+    }
+    if (start !== goal && came[goal] < 0) return null;
+    const out: number[] = [];
+    let c = goal;
+    while (c !== -1) {
+      out.push(c);
+      if (c === start) break;
+      c = came[c];
+    }
+    out.reverse();
+    return out;
+  }
+
+  /** Nearest grid cell to a world point that a road can actually sit on (the town's own cell, else a short ring
+   *  search outward) — towns sit on lake shores, so their exact cell can be blocked. −1 if nothing open is near. */
+  private nearestOpenCell(grid: RoadGrid, x: number, z: number): number {
+    const { cost, nx, nz, cell, minX, minZ } = grid;
+    const ix0 = Math.max(0, Math.min(nx - 1, Math.floor((x - minX) / cell)));
+    const iz0 = Math.max(0, Math.min(nz - 1, Math.floor((z - minZ) / cell)));
+    if (cost[iz0 * nx + ix0] !== Infinity) return iz0 * nx + ix0;
+    for (let r = 1; r <= 12; r++) {
+      let best = -1;
+      let bestD = Infinity;
+      for (let dz = -r; dz <= r; dz++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue; // ring shell only
+          const ix = ix0 + dx;
+          const iz = iz0 + dz;
+          if (ix < 0 || iz < 0 || ix >= nx || iz >= nz) continue;
+          const idx = iz * nx + ix;
+          if (cost[idx] === Infinity) continue;
+          const d = dx * dx + dz * dz;
+          if (d < bestD) {
+            bestD = d;
+            best = idx;
+          }
+        }
+      }
+      if (best >= 0) return best;
+    }
+    return -1;
+  }
+
+  /** World-space centre of a grid cell. */
+  private cellCenter(grid: RoadGrid, idx: number): { x: number; z: number } {
+    const ix = idx % grid.nx;
+    const iz = (idx / grid.nx) | 0;
+    return { x: grid.minX + (ix + 0.5) * grid.cell, z: grid.minZ + (iz + 0.5) * grid.cell };
+  }
+
+  /**
+   * Line-of-sight simplify: collapse the A* cell staircase into the fewest control points whose straight
+   * segments stay clear of lakes — long straight runs that arc around the water, no zig-zag. Crossing a river on
+   * a straight is fine (it's bridged); only LAKE water blocks a shortcut. Endpoints are always kept.
+   */
+  private simplifyRoadPath(pts: { x: number; z: number }[]): { x: number; z: number }[] {
+    if (pts.length <= 2) return pts.slice();
+    const out = [pts[0]];
+    let i = 0;
+    while (i < pts.length - 1) {
+      let j = pts.length - 1;
+      for (; j > i + 1; j--) if (this.segClearOfLakes(pts[i], pts[j])) break;
+      out.push(pts[j]);
+      i = j;
+    }
+    return out;
+  }
+
+  /** Does the straight segment p→q stay off lake water (sampled every `ROADS.simplifyTol` units)? */
+  private segClearOfLakes(p: { x: number; z: number }, q: { x: number; z: number }): boolean {
+    const L = Math.hypot(q.x - p.x, q.z - p.z);
+    const steps = Math.max(1, Math.ceil(L / ROADS.simplifyTol));
+    for (let s = 1; s < steps; s++) {
+      const t = s / steps;
+      if (this.roadCellBlocked(p.x + (q.x - p.x) * t, p.z + (q.z - p.z) * t)) return false;
+    }
+    return true;
+  }
+
+  /** Resample a sparse control polyline to ~`ROADS.resample` spacing so the road MESH has smooth, evenly-spaced
+   *  cross-sections that drape the terrain (the mesh uses each point as one cross-section). Endpoints preserved. */
+  private resampleRoad(pts: { x: number; z: number }[]): { x: number; z: number }[] {
+    if (pts.length < 2) return pts.slice();
+    const out: { x: number; z: number }[] = [{ x: pts[0].x, z: pts[0].z }];
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1];
+      const b = pts[i];
+      const L = Math.hypot(b.x - a.x, b.z - a.z);
+      const segs = Math.max(1, Math.round(L / ROADS.resample));
+      for (let k = 1; k <= segs; k++) {
+        const t = k / segs;
+        out.push({ x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t });
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Laplacian smoothing of a road's INTERIOR points — relax each toward the average of its neighbours a couple
+   * passes, for gentle, polished bends where the simplified path turns around a lake. A point is NEVER relaxed
+   * onto water OR a sub-water lake shelf (that would re-drape the deck at the waterline), and the endpoints stay
+   * pinned to their towns. Cheap, one-time at world build.
    */
   private smoothRoad(pts: { x: number; z: number }[]): void {
     for (let pass = 0; pass < ROADS.smoothPasses; pass++) {
@@ -1243,52 +1650,6 @@ export class World {
       if (g < lake.waterLevel + ROADS.shoreClear) return false; // would drape at/under this lake's surface
     }
     return true;
-  }
-
-  /**
-   * Ride a road point AROUND a lake: nudge it along the carriageway's perpendicular (nx, nz) to dry land,
-   * clearing the road's full half-width so the deck doesn't clip the shore. Only LAKES are dodged — a river is
-   * left on the line and bridged (see the lakeAt guard). `prefer` is the side the road is already dodging toward:
-   * mid-crossing we COMMIT to that side (search it fully, then the other) so a road arcs around a big lake on
-   * ONE side instead of flip-flopping point-to-point; a fresh crossing (`prefer` 0) takes the nearest dry shore.
-   * Returns the chosen side in `sign` (0 when the point isn't a lake → reset the bias between separate lakes).
-   * Falls back to the original point (a causeway) if no shore is in range — better than a kinked dead end.
-   */
-  private dodgeWater(p: { x: number; z: number }, nx: number, nz: number, prefer: number): { x: number; z: number; sign: number } {
-    // Only LAKES get ridden around. Dry land — or a RIVER — leaves the point on the line: a river is narrow, so the
-    // road just BRIDGES it (the deck causeways over the channel via ROADS.bridgeLift). lakeAt is null for both.
-    const lake = this.lakeAt(p.x, p.z);
-    if (!lake) return { x: p.x, z: p.z, sign: 0 }; // not a lake (dry or a river) → don't dodge; reset the side bias
-    const step = ROADS.width;
-    const maxSteps = Math.ceil(ROADS.dodgeMax / step);
-    // A dodged point must be off the water AND sit UP THE BANK, above the lake surface. The shore shelf is carved
-    // BELOW the water plane (WORLD3D.lakeShoreDrop), so a road dropped just past the boundary drapes at/under the
-    // waterline and reads as "in the lake" in 3D even though its centreline is technically off the water (the 2D
-    // minimap can't see the height). Requiring ground ≥ waterLevel + shoreClear lifts it onto dry bank.
-    const minGround = lake.waterLevel + ROADS.shoreClear;
-    const clear = (cx: number, cz: number): boolean =>
-      !this.isOverWater(cx, cz) &&
-      this.groundHeightAt(cx, cz) >= minGround &&
-      !this.isOverWater(cx + nx * ROADS.width, cz + nz * ROADS.width) &&
-      !this.isOverWater(cx - nx * ROADS.width, cz - nz * ROADS.width);
-    if (prefer !== 0) {
-      // Sticky: search the current side to its limit first, then the other — stay on one side of the lake.
-      for (const sign of [prefer, -prefer]) {
-        for (let s = 1; s <= maxSteps; s++) {
-          const d = s * step;
-          if (clear(p.x + nx * d * sign, p.z + nz * d * sign)) return { x: p.x + nx * d * sign, z: p.z + nz * d * sign, sign };
-        }
-      }
-    } else {
-      // Fresh crossing: nearest dry shore on either side, and record which side we took (to stay sticky after).
-      for (let s = 1; s <= maxSteps; s++) {
-        const d = s * step;
-        for (const sign of [1, -1]) {
-          if (clear(p.x + nx * d * sign, p.z + nz * d * sign)) return { x: p.x + nx * d * sign, z: p.z + nz * d * sign, sign };
-        }
-      }
-    }
-    return { x: p.x, z: p.z, sign: prefer || 1 }; // no shore in range → causeway; keep a side bias for the rest of the crossing
   }
 
   // --- Base terrain ------------------------------------------------------------
@@ -1412,8 +1773,28 @@ export class World {
     }
     // Bridge valleys: raise the banks toward each deck so the bridges span valleys, not stilts.
     h = this.applyBridgeValleys(x, z, h);
+    // Helipad grade: level the ground flat under each base pad so the slab sits flush (no terrain cutoff).
+    h = this.applyPadLevels(x, z, h);
     // Province-outline mask (bounds-fit maps only): trace the real province edge. No-op on square maps.
     return this.applyOutlineFalloff(x, z, h);
+  }
+
+  /**
+   * Level the ground toward each registered base-pad height within its grade radius (see setPadLevels), so a
+   * flat helipad slab sits flush on flat ground. Fully flat inside `gradeFlatInner·r`, then a smooth (smootherstep)
+   * blend back to natural terrain at the rim. A no-op outside every pad's reach, or when no pads are registered.
+   */
+  private applyPadLevels(x: number, z: number, h: number): number {
+    if (this.padLevels.length === 0) return h;
+    for (const p of this.padLevels) {
+      const d = Math.hypot(x - p.x, z - p.z);
+      if (d >= p.r) continue;
+      const inner = p.r * HELIPAD.gradeFlatInner;
+      const t = d <= inner ? 0 : (d - inner) / (p.r - inner);
+      const w = 1 - smootherstep(t); // 1 at the centre (full flatten) → 0 at the rim (natural)
+      h = h + (p.level - h) * w;
+    }
+    return h;
   }
 
   /**

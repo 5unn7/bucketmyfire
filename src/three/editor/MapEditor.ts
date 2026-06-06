@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { World } from '../World';
-import { WORLD3D, MAPGEO, ROADS } from '../config';
+import { World, type CommunitySite } from '../World';
+import { WORLD3D, MAPGEO, ROADS, SETTLEMENT3D, BRIDGE } from '../config';
 import { getRegion, regionIds } from '../maps/registry';
-import type { Region, RegionRiver, RegionLake } from '../maps/types';
+import type { Region, RegionRiver, RegionLake, RegionRoad } from '../maps/types';
 import {
   AuthoredField,
   BUILDING_KINDS,
@@ -20,12 +20,13 @@ import { createRoadMesh } from '../meshes/road';
 import { Lake } from '../Lake';
 import { createStructure, type StructureMesh } from '../meshes/cabin';
 import { createBridge, computeBridgeSites } from '../meshes/bridges';
+import { createSettlement, createSettlementMaterial, type SettlementTier } from '../meshes/settlement';
 import { createWaterMaterial } from '../water/WaterMaterial';
 import { Ripples } from '../water/Ripples';
 import { FrameContext } from '../render/FrameContext';
 import { createSkyDome } from '../sky/SkyDome';
 import { applyAtmosphere, SKY_PRESETS, SUN_DISTANCE } from '../sky/TimeOfDay';
-import { buildEditorUI, type EditorUI } from './EditorUI';
+import { buildEditorUI, EDITOR_TOOL_KEYS, type EditorUI } from './EditorUI';
 
 /**
  * In-3D map editor (the `?editor` route). Renders the REAL map in 3D — the same `World` + the same mesh
@@ -43,7 +44,19 @@ import { buildEditorUI, type EditorUI } from './EditorUI';
  * Lazy-loaded from main.ts so none of this ships in a player's bundle.
  */
 
-type Tool = 'orbit' | 'raise' | 'lower' | 'paint-trees' | 'clear-trees' | 'building' | 'river' | 'lake' | 'select';
+type Tool =
+  | 'orbit'
+  | 'pan'
+  | 'raise'
+  | 'lower'
+  | 'paint-trees'
+  | 'clear-trees'
+  | 'building'
+  | 'erase'
+  | 'road'
+  | 'river'
+  | 'lake'
+  | 'select';
 
 /** A building instance in the editor: the data record + its live mesh, so select/move can track both. */
 interface BuildingInstance {
@@ -53,6 +66,7 @@ interface BuildingInstance {
 
 const SEGMENTS = 200; // terrain tessellation for the editor (sculpt resolution)
 const FOREST_CANDIDATES = 9000; // forest density for the preview (lighter than the game's area-scaled count)
+const ROAD_DRAW_STEP = 24; // min world-unit spacing between sampled points while painting a road
 
 export class MapEditor {
   private readonly renderer: THREE.WebGLRenderer;
@@ -74,6 +88,7 @@ export class MapEditor {
   private buildings: AuthoredBuilding[] = [];
   private rivers: RegionRiver[] = []; // base rivers + any drawn in 3D (carved into the World)
   private namedLakes: RegionLake[] = []; // base named lakes + any dug in 3D
+  private roads: RegionRoad[] = []; // hand-painted roads drawn in 3D (laid into the World as draped ribbons)
 
   // --- the live world + scene -------------------------------------------------
   private world!: World;
@@ -92,6 +107,11 @@ export class MapEditor {
   private terrainStrengthM = 40;
   private foliageStrength = 1;
   private buildingKind: BuildingKind = 'cabin';
+  private buildingDensity = 3; // 1..10 — how thickly the building brush scatters per stroke
+  private spacePan = false; // Space held → temporary pan (LEFT drag pans regardless of tool)
+  private roadDraft: { lat: number; lon: number }[] = []; // points of the road being painted (freehand drag)
+  private roadPreview: THREE.Line | null = null;
+  private roadDirty = false; // an erase removed a road this stroke → rebuild the world on pointer-up
   private stroking = false;
   private strokeDabs: ProjectedDab[] = [];
   private lastStamp: THREE.Vector2 | null = null;
@@ -163,6 +183,7 @@ export class MapEditor {
       onTerrainStrength: (v) => (this.terrainStrengthM = v),
       onFoliageStrength: (v) => (this.foliageStrength = v),
       onBuildingKind: (k) => (this.buildingKind = k),
+      onBuildingDensity: (v) => (this.buildingDensity = v),
       onToggleLabels: (on) => this.setLabelsVisible(on),
       onExport: () => this.buildExport(),
       onDeleteSelected: () => this.deleteSelected(),
@@ -185,6 +206,7 @@ export class MapEditor {
     this.buildings = (this.base.buildings ?? []).map((b) => ({ ...b }));
     this.rivers = (this.base.rivers ?? []).map((r) => clone(r)); // deep-copy so edits don't mutate the source region
     this.namedLakes = (this.base.namedLakes ?? []).map((l) => clone(l));
+    this.roads = (this.base.roads ?? []).map((r) => clone(r));
     this.selected = null;
     this.rebuildWorld();
     this.ui.setMap(id);
@@ -193,6 +215,7 @@ export class MapEditor {
         ? ''
         : `“${id}” has no geo frame yet — terrain/tree/building painting needs real lat/lon. View only.`,
     );
+    this.updateCounts();
   }
 
   /** Build the base World (no editor layers) + the whole transient scene from the current map data. */
@@ -211,7 +234,7 @@ export class MapEditor {
     // game exactly (they're cheap to rebuild and there's no live brush for them — edits are discrete).
     this.world = new World(WORLD3D.seed, {
       regionId: this.mapId,
-      region: { ...this.base, terrain: [], foliage: [], buildings: [], rivers: this.rivers, namedLakes: this.namedLakes },
+      region: { ...this.base, terrain: [], foliage: [], buildings: [], rivers: this.rivers, namedLakes: this.namedLakes, roads: this.roads },
     });
     // Bridges shape river valleys into the terrain — compute + register BEFORE the terrain mesh so the
     // banks are raised under each deck (same order as Game), then build the bridge meshes below.
@@ -253,7 +276,25 @@ export class MapEditor {
       metalness: 0,
       vertexColors: true,
     });
+    // Roads ride the bridge DECK where they cross (same as the game) — over the deck top within the bridge's
+    // local (along-flow × across-span) footprint; a low causeway over other water; the ground elsewhere.
+    const decks = bridgeSites.map((s) => ({
+      cx: s.x,
+      cz: s.z,
+      ax: s.ax,
+      az: s.az,
+      top: s.surfaceY + BRIDGE.deckClearance + BRIDGE.deckThickness,
+      halfRoad: BRIDGE.roadway / 2 + BRIDGE.deckRideMargin,
+      halfSpan: BRIDGE.span / 2 + BRIDGE.deckRideMargin,
+    }));
     const roadSurfaceAt = (x: number, z: number): number => {
+      for (const d of decks) {
+        const dx = x - d.cx;
+        const dz = z - d.cz;
+        const u = dx * d.ax + dz * d.az;
+        const v = dx * d.az - dz * d.ax;
+        if (Math.abs(u) <= d.halfRoad && Math.abs(v) <= d.halfSpan) return d.top;
+      }
       const wl = this.world.waterLevelAt(x, z);
       return wl !== null ? wl + ROADS.bridgeLift : this.world.groundHeightAt(x, z) + ROADS.lift;
     };
@@ -262,21 +303,31 @@ export class MapEditor {
     this.rebuildForest();
     for (const b of this.buildings) this.spawnBuilding(b);
 
-    // Existing structures (so the map reads complete): a depot on every base + a small cabin cluster in
-    // every forest hamlet. These are the seeded community sites, not editor-authored buildings — shown
-    // for context, never selectable/exported (the editor's own buildings are separate, via spawnBuilding).
+    // Settlement decoration — the SAME populated look the game grows (cities a dense skyline, bases a medium
+    // cluster, communities a sparse hamlet), so the editor shows the real, populated map. A depot also stands
+    // on each base for context. All non-selectable scenery — the editor's own authored buildings are separate
+    // (spawnBuilding). Merged ≈1 draw call per settlement, off a local seed (matches Game).
+    const settleMat = createSettlementMaterial();
+    const tierOf = (c: CommunitySite): SettlementTier => c.tier ?? (c.kind === 'base' ? 'base' : 'community');
     let sSeed = 4000;
     for (const c of this.world.communities) {
-      if (c.kind === 'base') {
-        this.placeContextStructure('depot', c.x, c.z, sSeed++, 0);
-      } else {
-        const count = Math.max(1, Math.min(4, c.buildings));
-        for (let k = 0; k < count; k++) {
-          const a = (k / count) * Math.PI * 2;
-          const rr = c.radius * 0.5;
-          this.placeContextStructure('cabin', c.x + Math.cos(a) * rr, c.z + Math.sin(a) * rr, sSeed++, a);
-        }
-      }
+      if (c.kind === 'base') this.placeContextStructure('depot', c.x, c.z, sSeed++, 0);
+      if (!SETTLEMENT3D.enabled) continue;
+      const tier = tierOf(c);
+      const innerHole = c.kind === 'base' ? Math.max(SETTLEMENT3D.tiers[tier].innerHole, SETTLEMENT3D.baseInnerHole) : SETTLEMENT3D.tiers[tier].innerHole;
+      const g = createSettlement(
+        {
+          x: c.x,
+          z: c.z,
+          tier,
+          groundAt: (x, z) => this.surfaceAt(x, z),
+          isWater: (x, z) => this.world.isOverWater(x, z),
+          seed: (Math.floor(c.x) * 73856093) ^ (Math.floor(c.z) * 19349663),
+          innerHole,
+        },
+        settleMat,
+      );
+      if (g) this.add(g);
     }
 
     // Bridges where roads/towns cross the rivers (truss + deck), built from the sites computed above.
@@ -307,7 +358,11 @@ export class MapEditor {
       s.position.set(x, this.surfaceAt(x, z) + y, z);
       this.labelsGroup.add(s);
     };
-    for (const c of this.world.communities) add(c.name, c.x, c.z, c.kind === 'base' ? 26 : 18, c.kind === 'base' ? '#9ad1ff' : '#ffe08a');
+    for (const c of this.world.communities) {
+      const isBase = c.kind === 'base';
+      const isCity = c.kind === 'city';
+      add(c.name, c.x, c.z, isBase ? 26 : isCity ? 34 : 18, isBase ? '#9ad1ff' : isCity ? '#dfe9f5' : '#ffe08a');
+    }
     for (const l of this.world.lakes) if (l.name) add(l.name, l.x, l.z, 14, '#bfe6ff');
     for (const lm of this.world.landmarks()) add(lm.name, lm.x, lm.z, lm.kind === 'city' ? 30 : 20, '#dfe9f5');
     for (const r of this.rivers) {
@@ -397,12 +452,16 @@ export class MapEditor {
 
   private setTool(t: Tool): void {
     if (this.tool === 'river' && t !== 'river' && this.riverDraft.length) this.finishRiver(); // commit a pending river
+    if (this.tool === 'road' && t !== 'road' && this.roadDraft.length) this.finishRoad(); // commit a pending road
     this.tool = t;
-    // Left mouse rotates only in Orbit; otherwise it's the tool action (right-drag still rotates).
-    this.controls.mouseButtons.LEFT = t === 'orbit' ? THREE.MOUSE.ROTATE : null;
+    // LEFT mouse: rotates in Orbit, pans in Pan, drives the active tool otherwise (right-drag always rotates).
+    this.controls.mouseButtons.LEFT = t === 'orbit' ? THREE.MOUSE.ROTATE : t === 'pan' ? THREE.MOUSE.PAN : null;
     this.brushRing.visible = false;
     this.ui.setTool(t);
     if (t === 'river') this.ui.setNotice('Drawing river — click to drop points · double-click / Enter to finish · Esc cancel');
+    else if (t === 'road') this.ui.setNotice('Painting road — left-drag to draw · release to lay it · Esc cancel');
+    else if (t === 'pan') this.ui.setNotice('Pan — left-drag slides the map · wheel zooms (Space+drag pans in any tool)');
+    else if (t === 'erase') this.ui.setNotice('Erase — drag over buildings or painted roads to remove them');
     else this.ui.setNotice(this.world.hasGeo ? '' : `“${this.mapId}” has no geo frame — view only.`);
     if (t !== 'select') this.select(null);
   }
@@ -418,6 +477,10 @@ export class MapEditor {
   private isFoliageTool(): boolean {
     return this.tool === 'paint-trees' || this.tool === 'clear-trees';
   }
+  /** Radius-based tools that show the cursor brush ring (terrain, foliage, building scatter, eraser). */
+  private isBrushTool(): boolean {
+    return this.isTerrainTool() || this.isFoliageTool() || this.tool === 'building' || this.tool === 'erase';
+  }
   private brushUnits(): number {
     return this.brushKm * this.world.unitsPerKm;
   }
@@ -430,10 +493,30 @@ export class MapEditor {
     el.addEventListener('pointermove', this.onMove);
     window.addEventListener('pointerup', this.onUp);
     window.addEventListener('keydown', this.onKey);
+    window.addEventListener('keydown', this.onSpaceDown);
+    window.addEventListener('keyup', this.onSpaceUp);
     el.addEventListener('dblclick', () => {
       if (this.tool === 'river') this.finishRiver();
+      else if (this.tool === 'road') this.finishRoad();
     });
   }
+
+  /** Hold Space → temporary pan: LEFT-drag pans regardless of the active tool (released restores the tool). */
+  private onSpaceDown = (e: KeyboardEvent): void => {
+    if (e.code !== 'Space' || this.spacePan) return;
+    const tag = (e.target as HTMLElement)?.tagName;
+    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+    e.preventDefault();
+    this.spacePan = true;
+    this.controls.mouseButtons.LEFT = THREE.MOUSE.PAN;
+    this.brushRing.visible = false;
+  };
+  private onSpaceUp = (e: KeyboardEvent): void => {
+    if (e.code !== 'Space' || !this.spacePan) return;
+    this.spacePan = false;
+    this.controls.mouseButtons.LEFT =
+      this.tool === 'orbit' ? THREE.MOUSE.ROTATE : this.tool === 'pan' ? THREE.MOUSE.PAN : null;
+  };
 
   /** Raycast the terrain under a pointer event; returns the world hit (into `this.ground`) or null. */
   private hitTerrain(e: PointerEvent): THREE.Vector3 | null {
@@ -447,16 +530,12 @@ export class MapEditor {
   }
 
   private onDown = (e: PointerEvent): void => {
-    if (e.button !== 0 || this.tool === 'orbit') return; // left button only; orbit handled by controls
+    if (e.button !== 0 || this.tool === 'orbit' || this.tool === 'pan' || this.spacePan) return; // controls own these
     if (!this.world.hasGeo && this.tool !== 'select') return;
     const hit = this.hitTerrain(e);
 
     if (this.tool === 'select') {
       this.pickBuilding(e);
-      return;
-    }
-    if (this.tool === 'building') {
-      if (hit) this.placeBuilding(hit.x, hit.z);
       return;
     }
     if (this.tool === 'lake') {
@@ -465,6 +544,22 @@ export class MapEditor {
     }
     if (this.tool === 'river') {
       if (hit) this.addRiverPoint(hit.x, hit.z);
+      return;
+    }
+    if (this.tool === 'road') {
+      if (!hit) return;
+      this.stroking = true;
+      this.controls.enabled = false;
+      this.roadDraft = [this.world.toLatLon(hit.x, hit.z)];
+      this.updateRoadPreview();
+      return;
+    }
+    if (this.tool === 'building' || this.tool === 'erase') {
+      this.stroking = true;
+      this.lastStamp = null;
+      this.roadDirty = false;
+      this.controls.enabled = false;
+      if (hit) (this.tool === 'building' ? this.scatterBuildings(hit.x, hit.z) : this.eraseAtBrush(hit.x, hit.z));
       return;
     }
     if (!hit || (!this.isTerrainTool() && !this.isFoliageTool())) return;
@@ -478,8 +573,8 @@ export class MapEditor {
 
   private onMove = (e: PointerEvent): void => {
     const hit = this.hitTerrain(e);
-    // Brush ring preview (terrain/foliage tools).
-    if (hit && (this.isTerrainTool() || this.isFoliageTool())) {
+    // Brush ring preview (radius tools: terrain / foliage / building / erase).
+    if (hit && this.isBrushTool() && !this.spacePan) {
       this.brushRing.visible = true;
       this.brushRing.position.set(hit.x, hit.y + 1, hit.z);
       this.brushRing.scale.setScalar(this.brushUnits());
@@ -488,8 +583,20 @@ export class MapEditor {
     }
 
     if (this.stroking && hit) {
+      if (this.tool === 'road') {
+        const last = this.roadDraft[this.roadDraft.length - 1];
+        const lp = last ? this.world.toWorld(last.lat, last.lon) : null;
+        if (!lp || Math.hypot(lp.x - hit.x, lp.z - hit.z) > ROAD_DRAW_STEP) {
+          this.roadDraft.push(this.world.toLatLon(hit.x, hit.z));
+          this.updateRoadPreview();
+        }
+        return;
+      }
       const moved = !this.lastStamp || this.lastStamp.distanceTo(new THREE.Vector2(hit.x, hit.z)) > this.brushUnits() * 0.4;
-      if (moved) this.stamp(hit.x, hit.z);
+      if (!moved) return;
+      if (this.tool === 'building') this.scatterBuildings(hit.x, hit.z);
+      else if (this.tool === 'erase') this.eraseAtBrush(hit.x, hit.z);
+      else this.stamp(hit.x, hit.z);
     } else if (this.selected && (e.buttons & 1) && this.tool === 'select' && hit) {
       // Drag the selected building along the ground.
       this.selected.mesh.group.position.set(hit.x, this.surfaceAt(hit.x, hit.z), hit.z);
@@ -503,7 +610,18 @@ export class MapEditor {
     this.controls.enabled = true;
     if (!this.stroking) return;
     this.stroking = false;
-    this.commitStroke();
+    if (this.tool === 'road') {
+      this.finishRoad();
+    } else if (this.tool === 'building') {
+      // buildings were scattered live during the stroke — nothing to commit
+    } else if (this.tool === 'erase') {
+      if (this.roadDirty) {
+        this.roadDirty = false;
+        this.rebuildWorld(); // an authored road was erased → re-lay the world without it
+      }
+    } else {
+      this.commitStroke();
+    }
   };
 
   /** Add one brush dab at world XZ and live-preview it (terrain re-displaces; foliage waits for commit). */
@@ -540,17 +658,83 @@ export class MapEditor {
       this.foliageField = this.fieldFrom(this.foliageDabs, (d) => d.density);
       this.rebuildForest();
     }
-    this.ui.setCounts(this.terrainDabs.length, this.foliageDabs.length, this.buildings.length);
+    this.updateCounts();
   }
 
   // --- buildings --------------------------------------------------------------
 
-  private placeBuilding(x: number, z: number): void {
-    const g = this.world.toLatLon(x, z);
-    const ref: AuthoredBuilding = { lat: g.lat, lon: g.lon, kind: this.buildingKind, rotationDeg: 0 };
-    this.buildings.push(ref);
-    this.select(this.spawnBuilding(ref));
-    this.ui.setCounts(this.terrainDabs.length, this.foliageDabs.length, this.buildings.length);
+  /** Push the current counts to the UI (terrain dabs · foliage dabs · authored buildings · authored roads). */
+  private updateCounts(): void {
+    this.ui.setCounts(this.terrainDabs.length, this.foliageDabs.length, this.buildings.length, this.roads.length);
+  }
+
+  /**
+   * The building BRUSH: scatter `buildingDensity` structures within the brush circle each stamp, jittered and
+   * rejected if they land on water or within a min-spacing of an existing building (so denser = tighter packing,
+   * never stacked). Each is spawned live (cheap individual meshes — no world rebuild) and recorded in the
+   * authored buildings layer. A random yaw gives the cluster variety.
+   */
+  private scatterBuildings(cx: number, cz: number): void {
+    this.lastStamp = new THREE.Vector2(cx, cz);
+    const r = this.brushUnits();
+    const minSep = r / (this.buildingDensity + 1);
+    for (let i = 0; i < this.buildingDensity; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const d = Math.sqrt(Math.random()) * r;
+      const x = cx + Math.cos(a) * d;
+      const z = cz + Math.sin(a) * d;
+      if (this.world.isOverWater(x, z)) continue; // don't drop a cabin into a lake
+      let tooClose = false;
+      for (const b of this.buildingInstances) {
+        const p = b.mesh.group.position;
+        if (Math.hypot(p.x - x, p.z - z) < minSep) {
+          tooClose = true;
+          break;
+        }
+      }
+      if (tooClose) continue;
+      const g = this.world.toLatLon(x, z);
+      const ref: AuthoredBuilding = { lat: g.lat, lon: g.lon, kind: this.buildingKind, rotationDeg: Math.round(Math.random() * 360) };
+      this.buildings.push(ref);
+      this.spawnBuilding(ref);
+    }
+    this.updateCounts();
+  }
+
+  /**
+   * The ERASER: remove every authored building under the brush (live — cheap) and flag any authored road with a
+   * vertex under the brush for removal (a road carves the terrain, so its removal defers to a single rebuild on
+   * pointer-up via `roadDirty`). Only EDITOR-authored data is erasable; the generated highway network is derived
+   * from the anchors and is left intact.
+   */
+  private eraseAtBrush(cx: number, cz: number): void {
+    this.lastStamp = new THREE.Vector2(cx, cz);
+    const r = this.brushUnits();
+    const survivors: BuildingInstance[] = [];
+    for (const b of this.buildingInstances) {
+      const p = b.mesh.group.position;
+      if (Math.hypot(p.x - cx, p.z - cz) <= r) {
+        this.scene.remove(b.mesh.group);
+        disposeObject(b.mesh.group);
+        this.buildings = this.buildings.filter((x) => x !== b.ref);
+        const ti = this.transient.indexOf(b.mesh.group);
+        if (ti >= 0) this.transient.splice(ti, 1);
+        if (this.selected === b) this.select(null);
+      } else {
+        survivors.push(b);
+      }
+    }
+    this.buildingInstances = survivors;
+    const before = this.roads.length;
+    this.roads = this.roads.filter(
+      (rd) =>
+        !rd.points.some((pt) => {
+          const w = this.world.toWorld(pt.lat, pt.lon);
+          return Math.hypot(w.x - cx, w.z - cz) <= r;
+        }),
+    );
+    if (this.roads.length !== before) this.roadDirty = true;
+    this.updateCounts();
   }
 
   private pickBuilding(e: PointerEvent): void {
@@ -580,7 +764,7 @@ export class MapEditor {
     this.buildings = this.buildings.filter((b) => b !== inst.ref);
     this.buildingInstances = this.buildingInstances.filter((b) => b !== inst);
     this.select(null);
-    this.ui.setCounts(this.terrainDabs.length, this.foliageDabs.length, this.buildings.length);
+    this.updateCounts();
   }
 
   // --- rivers + lakes ---------------------------------------------------------
@@ -622,7 +806,51 @@ export class MapEditor {
     if (draft.length < 2) return; // too short → discard
     this.rivers.push({ name: `River ${this.rivers.length + 1}`, width: 14, points: draft });
     this.rebuildWorld();
-    this.ui.setCounts(this.terrainDabs.length, this.foliageDabs.length, this.buildings.length);
+    this.updateCounts();
+  }
+
+  // --- roads (painted) --------------------------------------------------------
+
+  /** Live preview of the road being painted — a bright polyline floating just over the surface. */
+  private updateRoadPreview(): void {
+    if (this.roadPreview) {
+      this.scene.remove(this.roadPreview);
+      disposeObject(this.roadPreview);
+      this.roadPreview = null;
+    }
+    if (this.roadDraft.length < 1) return;
+    const pts = this.roadDraft.map((g) => {
+      const p = this.world.toWorld(g.lat, g.lon);
+      return new THREE.Vector3(p.x, this.surfaceAt(p.x, p.z) + 2, p.z);
+    });
+    const geo = new THREE.BufferGeometry().setFromPoints(pts);
+    const mat = new THREE.LineBasicMaterial({ color: 0xffd97a, depthTest: false, linewidth: 2 });
+    this.roadPreview = new THREE.Line(geo, mat);
+    this.roadPreview.renderOrder = 998;
+    this.scene.add(this.roadPreview);
+  }
+
+  private finishRoad(): void {
+    const draft = this.roadDraft;
+    this.roadDraft = [];
+    if (this.roadPreview) {
+      this.scene.remove(this.roadPreview);
+      disposeObject(this.roadPreview);
+      this.roadPreview = null;
+    }
+    if (draft.length < 2) return; // too short → discard
+    this.roads.push({ name: `Road ${this.roads.length + 1}`, points: draft });
+    this.rebuildWorld(); // World lays it as a draped ribbon (same mesh as a generated road)
+    this.updateCounts();
+  }
+
+  private cancelRoad(): void {
+    this.roadDraft = [];
+    if (this.roadPreview) {
+      this.scene.remove(this.roadPreview);
+      disposeObject(this.roadPreview);
+      this.roadPreview = null;
+    }
   }
 
   private digLake(x: number, z: number): void {
@@ -633,12 +861,13 @@ export class MapEditor {
   }
 
   private clearLayers(): void {
-    if (!confirm('Clear ALL painted terrain, foliage and buildings for this map? (does not touch other layers)')) return;
+    if (!confirm('Clear ALL painted terrain, foliage, buildings and roads for this map? (does not touch other layers)')) return;
     this.terrainDabs = [];
     this.foliageDabs = [];
     this.buildings = [];
+    this.roads = [];
     this.rebuildWorld();
-    this.ui.setCounts(0, 0, 0);
+    this.updateCounts();
   }
 
   private onKey = (e: KeyboardEvent): void => {
@@ -648,11 +877,14 @@ export class MapEditor {
       else this.cancelRiver();
       return;
     }
-    const map: Record<string, Tool> = {
-      '1': 'orbit', '2': 'raise', '3': 'lower', '4': 'paint-trees', '5': 'clear-trees',
-      '6': 'building', '7': 'river', '8': 'lake', '9': 'select',
-    };
-    if (map[e.key]) this.setTool(map[e.key]);
+    if (this.tool === 'road' && (e.key === 'Enter' || e.key === 'Escape')) {
+      if (e.key === 'Enter') this.finishRoad();
+      else this.cancelRoad();
+      return;
+    }
+    if (e.key === ' ') return; // Space is the pan modifier (handled by onSpaceDown/Up), not a tool key
+    const tool = EDITOR_TOOL_KEYS.find((t) => t.key === e.key.toLowerCase());
+    if (tool) this.setTool(tool.id);
     else if (e.key === '[') this.ui.nudgeBrush(-2);
     else if (e.key === ']') this.ui.nudgeBrush(2);
     else if (e.key === 'Delete' || e.key === 'Backspace') this.deleteSelected();
@@ -677,6 +909,7 @@ export class MapEditor {
       buildings: this.buildings,
       rivers: this.rivers,
       namedLakes: this.namedLakes,
+      roads: this.roads,
     });
   }
 
@@ -736,14 +969,15 @@ function buildRegionsExport(
     buildings: readonly AuthoredBuilding[];
     rivers: readonly RegionRiver[];
     namedLakes: readonly RegionLake[];
+    roads: readonly RegionRoad[];
   },
 ): string {
   const NAME = mapId.toUpperCase().replace(/-/g, '_');
   const n = (v: number, d = 4) => parseFloat(v.toFixed(d));
   const ll = (p: { lat: number; lon: number }) => `{ lat: ${n(p.lat)}, lon: ${n(p.lon)} }`;
   let out = `// Map editor (?editor) export for "${mapId}". Paste each const into the region's file and attach it to\n`;
-  out += `// the Region object (terrain/foliage/buildings/rivers/namedLakes: ${NAME}_*). A const with no matching\n`;
-  out += `// Region field trips noUnusedLocals → build fails, like SASKATCHEWAN_RIVERS. namedLakes/rivers are the\n`;
+  out += `// the Region object (terrain/foliage/buildings/rivers/namedLakes/roads: ${NAME}_*). A const with no matching\n`;
+  out += `// Region field trips noUnusedLocals → build fails, like SASKATCHEWAN_RIVERS. namedLakes/rivers/roads are the\n`;
   out += `// FULL list (existing + new), so they replace the map's current consts; outlines are preserved.\n\n`;
   out += `const ${NAME}_TERRAIN: readonly TerrainDab[] = [\n`;
   out += data.terrain.map((d) => `  { lat: ${n(d.lat)}, lon: ${n(d.lon)}, radiusKm: ${n(d.radiusKm, 2)}, deltaM: ${n(d.deltaM, 1)} },`).join('\n');
@@ -770,6 +1004,17 @@ function buildRegionsExport(
     }
     return `  { ${parts.join(', ')} },`;
   }).join('\n');
+  out += `\n];\n\n`;
+  out += `const ${NAME}_ROADS: readonly RegionRoad[] = [\n`;
+  out += data.roads
+    .map((r) => {
+      const parts: string[] = [];
+      if (r.name != null) parts.push(`name: '${r.name}'`);
+      if (r.width != null) parts.push(`width: ${n(r.width, 0)}`);
+      parts.push(`points: [${r.points.map(ll).join(', ')}]`);
+      return `  { ${parts.join(', ')} },`;
+    })
+    .join('\n');
   out += `\n];\n`;
   return out;
 }

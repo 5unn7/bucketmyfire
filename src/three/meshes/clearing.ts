@@ -18,10 +18,12 @@ export function createYardPatch(
   cz: number,
   groundHeightAt: (x: number, z: number) => number,
   material: THREE.Material,
+  radius: number = COMMUNITIES.yardRadius, // per-settlement: a city clears a wide pad, a hamlet a small one
 ): THREE.Mesh {
-  const R = COMMUNITIES.yardRadius;
+  const R = radius;
   const inner = R * COMMUNITIES.yardInner;
-  const rings = 5;
+  // More rings on a big city pad so the dirt still drapes the (gentle) terrain instead of faceting across it.
+  const rings = R > 80 ? 8 : 5;
   const seg = 40;
   const lift = 0.12;
   const base = new THREE.Color(COMMUNITIES.yardColor);

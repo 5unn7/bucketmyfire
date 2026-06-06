@@ -122,6 +122,19 @@ export interface RegionRiver {
 }
 
 /**
+ * A hand-painted ROAD pinned as a real lat/lon polyline (authored in the in-3D map editor). Unlike the
+ * auto-generated highway network (which World derives from anchors via an MST), an authored road follows the
+ * EXACT path the user painted. World projects each point and lays it as one more draped `RoadRuntime` — so it
+ * rides the terrain, causeways/ bridges water, and renders with the same road mesh as the generated roads.
+ * Uses no rng, so adding one never perturbs the seeded world. The auto-road network is unaffected.
+ */
+export interface RegionRoad {
+  name?: string; // optional designation drawn on the radar; omit → drawn from the region's highway name pool
+  width?: number; // HALF-width of the asphalt ribbon in world units; omit → ROADS.width default
+  points: readonly LatLon[]; // ≥2 real lat/lon points along the road's course, in order
+}
+
+/**
  * A map's real-world geographic frame: the lat/lon bounding box the playfield represents, plus the
  * province/region outline drawn on the radar. World scales the box's N–S extent to `MAPGEO.fill` of
  * the square world height and projects everything inside it; the outline (real corners, projected the
@@ -151,10 +164,14 @@ export interface Region {
   names: RegionNames;
   anchors?: readonly MapAnchor[]; // bases + communities at REAL lat/lon (placement layer, docs/MAPS.md)
   namedLakes?: readonly RegionLake[]; // iconic geographic lakes at REAL coords (far-north + south reference water)
+  noLakeZones?: readonly { lat: number; lon: number; radiusKm: number }[]; // clear NAMELESS procedural ponds whose
+  // centre falls inside (named scoop/geographic lakes are never touched) — removes a stray pond in a stretch that
+  // should read as open land/river. Applied AFTER the seeded scatter, so every other lake stays byte-identical.
   landmarks?: readonly RegionPlace[]; // decorative place labels at REAL coords (far-north + southern reference points)
   highwayRoutes?: readonly HighwayRoute[]; // real highway corridors through real towns (laid before the MST)
   uplands?: readonly RegionUpland[]; // localized massifs (e.g. Cypress Hills) added to baseHeight as relief
   rivers?: readonly RegionRiver[]; // authored named rivers (real lat/lon polylines) laid as carved channels
+  roads?: readonly RegionRoad[]; // hand-painted roads (real lat/lon polylines) laid as draped ribbons (map editor)
   terrain?: readonly TerrainDab[]; // hand-painted raise/lower brush dabs (map editor → World.baseHeight offset)
   foliage?: readonly FoliageDab[]; // hand-painted tree-density brush dabs (map editor → forest scatter bias)
   buildings?: readonly AuthoredBuilding[]; // hand-placed decorative structures (map editor → Game meshes)

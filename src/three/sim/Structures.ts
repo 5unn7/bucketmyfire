@@ -35,7 +35,7 @@ export interface StructureState {
 export interface CommunityInput {
   x: number;
   z: number;
-  kind: 'base' | 'town';
+  kind: 'base' | 'town' | 'city'; // 'city' sites are never built as Structures (decoration only) — ignored here
   radius: number;
   buildings: number;
   name?: string; // display (pinned) place name — used to label the threatened structure on the HUD

@@ -108,6 +108,27 @@
   }
   .modal .actions { display: flex; gap: 8px; padding: 0 14px 14px; }
   .danger { color: #ff6b6b; }
+  /* paint / pan */
+  :root { --road: #c8c89a; }
+  canvas.panning  { cursor: grab    !important; }
+  canvas.pan-active { cursor: grabbing !important; }
+  canvas.painting { cursor: none; }
+  button.active-mode { background: var(--accent) !important; color: #05121d !important; border-color: var(--accent) !important; }
+  #brush-cursor {
+    position: absolute; pointer-events: none; border-radius: 50%;
+    display: none; transform: translate(-50%,-50%);
+    border: 1.5px solid rgba(255,255,255,0.5); background: rgba(255,255,255,0.04);
+  }
+  #mode-banner.bld   { background: rgba(111,207,111,0.18); border-color: var(--base);    color: #d0f5d0; }
+  #mode-banner.road  { background: rgba(200,200,100,0.16); border-color: var(--road);    color: #ededc0; }
+  #mode-banner.erase { background: rgba(255,80,80,0.14);   border-color: #ff6b6b;        color: #ffb8b8; }
+  .brush-row { display:flex; align-items:center; gap:8px; margin:5px 0; color:var(--muted); font-size:12px; }
+  .brush-row label { flex:0 0 72px; }
+  .brush-row input[type=range] { flex:1; min-width:0; }
+  .brush-row .val { flex:0 0 34px; text-align:right; color:var(--text); font-variant-numeric:tabular-nums; }
+  .brush-row select { flex:1; min-width:0; background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:5px; padding:3px 5px; font:inherit; }
+  .ptool-strip { display:flex; gap:5px; margin-bottom:8px; }
+  .ptool-strip button { flex:1; padding:4px 0; font-size:11px; }
 </style>
 </head>
 <body>
@@ -121,6 +142,7 @@
     <label><input type="checkbox" id="t-landmarks" checked> landmarks</label>
     <label><input type="checkbox" id="t-highways" checked> highways</label>
     <label><input type="checkbox" id="t-rivers" checked> rivers</label>
+    <label><input type="checkbox" id="t-roads" checked> roads</label>
     <label><input type="checkbox" id="t-uplands" checked> uplands</label>
     <label><input type="checkbox" id="t-labels" checked> labels</label>
   </div>
@@ -128,8 +150,14 @@
   <div class="toolbar">
     <button id="add-base">＋ Base</button>
     <button id="add-lake">＋ Lake</button>
+    <button id="add-upland">＋ Upland</button>
+    <button id="add-landmark">＋ Landmark</button>
     <button id="add-river">＋ River</button>
     <button id="add-highway">＋ Highway</button>
+    <div class="sep"></div>
+    <button id="mode-bld" title="Brush-paint buildings (hold drag)">🏠 Bldgs</button>
+    <button id="mode-road-paint" title="Freehand-paint roads (hold drag)">── Road</button>
+    <button id="mode-erase" title="Erase buildings &amp; roads under brush">⌫ Erase</button>
     <div class="sep"></div>
     <button id="fit">Fit</button>
     <button id="reset">Reset all</button>
@@ -138,10 +166,41 @@
 </header>
 
 <main>
-  <div id="stage"><canvas id="cv"></canvas><div id="mode-banner"></div></div>
+  <div id="stage"><canvas id="cv"></canvas><div id="brush-cursor"></div><div id="mode-banner"></div></div>
   <aside>
     <h2>Inspector</h2>
     <div id="inspector" class="card"><div class="empty">Click a marker or lake to edit it.</div></div>
+
+    <h2>Paint brush</h2>
+    <div class="card">
+      <div class="ptool-strip">
+        <button id="ptool-select" class="active-mode">↖ Select</button>
+        <button id="ptool-bld">🏠 Bldgs</button>
+        <button id="ptool-road">── Road</button>
+        <button id="ptool-erase">⌫ Erase</button>
+      </div>
+      <div class="brush-row">
+        <label>size</label>
+        <input type="range" id="brush-size" min="20" max="300" value="80">
+        <span class="val" id="brush-size-val">80u</span>
+      </div>
+      <div class="brush-row" id="density-row">
+        <label>density</label>
+        <input type="range" id="brush-density" min="1" max="10" value="3" step="1">
+        <span class="val" id="brush-density-val">3</span>
+      </div>
+      <div class="brush-row" id="kind-row">
+        <label>kind</label>
+        <select id="brush-kind">
+          <option value="community">community</option>
+          <option value="base">base</option>
+          <option value="town">landmark · town</option>
+          <option value="city">landmark · city</option>
+          <option value="named-lake">named lake</option>
+        </select>
+      </div>
+      <p class="help" style="margin:8px 0 0"><b>Space+drag</b> or <b>middle mouse</b> always pans.</p>
+    </div>
 
     <h2>Legend</h2>
     <div class="card legend">
@@ -152,6 +211,7 @@
       <div><span class="dot" style="background:var(--upland)"></span> Upland / massif</div>
       <div><span class="dot" style="background:var(--river)"></span> River (authored polyline)</div>
       <div><span class="dot" style="background:var(--highway)"></span> Highway (route through anchors)</div>
+      <div><span class="dot" style="background:var(--road);border-radius:2px"></span> Painted road</div>
     </div>
 
     <h2>How to use</h2>
@@ -162,7 +222,10 @@
       <p><b>Freeform a lake:</b> select it → <b>Convert to editable outline</b>. Drag the ● points to shape the shore, double-click a ● to delete, double-click an edge to add one. <b>Revert to ellipse</b> undoes it.</p>
       <p><b>Add a river:</b> <kbd>＋ River</kbd>, then click to drop points along its course; <kbd>Enter</kbd> / double-click finishes. Drag a ● to adjust, double-click a ● to delete, set <b>width</b> in the inspector.</p>
       <p><b>Connect a highway:</b> <kbd>＋ Highway</kbd>, then click bases/towns in order; <kbd>Enter</kbd> finishes. Select an existing highway to re-route it (✕ a stop, or <b>Connect anchors</b> to extend).</p>
-      <p><b>Pan:</b> drag empty space. <b>Zoom:</b> mouse wheel. <kbd>Del</kbd> removes the selected item. <kbd>Esc</kbd> deselects / finishes.</p>
+      <p><b>Paint buildings:</b> pick <b>🏠 Bldgs</b>, hold-drag over the map. Adjust density &amp; kind in the brush panel.</p>
+      <p><b>Paint road:</b> pick <b>── Road</b>, hold-drag a freehand stroke; release to finish.</p>
+      <p><b>Erase:</b> pick <b>⌫ Erase</b>, drag over any building or road to remove it.</p>
+      <p><b>Pan:</b> drag empty space, or hold <kbd>Space</kbd>+drag anywhere, or middle-mouse drag. <b>Zoom:</b> mouse wheel. <kbd>Del</kbd> removes the selected item. <kbd>Esc</kbd> deselects / finishes.</p>
       <p class="muted">Projection, world scale (2100u) and the lake area→radius band match the game exactly. Rivers aren't in regions.ts yet — Export emits a paste-ready block + the interface to wire them in.</p>
     </div>
   </aside>
@@ -278,11 +341,19 @@ const DEFAULTS = {
   // Authored rivers — NOT in regions.ts yet (today's in-game streams are procedural, World.makeRivers).
   // Draw them here; Export emits a paste-ready SASKATCHEWAN_RIVERS block + RegionRiver interface to wire up.
   rivers: [],
+  roads: [],  // freehand painted roads
 };
 
 // deep clone so "Reset all" can restore originals
 const clone = (o) => JSON.parse(JSON.stringify(o));
 let state = clone(DEFAULTS);
+
+// Brush / paint state
+let brush = { radius: 80, density: 3, kind: 'community' };
+let lastPlantedPos = null;  // {wx,wz} world — throttle building paint
+let roadStroke = null;       // active painted road being drawn
+let spaceDown = false;       // Space held → temporary pan override
+let brushCursorEl = null;    // set on boot
 
 /* ===================================================================
    Projection — identical to World.project / lakeRadiusFromArea
@@ -393,6 +464,7 @@ function readToggles() {
   T.landmarks = document.getElementById('t-landmarks').checked;
   T.highways = document.getElementById('t-highways').checked;
   T.rivers = document.getElementById('t-rivers').checked;
+  T.roads  = document.getElementById('t-roads').checked;
   T.uplands = document.getElementById('t-uplands').checked;
   T.labels = document.getElementById('t-labels').checked;
 }
@@ -409,6 +481,7 @@ function draw() {
   if (T.grid) drawGrid();
   if (T.province) drawProvince();
   if (T.rivers) drawRivers();
+  if (T.roads)  drawRoads();
   if (T.highways) drawHighways();
   if (T.lakes) drawLakes();
   if (T.uplands) drawUplands();
@@ -564,6 +637,24 @@ function drawRivers() {
       ctx.strokeText(r.name, mid.x, mid.y - w / 2 - 4);
       ctx.fillText(r.name, mid.x, mid.y - w / 2 - 4);
     }
+  }
+  ctx.restore();
+}
+
+function drawRoads() {
+  ctx.save();
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const allRoads = [...state.roads, ...(roadStroke && !state.roads.includes(roadStroke) ? [roadStroke] : [])];
+  for (const r of allRoads) {
+    const pts = r.pts.map(p => { const w = project(p.lat, p.lon); return W2S(w.x, w.z); });
+    if (pts.length < 2) continue;
+    const lw = Math.max(1.5, (r.width || 6) * view.scale);
+    smoothPath(pts);
+    ctx.strokeStyle = 'rgba(200,200,100,0.25)'; ctx.lineWidth = lw + 3; ctx.stroke();
+    smoothPath(pts);
+    ctx.strokeStyle = getCss('--road') || '#c8c89a';
+    ctx.lineWidth = Math.max(1, lw * 0.55);
+    ctx.setLineDash([5, 4]); ctx.stroke(); ctx.setLineDash([]);
   }
   ctx.restore();
 }
@@ -909,6 +1000,31 @@ cv.addEventListener('pointerdown', (e) => {
   cv.setPointerCapture(e.pointerId);
   const { x: sx, y: sy } = localPt(e);
 
+  // Space-key or middle-mouse → always pan, regardless of mode
+  if (spaceDown || e.button === 1) {
+    drag = { mode: 'pan', sx, sy, ox: view.ox, oy: view.oy, moved: false, spaceOverride: true };
+    cv.classList.add('pan-active');
+    return;
+  }
+
+  // PAINT MODES
+  if (mode === 'paint-buildings') {
+    drag = { mode: 'paint-bld' };
+    lastPlantedPos = null;
+    paintBuildings(sx, sy);
+    return;
+  }
+  if (mode === 'paint-road') {
+    drag = { mode: 'paint-road' };
+    startRoadStroke(sx, sy);
+    return;
+  }
+  if (mode === 'erase') {
+    drag = { mode: 'erase' };
+    eraseAtBrush(sx, sy);
+    return;
+  }
+
   // DRAW MODES: press starts a possible pan; a click (no drag) adds a point / picks an anchor
   if (mode === 'draw-river' || mode === 'connect-highway') {
     drag = { mode: 'pan', sx, sy, ox: view.ox, oy: view.oy, moved: false, draw: mode };
@@ -958,7 +1074,12 @@ cv.addEventListener('pointermove', (e) => {
   document.getElementById('f-world').textContent = `${ww.x.toFixed(0)}, ${ww.z.toFixed(0)} u`;
   document.getElementById('f-geo').textContent = `${g.lat.toFixed(3)}°N, ${Math.abs(g.lon).toFixed(3)}°W`;
 
+  updateBrushCursor(sx, sy);
+
   if (!drag) return;
+  if (drag.mode === 'paint-bld')  { paintBuildings(sx, sy); return; }
+  if (drag.mode === 'paint-road') { appendRoadPoint(sx, sy); return; }
+  if (drag.mode === 'erase')      { eraseAtBrush(sx, sy); return; }
   if (drag.mode === 'pan') {
     view.ox = drag.ox + (sx - drag.sx);
     view.oy = drag.oy + (sy - drag.sy);
@@ -1008,18 +1129,21 @@ cv.addEventListener('pointermove', (e) => {
 });
 
 cv.addEventListener('pointerup', () => {
-  if (drag && drag.draw && !drag.moved) {
+  if (drag && drag.mode === 'paint-road') { finishRoadStroke(); }
+  else if (drag && drag.mode === 'paint-bld') { lastPlantedPos = null; }
+  else if (drag && drag.draw && !drag.moved) {
     if (drag.draw === 'draw-river') addRiverPoint(drag.sx, drag.sy);
     else if (drag.draw === 'connect-highway') addHighwayAnchor(drag.sx, drag.sy);
-  } else if (drag && drag.mode === 'pan' && !drag.moved && mode === 'select') {
-    // a click on empty space deselects
+  } else if (drag && drag.mode === 'pan' && !drag.moved && !drag.spaceOverride && mode === 'select') {
     selected = null;
     renderInspector();
     draw();
   }
   drag = null;
-  cv.classList.remove('dragging');
+  cv.classList.remove('dragging', 'pan-active');
 });
+
+cv.addEventListener('pointerleave', () => { updateBrushCursor(null, null); });
 
 cv.addEventListener('dblclick', (e) => {
   if (mode !== 'select') { finishDraft(); return; }
@@ -1078,7 +1202,18 @@ function addHighwayAnchor(sx, sy) {
 }
 function setMode(m) {
   mode = m;
-  cv.classList.toggle('drawing', m !== 'select');
+  cv.classList.toggle('drawing', m === 'draw-river' || m === 'connect-highway');
+  cv.classList.toggle('painting', ['paint-buildings', 'paint-road', 'erase'].includes(m));
+  if (!['paint-buildings', 'paint-road', 'erase'].includes(m)) updateBrushCursor(null, null);
+  // toolbar paint buttons
+  ['mode-bld', 'mode-road-paint', 'mode-erase'].forEach(id => document.getElementById(id)?.classList.remove('active-mode'));
+  if (m === 'paint-buildings') document.getElementById('mode-bld')?.classList.add('active-mode');
+  if (m === 'paint-road')      document.getElementById('mode-road-paint')?.classList.add('active-mode');
+  if (m === 'erase')           document.getElementById('mode-erase')?.classList.add('active-mode');
+  // sidebar ptool strip
+  ['ptool-select', 'ptool-bld', 'ptool-road', 'ptool-erase'].forEach(id => document.getElementById(id)?.classList.remove('active-mode'));
+  const ptoolId = { select: 'ptool-select', 'paint-buildings': 'ptool-bld', 'paint-road': 'ptool-road', erase: 'ptool-erase' }[m];
+  if (ptoolId) document.getElementById(ptoolId)?.classList.add('active-mode');
   updateBanner();
   draw();
 }
@@ -1124,6 +1259,15 @@ function updateBanner() {
   } else if (mode === 'connect-highway') {
     b.textContent = '🛣 Connecting highway — click bases/towns in order · double-click / Enter to finish · Esc cancel';
     b.classList.add('on', 'hwy');
+  } else if (mode === 'paint-buildings') {
+    b.textContent = '🏠 Painting buildings — hold drag · density & kind in Brush panel · Esc to exit';
+    b.classList.add('on', 'bld');
+  } else if (mode === 'paint-road') {
+    b.textContent = '── Painting road — hold drag to draw stroke · release to finish · Esc to exit';
+    b.classList.add('on', 'road');
+  } else if (mode === 'erase') {
+    b.textContent = '⌫ Erasing — drag over buildings or roads to remove · Esc to exit';
+    b.classList.add('on', 'erase');
   }
 }
 function hint(msg, ms = 1800) {
@@ -1173,6 +1317,12 @@ function localPt(e) {
 
 window.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if (e.key === ' ' && !e.repeat) { e.preventDefault(); spaceDown = true; cv.classList.add('panning'); return; }
+  // paint modes → Esc returns to select
+  if (['paint-buildings', 'paint-road', 'erase'].includes(mode)) {
+    if (e.key === 'Escape') { e.preventDefault(); finishRoadStroke(); setMode('select'); }
+    return;
+  }
   if (mode !== 'select') {
     if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); finishDraft(); }
     else if (e.key === 'Backspace' && mode === 'draw-river' && draft && draft.pts.length) { draft.pts.pop(); draw(); }
@@ -1202,6 +1352,98 @@ function deleteSelected() {
   selected = null;
   renderInspector();
   draw();
+}
+
+/* ===================================================================
+   Paint / erase tools
+   =================================================================== */
+const DENSITY_SEP = [0, 100, 70, 50, 38, 28, 22, 17, 13, 10, 8]; // density 1-10 → min world-unit sep
+
+function paintBuildings(sx, sy) {
+  const wc = S2W(sx, sy);
+  const sep = DENSITY_SEP[brush.density] ?? 30;
+  if (lastPlantedPos && Math.hypot(wc.x - lastPlantedPos.wx, wc.z - lastPlantedPos.wz) < sep * 0.45) return;
+  // random position within brush circle
+  const angle = Math.random() * Math.PI * 2;
+  const dist  = Math.sqrt(Math.random()) * brush.radius;
+  const wx = wc.x + Math.cos(angle) * dist;
+  const wz = wc.z + Math.sin(angle) * dist;
+  const geo = unproject(wx, wz);
+  const kind = brush.kind;
+  if (kind === 'named-lake') {
+    state.namedLakes.push({ name: 'New Lake', lat: +geo.lat.toFixed(4), lon: +geo.lon.toFixed(4),
+      areaKm2: 80 + Math.round(Math.random() * 120), elong: 1 + Math.round(Math.random() * 10) / 10,
+      bearingDeg: Math.round(Math.random() * 180), _painted: true });
+  } else if (kind === 'town' || kind === 'city') {
+    state.landmarks.push({ name: 'New Place', lat: +geo.lat.toFixed(4), lon: +geo.lon.toFixed(4), kind, _painted: true });
+  } else {
+    const id = 'p' + (state.anchors.length + 1);
+    state.anchors.push({ id, name: 'Settlement', kind, lat: +geo.lat.toFixed(4), lon: +geo.lon.toFixed(4), _painted: true });
+  }
+  lastPlantedPos = { wx: wc.x, wz: wc.z };
+  draw();
+}
+
+function eraseAtBrush(sx, sy) {
+  const wc = S2W(sx, sy);
+  const rW = brush.radius;
+  const inR = (lat, lon) => { const w = project(lat, lon); return Math.hypot(w.x - wc.x, w.z - wc.z) <= rW; };
+  state.anchors    = state.anchors.filter(a => !inR(a.lat, a.lon));
+  state.landmarks  = state.landmarks.filter(lm => !inR(lm.lat, lm.lon));
+  state.namedLakes = state.namedLakes.filter(lk => !inR(lk.lat, lk.lon));
+  state.roads      = state.roads.filter(r => !r.pts.some(p => inR(p.lat, p.lon)));
+  if (selected && ['anchor', 'anchorLake', 'landmark', 'lake'].includes(selected.type)) {
+    if (inR(selected.ref.lat, selected.ref.lon)) { selected = null; renderInspector(); }
+  }
+  draw();
+}
+
+function startRoadStroke(sx, sy) {
+  const wc = S2W(sx, sy);
+  const g = unproject(wc.x, wc.z);
+  roadStroke = { name: 'Road', width: 6, pts: [{ lat: +g.lat.toFixed(4), lon: +g.lon.toFixed(4) }] };
+  state.roads.push(roadStroke);
+}
+
+function appendRoadPoint(sx, sy) {
+  if (!roadStroke) return;
+  const wc = S2W(sx, sy);
+  const last = roadStroke.pts[roadStroke.pts.length - 1];
+  const lw = project(last.lat, last.lon);
+  if (Math.hypot(lw.x - wc.x, lw.z - wc.z) < 5) return;
+  const g = unproject(wc.x, wc.z);
+  roadStroke.pts.push({ lat: +g.lat.toFixed(4), lon: +g.lon.toFixed(4) });
+  draw();
+}
+
+function finishRoadStroke() {
+  if (roadStroke) {
+    if (roadStroke.pts.length < 2) state.roads = state.roads.filter(r => r !== roadStroke);
+    roadStroke = null;
+    draw();
+  }
+}
+
+function updateBrushCursor(sx, sy) {
+  if (!brushCursorEl) return;
+  const isPaint = ['paint-buildings', 'paint-road', 'erase'].includes(mode);
+  if (!isPaint || sx == null) { brushCursorEl.style.display = 'none'; return; }
+  const r = brush.radius * view.scale;
+  brushCursorEl.style.display = 'block';
+  brushCursorEl.style.left = sx + 'px';
+  brushCursorEl.style.top  = sy + 'px';
+  brushCursorEl.style.width  = r * 2 + 'px';
+  brushCursorEl.style.height = r * 2 + 'px';
+  if (mode === 'paint-buildings') {
+    brushCursorEl.style.borderColor = 'rgba(111,207,111,0.75)';
+    brushCursorEl.style.background  = 'rgba(111,207,111,0.06)';
+  } else if (mode === 'paint-road') {
+    brushCursorEl.style.borderColor = 'rgba(200,200,100,0.75)';
+    brushCursorEl.style.background  = 'rgba(200,200,100,0.06)';
+  } else {
+    brushCursorEl.style.borderColor = 'rgba(255,80,80,0.75)';
+    brushCursorEl.style.background  = 'rgba(255,80,80,0.06)';
+  }
 }
 
 /* ===================================================================
@@ -1386,12 +1628,51 @@ document.getElementById('add-lake').addEventListener('click', () => {
 });
 document.getElementById('add-river').addEventListener('click', startRiver);
 document.getElementById('add-highway').addEventListener('click', startHighway);
+document.getElementById('add-upland').addEventListener('click', () => {
+  const g = viewCenterGeo();
+  const u = { name: 'New Upland', lat: g.lat, lon: g.lon, radiusKm: 30, prominenceM: 200 };
+  state.uplands.push(u);
+  selected = { type: 'upland', ref: u };
+  renderInspector(); draw();
+});
+document.getElementById('add-landmark').addEventListener('click', () => {
+  const g = viewCenterGeo();
+  const lm = { name: 'New Town', lat: g.lat, lon: g.lon, kind: 'town' };
+  state.landmarks.push(lm);
+  selected = { type: 'landmark', ref: lm };
+  renderInspector(); draw();
+});
 
 /* ===================================================================
    Toolbar
    =================================================================== */
-['t-grid', 't-province', 't-lakes', 't-bases', 't-landmarks', 't-highways', 't-rivers', 't-uplands', 't-labels']
+['t-grid', 't-province', 't-lakes', 't-bases', 't-landmarks', 't-highways', 't-rivers', 't-roads', 't-uplands', 't-labels']
   .forEach(id => document.getElementById(id).addEventListener('change', draw));
+
+// Paint mode toolbar buttons
+document.getElementById('mode-bld').addEventListener('click', () => setMode(mode === 'paint-buildings' ? 'select' : 'paint-buildings'));
+document.getElementById('mode-road-paint').addEventListener('click', () => setMode(mode === 'paint-road' ? 'select' : 'paint-road'));
+document.getElementById('mode-erase').addEventListener('click', () => setMode(mode === 'erase' ? 'select' : 'erase'));
+
+// Brush panel sidebar
+document.getElementById('ptool-select').addEventListener('click', () => setMode('select'));
+document.getElementById('ptool-bld').addEventListener('click', () => setMode('paint-buildings'));
+document.getElementById('ptool-road').addEventListener('click', () => setMode('paint-road'));
+document.getElementById('ptool-erase').addEventListener('click', () => setMode('erase'));
+document.getElementById('brush-size').addEventListener('input', e => {
+  brush.radius = +e.target.value;
+  document.getElementById('brush-size-val').textContent = brush.radius + 'u';
+});
+document.getElementById('brush-density').addEventListener('input', e => {
+  brush.density = +e.target.value;
+  document.getElementById('brush-density-val').textContent = brush.density;
+});
+document.getElementById('brush-kind').addEventListener('change', e => { brush.kind = e.target.value; });
+
+// Space-key pan
+window.addEventListener('keyup', e => {
+  if (e.key === ' ') { spaceDown = false; cv.classList.remove('panning', 'pan-active'); }
+});
 document.getElementById('fit').addEventListener('click', fitView);
 document.getElementById('reset').addEventListener('click', () => {
   if (!confirm('Discard all edits and restore the original Saskatchewan data?')) return;
@@ -1488,6 +1769,14 @@ function buildTS() {
     out += '//   rivers: SASKATCHEWAN_RIVERS,   <-- in the `const SASKATCHEWAN: Region = { ... }` object below.\n';
     out += 'const SASKATCHEWAN_RIVERS: readonly RegionRiver[] = [\n' + state.rivers.map(riverStr).join('\n') + '\n];\n';
   }
+  if (state.roads.length) {
+    out += '\n// Painted freehand roads. Export format mirrors rivers — wire into the region as needed.\n';
+    out += 'const SASKATCHEWAN_ROADS: readonly { name: string; width: number; pts: {lat:number;lon:number}[] }[] = [\n';
+    out += state.roads.map(r => {
+      const pts = r.pts.map(p => `{ lat: ${nz(p.lat, 4)}, lon: ${nz(p.lon, 4)} }`).join(', ');
+      return `  { name: ${q(r.name || 'Road')}, width: ${r.width || 6}, pts: [${pts}] },`;
+    }).join('\n') + '\n];\n';
+  }
   return out;
 }
 function buildJSON() {
@@ -1529,6 +1818,7 @@ function flash(msg) { const s = document.getElementById('copy-status'); s.textCo
    =================================================================== */
 window.addEventListener('resize', resize);
 const ro = new ResizeObserver(resize); ro.observe(document.getElementById('stage'));
+brushCursorEl = document.getElementById('brush-cursor');
 resize();
 fitView();
 document.getElementById('f-zoom').textContent = view.scale.toFixed(2) + '×';

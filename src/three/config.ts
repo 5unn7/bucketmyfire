@@ -72,18 +72,23 @@ export const MAPGEO = {
 // for muskeg bog flats. This whole block is the seam for FUTURE MAPS: a different map is
 // a different profile (+ seed + lake set), swapped behind the unchanged World API.
 export const TERRAIN = {
-  baseAmplitude: 9, // vertical scale of the rolling FBM (units) — kept low (shield relief)
+  // SMOOTHING PASS (2026-06-05): the map read as "lots of uneven terrain" — the culprit was the granite
+  // ridge layer (tall, frequent spikes) + a violent domain warp. Eased to a calmer, rolling boreal shield:
+  // ridge spikes are lower + rarer, the warp is gentler, lowlands flatter. Landform SCALE (the frequencies)
+  // is unchanged so the map keeps its character — it's the same place, just less jagged. Dial back toward
+  // the old jaggedness by raising ridgeAmplitude (was 6) / lowering ridgeThreshold (was 0.5) / warpStrength (was 85).
+  baseAmplitude: 8, // vertical scale of the rolling FBM (units) — eased 9→8 for calmer hills (still shield relief)
   baseFrequency: 0.0045, // world→noise scale (lower = broader landforms)
   octaves: 5,
   lacunarity: 2.0, // frequency step per octave
   gain: 0.5, // amplitude falloff per octave
-  warpStrength: 85, // domain-warp displacement (units) → winding, glacial ridgelines
+  warpStrength: 58, // domain-warp displacement (units) → winding ridgelines — eased 85→58 so valleys wind gently, not violently
   warpFrequency: 0.006,
-  ridgeAmplitude: 6, // rocky bedrock outcrops standing above the rolling base
+  ridgeAmplitude: 3.4, // rocky bedrock outcrops above the rolling base — eased 6→3.4 (the main "uneven/jagged" fix)
   ridgeFrequency: 0.011,
   ridgeOctaves: 3,
-  ridgeThreshold: 0.5, // only ridge values above this rise (localizes outcrops)
-  lowlandFlatten: 0.5, // 0..1 — compress below-water-line dips into flatter muskeg basins
+  ridgeThreshold: 0.62, // only ridge values above this rise — raised 0.5→0.62 so outcrops are rare landmarks, not a bumpy field
+  lowlandFlatten: 0.62, // 0..1 — compress below-water-line dips into flatter muskeg basins (eased 0.5→0.62, smoother flats)
 } as const;
 
 // Lake shape (irregular water bodies). Shield lakes follow bedrock fractures — they
@@ -655,10 +660,13 @@ export const BRIDGE = {
     { name: 'Prince Albert', river: 'Saskatchewan River', near: { lat: 53.1266, lon: -105.7296 } },
     { name: 'Saskatoon', river: 'S Saskatchewan river', near: { lat: 52.133, lon: -106.67 } },
   ],
+  // --- Road integration: the carriageway runs OVER the deck (not a causeway under it) ---
+  roadSnapDist: 90, // pull a road's river crossing onto a bridge centre when it passes within this (units); 0 = off. Widened to cover ROADS.bridgeAttract so a crossing the router funnelled toward the bridge is pinned exactly onto the deck
+  deckRideMargin: 3, // extend the on-deck footprint by this (units) when draping the road so it fully rides the deck
   // --- Structure dimensions (shared by every bridge) ---
   span: 50, // deck LENGTH bank-to-bank (across the channel) — wide enough to land its piers on dry banks
   roadway: 14, // deck WIDTH along the flow = the front-to-back depth of the tunnel you thread
-  deckClearance: 14, // height of the deck UNDERSIDE above the river surface = the headroom you fly under
+  deckClearance: 9, // height of the deck UNDERSIDE above the river surface = the headroom you fly under. Lowered (was 14) so the deck sits NEAR the terrain — the banks barely rise to meet it, killing the lumpy raised-mound look where two bridges sit close. Raise back toward 14 for taller fly-under arches at the cost of more terrain raise.
   deckThickness: 2.4, // deck slab thickness
   trussHeight: 11, // the triangulated truss rises this far ABOVE the deck (the superstructure)
   trussBays: 6, // number of triangle panels per truss plane (the "5–6 triangle" Warren-truss look)
@@ -680,11 +688,11 @@ export const BRIDGE = {
   // (the rise must reach the deck within half the span). Widen `span` for genuinely casual walls. ---
   valley: {
     enabled: true,
-    bankToDeck: 0.78, // banks rise to this fraction of the deck-top height; <1 leaves the deck slightly proud (its piers cover the gap) and keeps the wall gentler — avoids a steep "meet the deck exactly" spike
+    bankToDeck: 0.55, // banks rise to this fraction of the deck-top height; <1 leaves the deck slightly proud (its piers cover the gap) and keeps the wall gentler — avoids a steep "meet the deck exactly" spike. Eased from 0.78 so the banks raise LESS (with the lowered deck, only a small lift is needed) — the terrain stays near its natural height and just dips into a shallow valley at the channel
     channelFrac: 0.3, // inner fraction of the half-span kept LOW as the channel corridor; the rest is the valley wall up to the abutment. Lower = the rise STARTS nearer the water → wider, gentler wall
     approach: 30, // how far PAST the abutment (outward, away from the river) the bank holds full height before tapering — the road approach
-    alongHalf: 55, // half-length of the valley ALONG the river (up/downstream of the bridge) before it fades back to natural terrain
-    taper: 48, // smooth taper distance back to natural terrain at every outer edge — the dominant "beside the bridge" blend; bigger = gentler, more polished
+    alongHalf: 75, // half-length of the valley ALONG the river (up/downstream of the bridge) before it fades back to natural terrain. Lengthened (was 55) so the valley eases out over a longer distance — a polished fade instead of an abrupt mound around the deck
+    taper: 80, // smooth taper distance back to natural terrain at every outer edge — the dominant "beside the bridge" blend; bigger = gentler, more polished
   },
 } as const;
 
@@ -920,23 +928,68 @@ export const COMMUNITIES = {
   dockLength: 16, // how far the base's jetty reaches out over the water (units)
 } as const;
 
+// Settlement DECORATION ("populate the map" pass, 2026-06-05). A non-gameplay building scatter that fills
+// EVERY settlement so the province reads as lived-in: a DENSE skyline at the cities, a MEDIUM cluster at the
+// fire bases, a SPARSE handful of cabins at the communities. Built once at load, merged to ≈one draw call per
+// settlement (deferred + frustum-culled), off a LOCAL seed (never world.rng) so determinism + the campaign
+// verifier are untouched. Pure scenery — NOT damageable Structures, NOT mission `protect` targets. Tiers are
+// keyed off World's CommunitySite.tier; a DEFENDED hamlet is skipped (its real burnable cabins stand instead).
+export const SETTLEMENT3D = {
+  enabled: true,
+  // Per tier: count = buildings, spread = scatter radius (u), minH/maxH = height range (u), footMin/Max =
+  // footprint (u), spacing = min gap (u), flatRoof = city blocks vs gabled cabins, clearRadius = forest-cleared +
+  // dirt-yard radius (u), innerHole = keep-clear radius at the centre (so a base's depot/pad isn't buried).
+  tiers: {
+    city: { count: 15, spread: 100, minH: 3, maxH: 8, footMin: 3, footMax: 6, spacing: 6, flatRoof: true, clearRadius: 100, innerHole: 0 },
+    base: { count: 8, spread: 44, minH: 2, maxH: 3.5, footMin: 2.5, footMax: 4, spacing: 5, flatRoof: false, clearRadius: 40, innerHole: 16 },
+    community: { count: 5, spread: 26, minH: 2, maxH: 2.5, footMin: 2, footMax: 3.5, spacing: 4, flatRoof: false, clearRadius: 26, innerHole: 0 },
+  },
+  baseInnerHole: 18, // any BASE (even one rendered city-tier, e.g. Prince Albert) keeps at least this clear at the centre for its depot
+  padClear: 12, // keep decorative buildings at least this far from any landing pad / crew LZ (so you can still set down)
+  // Palettes (hex) — vertex-coloured into the merged mesh (one shared material for all settlements):
+  cityWalls: [0x9aa3ad, 0x8b9099, 0xb0a698, 0x7f8a95, 0xa6a097, 0x707880], // concrete / brick / glass-grey high-rise
+  cityRoof: 0x474b51, // flat-roof parapet + rooftop mechanicals
+  townWalls: [0x6b4f34, 0x7a5a3c, 0x5e4630, 0x836a4a, 0x4f4636], // log / timber cabin tints
+  townRoof: [0x3a4756, 0x46352a, 0x2f3a44, 0x55392a], // dark shingle / metal / rust roofs
+  speckle: 0.1, // per-building brightness wobble (worn look; 0 = flat)
+  sink: 0.7, // sink each building this far into the ground so a flat base covers a gentle slope (no floating corner)
+} as const;
+
 // Highways (Track A5). A road network linking the communities — drawn as draped 3D
 // asphalt ribbons that CONFORM to the terrain (a low causeway where they cross water) plus
 // lines on the minimap. The network is a minimum spanning tree over the community centers
 // (so every settlement is reachable, no redundant loops). Named after fictional bush
 // routes. Built in World; meshes/road.ts draws them (procedural, zero assets).
 export const ROADS = {
+  // Master switch: the generated highway network is OFF — northern Saskatchewan is roadless bush, and the
+  // road routing (avoid-water + bridge crossings) added complexity that didn't read as real. `false` makes
+  // World.makeRoads return [] (no grid, no A*, no meshes; bridges + everything else unaffected). Flip to true
+  // to bring the network back. Hand-painted authored roads (map editor) are also gated off by this.
+  enabled: false,
   // Northern bush roads are GRAVEL, not painted asphalt — matte tan-brown, no centre line,
   // with speckled, slightly ragged shoulders so they read as worn dirt, not a cartoon strip.
   // A realistic narrow ~3u carriageway: about a third of the heli's length. Half-width here.
   width: 1.2, // half-width of the gravel ribbon (units) → ~3u carriageway
   lift: 0.2, // sit the road this far above the ground it hugs (clears z-fighting only)
   bridgeLift: 0.7, // extra height where a road crosses water (a low causeway over the surface)
-  meanderAmp: 10, // gentle lateral wander (units) — roads bend with terrain, less than rivers (eased from 18 to calm the bends)
-  dodgeMax: 140, // max lateral search (units) to route a road point around a lake before giving up
-  shoreClear: 0.8, // ride the road this far ABOVE a lake's surface (units) when dodging — clears the sub-water shore shelf so the deck doesn't drape at/under the waterline (the "road in the lake" 3D bug). Raise to push roads further up the bank
-  smoothPasses: 3, // Laplacian smoothing passes over a road's interior points — kills the dodge-water sawtooth/zigzag (never relaxes a point onto water)
+  shoreClear: 0.8, // ride the road this far ABOVE a lake's surface (units) — clears the sub-water shore shelf so the deck doesn't drape at/under the waterline (the "road in the lake" 3D bug). Raise to push roads further up the bank
+  smoothPasses: 2, // Laplacian smoothing passes over a road's interior points — gentle polish on the routed path (never relaxes a point onto water or a lake shelf)
   resample: 4.5, // ribbon cross-section spacing (units) — smaller = smoother road edges + better drape
+  // --- Generated-network routing (World.makeRoads) — a water-aware grid A* lays each MST/corridor edge as a
+  // path that goes AROUND lakes, crosses rivers SHORT (then bridged), prefers flatter ground, and MERGES onto
+  // an existing road when it runs close, instead of the old straight-line-nudged-sideways (which zig-zagged). ---
+  routeCell: 18, // A* grid cell size (units). Finer = tighter hug around shores + smoother detours, but more cells to build at load (cost ∝ 1/cell²)
+  riverCrossCost: 5, // extra A* step cost through a river cell AWAY from a bridge → crossings stay short + roughly square; higher = the road detours harder to reach a bridge
+  slopeCost: 6, // extra A* step cost × local slope → roads prefer flatter ground (gentler grades, fewer hill-climbs)
+  mergeDiscount: 0.45, // cost multiplier (≤1) for a cell already carrying a road → a nearby road COALESCES onto the shared corridor (merge) rather than running parallel; 1 = no merging
+  simplifyTol: 7, // line-of-sight simplify sampling step (units) — collapses the grid staircase into long straight runs that arc around lakes (kills the zigzag); the straighten never cuts across water
+  // --- Bridge crossings: a road must cross a river ON its bridge, not causeway right beside it (which looks bad).
+  // Within `bridgeAttract` of a bridge the river crossing is CHEAP (`bridgeCrossCost` ≪ `riverCrossCost`) and the
+  // dry approach is discounted (`bridgeApproachDiscount`), so A* funnels through the deck; `snapRoadsToBridges`
+  // (BRIDGE.roadSnapDist) then pins the exact crossing point onto the deck centre. ---
+  bridgeAttract: 70, // radius (units) within which a bridge pulls a road's river crossing onto itself (≤ BRIDGE.roadSnapDist so the snap finishes the alignment)
+  bridgeCrossCost: 0.3, // river-cross cost AT a bridge (≪ riverCrossCost) → crossing on the deck is far cheaper than a causeway elsewhere
+  bridgeApproachDiscount: 0.75, // cost multiplier (≤1) for dry cells near a bridge → the road funnels its approach toward the deck
   edgeConform: 0.7, // 0..1: how much each edge follows its OWN ground height (1) vs the centre's (0)
   edgeRagged: 0.16, // shoulder wobble as a fraction of width — gravel roads aren't perfect strips
   gravelColor: 0x6a5d49, // packed tan-brown gravel (matte, no markings)
@@ -1176,6 +1229,11 @@ export const HELIPAD = {
   concrete: 'brushed_concrete_03', // slug under public/textures/pbr/<slug>/
   concreteRepeat: 2.2,
   normalScale: 0.6,
+  // Terrain GRADE under each base pad: World levels the ground flat within `gradeRadius` of the pad centre,
+  // blending back to natural terrain at the rim — so the flat concrete slab sits flush and the hillside can't
+  // poke through it (the "cutoff"). The slab+apron (~9u) must fit inside the perfectly-level inner zone.
+  gradeRadius: 16, // units — flatten-to-rim radius around a base pad
+  gradeFlatInner: 0.62, // fraction of gradeRadius kept PERFECTLY level (covers slab + apron); the rest blends out
 } as const;
 
 // Terrain ground texturing (downloaded CC0 PBR albedo, see public/textures/ATTRIBUTION.txt). Adds
@@ -1595,7 +1653,7 @@ export const CONFIG_REGISTRY: Record<string, Record<string, unknown>> = {
   WORLD3D, MAPGEO, TERRAIN, LAKE_SHAPE, STREAM, BIOMES, FOREST,
   FLIGHT, STARTUP, WASH, INSTRUMENTS, BUCKET3D, DROP_PHYSICS, DROP_FX, FIREHEAD,
   HELI_CLASSES, HEALTH, CRASH, BRIDGE,
-  FIRE3D, STRUCTURES, STRUCT_FIRE, COMMUNITIES, ROADS, SCORE, MISSIONS, FAUNA, HELIPAD, TERRAIN_TEX, TREE_TEX,
+  FIRE3D, STRUCTURES, STRUCT_FIRE, COMMUNITIES, SETTLEMENT3D, ROADS, SCORE, MISSIONS, FAUNA, HELIPAD, TERRAIN_TEX, TREE_TEX,
   QUALITY, POSTFX, ENV, GODRAYS, GRADE, FIRELIGHT, EMBERS, AMBIENT_EMBERS,
   WATER, CLOUDS, SPRAY, SMOKE, HAZE, AUDIO, CAMERA, TITLE,
 };

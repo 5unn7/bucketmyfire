@@ -39,7 +39,10 @@ export interface ControlState {
 }
 
 /** Stick travel below this fraction reads as zero, then rescales smoothly. */
-const STICK_DEADZONE = 0.12;
+const STICK_DEADZONE = 0.18;
+/** Expo shaping applied after the deadzone (1 = linear; 2 = quadratic). Small pushes
+ *  produce much less output; you need a deliberate full push to reach full deflection. */
+const STICK_EXPO = 2.2;
 
 // Keyboard keys are on/off, so without this they'd always command FULL deflection
 // (max speed / max turn) — twitchy next to the analog stick. These scale a held key
@@ -547,12 +550,14 @@ const EYE_SVG =
   '<path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/>' +
   '<circle cx="12" cy="12" r="3"/></svg>';
 
-/** Drop tiny stick jitter, then rescale [DEADZONE..1] back to [0..1] so the full
- *  control range is still reachable. Keeps a resting thumb from drifting. */
+/** Drop tiny stick jitter, rescale [DEADZONE..1] → [0..1], then apply expo shaping
+ *  so small pushes produce proportionally less output — full deflection still reachable
+ *  but requires a deliberate push. Keeps a resting thumb from drifting. */
 function deadzone(v: number): number {
   const a = Math.abs(v);
   if (a < STICK_DEADZONE) return 0;
-  return Math.sign(v) * ((a - STICK_DEADZONE) / (1 - STICK_DEADZONE));
+  const n = (a - STICK_DEADZONE) / (1 - STICK_DEADZONE);
+  return Math.sign(v) * Math.pow(n, STICK_EXPO);
 }
 
 /** Wire a div to call `set(true)` while pressed and `set(false)` on release, with

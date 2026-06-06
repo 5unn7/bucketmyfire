@@ -12,7 +12,7 @@ import type { Region, MapAnchor, GeoFrame, RegionLake, RegionPlace, HighwayRoute
 // Scoop lakes with an `outline` trace that shore exactly (World ray-casts it); `areaKm2` is the fallback.
 const SASKATCHEWAN_ANCHORS: readonly MapAnchor[] = [
   { id: 'la-ronge', name: 'La Ronge', kind: 'both', lat: 55.3076, lon: -105.605, home: true, scoop: { lake: 'Lac La Ronge', areaKm2: 480, outline: [{ lat: 55.6624, lon: -105.0152 }, { lat: 55.6455, lon: -105.2351 }, { lat: 55.3357, lon: -105.1692 }, { lat: 55.2174, lon: -105.2399 }, { lat: 55.2343, lon: -105.4076 }, { lat: 55.2118, lon: -105.5657 }, { lat: 55.0823, lon: -105.6251 }, { lat: 54.9077, lon: -105.5764 }, { lat: 54.8063, lon: -105.391 }, { lat: 54.75, lon: -104.8546 }, { lat: 54.9189, lon: -104.6454 }, { lat: 55.178, lon: -104.609 }, { lat: 55.4089, lon: -104.583 }, { lat: 55.6286, lon: -104.5469 }] }, blurb: 'Primary air-attack base — island lake, easy water.' },
-  { id: 'prince-albert', name: 'Prince Albert', kind: 'base', lat: 53.1266, lon: -105.7296, blurb: 'Southern gateway base; river country.' },
+  { id: 'prince-albert', name: 'Prince Albert', kind: 'base', urban: true, lat: 53.1266, lon: -105.7296, blurb: 'Southern gateway base; river country.' },
   { id: 'southend', name: 'Southend', kind: 'base', lat: 57.0703, lon: -103.4381, blurb: 'Remote far-north outpost on a vast cold lake.' },
   { id: 'cypress-hills', name: 'Cypress Hills', kind: 'base', lat: 49.7464, lon: -107.8708, scoop: { lake: 'Cypress Lake', areaKm2: 224, outline: [{ lat: 49.814, lon: -107.6207 }, { lat: 49.6563, lon: -107.3186 }, { lat: 49.5211, lon: -107.3141 }, { lat: 49.4817, lon: -107.7896 }, { lat: 49.493, lon: -108.3623 }, { lat: 49.707, lon: -107.8777 }] }, blurb: 'Eastern forward base — lake-poor, hard scoop.' },
   { id: 'denare-beach', name: 'Denare Beach', kind: 'both', lat: 55.476, lon: -102.0801, scoop: { lake: 'Amisk Lake', areaKm2: 453, outline: [{ lat: 55.538, lon: -102.2436 }, { lat: 55.3578, lon: -101.8927 }, { lat: 55.048, lon: -101.7549 }, { lat: 55.1325, lon: -101.9831 }, { lat: 54.9184, lon: -102.2673 }, { lat: 55.1156, lon: -102.2899 }, { lat: 55.1606, lon: -102.5424 }, { lat: 55.3409, lon: -102.6767 }, { lat: 55.5436, lon: -102.3626 }] }, blurb: 'SE lakeside village near the Manitoba line.' },
@@ -23,6 +23,12 @@ const SASKATCHEWAN_ANCHORS: readonly MapAnchor[] = [
   { id: 'stanley-mission', name: 'Stanley Mission', kind: 'community', lat: 55.8538, lon: -105.1051 }, // river/lake-fed off the nearby Churchill + La Ronge water — no separate Nistowiak disc (it read as an extra lake by La Ronge)
   { id: 'beauval', name: 'Beauval', kind: 'community', lat: 55.287, lon: -107.4685, scoop: { lake: 'Lac la Plonge', areaKm2: 257, outline: [{ lat: 55.5123, lon: -107.4787 }, { lat: 55.4898, lon: -107.3087 }, { lat: 55.4278, lon: -107.1672 }, { lat: 55.3377, lon: -107.0845 }, { lat: 55.2363, lon: -107.081 }, { lat: 55.1462, lon: -107.1566 }, { lat: 55.0842, lon: -107.2921 }, { lat: 55.0617, lon: -107.4584 }, { lat: 55.0842, lon: -107.6267 }, { lat: 55.1124, lon: -107.7364 }, { lat: 55.2983, lon: -107.281 }] } },
   { id: 'ile-a-la-crosse', name: 'Île-à-la-Crosse', kind: 'community', lat: 56.2819, lon: -107.5236, scoop: { lake: 'Lac Île-à-la-Crosse', areaKm2: 391, outline: [{ lat: 56.5241, lon: -107.5354 }, { lat: 56.9297, lon: -107.4626 }, { lat: 56.434, lon: -107.3476 }, { lat: 56.3383, lon: -107.0995 }, { lat: 56.2256, lon: -107.0954 }, { lat: 56.1355, lon: -107.2133 }, { lat: 56.0059, lon: -107.2989 }, { lat: 55.9609, lon: -107.6995 }, { lat: 56.0679, lon: -107.5739 }, { lat: 56.158, lon: -107.548 }, { lat: 56.2087, lon: -107.4289 }, { lat: 56.327, lon: -107.2312 }, { lat: 56.4171, lon: -107.6523 }, { lat: 56.5016, lon: -107.7282 }] } },
+  // Southern CITIES (kind:'city') — large population centres the campaign omits, now road nodes with a dense
+  // decorative skyline so the whole province reads as Saskatchewan. No scoop/home/missions; excluded from the
+  // town index (so mission `community: N` refs are unaffected). They replace the same-named decorative landmarks.
+  { id: 'saskatoon', name: 'Saskatoon', kind: 'city', lat: 52.133, lon: -106.67, blurb: 'The bridge city on the South Saskatchewan.' },
+  { id: 'regina', name: 'Regina', kind: 'city', lat: 50.445, lon: -104.619, blurb: 'Provincial capital, deep in the southern plains.' },
+  { id: 'north-battleford', name: 'North Battleford', kind: 'city', lat: 52.8446, lon: -108.2075, blurb: 'West-central river city on the Yellowhead.' },
 ];
 
 // Saskatchewan's real geographic frame: the full province (49°–60°N, 110°W to the Manitoba line) so
@@ -75,9 +81,8 @@ const SASKATCHEWAN_LANDMARKS: readonly RegionPlace[] = [
   { name: 'Patuanak', lat: 56.7681, lon: -107.3918, kind: 'town' },
   { name: 'Meadow Lake', lat: 54.3105, lon: -108.9296, kind: 'town' },
   { name: 'Nipawin', lat: 53.367, lon: -104.009, kind: 'town' },
-  { name: 'North Battleford', lat: 52.8446, lon: -108.2075, kind: 'city' },
-  { name: 'Saskatoon', lat: 52.133, lon: -106.67, kind: 'city' },
-  { name: 'Regina', lat: 50.445, lon: -104.619, kind: 'city' },
+  // Saskatoon / Regina / North Battleford were here as decorative city labels; they're now `city` ANCHORS
+  // (road nodes + a dense skyline + their own radar label), so they're removed here to avoid a double label.
 ];
 
 // Real provincial-highway corridors through the campaign towns — the spines that thread the map together.
@@ -92,6 +97,11 @@ const SASKATCHEWAN_HIGHWAYS: readonly HighwayRoute[] = [
   { name: 'Hwy 102', through: ['southend', 'missinipe'] },
   { name: 'Hwy 7', through: ['prince-albert', 'cypress-hills'] },
   { name: 'Hwy 106', through: ['denare-beach', 'prince-albert'] },
+  // Southern spine: Hwy 11 (the Louis Riel Trail) strings the three big cities up to the campaign's gateway
+  // base; Hwy 16 (the Yellowhead) brings North Battleford in. These connect the cities into the road network
+  // so the whole province is reachable by road, north to south. Their names stay out of the MST naming pool.
+  { name: 'Hwy 11', through: ['regina', 'saskatoon', 'prince-albert'] },
+  { name: 'Hwy 16', through: ['north-battleford', 'saskatoon'] },
 ];
 
 // Cypress Hills — Saskatchewan's far-SW highland (the highest land between the Rockies and Labrador). Authored
@@ -189,6 +199,9 @@ const SASKATCHEWAN: Region = {
   },
   anchors: SASKATCHEWAN_ANCHORS,
   namedLakes: SASKATCHEWAN_LAKES,
+  // Clear the stray procedural pond in the open country BETWEEN Prince Albert (53.13, -105.73) and Saskatoon
+  // (52.13, -106.67) — centred on their midpoint; 50 km reaches the central gap but not either city's own water.
+  noLakeZones: [{ lat: 52.63, lon: -106.2, radiusKm: 50 }],
   landmarks: SASKATCHEWAN_LANDMARKS,
   highwayRoutes: SASKATCHEWAN_HIGHWAYS,
   uplands: SASKATCHEWAN_UPLANDS,

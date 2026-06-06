@@ -27,7 +27,10 @@ export interface LandingZoneMesh {
 // home is unmistakable regardless of the carry state (the player always knows where to return).
 // `accent` overrides the active/inactive tint (default the cyan crew-LZ colour) — the backburn
 // control-line markers pass an ember-orange so they read as a "fire line", not a crew pad.
-export function createLandingZone(home = false, accent: number = MISSIONS.zoneSmoke): LandingZoneMesh {
+// `groundDecal: false` drops the painted ground ring + centre pad and keeps ONLY the beacon column —
+// for a zone that sits on a CONCRETE HELIPAD (the base pad), whose own slab/markings are the pad, so
+// the ring isn't drawn a second time on top of it (no duplicate pad markings).
+export function createLandingZone(home = false, accent: number = MISSIONS.zoneSmoke, groundDecal = true): LandingZoneMesh {
   const group = new THREE.Group();
   group.name = 'landingZone';
 
@@ -43,18 +46,21 @@ export function createLandingZone(home = false, accent: number = MISSIONS.zoneSm
     side: THREE.DoubleSide,
   });
 
-  // Painted ground ring (flat annulus) + a center cross pad — the classic helipad mark.
-  const ringGeo = new THREE.RingGeometry(ringR - 1.4, ringR, 40);
-  ringGeo.rotateX(-Math.PI / 2);
-  const ring = new THREE.Mesh(ringGeo, ringMat);
-  ring.position.y = 0.25; // sit just above the ground to avoid z-fighting
-  group.add(ring);
+  // Painted ground ring (flat annulus) + a center cross pad — the classic helipad mark. Skipped on a base
+  // pad (groundDecal:false), where the concrete helipad slab already IS the pad (otherwise it doubles up).
+  if (groundDecal) {
+    const ringGeo = new THREE.RingGeometry(ringR - 1.4, ringR, 40);
+    ringGeo.rotateX(-Math.PI / 2);
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.position.y = 0.25; // sit just above the ground to avoid z-fighting
+    group.add(ring);
 
-  const padGeo = new THREE.RingGeometry(2.4, 4.0, 28);
-  padGeo.rotateX(-Math.PI / 2);
-  const pad = new THREE.Mesh(padGeo, ringMat);
-  pad.position.y = 0.25;
-  group.add(pad);
+    const padGeo = new THREE.RingGeometry(2.4, 4.0, 28);
+    padGeo.rotateX(-Math.PI / 2);
+    const pad = new THREE.Mesh(padGeo, ringMat);
+    pad.position.y = 0.25;
+    group.add(pad);
+  }
 
   // Vertical beacon: a tall, soft, additive column visible across the map. Tapered cone so
   // it reads like a marker flare / smoke marker rising from the pad.
