@@ -6,7 +6,7 @@
 
 import { UI, FS, FW, R, GRADE, div } from '../theme';
 
-export type BadgeTone = 'accent' | 'fight' | 'warn' | 'ok' | 'neutral';
+export type BadgeTone = 'accent' | 'fight' | 'warn' | 'ok' | 'neutral' | 'fire';
 
 const TONES: Record<BadgeTone, { fg: string; fill: string }> = {
   accent: { fg: UI.accent, fill: UI.accentFill },
@@ -14,6 +14,7 @@ const TONES: Record<BadgeTone, { fg: string; fill: string }> = {
   warn: { fg: UI.warn, fill: `${UI.warn}1f` },
   ok: { fg: UI.ok, fill: `${UI.ok}1f` },
   neutral: { fg: UI.faint, fill: UI.track },
+  fire: { fg: UI.fire, fill: `${UI.fire}1f` }, // the Daily Burn streak chip
 };
 
 /** A small uppercase status pill ("SOON", "NEXT", "LOCKED"). */

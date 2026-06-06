@@ -16,7 +16,7 @@
  */
 
 import type { MissionDef } from '../../missions/types';
-import { dailyStreak } from '../../missions/streak';
+import { dailyStreak, bestDailyStreak } from '../../missions/streak';
 import {
   loadProfile,
   saveProfile,
@@ -29,7 +29,8 @@ import {
   MAPS,
   type CatalogItem,
 } from '../profile';
-import { UI, div } from '../theme';
+import { UI, FS, div } from '../theme';
+import { makeBadge } from '../components';
 import { randomCallsign } from '../callsign';
 import { section, creditsFooter } from '../menuShared';
 import { brandMark, stepDots, primaryButton, ghostButton, featureButton, fadeSwap, type StepDots, type PrimaryButton } from './chrome';
@@ -110,13 +111,24 @@ export class MenuFlow {
     // board. Always available (navigates to ?daily), so there's a reason to come back tomorrow. A live
     // consecutive-day streak (≥2) rides on the label as a "don't break the chain" pull (audit VISION-3).
     const streak = dailyStreak();
-    const dailyLabel = streak >= 2 ? `🔥 Daily Burn · ${streak}-day streak` : '🔥 Daily Burn';
-    this.dailyBtn = featureButton(dailyLabel, UI.fire, () => this.playDaily());
-    if (streak >= 2) this.dailyBtn.style.boxShadow = `0 0 14px ${UI.fire}55`; // live streak → a "don't break the chain" glow
+    this.dailyBtn = featureButton('🔥 Daily Burn', UI.fire, () => this.playDaily());
+    if (streak >= 2) this.dailyBtn.style.boxShadow = `0 0 14px ${UI.fire}55`; // live chain → a "don't break it" glow
+
+    // A live streak rides as a fire chip beside the button (mirrors the leaderboard's Daily header) so
+    // "don't break the chain" is visible on every wizard screen, with best streak on hover.
+    const dailyGroup = div({ display: 'flex', alignItems: 'center', gap: '8px' });
+    if (streak >= 1) {
+      const best = bestDailyStreak();
+      const chip = makeBadge(`🔥 ${streak}`, 'fire');
+      chip.style.fontSize = FS.sm;
+      chip.title = best > streak ? `${streak}-day Daily Burn streak · best ${best}` : `${streak}-day Daily Burn streak`;
+      dailyGroup.appendChild(chip);
+    }
+    dailyGroup.appendChild(this.dailyBtn);
 
     const header = section({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', margin: '0 auto 22px', flexWrap: 'wrap' });
     const actions = div({ display: 'flex', alignItems: 'center', gap: '8px' });
-    actions.append(this.dailyBtn, this.quickBtn, this.skipBtn);
+    actions.append(dailyGroup, this.quickBtn, this.skipBtn);
     header.append(brandMark(), this.dots.el, actions);
     this.root.appendChild(header);
 
