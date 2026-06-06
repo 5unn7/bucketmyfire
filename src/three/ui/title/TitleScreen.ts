@@ -75,21 +75,20 @@ export class TitleScreen {
     const root = div({ position: 'fixed', inset: '0', zIndex: '50', fontFamily: UI.font, color: UI.text, pointerEvents: 'none' });
     root.className = 'bmf-home-root';
 
-    // Key art. Sizing lives in CSS (.bmf-home-frame) so a media query can switch desktop to `contain`
-    // (show the whole 16:9 frame) while phones keep `cover` (a tall portrait would shrink contain to a
-    // thin strip). Only the dynamic image URL is inline here.
+    // Key art — full-bleed cover on every viewport, anchored to the TOP (so the framing sits lower:
+    // more sky + heli, the forest cropped under the gradient). Sizing in .bmf-home-frame.
     const frame = div({ backgroundImage: `url("${BG_URL}")` });
     frame.className = 'bmf-home-frame';
 
-    // Legibility gradient — dark over the LOWER 35% of the screen (transparent above 65%), so the
-    // tagline + PLAY/Shop stay legible while the upper art + top-right wordmark stay clear.
+    // Legibility gradient — sits OVER the image, darkening the lower ~half of the screen so the
+    // tagline + PLAY/Shop clearly read against the fire (upper art + top-right wordmark stay clear).
     frame.appendChild(
       div({
         position: 'absolute',
         inset: '0',
         pointerEvents: 'none',
         background:
-          'linear-gradient(180deg, rgba(4,6,10,0) 65%, rgba(4,6,10,0.45) 80%, rgba(2,4,7,0.97) 100%)',
+          'linear-gradient(180deg, rgba(4,6,10,0) 48%, rgba(6,9,14,0.58) 72%, rgba(4,7,11,0.88) 88%, rgba(2,4,7,0.98) 100%)',
       }),
     );
 
@@ -226,10 +225,7 @@ function injectTitleStyles(): void {
   tag.textContent = `
   @keyframes bmf-title-rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
   .bmf-home-root { background: #06080e; overflow: hidden; }
-  .bmf-home-frame { position: absolute; inset: 0; overflow: hidden; background-position: center; background-repeat: no-repeat; background-size: cover; }
-  /* Desktop/landscape: zoom out to show the whole 16:9 art (contain), pinned to the top so any mat
-     sits at the bottom under the gradient; phones keep cover (contain would shrink it to a strip). */
-  @media (min-width: 768px) and (orientation: landscape) { .bmf-home-frame { background-size: contain; background-position: center top; } }
+  .bmf-home-frame { position: absolute; inset: 0; overflow: hidden; background-position: center top; background-repeat: no-repeat; background-size: cover; }
   `;
   document.head.appendChild(tag);
 }
