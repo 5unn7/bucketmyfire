@@ -46,7 +46,6 @@ const CSS = `
 .bmf-app .pad{ position:relative; z-index:2; flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none;
   width:100%; max-width:452px; margin:0 auto;
   padding: calc(env(safe-area-inset-top) + 14px) 16px calc(var(--rail-h) + env(safe-area-inset-bottom) + 14px); }
-.bmf-app.norail .pad{ padding-bottom: calc(env(safe-area-inset-bottom) + 16px); }
 .bmf-app .pad::-webkit-scrollbar{ display:none; }
 
 .bmf-app .rise{ opacity:0; transform:translateY(14px); animation:bmf-rise .5s cubic-bezier(.16,.84,.3,1) forwards; }
@@ -223,6 +222,42 @@ const CSS = `
 .bmf-app .toggle.on{ background:linear-gradient(180deg, rgba(255,122,69,0.55), rgba(255,106,44,0.35)); border-color:var(--warm-stroke); box-shadow:inset 0 0 8px rgba(255,106,44,0.4); }
 .bmf-app .toggle.on .knob{ transform:translateX(21px); background:linear-gradient(180deg,#fff,#ffd9a0); }
 
+/* ===== text fields (new-pilot registration) — warm ember focus, the fight register ===== */
+.bmf-app .field{ display:flex; align-items:center; gap:11px; background:var(--field); border:1px solid var(--stroke); border-radius:var(--r-lg);
+  padding:0 15px; transition:border-color .18s ease, box-shadow .18s ease; }
+.bmf-app .field:focus-within{ border-color:var(--ember); box-shadow:0 0 0 3px rgba(255,106,44,0.18), 0 2px 18px rgba(255,106,44,0.12); }
+.bmf-app .field .pfx{ flex:0 0 auto; display:grid; place-items:center; color:var(--ember); }
+.bmf-app .field .pfx svg{ width:18px; height:18px; }
+/* brand pilot-helmet mark in the callsign field — fill via the shared helmet gradient (DEFS) */
+.bmf-app .field .pfx.pilot svg{ width:21px; height:21px; }
+.bmf-app .field .pfx.pilot svg path{ fill:url(#helmGrad); }
+.bmf-app .field input{ flex:1; min-width:0; background:transparent; border:none; outline:none; color:#fff; font-family:var(--font);
+  font-size:var(--fs-lg); font-weight:var(--fw-semibold); letter-spacing:.01em; padding:14px 0; }
+.bmf-app .field input::placeholder{ color:var(--faint); font-weight:var(--fw-medium); letter-spacing:0; }
+.bmf-app .field.sm input{ font-size:var(--fs-md); font-weight:var(--fw-medium); padding:12px 0; }
+.bmf-app .field .max{ flex:0 0 auto; font-family:var(--mono); font-size:var(--fs-micro); letter-spacing:.1em; color:var(--faint); }
+.bmf-app .fieldlabel{ font-family:var(--mono); font-size:var(--fs-label); letter-spacing:.22em; text-transform:uppercase; font-weight:var(--fw-bold); color:var(--ember); margin:0 0 8px; }
+.bmf-app .fieldlabel .opt{ color:var(--faint); font-weight:var(--fw-medium); letter-spacing:.04em; text-transform:none; }
+.bmf-app .fhint{ font-size:var(--fs-meta); color:var(--faint); line-height:1.5; margin-top:8px; }
+.bmf-app .fmsg{ font-size:var(--fs-meta); font-weight:var(--fw-semibold); min-height:17px; margin-top:8px; color:var(--dim); }
+.bmf-app .fmsg.bad{ color:var(--warn); } .bmf-app .fmsg.ok{ color:var(--ok); }
+.bmf-app .legal{ text-align:center; font-size:var(--fs-meta); color:var(--faint); line-height:1.6; }
+.bmf-app .legal a{ color:var(--dim); text-decoration:underline; cursor:pointer; } .bmf-app .legal a:hover{ color:var(--ember-hi); }
+
+/* ===== new-pilot screen — single centred registration card (no rail; it's the gate) ===== */
+.bmf-app.newpilot .pad{ display:flex; flex-direction:column;
+  padding:calc(env(safe-area-inset-top) + 18px) 18px calc(env(safe-area-inset-bottom) + 18px); }
+/* auto margins centre vertically when there's room but stay scroll-safe (no clipped top) on short phones */
+.bmf-app.newpilot .reg{ width:100%; max-width:430px; margin:auto; }
+.bmf-app.newpilot .crest{ display:flex; align-items:center; gap:11px; margin-bottom:18px; }
+.bmf-app.newpilot .crest .wm{ font-family:var(--mono); font-size:var(--fs-tag); letter-spacing:.34em; text-transform:uppercase; color:var(--faint); font-weight:var(--fw-bold); }
+.bmf-app.newpilot .crest .wm b{ color:var(--ember-hi); font-weight:var(--fw-heavy); }
+.bmf-app.newpilot h1{ font-size:var(--fs-banner); font-weight:var(--fw-black); line-height:1.02; letter-spacing:-0.01em; color:#fff; margin:0; }
+.bmf-app.newpilot .accent{ height:3px; width:46px; border-radius:var(--r-pill); margin:12px 0 12px;
+  background:linear-gradient(90deg, var(--fire), var(--menu)); box-shadow:0 0 12px rgba(255,106,44,0.5); }
+.bmf-app.newpilot .lede{ font-size:var(--fs-body); color:var(--dim); line-height:1.5; margin:0 0 24px; max-width:34ch; }
+@media (min-width:740px){ .bmf-app.newpilot .reg{ max-width:460px; } }
+
 @media (prefers-reduced-motion: reduce){
   .bmf-app .rise{ opacity:1 !important; transform:none !important; animation:none !important; }
   .bmf-app .helmet .sheen,.bmf-app .mote,.bmf-app .glyph.flicker svg path,.bmf-app .crt-streak{ animation:none !important; }
@@ -233,7 +268,6 @@ const CSS = `
 @media (min-width:740px){
   .bmf-app.home .pad{ max-width:620px; }
   .bmf-app.home .artcard .inner{ min-height:300px; }
-  .bmf-app.norail .pad{ max-width:680px; }
 }
 /* ===== desktop: 2-column dashboard + floating dock rail ===== */
 @media (min-width:1040px){
@@ -244,9 +278,10 @@ const CSS = `
   .bmf-app.home .z-cont{ grid-column:2; }
   .bmf-app.home .z-cont .artcard .inner{ min-height:460px; }
   .bmf-app.home .sec{ margin-top:6px; }
-  .bmf-app.home .rail{ left:50%; right:auto; transform:translateX(-50%); bottom:18px; width:auto; min-width:540px; height:auto; padding-bottom:0;
+  /* Floating dock rail — shared by the hub AND every menu overlay so it reads the same everywhere. */
+  .bmf-app .rail{ left:50%; right:auto; transform:translateX(-50%); bottom:18px; width:auto; min-width:540px; height:auto; padding-bottom:0;
     border:1px solid var(--bevel-top); border-radius:var(--r-xl); box-shadow:0 14px 44px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.06); }
-  .bmf-app.home .rail .keys{ max-width:none; height:66px; }
+  .bmf-app .rail .keys{ max-width:none; height:66px; }
 }
 `;
 

@@ -17,9 +17,8 @@ import { dailyStreak } from '../../missions/streak';
 import { missionPoster } from '../missionArt';
 import { careerScore, rankFor, nextRankProgress } from '../../missions/rank';
 import { isConfigured, fetchCareerStanding } from '../../leaderboard/client';
-import { openLeaderboard } from '../Leaderboard';
-import { openShop } from '../ShopScreen';
-import { openMaps, openHangar, openCoop, openSettings } from './menus';
+import { setMenuCatalog, navigateRail } from './menus';
+import { railNav } from './rail';
 import { injectHomeStyles, spawnEmbers } from './styles';
 import { DEFS, FLAME, FLAME_ONLY, HELMET, ic } from './icons';
 
@@ -32,16 +31,6 @@ export interface HomeNav {
 const STAR = (on: boolean): string =>
   `<svg class="${on ? 'on' : 'off'}" viewBox="0 0 24 24"><path d="M12 2l2.9 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77 5.82 21l1.18-6.88-5-4.87 7.1-1.01z"/></svg>`;
 
-const RAIL: { key: string; label: string; icon: string }[] = [
-  { key: 'home', label: 'Home', icon: 'home' },
-  { key: 'coop', label: 'Co-op', icon: 'users' },
-  { key: 'maps', label: 'Maps', icon: 'map' },
-  { key: 'hangar', label: 'Hangar', icon: 'heli' },
-  { key: 'board', label: 'Board', icon: 'trophy' },
-  { key: 'shop', label: 'Shop', icon: 'shop' },
-  { key: 'settings', label: 'Settings', icon: 'settings' },
-];
-
 export class HomeScreen {
   private root: HTMLDivElement;
   private disposed = false;
@@ -49,6 +38,7 @@ export class HomeScreen {
 
   constructor(parent: HTMLElement, private catalog: MissionDef[], private nav: HomeNav) {
     injectHomeStyles();
+    setMenuCatalog(catalog); // seed the rail router (Board tab opens the leaderboard with it)
     this.root = document.createElement('div');
     this.root.className = 'bmf-app home';
     this.root.innerHTML = DEFS + this.markup();
@@ -169,46 +159,35 @@ export class HomeScreen {
 
 </div>
 
-<nav class="rail" aria-label="Primary"><div class="keys">
-  ${RAIL.map((t) => {
-    const on = t.key === 'home';
-    return `<button class="key${on ? ' active' : ''}" data-act="${t.key}"${on ? ' aria-current="page"' : ''}>${on ? '<span class="tick"></span>' : ''}${ic(t.icon, 'line')}<span>${t.label}</span></button>`;
-  }).join('')}
-</div></nav>`;
+${railNav('home')}`;
   }
 
   // ---- wiring ----------------------------------------------------------------
   private wire(): void {
+    // Content actions (boot a mission / open the wizard) route through the HomeNav callbacks.
     this.root.querySelectorAll<HTMLElement>('[data-act]').forEach((el) => {
       el.addEventListener('click', (e) => {
         e.stopPropagation();
         this.act(el.dataset.act || '');
       });
     });
+    // Rail tabs route through the shared menu router so the rail stays live across every panel.
+    this.root.querySelectorAll<HTMLElement>('.rail [data-rail]').forEach((el) => {
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        navigateRail(el.dataset.rail || 'home');
+      });
+    });
   }
 
   private act(name: string): void {
     switch (name) {
-      case 'home':
-        return; // already here
       case 'continue':
         return this.nav.onContinue(this.nextId);
       case 'daily':
         return this.nav.onDaily();
       case 'campaign':
         return this.nav.onCampaign();
-      case 'board':
-        return openLeaderboard(this.catalog);
-      case 'shop':
-        return openShop();
-      case 'maps':
-        return openMaps();
-      case 'hangar':
-        return openHangar();
-      case 'coop':
-        return openCoop();
-      case 'settings':
-        return openSettings();
     }
   }
 

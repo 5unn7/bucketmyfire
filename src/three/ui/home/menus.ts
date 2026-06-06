@@ -207,7 +207,7 @@ export function openCoop(): void {
       <button class="btn ember block" style="margin-top:14px;border-radius:var(--r-sm);" data-soon>${ic('check')}Notify me</button>
     </div>
   </div>`;
-  const { root } = overlay('Co-op', 'Multiplayer', body);
+  const { root } = overlay('coop', 'Co-op', 'Multiplayer', body);
   root.querySelector('[data-soon]')?.addEventListener('click', (e) => {
     const b = e.currentTarget as HTMLButtonElement;
     b.textContent = "You're on the list";
@@ -238,7 +238,7 @@ export function openSettings(): void {
   </div>
   <div style="margin-top:16px;text-align:center;font-family:var(--mono);font-size:var(--fs-micro);letter-spacing:.16em;text-transform:uppercase;color:var(--faint);">bucketmyfire v1.0 · Marakana</div>`;
 
-  const { root } = overlay('Settings', 'Field settings', body);
+  const { root } = overlay('settings', 'Settings', 'Field settings', body);
 
   root.querySelector('[data-sound]')?.addEventListener('click', (e) => {
     const t = e.currentTarget as HTMLElement;

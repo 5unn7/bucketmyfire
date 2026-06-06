@@ -7,6 +7,7 @@ import { ENV } from './config';
 import { shouldAutostart, defaultProfile } from './ui/Onboarding';
 import { MenuFlow } from './ui/flow/MenuFlow';
 import { HomeScreen } from './ui/home/HomeScreen';
+import { NewPilotScreen } from './ui/home/NewPilot';
 import { TitleScreen } from './ui/title/TitleScreen';
 import { CAMPAIGN, missionById } from './missions/catalog';
 import { buildDailyMission, isDailyId } from './missions/daily';
@@ -104,25 +105,26 @@ function routeMission(): void {
     bootMission(missionById(selectedId) ?? CAMPAIGN[0]);
   } else {
     // No `?m=` → TitleScreen is always the first screen. PLAY routes based on pilot status:
-    // returning pilot (saved callsign) → HomeScreen hub; new pilot → identity wizard (MenuFlow).
+    // returning pilot (saved callsign) → HomeScreen hub; new pilot → the branded registration gate
+    // (NewPilotScreen), which lands on the SAME hub once a callsign is set.
     // Headless/deep-link (?m= / ?autostart / ?qa) bypasses this branch and boots the game directly.
+    const openHome = (): void => {
+      new HomeScreen(container, CAMPAIGN, {
+        onContinue: (id) => gotoCampaign(id),
+        onDaily: () => {
+          const url = new URL(location.href);
+          url.searchParams.set('daily', '1');
+          url.searchParams.delete('m');
+          location.assign(url.toString());
+        },
+        onCampaign: () => {
+          new MenuFlow(container, CAMPAIGN, (id) => gotoCampaign(id), { skipToMissions: true });
+        },
+      });
+    };
     new TitleScreen(container, CAMPAIGN, () => {
-      if (hasNamedProfile()) {
-        new HomeScreen(container, CAMPAIGN, {
-          onContinue: (id) => gotoCampaign(id),
-          onDaily: () => {
-            const url = new URL(location.href);
-            url.searchParams.set('daily', '1');
-            url.searchParams.delete('m');
-            location.assign(url.toString());
-          },
-          onCampaign: () => {
-            new MenuFlow(container, CAMPAIGN, (id) => gotoCampaign(id), { skipToMissions: true });
-          },
-        });
-      } else {
-        new MenuFlow(container, CAMPAIGN, (id) => gotoCampaign(id));
-      }
+      if (hasNamedProfile()) openHome();
+      else new NewPilotScreen(container, openHome);
     });
   }
 }
