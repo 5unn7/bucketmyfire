@@ -37,6 +37,9 @@ export class Placement {
       const x = (rng() * 2 - 1) * bound;
       const z = (rng() * 2 - 1) * boundZ;
       if (minFromOrigin > 0 && Math.hypot(x, z) < minFromOrigin) continue;
+      // On a true-shape (bounds-fit) map keep fires inside the province — the off-province band is lowered +
+      // fogged, so a fire there reads as burning in the void. No-op on square maps (isInProvince → true).
+      if (!this.world.isInProvince(x, z)) continue;
       const fuel = this.fuelAt(x, z);
       if (fuel <= 0) continue;
       if (rng() < fuel) return { x, z }; // accept in proportion to flammability

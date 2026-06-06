@@ -30,6 +30,11 @@ const SASKATCHEWAN_ANCHORS: readonly MapAnchor[] = [
 // projection makes the meridians converge, so it renders as SK's iconic trapezoid (wider south, narrower
 // north). Bases cluster in the central-north (their true positions); the open south is reserved for v2.
 const SASKATCHEWAN_GEO: GeoFrame = {
+  // Slice 2: TRUE-SHAPE bounds fit — the world's extent IS the province's projected bounding box (≈1029×1996u
+  // at MAPGEO.unitsPerKm), and World's outline mask traces the trapezoid so the visible land edge is real SK,
+  // not a square. (Was the legacy square fit; flipping this regenerated the SK world + required the campaign
+  // re-tune to km-authored placements.)
+  fit: 'bounds',
   latMin: 49,
   latMax: 60,
   lonMin: -110, // west: the 110°W meridian (Alberta line)
