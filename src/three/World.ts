@@ -7,6 +7,7 @@ import { getRegion, getTerrainProfile } from './maps/registry';
 import type { Region, GeoFrame, TerrainProfile } from './maps/types';
 import { AuthoredField } from './world/authored';
 import type { BuildingKind } from './world/authored';
+import { HeightPatch, decodeHeightmap } from './world/heightPatch';
 import type { BridgeSite } from './meshes/bridges'; // TYPE-only (erased) — keeps World free of THREE / the bridge mesh
 
 /**
@@ -184,8 +185,10 @@ export class World {
   private readonly ridgeFbm: FbmParams;
   /** Optional high-relief massif layer; null on low-relief maps (so baseHeight skips it entirely). */
   private readonly mountainFbm: FbmParams | null;
-  /** Localized uplands (e.g. Cypress Hills) projected to world XZ — baseHeight adds a smooth bump at each. */
+  /** Localized uplands projected to world XZ — baseHeight adds a smooth bump at each. */
   private readonly uplands: { x: number; z: number; r: number; height: number }[];
+  /** Mesh-baked massifs (e.g. Cypress Hills) projected to world XZ — baseHeight adds each grid's relief. */
+  private readonly heightPatches: HeightPatch[];
   /** Hand-painted terrain height offset (map editor) baked into a load-time field; null = none authored. */
   private readonly authoredTerrain: AuthoredField | null;
   /** Hand-painted tree-density bias (map editor); null = none authored. Sampled by Game's forest scatter. */
@@ -286,6 +289,25 @@ export class World {
     this.uplands = (this.region.uplands ?? []).map((u) => {
       const p = this.project(u.lat, u.lon);
       return { x: p.x, z: p.z, r: u.radiusKm * this.uPerKm, height: u.prominenceM / MAPGEO.metresPerUnit };
+    });
+
+    // Height patches (Cypress Hills): a massif baked from a real mountain mesh. Same projection + scaling as
+    // an upland (km footprint → uPerKm, metre prominence → metresPerUnit), but the SHAPE comes from a baked
+    // grid (world/heightPatch.ts) instead of a radial bump. Also set BEFORE lakes so the carved relief feeds
+    // each lake's sampled water level. Empty on maps with no patches → baseHeight skips the loop entirely.
+    this.heightPatches = (this.region.heightPatches ?? []).map((hp) => {
+      const p = this.project(hp.lat, hp.lon);
+      return new HeightPatch({
+        centerX: p.x,
+        centerZ: p.z,
+        halfWidth: (hp.widthKm * this.uPerKm) / 2,
+        halfLength: (hp.lengthKm * this.uPerKm) / 2,
+        rotation: ((hp.rotationDeg ?? 0) * Math.PI) / 180,
+        baseHeight: (hp.baseM ?? 0) / MAPGEO.metresPerUnit,
+        peakHeight: hp.prominenceM / MAPGEO.metresPerUnit,
+        grid: decodeHeightmap(hp.heightmap),
+        n: hp.heightmap.n,
+      });
     });
 
     // Authored map-editor layers (world/authored.ts) — hand-painted terrain/foliage/buildings pinned at real
@@ -1696,6 +1718,17 @@ export class World {
       const s = t * t * (3 - 2 * t); // smoothstep falloff
       const ridge = this.noise.ridged(wx, wz, this.ridgeFbm); // reuse the outcrop field for crest texture
       h += u.height * s * (1 + ridge * 0.18);
+    }
+
+    // Height patches (Cypress Hills): relief baked from a real mountain mesh — the shape is a sampled grid
+    // rather than a radial dome. A light ridge modulation (scaled by the patch's own contribution, so it
+    // fades out at the rim) gives the mesh rocky crest texture at the terrain's sampling resolution. The
+    // loop is empty on maps with no patches → the seeded world is unchanged.
+    for (const hp of this.heightPatches) {
+      const hh = hp.sample(x, z);
+      if (hh === 0) continue;
+      const ridge = this.noise.ridged(wx, wz, this.ridgeFbm);
+      h += hh * (1 + ridge * 0.12);
     }
 
     // Hand-painted terrain (map editor): a baked offset field raises/lowers the ground. O(1) bilinear

@@ -110,6 +110,25 @@ export interface RegionUpland {
 }
 
 /**
+ * A localized massif baked from a real mountain MESH (vs. RegionUpland's smooth radial bump). A downloaded
+ * mountain OBJ is rasterised once at build time into a normalized height grid (scripts/bake-heightmap.mjs →
+ * a `{ n, data }` module), pinned here at its real lat/lon with a real km footprint + metre prominence.
+ * World adds it into `baseHeight` like an upland, so it's collidable GROUND (flight floor / fire / lakes all
+ * see its shape) — the engine loads no mesh. The grid is square; the footprint aspect lives in the km below.
+ */
+export interface RegionHeightPatch {
+  name: string;
+  lat: number; // footprint CENTRE (real coords)
+  lon: number;
+  widthKm: number; // REAL footprint extent (km) along the grid's local X (before rotation) → units via uPerKm
+  lengthKm: number; // REAL footprint extent (km) along the grid's local Z — set widthKm:lengthKm to the bake's aspect
+  prominenceM: number; // REAL peak elevation above the plain (metres → units via MAPGEO.metresPerUnit) at grid 1.0
+  baseM?: number; // height (metres) the grid's 0.0 maps to (default 0 — the mesh skirt sits on the flats)
+  rotationDeg?: number; // yaw about +Y in degrees (0 = grid X→world X); orient the peak vs. nearby water
+  heightmap: { readonly n: number; readonly data: string }; // the baked, base64-packed normalized grid
+}
+
+/**
  * A named RIVER pinned as a real lat/lon polyline (authored in tools/map-editor.html). World projects each point
  * and lays the river as a chain of short channel segments hugging the terrain (like the procedural streams, but
  * following the authored path) — carved into the ground and scoopable like any water. Drawn BEFORE the procedural
@@ -169,7 +188,8 @@ export interface Region {
   // should read as open land/river. Applied AFTER the seeded scatter, so every other lake stays byte-identical.
   landmarks?: readonly RegionPlace[]; // decorative place labels at REAL coords (far-north + southern reference points)
   highwayRoutes?: readonly HighwayRoute[]; // real highway corridors through real towns (laid before the MST)
-  uplands?: readonly RegionUpland[]; // localized massifs (e.g. Cypress Hills) added to baseHeight as relief
+  uplands?: readonly RegionUpland[]; // localized massifs (smooth radial bumps) added to baseHeight as relief
+  heightPatches?: readonly RegionHeightPatch[]; // localized massifs baked from real mountain meshes (Cypress Hills)
   rivers?: readonly RegionRiver[]; // authored named rivers (real lat/lon polylines) laid as carved channels
   roads?: readonly RegionRoad[]; // hand-painted roads (real lat/lon polylines) laid as draped ribbons (map editor)
   terrain?: readonly TerrainDab[]; // hand-painted raise/lower brush dabs (map editor → World.baseHeight offset)

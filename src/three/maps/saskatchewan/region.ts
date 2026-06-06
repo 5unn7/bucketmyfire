@@ -1,6 +1,7 @@
 // Saskatchewan region data — moved VERBATIM from world/regions.ts (the real fire bases, named lakes,
 // landmarks, highway corridors, uplands, rivers, geo frame + name pools). Pure data; types only.
-import type { Region, MapAnchor, GeoFrame, RegionLake, RegionPlace, HighwayRoute, RegionUpland, RegionRiver } from '../types';
+import type { Region, MapAnchor, GeoFrame, RegionLake, RegionPlace, HighwayRoute, RegionHeightPatch, RegionRiver } from '../types';
+import { CYPRESS_HEIGHTMAP } from './cypressHeightmap';
 
 // --- saskatchewan ANCHORS — the real fire bases + protected towns at their REAL lat/lon ------------
 // Real coordinates (verified) so World projects the bases to their true relative positions and the
@@ -104,18 +105,34 @@ const SASKATCHEWAN_HIGHWAYS: readonly HighwayRoute[] = [
   { name: 'Hwy 16', through: ['north-battleford', 'saskatoon'] },
 ];
 
-// Cypress Hills — Saskatchewan's far-SW highland (the highest land between the Rockies and Labrador). Authored
-// as a RANGE of peaks RINGING Cypress Lake, so the lake sits in the central valley: each peak's footprint clears
-// the lake centre, so they raise the rim, not the water (lakes sample their level from baseHeight, which already
-// includes uplands). Real Cypress Hills block/feature names; in-game an upland is nameless relief (World reads only
-// x/z/r/height). The `cypress-hills` base + its Sector-Ferry crew drop sit in this valley — no longer pure scenery.
-const SASKATCHEWAN_UPLANDS: readonly RegionUpland[] = [
-  { name: 'Centre Block', lat: 49.95, lon: -107.75, radiusKm: 26, prominenceM: 300 },
-  { name: 'Conglomerate Cliffs', lat: 49.8, lon: -107.15, radiusKm: 22, prominenceM: 240 },
-  { name: 'Bald Butte', lat: 49.55, lon: -107.05, radiusKm: 24, prominenceM: 270 },
-  { name: 'Head of the Mountain', lat: 49.38, lon: -107.7, radiusKm: 28, prominenceM: 320 },
-  { name: 'Lookout Point', lat: 49.45, lon: -108.3, radiusKm: 24, prominenceM: 250 },
-  { name: 'West Block', lat: 49.8, lon: -108.45, radiusKm: 26, prominenceM: 280 },
+// Cypress Hills — Saskatchewan's far-SW highland. The relief is BAKED FROM A REAL MOUNTAIN MESH (a downloaded
+// Blender OBJ → a normalized height grid via scripts/bake-heightmap.mjs), reused as the repeating unit of a
+// LOW E–W CHAIN of hills (not one tall peak) strung across the SW corner — each instance is the same mesh at
+// a different scale / rotation / height, so the range reads varied. Authored as a chain with GAPS between the
+// summits: low enough to stay in the flight band and weave THROUGH the valleys, and each hill added into
+// baseHeight like an upland so it's collidable ground (flight floor / fire / lakes all see it; engine loads no
+// mesh). All summits sit NORTH of Cypress Lake so the lake + the `cypress-hills` base stay on the low south
+// flank (lakes sample their level from baseHeight → the chain must read LOW over the water). widthKm:lengthKm
+// tracks the bake's source aspect (≈6.47:8.39). Heights/spread tuned via scripts/probe-cypress.ts.
+const CYPRESS_HILL = (lat: number, lon: number, widthKm: number, lengthKm: number, prominenceM: number, rotationDeg: number): RegionHeightPatch => ({
+  name: 'Cypress Hills',
+  lat,
+  lon,
+  widthKm,
+  lengthKm,
+  prominenceM,
+  baseM: 0,
+  rotationDeg,
+  heightmap: CYPRESS_HEIGHTMAP,
+});
+const SASKATCHEWAN_HEIGHTPATCHES: readonly RegionHeightPatch[] = [
+  //          lat     lon      widthKm lengthKm promM rotDeg
+  CYPRESS_HILL(49.85, -106.65, 30, 39, 160, 25),
+  CYPRESS_HILL(49.93, -107.15, 33, 43, 178, 80),
+  CYPRESS_HILL(49.89, -107.7, 31, 40, 150, 130),
+  CYPRESS_HILL(49.96, -108.25, 34, 44, 172, 200),
+  CYPRESS_HILL(49.9, -108.8, 31, 40, 162, 295),
+  CYPRESS_HILL(49.84, -109.35, 28, 36, 142, 45),
 ];
 
 // Authored named rivers (real lat/lon polylines from tools/map-editor.html). World projects each point and lays the
@@ -204,7 +221,7 @@ const SASKATCHEWAN: Region = {
   noLakeZones: [{ lat: 52.63, lon: -106.2, radiusKm: 50 }],
   landmarks: SASKATCHEWAN_LANDMARKS,
   highwayRoutes: SASKATCHEWAN_HIGHWAYS,
-  uplands: SASKATCHEWAN_UPLANDS,
+  heightPatches: SASKATCHEWAN_HEIGHTPATCHES,
   rivers: SASKATCHEWAN_RIVERS,
   geo: SASKATCHEWAN_GEO,
 };

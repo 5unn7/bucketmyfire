@@ -23,3 +23,5 @@ PBR textures (diffuse + nor_gl + rough, 1k jpg) — pbr/<slug>/
   burned_ground_01     https://polyhaven.com/a/burned_ground_01     (scorched / fire-damaged ground)
   brushed_concrete_03  https://polyhaven.com/a/brushed_concrete_03  (helipad deck)
   snow_02              https://polyhaven.com/a/snow_02              (alpine / winter caps — BC profile)
+
+
