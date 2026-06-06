@@ -10,11 +10,11 @@
  */
 import { HELIS, MAPS, isHeliUnlocked, missionsCleared, loadProfile, saveProfile, type Profile, type CatalogItem } from '../profile';
 import { isConfigured } from '../../leaderboard/client';
+import { resetProgress } from '../../missions/progress';
 import { injectHomeStyles, spawnEmbers } from './styles';
 import { DEFS, FLAME, ic } from './icons';
 
 const MUTE_KEY = 'bmf.audio.muted.v1';
-const PROGRESS_KEY = 'bmf.campaign.v1';
 
 function currentProfile(): Profile {
   return loadProfile() ?? { name: '', mapId: 'saskatchewan', heliId: HELIS[0].id };
@@ -211,11 +211,7 @@ export function openSettings(): void {
   });
   root.querySelector('[data-reset]')?.addEventListener('click', () => {
     if (window.confirm('Reset all progress? This wipes your ranks, scores and unlocks.')) {
-      try {
-        localStorage.removeItem(PROGRESS_KEY);
-      } catch {
-        /* storage blocked */
-      }
+      resetProgress();
       location.reload();
     }
   });

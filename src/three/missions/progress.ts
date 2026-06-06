@@ -58,6 +58,15 @@ export function recordWin(id: string, score: number, completion?: CompletionReco
   save(p);
 }
 
+/** Wipe ALL campaign progress (completions, best scores, ledger) — Settings → Reset. */
+export function resetProgress(): void {
+  try {
+    localStorage.removeItem(KEY);
+  } catch {
+    /* storage unavailable — nothing to clear */
+  }
+}
+
 /** The persisted sub-task breakdown of a mission's best run (or null if never cleared). */
 export function getCompletion(id: string): CompletionRecord | null {
   return load().completions[id] ?? null;
