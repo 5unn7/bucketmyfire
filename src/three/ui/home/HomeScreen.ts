@@ -50,7 +50,7 @@ export class HomeScreen {
   constructor(parent: HTMLElement, private catalog: MissionDef[], private nav: HomeNav) {
     injectHomeStyles();
     this.root = document.createElement('div');
-    this.root.className = 'bmf-app';
+    this.root.className = 'bmf-app home';
     this.root.innerHTML = DEFS + this.markup();
     parent.appendChild(this.root);
     const embers = this.root.querySelector<HTMLElement>('.embers');
@@ -117,6 +117,7 @@ export class HomeScreen {
     </div>
   </header>
 
+  <div class="zone z-daily">
   <!-- daily burn -->
   <div class="sec rise d2"><span class="tag">Daily Burn</span><span class="line"></span><span class="stamp">Shared fire</span></div>
   <section class="card warm cut crt rise d2"><span class="crt-streak"></span>
@@ -139,7 +140,9 @@ export class HomeScreen {
       <button class="btn ember sm" data-act="daily">${ic('play')}Fly today</button>
     </div>
   </section>
+  </div>
 
+  <div class="zone z-cont">
   <!-- continue mission -->
   <div class="sec rise d3"><span class="tag">Continue</span><span class="line"></span><span class="stamp link" data-act="campaign">Campaign ›</span></div>
   <article class="artcard rise d3" data-act="continue">
@@ -162,6 +165,7 @@ export class HomeScreen {
       <button class="btn primary block" style="margin-top:16px;" data-act="continue">${ic('play')}${best != null ? 'Replay mission' : 'Fly mission'}</button>
     </div>
   </article>
+  </div>
 
 </div>
 

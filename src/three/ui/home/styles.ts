@@ -228,6 +228,26 @@ const CSS = `
   .bmf-app .helmet .sheen,.bmf-app .mote,.bmf-app .glyph.flicker svg path,.bmf-app .crt-streak{ animation:none !important; }
   .bmf-app .embers{ display:none; }
 }
+
+/* ===== tablet / wide: roomier single column ===== */
+@media (min-width:740px){
+  .bmf-app.home .pad{ max-width:620px; }
+  .bmf-app.home .artcard .inner{ min-height:300px; }
+  .bmf-app.norail .pad{ max-width:680px; }
+}
+/* ===== desktop: 2-column dashboard + floating dock rail ===== */
+@media (min-width:1040px){
+  .bmf-app.home .pad{ max-width:1000px; display:grid; grid-template-columns:380px 1fr; column-gap:24px; align-items:start; align-content:start;
+    padding-top:calc(env(safe-area-inset-top) + 32px); padding-bottom:116px; }
+  .bmf-app.home .pad > header{ grid-column:1 / -1; margin-bottom:4px; }
+  .bmf-app.home .z-daily{ grid-column:1; }
+  .bmf-app.home .z-cont{ grid-column:2; }
+  .bmf-app.home .z-cont .artcard .inner{ min-height:460px; }
+  .bmf-app.home .sec{ margin-top:6px; }
+  .bmf-app.home .rail{ left:50%; right:auto; transform:translateX(-50%); bottom:18px; width:auto; min-width:540px; height:auto; padding-bottom:0;
+    border:1px solid var(--bevel-top); border-radius:var(--r-xl); box-shadow:0 14px 44px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.06); }
+  .bmf-app.home .rail .keys{ max-width:none; height:66px; }
+}
 `;
 
 let injected = false;
