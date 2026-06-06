@@ -5,6 +5,7 @@
  */
 
 import { UI, FS, FW, R, el, div, prefersReducedMotion } from '../theme';
+import { makeButton } from '../components';
 
 let flowStylesInjected = false;
 function injectFlowStyles(): void {
@@ -86,82 +87,26 @@ export interface PrimaryButton {
   hide(): void;
 }
 
-/** The flow's primary advance button — the cyan gradient action shared with onboarding. */
+/** The flow's primary advance button — now a kit `primary` Button on the warm "fight" register
+ *  (the wizard is a brand surface, DESIGN.md → two registers). Keeps the rebindable-action +
+ *  show/hide handle the controller drives; the styling/states/focus ring come from the kit. */
 export function primaryButton(): PrimaryButton {
   let action: () => void = () => {};
-  const b = el(
-    'button',
-    {
-      minWidth: '210px',
-      padding: '15px 26px',
-      borderRadius: R.lg,
-      border: 'none',
-      fontFamily: UI.font,
-      fontSize: FS.md,
-      fontWeight: FW.heavy,
-      letterSpacing: '0.1em',
-      textTransform: 'uppercase',
-      cursor: 'pointer',
-      color: UI.ctaInk,
-      background: UI.cta,
-      boxShadow: `0 10px 30px ${UI.ctaGlow}`,
-      transition: 'transform 0.12s ease, box-shadow 0.2s ease, opacity 0.2s ease, filter 0.2s ease, background 0.2s ease',
-    },
-    'CONTINUE',
-  );
-  b.type = 'button';
-  b.addEventListener('pointerenter', () => {
-    if (!b.disabled) {
-      b.style.transform = 'translateY(-2px)';
-      b.style.background = UI.ctaHi;
-      b.style.boxShadow = `0 16px 40px ${UI.ctaGlow}`;
-    }
-  });
-  b.addEventListener('pointerleave', () => {
-    b.style.transform = 'none';
-    b.style.background = UI.cta;
-    b.style.boxShadow = `0 10px 30px ${UI.ctaGlow}`;
-  });
-  b.addEventListener('click', () => {
-    if (!b.disabled) action();
-  });
+  const h = makeButton({ label: 'CONTINUE', variant: 'primary', register: 'fight', size: 'lg', onClick: () => action() });
+  h.el.style.minWidth = '210px';
   return {
-    el: b,
-    setLabel: (s) => (b.textContent = s),
-    setEnabled: (on) => {
-      b.disabled = !on;
-      b.style.opacity = on ? '1' : '0.4';
-      b.style.cursor = on ? 'pointer' : 'not-allowed';
-      b.style.filter = on ? 'none' : 'grayscale(0.4)';
-    },
+    el: h.el,
+    setLabel: (s) => h.setLabel(s),
+    setEnabled: (on) => h.setEnabled(on),
     setAction: (fn) => (action = fn),
-    show: () => (b.style.display = ''),
-    hide: () => (b.style.display = 'none'),
+    show: () => (h.el.style.display = ''),
+    hide: () => (h.el.style.display = 'none'),
   };
 }
 
-/** A subtle text button — Back and "Skip to missions →". */
+/** A subtle text button — Back and "Skip to missions →". Kit `ghost` Button. */
 export function ghostButton(label: string, onClick: () => void): HTMLButtonElement {
-  const b = el(
-    'button',
-    {
-      background: 'none',
-      border: 'none',
-      cursor: 'pointer',
-      color: UI.dim,
-      fontFamily: UI.font,
-      fontSize: FS.md,
-      fontWeight: FW.semibold,
-      padding: '10px 6px',
-      transition: 'color 0.14s ease',
-    },
-    label,
-  );
-  b.type = 'button';
-  b.addEventListener('pointerenter', () => (b.style.color = UI.text));
-  b.addEventListener('pointerleave', () => (b.style.color = UI.dim));
-  b.addEventListener('click', onClick);
-  return b;
+  return makeButton({ label, variant: 'ghost', onClick }).el;
 }
 
 /**
