@@ -110,6 +110,14 @@ export interface WindLike {
  */
 export interface FireTuning {
   spreadScale?: number;
+  /** Multiplies ember-SPOTTING rate on TOP of `spreadScale` (1 = no extra throttle). Lets a mission keep a
+   *  lively front creep while cutting how fast it throws NEW spot fires — the solo "don't out-breed one
+   *  bucket" lever. Defaults to 1 → existing missions are byte-identical. */
+  spotScale?: number;
+  /** Per-mission ceiling on simultaneously-counted fires, clamped to the load-time `FIRE3D.maxActive` pool
+   *  capacity. Shrinks the ACTIVE subset only (the mesh pool stays sized at FIRE3D.maxActive → no realloc /
+   *  shader recompile). Omit → the full pool. */
+  maxActive?: number;
 }
 
 /**
@@ -175,9 +183,17 @@ export class FireSystem {
 
   // Mission-dialled spread pace (1 = FIRE3D baseline) — multiplies pre-heat creep + spotting.
   private readonly spreadScale: number;
+  // Mission-dialled ember-spotting throttle (1 = no extra cut), applied INDEPENDENTLY of spreadScale so the
+  // front can creep lively while it stops throwing new spot fires faster than one bucket can clear.
+  private readonly spotScale: number;
+  // Per-mission ACTIVE-fire ceiling, clamped ≤ the load-time FIRE3D.maxActive pool capacity (mesh pool stays full).
+  private readonly activeCap: number;
 
   constructor(private readonly deps: FireDeps, tuning: FireTuning = {}) {
     this.spreadScale = Math.max(0, tuning.spreadScale ?? 1);
+    this.spotScale = Math.max(0, tuning.spotScale ?? 1);
+    // Clamp the per-mission ceiling into [1, FIRE3D.maxActive] — never above the fixed mesh pool.
+    this.activeCap = Math.max(1, Math.min(FIRE3D.maxActive, tuning.maxActive ?? FIRE3D.maxActive));
     // Resolve the rectangular grid from the playfield extents (default = the legacy square world).
     const grid = fireGridFor(deps.sizeX ?? WORLD3D.size, deps.sizeZ ?? WORLD3D.size);
     this.nx = grid.nx;
@@ -316,7 +332,7 @@ export class FireSystem {
     const N = gnx * gnz;
     // Mission-scaled spread levers (the calm FIRE3D baseline × this mission's spreadScale).
     const spreadRate = FIRE3D.spreadRate * this.spreadScale;
-    const spotChance = FIRE3D.spotChance * this.spreadScale;
+    const spotChance = FIRE3D.spotChance * this.spreadScale * this.spotScale;
     const wlen = Math.hypot(wind.vx, wind.vz);
     const wnx = wlen > 1e-4 ? wind.vx / wlen : 0;
     const wnz = wlen > 1e-4 ? wind.vz / wlen : 0;
@@ -639,13 +655,15 @@ export class FireSystem {
       this.bCnt[b]++;
     }
 
-    // Collect qualifying blobs, keep the strongest maxActive, then sort by index for stable slots.
+    // Collect qualifying blobs, keep the strongest `activeCap`, then sort by index for stable slots.
+    // (The cap only limits how many qualifying blobs get a FireState — the zero-fires WIN condition is
+    // unaffected: when no blob clears `repMinHeat`, repCount is 0 regardless of the cap.)
     const picked: number[] = [];
     for (let b = 0; b < B; b++) {
       if (this.bHeat[b] >= FIRE3D.repMinHeat) picked.push(b);
     }
     picked.sort((a, c) => this.bHeat[c] - this.bHeat[a]);
-    if (picked.length > FIRE3D.maxActive) picked.length = FIRE3D.maxActive;
+    if (picked.length > this.activeCap) picked.length = this.activeCap;
     picked.sort((a, c) => a - c);
 
     for (let k = 0; k < picked.length; k++) {

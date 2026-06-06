@@ -635,7 +635,11 @@ export class Game {
         sizeX: this.world.sizeX, // rectangular fire grid (square map → WORLD3D.size, byte-identical)
         sizeZ: this.world.sizeZ,
       },
-      { spreadScale: this.mission.fire?.spreadScale }, // per-mission spread pacing (FIRE3D baseline × this)
+      {
+        spreadScale: this.mission.fire?.spreadScale, // per-mission spread pacing (FIRE3D baseline × this)
+        spotScale: this.mission.fire?.spotScale, // throttle ember-spotting WITHOUT slowing the front (solo balance)
+        maxActive: this.mission.fire?.maxActive, // cap simultaneous fires below the pool (solo ceiling)
+      },
     );
     for (let i = 0; i < FIRE3D.maxActive; i++) {
       const m = createFire();

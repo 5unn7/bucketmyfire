@@ -24,7 +24,7 @@ export interface ArchetypeOutput {
   payload?: 'water' | 'crew' | 'torch';
   bucket?: 'bambi' | 'valve';
   fuel?: boolean;
-  fire: { spreadScale: number };
+  fire: { spreadScale: number; spotScale?: number; maxActive?: number };
   wind: { angle?: number; strengthScale: number };
   difficulty: 1 | 2 | 3 | 4 | 5;
   /** The in-game voice for this generated sortie (the factory uses these for the briefing/tagline). */
@@ -56,7 +56,12 @@ const extinguish: Archetype = {
       fails: [], // pure score race — always winnable
       structures: { depot: true },
       bucket: 'bambi',
-      fire: { spreadScale: lerp(0.55, 1.15, intensity) },
+      // SOLO BALANCE: a 14-fire "clear everything" day shouldn't out-breed one bucket. Keep the front
+      // creeping LIVELY (spreadScale unchanged) but throttle the fire-ADDERS so the field SHRINKS under
+      // sustained drops instead of refilling: cut ember-spotting harder on hotter days (spotScale, which
+      // counters the higher spreadScale), and cap simultaneous fires at 8 (below the 14-fire pool) so the
+      // pilot is never swarmed past what's winnable solo. Co-op's big-fire archetype omits these (full burn).
+      fire: { spreadScale: lerp(0.55, 1.15, intensity), spotScale: lerp(0.6, 0.35, intensity), maxActive: 8 },
       wind: { angle: rng() * Math.PI * 2, strengthScale: lerp(0.4, 1.3, rng()) }, // deterministic heading → the shared daily is the SAME fight for everyone (Wind seeds from Math.random without an angle)
       difficulty: clampDiff(1 + intensity * 4),
       flavor: {

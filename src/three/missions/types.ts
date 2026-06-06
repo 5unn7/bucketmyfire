@@ -228,7 +228,11 @@ export interface MissionDef {
   // (pre-heat creep + ember spotting), so the SAME fire model reads as a near-static tutorial spot
   // (~0.25) up to a screaming firestorm (~1.3). 1 = the config baseline; omit → 1. This is how
   // "spread according to the mission" is dialled, mirroring `wind.strengthScale`. (FireSystem reads it.)
-  fire?: { spreadScale?: number };
+  // `spotScale` throttles ember-SPOTTING independently of `spreadScale` — so the front can still creep
+  // lively while it stops throwing NEW spot fires faster than one bucket can clear (the solo balance lever).
+  // `maxActive` caps the simultaneously-COUNTED fires below the FIRE3D pool capacity (a solo ceiling); the
+  // flame-mesh pool is still sized at FIRE3D.maxActive, so this only shrinks the active subset — no realloc.
+  fire?: { spreadScale?: number; spotScale?: number; maxActive?: number };
   bucket?: 'bambi' | 'valve';
   // The slung loadout. `water` = the Bambi/valve bucket (scoop + drop). `crew` = no bucket/longline;
   // the heli LANDS at zones to board/unload crew. `torch` = a helitorch ignition rig: no scoop/drop,
