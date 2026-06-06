@@ -13,41 +13,56 @@ import {
 } from '../leaderboard/client';
 import { dailyMissionId, dailyDateLabel, isDailyId } from '../missions/daily';
 import { dailyStreak, bestDailyStreak } from '../missions/streak';
-import { UI, FS, FW, R, div, setBlur } from './theme';
+import { UI, BOARD, FS, FW, R, div, setBlur } from './theme';
 import { makeTabs, makeIconButton, makeStat } from './components';
 
 /**
- * Global leaderboard overlay — a full-screen frosted-glass panel in the game's cockpit language
- * (matching the pre-flight menu / HUD.ts). A two-way switch picks between TOTAL (every pilot's overall
+ * Global leaderboard overlay — an **F1 broadcast timing-tower** rendered in the game's WARM "fight"
+ * register (ember/gold on near-black, per DESIGN.md → Two registers: brand surfaces run warm, only
+ * the in-flight cockpit stays cyan). A two-way switch picks between TOTAL (every pilot's overall
  * standing — campaign + daily summed, the all-time board) and TODAY'S DAILY BURN (the shared per-day
- * race, ranked by score then time, with the player's local streak). Per-mission boards still exist in
- * the DB (keyed by mission id) but aren't surfaced here — the two boards people actually race on.
+ * race, ranked by score then time, with the player's local streak).
  *
- * The redesign over the old flat list:
- *   • a gold/silver/bronze PODIUM for the top three (the board's focal point);
- *   • a STICKY "YOU" card — your rank + percentile, pinned to the scroll, so you see where you
- *     stand even at #147 (the old board just hid you if you weren't in the top 25/50);
- *   • a context bar ("312 pilots · YOU #14 · Top 5%") and a "top N of TOTAL" caption;
- *   • real loading/empty/offline states — a shimmer skeleton, a refresh control, and a local
- *     "this device" record so the panel never reads as dead when the network/Supabase is absent.
+ * What makes it read like a timing screen rather than a flat list:
+ *   • a single continuous TABLE from P1 down — no separate podium pedestal; the top three are just
+ *     the top rows, their position number tinted gold/silver/bronze and the leader row glowing;
+ *   • a MOVEMENT column — ▲ green / ▼ red / – flat / NEW — showing how each pilot's position changed
+ *     since you last opened this board (a real diff, computed client-side from a localStorage snapshot
+ *     of the previous ranks — the backend keeps no rank history, so we keep our own);
+ *   • a GAP-to-leader figure under each score, the way an F1 tower shows the interval;
+ *   • a per-pilot TEAM COLOUR — a stable hue hashed from the callsign — painted as the row's left
+ *     edge and the avatar, so the grid reads as a field of distinct entrants at a glance;
+ *   • a STICKY "YOU" row pinned to the scroll so you always see where you stand, even at #147.
  *
  * Pure DOM, zero assets, self-disposing (Close / backdrop tap / Esc). Network is best-effort via
  * leaderboard/client.ts; `openLeaderboard()` owns its own overlay, so callers don't manage lifecycle.
  */
 
-// Visual tokens (UI) + `div`/`setBlur` come from ./theme — the one cockpit palette
-// (gold/silver/bronze, cardGlass, rowMine, etc. were folded in there).
+// Tabular monospaced numerals — the timing-tower "lap clock" feel. A system stack (no font download,
+// keeps the no-binary-assets ethos); tabular-nums on top so columns of digits stay rail-straight.
+const MONO = 'ui-monospace, "SF Mono", "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace';
+
+// Warm "you" treatment (the ember analogue of the cockpit's cyan rowMine) — board surfaces + the
+// grid palette live as tokens in theme.ts (BOARD.*); these short aliases keep the row code readable.
+const MINE_BG = BOARD.mine;
+const MINE_BORDER = UI.ember;
+
+// Column widths shared by the header strip and every row so the columns stay rail-aligned.
+const COL = { bar: '4px', pos: '30px', move: '46px', avatar: '30px', right: '96px', gap: '10px' };
 
 /** Which board is showing: TOTAL (career + daily combined) or today's DAILY BURN. */
 type Board2 = 'total' | 'daily';
 
-/** A board row normalised for rendering — podium, list and the sticky YOU card all consume this. */
+/** A board row normalised for rendering — the table, the sticky YOU row and the gap maths consume this. */
 interface Ranked {
   rank: number;
   pilot: string;
   value: string; // formatted score / career total
+  num: number; // raw numeric, for the gap-to-leader column
   sub: string; // small second line (time / mission count · "2d ago")
   mine: boolean;
+  key: string; // lowercased callsign — the movement-snapshot key
+  delta: number | null; // prevRank − rank since last visit: >0 up, <0 down, 0 flat, null = NEW/unknown
 }
 
 /** Open the leaderboard overlay. `initialMissionId` selects that mission's tab on open
@@ -79,12 +94,12 @@ class Leaderboard {
       inset: '0',
       zIndex: '60',
       overflowY: 'auto',
-      // Near-opaque + backdrop blur so this overlay fully OCCLUDES the mission menu it opens
-      // over — the old 0.9/0.96 gradient let the busy card grid bleed through behind an empty board.
-      background: 'radial-gradient(120% 90% at 50% 0%, rgba(18,28,40,0.95), rgba(4,7,11,0.985))',
+      // Near-opaque WARM backdrop (ember atmosphere) so the overlay fully OCCLUDES the mission menu
+      // it opens over — and so the board reads on the "fight" register, not the cockpit's cool blue.
+      background: `radial-gradient(125% 92% at 50% -4%, ${BOARD.bgTop}, ${BOARD.bgBot})`,
       fontFamily: UI.font,
       color: UI.text,
-      padding: '34px 18px 60px',
+      padding: '30px 16px 56px',
       boxSizing: 'border-box',
     });
     setBlur(this.root); // blur whatever sits behind so nothing reads through the board
@@ -96,29 +111,18 @@ class Leaderboard {
     window.addEventListener('keydown', this.onKey);
 
     const panel = div({ maxWidth: '640px', margin: '0 auto', position: 'relative' });
+    panel.appendChild(this.header());
 
-    // Header: title + refresh + close.
-    const head = div({ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' });
-    head.appendChild(div({ fontSize: FS.display, fontWeight: FW.heavy, letterSpacing: '0.5px', flex: '1' }, '🏆 Leaderboard'));
-    this.refreshBtn = makeIconButton({ glyph: '⟳', size: 36, title: 'Refresh', onClick: () => this.load() }).el;
-    head.appendChild(this.refreshBtn);
-    head.appendChild(makeIconButton({ glyph: '✕', size: 36, title: 'Close', onClick: () => this.close() }).el);
-    panel.appendChild(head);
-
-    panel.appendChild(
-      div({ fontSize: FS.body, color: UI.dim, marginBottom: '14px' }, 'Global standings — the top helicopter pilots.'),
-    );
-
-    // Two boards: TOTAL (career + daily combined) and today's DAILY BURN. A kit segmented switch
-    // replaces the old flat scroll of one tab per mission.
+    // Two boards: TOTAL (career + daily combined) and today's DAILY BURN. A WARM-register segmented
+    // switch (gold accent) replaces the old flat scroll of one tab per mission.
     const tabs = makeTabs(['Total', '🔥 Daily Burn'], (i) => {
       const next: Board2 = i === 0 ? 'total' : 'daily';
       if (next === this.active) return;
       this.active = next;
       this.load();
-    });
+    }, 'fight');
     if (this.active === 'daily') tabs.select(1);
-    const tabRow = div({ margin: '2px 0' });
+    const tabRow = div({ margin: '14px 0 2px' });
     tabRow.appendChild(tabs.el);
     panel.appendChild(tabRow);
 
@@ -128,7 +132,50 @@ class Leaderboard {
     this.root.appendChild(panel);
     document.body.appendChild(this.root);
 
+    this.refreshBtn = this.headerRefreshBtn!;
     this.load();
+  }
+
+  // Stash the refresh button created inside header() so load() can spin it.
+  private headerRefreshBtn: HTMLButtonElement | null = null;
+
+  /** Title block — a timing-tower wordmark: an ember "LIVE TIMING" eyebrow over a big STANDINGS,
+   *  with the refresh + close controls riding the top-right like a broadcast graphic. */
+  private header(): HTMLDivElement {
+    const head = div({ display: 'flex', alignItems: 'flex-start', gap: '10px' });
+
+    const title = div({ flex: '1', minWidth: '0' });
+    const eyebrow = div({ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '3px' });
+    const dot = div({
+      width: '7px',
+      height: '7px',
+      borderRadius: R.round,
+      background: UI.ember,
+      boxShadow: UI.emberGlow,
+    });
+    dot.className = 'bmf-lb-pulse';
+    eyebrow.appendChild(dot);
+    eyebrow.appendChild(
+      div(
+        { fontSize: FS.label, fontWeight: FW.heavy, letterSpacing: '3px', color: UI.emberHi, fontFamily: MONO },
+        'LIVE TIMING',
+      ),
+    );
+    title.appendChild(eyebrow);
+    title.appendChild(
+      div({ fontSize: FS.banner, fontWeight: FW.black, letterSpacing: '0.5px', lineHeight: '1' }, 'STANDINGS'),
+    );
+    title.appendChild(
+      div({ fontSize: FS.meta, color: UI.dim, marginTop: '5px' }, 'Global rankings — the pilots holding the line.'),
+    );
+    head.appendChild(title);
+
+    const ctrl = div({ display: 'flex', gap: '8px', flex: 'none' });
+    this.headerRefreshBtn = makeIconButton({ glyph: '⟳', size: 36, title: 'Refresh', onClick: () => this.load() }).el;
+    ctrl.appendChild(this.headerRefreshBtn);
+    ctrl.appendChild(makeIconButton({ glyph: '✕', size: 36, title: 'Close', onClick: () => this.close() }).el);
+    head.appendChild(ctrl);
+    return head;
   }
 
   private close(): void {
@@ -141,6 +188,11 @@ class Leaderboard {
   }
 
   // --- Load + render ---------------------------------------------------------
+
+  /** The localStorage snapshot key for the active board — daily movement is per-day. */
+  private snapKey(): string {
+    return this.active === 'daily' ? `daily:${dailyMissionId(new Date())}` : 'total';
+  }
 
   /** Fetch + render the active board. A request token guards against out-of-order responses. */
   private async load(): Promise<void> {
@@ -185,13 +237,13 @@ class Leaderboard {
   private fromMission(r: MissionEntry, rank: number): Ranked {
     const mine = r.client_id === this.myClient || (!!this.myName && r.pilot.toLowerCase() === this.myName.toLowerCase());
     const sub = [r.time_s != null ? fmtTime(r.time_s) : '', fmtAgo(r.created_at)].filter(Boolean).join('   ·   ');
-    return { rank, pilot: r.pilot, value: r.score.toLocaleString(), sub, mine };
+    return { rank, pilot: r.pilot, value: r.score.toLocaleString(), num: r.score, sub, mine, key: r.pilot.toLowerCase(), delta: null };
   }
 
   private fromCareer(r: CareerEntry, rank: number): Ranked {
     const mine = !!this.myName && r.pilot.toLowerCase() === this.myName.toLowerCase();
-    const sub = [`${r.missions} ${r.missions === 1 ? 'mission' : 'missions'}`, fmtAgo(r.last_seen)].filter(Boolean).join('   ·   ');
-    return { rank, pilot: r.pilot, value: r.total.toLocaleString(), sub, mine };
+    const sub = [`${r.missions} ${r.missions === 1 ? 'sortie' : 'sorties'}`, fmtAgo(r.last_seen)].filter(Boolean).join('   ·   ');
+    return { rank, pilot: r.pilot, value: r.total.toLocaleString(), num: r.total, sub, mine, key: r.pilot.toLowerCase(), delta: null };
   }
 
   private renderBoard(ranked: Ranked[], total: number, standing: Ranked | null, daily: boolean): void {
@@ -202,7 +254,7 @@ class Leaderboard {
         this.note(
           daily
             ? 'No runs on today’s burn yet — clear it and set the pace.'
-            : 'No runs yet — fly a mission and be the first on the board.',
+            : 'No runs yet — fly a sortie and be the first on the board.',
         ),
       );
       const local = this.localPanel();
@@ -211,23 +263,55 @@ class Leaderboard {
       return;
     }
 
+    // Diff against the previous visit, then re-snapshot for next time — this is what powers the ▲▼ column.
+    this.applyMovement(ranked);
+
+    const leader = ranked[0]?.num ?? 0;
+    const metric = daily ? 'SCORE' : 'CAREER';
+
     const frag = div({});
     if (daily) frag.appendChild(this.dailyHeader());
     frag.appendChild(this.contextBar(total, standing));
-    frag.appendChild(this.podium(ranked.slice(0, 3)));
 
-    const rest = ranked.slice(3);
-    if (rest.length) {
-      const list = div({});
-      rest.forEach((r, i) => list.appendChild(this.row(r, i)));
-      frag.appendChild(list);
-    }
+    const table = div({
+      borderRadius: R.lg,
+      overflow: 'hidden',
+      background: BOARD.table,
+      border: `1px solid ${UI.stroke}`,
+    });
+    setBlur(table);
+    table.appendChild(this.columnHeader(metric));
+    ranked.forEach((r, i) => table.appendChild(this.row(r, i, leader)));
+    frag.appendChild(table);
+
     frag.appendChild(this.caption(ranked.length, total));
 
-    // Pin "YOU" only when you're below the podium — top-3 are already front and centre.
-    if (standing && standing.rank > 3) frag.appendChild(this.youCard(standing, total));
+    // Pin "YOU" only when you're outside the visible field — top entries are already on screen.
+    if (standing && !ranked.some((r) => r.mine)) frag.appendChild(this.youRow(standing, total, leader));
 
     this.body.replaceChildren(frag);
+  }
+
+  // --- Movement (position change since last visit) ---------------------------
+
+  /**
+   * Fill each row's `delta` from the snapshot of ranks taken the LAST time this board was opened,
+   * then overwrite the snapshot with the current ranks. `delta = prevRank − rank`, so a pilot who
+   * climbed from 8th to 5th gets +3 (▲3); a new face the snapshot has never seen stays `null` (NEW).
+   * The backend stores no rank history — keeping our own tiny snapshot is the honest way to show a
+   * real, personal "what changed since you last looked".
+   */
+  private applyMovement(ranked: Ranked[]): void {
+    const store = loadSnaps();
+    const prev = store[this.snapKey()] ?? null;
+    for (const r of ranked) {
+      const was = prev ? prev[r.key] : undefined;
+      r.delta = typeof was === 'number' ? was - r.rank : null;
+    }
+    const next: Record<string, number> = {};
+    for (const r of ranked) next[r.key] = r.rank;
+    store[this.snapKey()] = next;
+    saveSnaps(store);
   }
 
   // --- Daily header ----------------------------------------------------------
@@ -244,8 +328,8 @@ class Leaderboard {
       margin: '2px 0 14px',
       padding: '13px 16px',
       borderRadius: R.lg,
-      background: UI.cardGlass,
-      border: `1px solid ${UI.stroke}`,
+      background: BOARD.card,
+      border: `1px solid ${UI.warmStroke}44`,
     });
     setBlur(card);
 
@@ -264,7 +348,7 @@ class Leaderboard {
     return card;
   }
 
-  // --- Context bar + podium --------------------------------------------------
+  // --- Context bar -----------------------------------------------------------
 
   private contextBar(total: number, standing: Ranked | null): HTMLDivElement {
     const bar = div({
@@ -272,13 +356,13 @@ class Leaderboard {
       alignItems: 'center',
       justifyContent: 'space-between',
       gap: '10px',
-      margin: '2px 2px 12px',
+      margin: '2px 2px 10px',
       flexWrap: 'wrap',
     });
     bar.appendChild(
       div(
-        { fontSize: FS.meta, fontWeight: FW.bold, letterSpacing: '1.6px', color: UI.faint },
-        `${total.toLocaleString()} ${total === 1 ? 'PILOT' : 'PILOTS'} COMPETING`,
+        { fontSize: FS.meta, fontWeight: FW.bold, letterSpacing: '1.6px', color: UI.faint, fontFamily: MONO },
+        `${total.toLocaleString()} ${total === 1 ? 'PILOT' : 'PILOTS'} ON THE GRID`,
       ),
     );
     if (standing) {
@@ -288,143 +372,139 @@ class Leaderboard {
         gap: '7px',
         padding: '5px 11px',
         borderRadius: R.pill,
-        background: UI.rowMine,
-        border: `1px solid ${UI.accent}66`,
+        background: MINE_BG,
+        border: `1px solid ${UI.ember}77`,
         fontSize: FS.meta,
         fontWeight: FW.heavy,
         letterSpacing: '0.4px',
-        color: UI.accent,
+        color: UI.emberHi,
       });
-      chip.textContent = `YOU · #${standing.rank.toLocaleString()} · ${pctText(standing.rank, total)}`;
+      chip.textContent = `YOU · P${standing.rank.toLocaleString()} · ${pctText(standing.rank, total)}`;
       bar.appendChild(chip);
     }
     return bar;
   }
 
-  /** Gold/silver/bronze top-three. 1st is centred and elevated on a taller pedestal. */
-  private podium(top: Ranked[]): HTMLDivElement {
-    const wrap = div({ display: 'flex', gap: '10px', alignItems: 'flex-end', justifyContent: 'center', margin: '4px 0 16px' });
-    const order = top.length >= 3 ? [top[1], top[0], top[2]] : top.length === 2 ? [top[1], top[0]] : top;
-    for (const r of order) wrap.appendChild(this.podiumCell(r));
-    return wrap;
-  }
+  // --- Table: column header + rows -------------------------------------------
 
-  private podiumCell(r: Ranked): HTMLDivElement {
-    const color = medalColor(r.rank);
-    const first = r.rank === 1;
-    const ped = first ? 70 : r.rank === 2 ? 50 : 38;
-
-    const cell = div({ flex: '1 1 0', minWidth: '0', maxWidth: '184px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' });
-    cell.className = 'bmf-lb-row';
-
-    cell.appendChild(div({ fontSize: first ? '26px' : '22px', lineHeight: '1' }, ['🥇', '🥈', '🥉'][r.rank - 1] ?? `#${r.rank}`));
-
-    const av = div({
-      width: first ? '58px' : '48px',
-      height: first ? '58px' : '48px',
-      borderRadius: R.round,
+  /** The thin uppercase column strip at the top of the tower (POS · Δ · PILOT · metric). */
+  private columnHeader(metric: string): HTMLDivElement {
+    const h = div({
       display: 'flex',
       alignItems: 'center',
-      justifyContent: 'center',
-      fontSize: first ? '21px' : '17px',
+      gap: COL.gap,
+      padding: '9px 13px 8px',
+      borderBottom: `1px solid ${UI.stroke}`,
+      background: BOARD.colHead,
+      fontSize: FS.tag,
       fontWeight: FW.heavy,
-      color: '#05202a',
-      background: `linear-gradient(160deg, ${color}, ${color}99)`,
-      border: `2px solid ${color}`,
-      boxShadow: `0 0 18px ${color}55`,
+      letterSpacing: '1.4px',
+      color: UI.faint,
+      fontFamily: MONO,
     });
-    if (r.mine) av.style.outline = `2px solid ${UI.accent}`;
-    av.textContent = initials(r.pilot);
-    cell.appendChild(av);
-
-    const nameRow = div({ display: 'flex', alignItems: 'center', gap: '6px', maxWidth: '100%' });
-    nameRow.appendChild(
-      div(
-        { fontSize: first ? FS.md : FS.body, fontWeight: FW.bold, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '120px' },
-        r.pilot,
-      ),
-    );
-    if (r.mine) nameRow.appendChild(youPill());
-    cell.appendChild(nameRow);
-
-    cell.appendChild(div({ fontSize: first ? FS.title : FS.lg, fontWeight: FW.heavy, color: r.mine ? UI.accent : UI.text }, r.value));
-
-    const pedestal = div({
-      marginTop: '4px',
-      width: '100%',
-      height: `${ped}px`,
-      borderRadius: `${R.md} ${R.md} 0 0`,
-      background: `linear-gradient(180deg, ${color}33, ${color}0d)`,
-      border: `1px solid ${color}55`,
-      borderBottom: 'none',
-      display: 'flex',
-      justifyContent: 'center',
-      paddingTop: '7px',
-      boxSizing: 'border-box',
-      fontSize: FS.title,
-      fontWeight: FW.black,
-      color,
-    });
-    pedestal.textContent = `${r.rank}`;
-    cell.appendChild(pedestal);
-    return cell;
+    h.appendChild(div({ width: COL.bar, flex: 'none' }));
+    h.appendChild(div({ width: COL.pos, flex: 'none', textAlign: 'center' }, 'POS'));
+    h.appendChild(div({ width: COL.move, flex: 'none', textAlign: 'center' }, 'Δ'));
+    h.appendChild(div({ width: COL.avatar, flex: 'none' }));
+    h.appendChild(div({ flex: '1', minWidth: '0' }, 'PILOT'));
+    h.appendChild(div({ width: COL.right, flex: 'none', textAlign: 'right' }, metric));
+    return h;
   }
 
-  // --- List rows + sticky YOU + caption --------------------------------------
+  private row(r: Ranked, i: number, leader: number): HTMLDivElement {
+    const podium = r.rank <= 3;
+    const medal = medalColor(r.rank);
+    const team = teamColor(r.key);
 
-  private row(r: Ranked, i: number): HTMLDivElement {
     const el = div({
       display: 'flex',
       alignItems: 'center',
-      gap: '12px',
-      padding: '10px 13px',
-      marginBottom: '6px',
-      borderRadius: R.md,
-      background: r.mine ? UI.rowMine : UI.cardSoft,
-      border: `1px solid ${r.mine ? UI.accent + '88' : UI.hair}`,
+      gap: COL.gap,
+      padding: '9px 13px',
+      borderBottom: `1px solid ${UI.hair}`,
+      background: r.mine ? MINE_BG : r.rank === 1 ? BOARD.rowLeader : i % 2 ? BOARD.rowAlt : 'transparent',
+      position: 'relative',
     });
     el.className = 'bmf-lb-row';
-    el.style.animationDelay = `${Math.min(i * 26, 260)}ms`;
-    setBlur(el);
+    el.style.animationDelay = `${Math.min(i * 22, 280)}ms`;
+    if (r.mine) el.style.boxShadow = `inset 0 0 0 1px ${MINE_BORDER}99`;
 
-    el.appendChild(div({ flex: 'none', width: '26px', textAlign: 'center', fontSize: FS.md, fontWeight: FW.bold, color: UI.dim }, `${r.rank}`));
-    el.appendChild(avatarDot(r.pilot, r.mine));
+    // Team colour bar — the row's left edge.
+    el.appendChild(div({ width: COL.bar, flex: 'none', alignSelf: 'stretch', borderRadius: R.pill, background: team }));
 
+    // POS — medal-tinted for the top three.
+    el.appendChild(
+      div(
+        {
+          width: COL.pos,
+          flex: 'none',
+          textAlign: 'center',
+          fontFamily: MONO,
+          fontSize: podium ? FS.title : FS.lg,
+          fontWeight: FW.black,
+          color: podium ? medal : UI.dim,
+          textShadow: podium ? `0 0 12px ${medal}55` : 'none',
+          lineHeight: '1',
+        },
+        `${r.rank}`,
+      ),
+    );
+
+    // Δ — position movement since last visit.
+    el.appendChild(movementCell(r.delta));
+
+    // Avatar — initials on the team colour.
+    el.appendChild(avatarDot(r.pilot, team, r.mine));
+
+    // Who — callsign (+ YOU pill) over the sub line.
     const who = div({ flex: '1', minWidth: '0' });
     const nameRow = div({ display: 'flex', alignItems: 'center', gap: '8px' });
     nameRow.appendChild(
-      div({ fontSize: FS.lg, fontWeight: FW.bold, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }, r.pilot),
+      div(
+        { fontSize: FS.lg, fontWeight: FW.bold, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+        r.pilot,
+      ),
     );
     if (r.mine) nameRow.appendChild(youPill());
     who.appendChild(nameRow);
     if (r.sub) who.appendChild(div({ fontSize: FS.meta, color: UI.dim, marginTop: '2px' }, r.sub));
     el.appendChild(who);
 
-    el.appendChild(div({ flex: 'none', fontSize: FS.xl, fontWeight: FW.heavy, color: r.mine ? UI.accent : UI.text }, r.value));
+    // Right — the score over the gap-to-leader interval.
+    el.appendChild(scoreCell(r.value, r.rank === 1 ? null : leader - r.num, r.mine));
     return el;
   }
 
-  /** Your own row, pinned to the bottom of the scroll so you always see where you stand. */
-  private youCard(s: Ranked, total: number): HTMLDivElement {
+  /** Your own row, pinned to the bottom of the scroll so you always see where you stand. Same tower
+   *  grammar as a list row, ember-ringed and lifted. */
+  private youRow(s: Ranked, total: number, leader: number): HTMLDivElement {
+    // Movement for the sticky row too (it shares the board snapshot already written by applyMovement,
+    // so re-reading the previous value here would be self-referential — show it as a stable pin, no Δ).
+    const team = teamColor(s.key);
     const card = div({
       position: 'sticky',
       bottom: '8px',
       marginTop: '14px',
       display: 'flex',
       alignItems: 'center',
-      gap: '12px',
-      padding: '12px 14px',
+      gap: COL.gap,
+      padding: '11px 13px',
       borderRadius: R.lg,
-      background: 'rgba(8,14,20,0.88)',
-      border: `1px solid ${UI.accent}88`,
-      boxShadow: `0 0 0 1px ${UI.accent}33, 0 -6px 26px rgba(0,0,0,0.5)`,
+      background: BOARD.youRow,
+      border: `1px solid ${UI.ember}99`,
+      boxShadow: `0 0 0 1px ${UI.ember}33, 0 -6px 26px rgba(0,0,0,0.55)`,
     });
     setBlur(card);
 
+    card.appendChild(div({ width: COL.bar, flex: 'none', alignSelf: 'stretch', borderRadius: R.pill, background: team }));
     card.appendChild(
-      div({ flex: 'none', minWidth: '34px', textAlign: 'center', fontSize: FS.lg, fontWeight: FW.heavy, color: UI.accent }, `#${s.rank.toLocaleString()}`),
+      div(
+        { width: COL.pos, flex: 'none', textAlign: 'center', fontFamily: MONO, fontSize: FS.title, fontWeight: FW.black, color: UI.emberHi },
+        `${s.rank}`,
+      ),
     );
-    card.appendChild(avatarDot(s.pilot, true));
+    card.appendChild(div({ width: COL.move, flex: 'none' })); // align with the Δ column
+    card.appendChild(avatarDot(s.pilot, team, true));
 
     const who = div({ flex: '1', minWidth: '0' });
     const nameRow = div({ display: 'flex', alignItems: 'center', gap: '8px' });
@@ -436,13 +516,31 @@ class Leaderboard {
     who.appendChild(div({ fontSize: FS.meta, color: UI.dim, marginTop: '2px' }, `${pctText(s.rank, total)} of ${total.toLocaleString()} pilots`));
     card.appendChild(who);
 
-    card.appendChild(div({ flex: 'none', fontSize: FS.xl, fontWeight: FW.heavy, color: UI.accent }, s.value));
+    card.appendChild(scoreCell(s.value, s.rank === 1 ? null : leader - s.num, true));
     return card;
   }
 
   private caption(shown: number, total: number): HTMLDivElement {
-    const text = total > shown ? `Showing top ${shown} of ${total.toLocaleString()} pilots` : `${total.toLocaleString()} ${total === 1 ? 'pilot' : 'pilots'} ranked`;
-    return div({ fontSize: FS.meta, color: UI.faint, textAlign: 'center', marginTop: '12px', letterSpacing: '0.4px' }, text);
+    const text = total > shown ? `Top ${shown} of ${total.toLocaleString()} pilots` : `${total.toLocaleString()} ${total === 1 ? 'pilot' : 'pilots'} ranked`;
+    const wrap = div({
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: '12px',
+      marginTop: '12px',
+      fontSize: FS.meta,
+      color: UI.faint,
+      letterSpacing: '0.4px',
+    });
+    wrap.appendChild(div({}, text));
+    wrap.appendChild(div({ width: '3px', height: '3px', borderRadius: R.round, background: UI.faint }));
+    // A tiny legend so the ▲▼ column is self-explanatory.
+    const legend = div({ display: 'inline-flex', alignItems: 'center', gap: '9px', fontFamily: MONO });
+    legend.appendChild(legendChip('▲', UI.ok, 'up'));
+    legend.appendChild(legendChip('▼', UI.warn, 'down'));
+    legend.appendChild(legendChip('NEW', UI.emberHi, ''));
+    wrap.appendChild(legend);
+    return wrap;
   }
 
   // --- Empty / offline / loading states --------------------------------------
@@ -478,7 +576,7 @@ class Leaderboard {
     const careerScore = Object.values(prog.best).reduce((a, b) => a + b, 0);
     const topMission = Object.values(prog.best).reduce((m, b) => Math.max(m, b), 0);
     tiles.push(
-      { label: 'Missions', value: `${cleared}/${this.catalog.length}` },
+      { label: 'Sorties', value: `${cleared}/${this.catalog.length}` },
       { label: 'Career score', value: careerScore.toLocaleString() },
       { label: 'Best mission', value: topMission.toLocaleString() },
     );
@@ -486,8 +584,8 @@ class Leaderboard {
     const panel = div({
       maxWidth: '440px',
       margin: '0 auto',
-      background: UI.cardGlass,
-      border: `1px solid ${UI.stroke}`,
+      background: BOARD.card,
+      border: `1px solid ${UI.warmStroke}44`,
       borderRadius: R.md,
       padding: '14px 16px',
     });
@@ -496,7 +594,7 @@ class Leaderboard {
     const row = div({ display: 'flex', gap: '26px', flexWrap: 'wrap' });
     for (const t of tiles) {
       const tile = div({});
-      tile.appendChild(div({ fontSize: FS.title, fontWeight: FW.heavy, color: UI.text, lineHeight: '1.1' }, t.value));
+      tile.appendChild(div({ fontSize: FS.title, fontWeight: FW.heavy, color: UI.text, lineHeight: '1.1', fontFamily: MONO }, t.value));
       tile.appendChild(div({ fontSize: FS.label, fontWeight: FW.bold, letterSpacing: '1.2px', color: UI.faint, marginTop: '3px' }, t.label.toUpperCase()));
       row.appendChild(tile);
     }
@@ -504,20 +602,22 @@ class Leaderboard {
     return panel;
   }
 
-  /** Shimmer placeholder while a board loads — a podium silhouette + a few rows. */
+  /** Shimmer placeholder while a board loads — the column strip + a few tower rows. */
   private skeleton(): HTMLDivElement {
-    const wrap = div({});
-    const pod = div({ display: 'flex', gap: '10px', alignItems: 'flex-end', justifyContent: 'center', margin: '4px 0 16px' });
-    for (const h of [50, 70, 38]) {
-      const cell = div({ flex: '1 1 0', maxWidth: '160px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' });
-      const dot = skel({ width: '50px', height: '50px', borderRadius: R.round });
-      const bar = skel({ width: '62%', height: '12px' });
-      const ped = skel({ width: '100%', height: `${h}px`, borderRadius: `${R.md} ${R.md} 0 0` });
-      cell.append(dot, bar, ped);
-      pod.appendChild(cell);
+    const wrap = div({
+      borderRadius: R.lg,
+      overflow: 'hidden',
+      border: `1px solid ${UI.stroke}`,
+      background: BOARD.skeleton,
+    });
+    for (let i = 0; i < 7; i++) {
+      const rowEl = div({ display: 'flex', alignItems: 'center', gap: COL.gap, padding: '11px 13px', borderBottom: `1px solid ${UI.hair}` });
+      rowEl.appendChild(skel({ width: '20px', height: '16px' }));
+      rowEl.appendChild(skel({ width: '30px', height: '30px', borderRadius: R.round }));
+      rowEl.appendChild(skel({ flex: '1', height: '12px' }));
+      rowEl.appendChild(skel({ width: '64px', height: '14px' }));
+      wrap.appendChild(rowEl);
     }
-    wrap.appendChild(pod);
-    for (let i = 0; i < 5; i++) wrap.appendChild(skel({ height: '44px', marginBottom: '6px', borderRadius: R.md }));
     return wrap;
   }
 
@@ -530,9 +630,70 @@ class Leaderboard {
   }
 }
 
-// --- helpers ----------------------------------------------------------------
+// --- Cell renderers ---------------------------------------------------------
 
-// `div` and `setBlur` are imported from ./theme (shared DOM helpers).
+/** The Δ column: a coloured arrow + the number of places moved (▲3 / ▼1), a flat dash, or NEW. */
+function movementCell(delta: number | null): HTMLDivElement {
+  const cell = div({
+    width: COL.move,
+    flex: 'none',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '2px',
+    fontFamily: MONO,
+    fontSize: FS.meta,
+    fontWeight: FW.heavy,
+    lineHeight: '1',
+  });
+  if (delta === null) {
+    cell.style.color = UI.emberHi;
+    cell.style.fontSize = FS.tag;
+    cell.style.letterSpacing = '0.5px';
+    cell.textContent = 'NEW';
+    cell.title = 'New on the board';
+    return cell;
+  }
+  if (delta === 0) {
+    cell.style.color = UI.faint;
+    cell.textContent = '–';
+    cell.title = 'No change';
+    return cell;
+  }
+  const up = delta > 0;
+  cell.style.color = up ? UI.ok : UI.warn;
+  cell.title = `${up ? 'Up' : 'Down'} ${Math.abs(delta)} since your last visit`;
+  cell.appendChild(div({ fontSize: FS.sm, lineHeight: '1' }, up ? '▲' : '▼'));
+  cell.appendChild(div({}, `${Math.abs(delta)}`));
+  return cell;
+}
+
+/** The right cell: the score (mono, big) over the gap-to-leader interval ("+12,400" / "LEADER"). */
+function scoreCell(value: string, gap: number | null, mine: boolean): HTMLDivElement {
+  const cell = div({ width: COL.right, flex: 'none', textAlign: 'right' });
+  cell.appendChild(
+    div(
+      { fontFamily: MONO, fontSize: FS.title, fontWeight: FW.heavy, color: mine ? UI.emberHi : UI.text, lineHeight: '1.05' },
+      value,
+    ),
+  );
+  cell.appendChild(
+    div(
+      { fontFamily: MONO, fontSize: FS.tag, fontWeight: FW.bold, color: gap === null ? UI.menu : UI.faint, marginTop: '3px', letterSpacing: '0.4px' },
+      gap === null ? 'LEADER' : `+${Math.round(gap).toLocaleString()}`,
+    ),
+  );
+  return cell;
+}
+
+function legendChip(glyph: string, color: string, label: string): HTMLDivElement {
+  const c = div({ display: 'inline-flex', alignItems: 'center', gap: '3px', color });
+  c.appendChild(div({ fontWeight: FW.heavy }, glyph));
+  if (label) c.appendChild(div({ color: UI.faint }, label));
+  return c;
+}
+
+// --- helpers ----------------------------------------------------------------
 
 function skel(style: Partial<CSSStyleDeclaration>): HTMLDivElement {
   const node = div(style);
@@ -540,21 +701,22 @@ function skel(style: Partial<CSSStyleDeclaration>): HTMLDivElement {
   return node;
 }
 
-/** A compact circular initials avatar for a list row (accent-ringed when it's you). */
-function avatarDot(pilot: string, mine: boolean): HTMLDivElement {
+/** A compact circular initials avatar painted in the pilot's team colour (ember-ringed when it's you). */
+function avatarDot(pilot: string, team: string, mine: boolean): HTMLDivElement {
   const a = div({
     flex: 'none',
-    width: '30px',
-    height: '30px',
+    width: COL.avatar,
+    height: COL.avatar,
     borderRadius: R.round,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     fontSize: FS.sm,
     fontWeight: FW.heavy,
-    color: mine ? '#05202a' : UI.text,
-    background: mine ? UI.accent : UI.track,
-    border: `1px solid ${mine ? UI.accent : UI.stroke}`,
+    color: BOARD.avatarInk,
+    background: `linear-gradient(155deg, ${team}, ${team}aa)`,
+    border: `1px solid ${mine ? UI.ember : team}`,
+    boxShadow: mine ? `0 0 0 2px ${UI.ember}66` : 'none',
   });
   a.textContent = initials(pilot);
   return a;
@@ -567,8 +729,8 @@ function youPill(): HTMLDivElement {
       fontSize: FS.tag,
       fontWeight: FW.heavy,
       letterSpacing: '0.1em',
-      color: '#04222a',
-      background: UI.accent,
+      color: UI.ink,
+      background: UI.ember,
       borderRadius: R.pill,
       padding: '2px 7px',
     },
@@ -578,6 +740,13 @@ function youPill(): HTMLDivElement {
 
 function medalColor(rank: number): string {
   return rank === 1 ? UI.gold : rank === 2 ? UI.silver : rank === 3 ? UI.bronze : UI.dim;
+}
+
+/** A stable team colour for a callsign — the same name always hashes to the same grid hue. */
+function teamColor(key: string): string {
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (Math.imul(31, h) + key.charCodeAt(i)) | 0;
+  return BOARD.team[Math.abs(h) % BOARD.team.length];
 }
 
 /** Up to two initials from a callsign ("Sunny" → "SU", "Red Baron" → "RB"). */
@@ -590,7 +759,7 @@ function initials(name: string): string {
 
 /** "Top 5%" once there's a meaningful field; "of N" for tiny boards where a percentile is silly. */
 function pctText(rank: number, total: number): string {
-  if (total < 10) return `#${rank} of ${total}`;
+  if (total < 10) return `P${rank} of ${total}`;
   const pct = Math.max(1, Math.min(100, Math.round((rank / total) * 100)));
   return `Top ${pct}%`;
 }
@@ -620,7 +789,40 @@ function fmtAgo(iso: string): string {
   return `${Math.floor(d / 365)}y ago`;
 }
 
-// One-time scoped keyframes (shimmer skeleton, refresh spin, staggered row reveal).
+// --- Movement snapshot store ------------------------------------------------
+// A tiny per-board map of callsign → rank from the player's PREVIOUS visit, so the next visit can
+// show "you moved up 3 / they dropped 1". Kept small (pruned to a handful of boards) and best-effort
+// — any storage failure just means the board shows everyone as NEW, which is harmless.
+
+const SNAP_KEY = 'bmf.lb.snap.v1';
+type Snaps = Record<string, Record<string, number>>;
+
+function loadSnaps(): Snaps {
+  try {
+    const raw = localStorage.getItem(SNAP_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? (parsed as Snaps) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveSnaps(store: Snaps): void {
+  try {
+    // Keep 'total' plus the most recent few daily boards so the store can't grow without bound.
+    const keys = Object.keys(store);
+    if (keys.length > 6) {
+      const drop = keys.filter((k) => k !== 'total').sort().slice(0, keys.length - 6);
+      for (const k of drop) delete store[k];
+    }
+    localStorage.setItem(SNAP_KEY, JSON.stringify(store));
+  } catch {
+    /* storage blocked (private mode) — movement just resets next visit */
+  }
+}
+
+// One-time scoped keyframes (shimmer skeleton, refresh spin, staggered row reveal, live-dot pulse).
 let stylesInjected = false;
 function injectStyles(): void {
   if (stylesInjected) return;
@@ -630,9 +832,12 @@ function injectStyles(): void {
   @keyframes bmf-lb-shimmer { 0% { background-position: -240px 0 } 100% { background-position: 240px 0 } }
   @keyframes bmf-lb-spin { to { transform: rotate(360deg) } }
   @keyframes bmf-lb-in { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: none } }
-  .bmf-lb-skel { background: linear-gradient(90deg, rgba(255,255,255,0.05) 25%, rgba(255,255,255,0.13) 37%, rgba(255,255,255,0.05) 63%); background-size: 480px 100%; animation: bmf-lb-shimmer 1.2s infinite linear; border-radius: 8px; }
+  @keyframes bmf-lb-pulse { 0%, 100% { opacity: 1; transform: scale(1) } 50% { opacity: 0.45; transform: scale(0.7) } }
+  .bmf-lb-skel { background: linear-gradient(90deg, rgba(255,255,255,0.05) 25%, rgba(255,180,120,0.14) 37%, rgba(255,255,255,0.05) 63%); background-size: 480px 100%; animation: bmf-lb-shimmer 1.2s infinite linear; border-radius: 6px; }
   .bmf-lb-spin { animation: bmf-lb-spin 0.7s linear infinite; }
   .bmf-lb-row { animation: bmf-lb-in 0.28s ease both; }
+  .bmf-lb-pulse { animation: bmf-lb-pulse 1.8s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) { .bmf-lb-row, .bmf-lb-pulse { animation: none !important; } }
   `;
   document.head.appendChild(tag);
 }

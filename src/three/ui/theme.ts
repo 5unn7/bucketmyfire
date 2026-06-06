@@ -99,6 +99,25 @@ export const UI = {
   font: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
 };
 
+// Leaderboard "timing-tower" surfaces — the warm (fight-register) fills the global board paints, kept
+// here so the board reads on tokens, not inline literals (DESIGN.md → one design system). `team` is the
+// F1-style grid palette: each callsign hashes to one stable hue, so a board reads as a field of distinct
+// entrants. Vivid but ember/gold-led so the whole surface still belongs to "the fight".
+export const BOARD = {
+  bgTop: 'rgba(34,20,14,0.97)', // overlay backdrop — warm-dark radial (top)
+  bgBot: 'rgba(8,5,4,0.992)', // overlay backdrop — near-black (bottom)
+  table: 'rgba(20,13,9,0.55)', // the tower's body fill
+  colHead: 'rgba(0,0,0,0.18)', // the column-label strip
+  rowLeader: 'rgba(255,170,70,0.07)', // P1 row — a faint gold wash
+  rowAlt: 'rgba(255,255,255,0.012)', // zebra tint on alternating rows
+  card: 'rgba(28,16,11,0.6)', // the daily strip + "your device" panel
+  youRow: 'rgba(22,12,8,0.92)', // the sticky "YOU" row, lifted off the scroll
+  skeleton: 'rgba(20,13,9,0.5)', // loading shimmer frame
+  mine: 'rgba(255,128,52,0.15)', // warm "this one is you" row wash (the ember analogue of UI.rowMine)
+  avatarInk: '#1a0f08', // dark initials drawn ON a bright team-colour avatar
+  team: ['#ff6a2c', '#ffc24a', '#ff8f5c', '#ffd66b', '#63d68a', '#56c4ee', '#74d0bf', '#9a8cff', '#ff7aa8', '#f4a13b'],
+};
+
 // Score-grade → colour, keyed by `ScoreGrade` ('S' | 'A' | 'B' | 'C' | 'D'). One map so the debrief
 // grade letter, a badge, and any grade chip all paint the same colour per rank instead of each module
 // re-deciding "what colour is an A". Typed loosely (Record<string,string>) to avoid a UI→missions
