@@ -32,7 +32,7 @@ import { buildEditorUI, type EditorUI } from './EditorUI';
  * builders the game uses — and lets you SCULPT it directly: raise/lower terrain with a brush, paint or
  * clear forest, and drop decorative buildings on the ground. It authors the three hand-painted layers
  * from world/authored.ts (terrain / foliage / buildings), pinned at real lat/lon, and Export emits
- * paste-ready `regions.ts` const blocks per map.
+ * paste-ready `maps/<region>/region.ts` const blocks per map.
  *
  * Fidelity model: terrain sculpting uses the EXACT same `AuthoredField` (falloff + projection) the engine
  * bakes into `baseHeight`, applied on top of the real `World.groundHeightAt`, so the sculpted SURFACE is
@@ -727,7 +727,7 @@ function disposeObject(o: THREE.Object3D): void {
   });
 }
 
-/** Build the paste-ready regions.ts const blocks for one map's editor-authored layers. */
+/** Build the paste-ready maps/<region>/region.ts const blocks for one map's editor-authored layers. */
 function buildRegionsExport(
   mapId: string,
   data: {

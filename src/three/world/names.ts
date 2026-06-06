@@ -1,11 +1,11 @@
 /**
  * Place-name drawer (Track A5). A thin, deterministic naming MECHANISM: it takes a region's
- * name pools (see `world/regions.ts`, where the per-map lists live) and draws from them with a
+ * name pools (see `maps/<region>/region.ts`, where the per-map lists live) and draws from them with a
  * seeded Fisher–Yates shuffle popped in order, so the same world seed always names the same
  * feature, with no repeats until a pool is exhausted (then a numbered fallback keeps generation
  * from starving).
  *
- * The DATA (which names belong to which map) lives in `regions.ts`; this file is just the
+ * The DATA (which names belong to which map) lives in `maps/<region>/region.ts`; this file is just the
  * shuffle-and-pop. World assigns names at generation time and nothing downstream depends on the
  * specific strings — so a mission can also PIN authored names over the top (see World pins).
  */

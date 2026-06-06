@@ -15,7 +15,7 @@ import type { MissionDef } from '../../missions/types';
  * SETTING: northern Saskatchewan. Each mission flies out of a real place — Weyakwin, Missinipe,
  * Denare Beach, Stanley Mission, the Île-à-la-Crosse chain, and La Ronge (the finale) — and `places`
  * PINS those names onto the world (see World.PlacePins) so the briefing and the radar agree. Ambient lakes /
- * towns / highways draw from the `saskatchewan` region pool (`world/regions.ts`); `map` selects it. The
+ * towns / highways draw from the `saskatchewan` region pool (`maps/saskatchewan/region.ts`); `map` selects it. The
  * mission-select menu groups missions BY `map`, so this whole campaign lives under the Saskatchewan map.
  *
  * Two engine capabilities the campaign leans on (see `types.ts`):

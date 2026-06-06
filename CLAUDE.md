@@ -89,8 +89,9 @@ orchestration; everything else is a focused module it composes.
 ```
 main.ts (renderer + loop + QualityTier + Composer + campaign router)
   └─ Game.ts (scene graph + per-frame "draw + rules")
-       ├─ World.ts ........... heightfield: the single source of ground/water truth
+       ├─ World.ts ........... heightfield: single source of ground/water truth (rectangular, province-masked)
        ├─ world/ ............. generation: noise, biomes, placement, minimap, names
+       ├─ maps/ ............. per-region SOURCE OF TRUTH (data): region geo/terrain/missions/card + registry
        ├─ sim/ ............... engine-agnostic physics (numbers only, no Three scene/DOM)
        │    ├─ HelicopterSim   momentum flight integrator (the core "feel")
        │    ├─ BucketSim       spring-damped slung-bucket pendulum
@@ -107,7 +108,7 @@ main.ts (renderer + loop + QualityTier + Composer + campaign router)
        ├─ postfx/ ............ EffectComposer: bloom, god-rays, heat-haze, color grade
        ├─ lighting/ .......... pooled hero fire point-lights (no recompiles)
        ├─ render/ ............ FrameContext (shared uniforms) + QualityTier + FireFieldTexture
-       ├─ missions/ .......... data-driven MissionDef catalog + runtime + director + progress
+       ├─ missions/ .......... MissionDef catalog (thin assembler) + factory/ + oracle + runtime + director + progress
        ├─ leaderboard/ ....... env-gated Supabase PostgREST client (plain fetch, RLS)
        ├─ ui/ ................ HUD, MissionSelect menu, onboarding, leaderboard, profile/picker
        ├─ audio/ ............. HeliAudio (recorded rotor loop + procedural SFX)
@@ -128,7 +129,7 @@ thing at every lake and a fixed altitude band rides the hills without clipping.
 swap in *behind* them without touching any consumer):
 
 ```
-groundHeightAt(x,z): number          // base terrain with lake basins carved in
+groundHeightAt(x,z): number          // base terrain with lake basins carved in (+ off-province falloff on bounds maps)
 waterLevelAt(x,z): number | null     // flat per-lake water plane Y, else null
 isOverWater(x,z): boolean
 lakeAt(x,z): LakeRuntime | null
@@ -139,6 +140,24 @@ slopeAt(x,z): number                 // gradient magnitude (for fire/biomes late
 Each lake's `waterLevel` is sampled **once** (so the plane stays flat); the ground is
 then carved into a smoothstepped bowl *below* it, so water sits in a depression, not on
 a hump. World generation is **deterministic from `WORLD3D.seed`** via a mulberry32 PRNG.
+
+**The world is RECTANGULAR + true-shape now** (the maps-foundation slices). `World` carries
+`sizeX`/`sizeZ` (≠ on a true-shape map; `size` = the bounding square for square-grid consumers). A region
+whose geo declares `fit:'bounds'` (currently **Saskatchewan**, ~1029×1996u) is masked to the real province
+outline: `groundHeightAt`/`flightFloorAt` fall off to `MAPGEO.offProvinceLevel` across `MAPGEO.outlineBlendBand`
+straddling the projected outline, so the visible land edge traces the trapezoid (beyond = off-province
+lowland + fog, no ocean, no hard wall). Additive read-only queries (the locked API is unchanged): `isInProvince(x,z,margin?)`,
+`isScoopWaterWithin(x,z,range)`, `provinceOutline()`. Square/procedural maps are byte-identical (the mask is
+gated on `fit==='bounds'`). Engine-decided SIZE: a bounds map's extent = its real bbox at a constant
+`MAPGEO.unitsPerKm`, clamped to `[worldSizeMin, worldSizeMax]`.
+
+### Maps are data — `src/three/maps/` is the per-region source of truth
+
+A map is a self-contained `src/three/maps/<region>/` module (`region` geo/anchors/lakes/names, optional
+`terrain` profile + `missions` campaign + `card`), resolved through `maps/registry.ts`
+(`getMap`/`getRegion`/`getTerrainProfile`/`mapCards`/`allMissions`/`missionById`). `World(seed, {regionId, …})`
+grows the chosen region. **The old `world/regions.ts` + `world/terrainProfile.ts` + `world/maps/saskatchewan-true.ts`
+are DELETED** — do not reference them; add a map under `maps/`, not to those.
 
 ### The sim boundary (architecture invariant — hold it)
 
@@ -183,8 +202,10 @@ heli and bucket each frame.
 ### Fire simulation
 
 Fire is a **cellular FIELD**, not a handful of objects (`sim/FireSystem.ts`, engine-agnostic —
-World fields are injected as callbacks, it never imports `World`). A fixed grid of cells each hold
-`fuel` (sampled once from `world.fuelAt` → forest burns, rock/water/road don't) and live `heat`; a
+World fields are injected as callbacks, it never imports `World`). A **rectangular** grid (`nx×nz` at a
+CONSTANT cell size `CELL_U=13.125u` via the shared `fireGridFor(sizeX,sizeZ)`, capped by `FIRE3D.maxCells`,
+so the fire game is scale-INVARIANT — square SK stays 160×160 byte-identical, true-shape SK is 78×152) of
+cells each hold `fuel` (sampled once from `world.fuelAt` → forest burns, rock/water/road don't) and live `heat`; a
 burning cell **pre-heats neighbours** weighted by wind + slope + fuel, so an advancing **front**
 creeps, runs downwind, climbs uphill, and **stalls at firebreaks** (doused ground stays wet for a
 cooldown). Each fire carries a `size` 0..1 that **grows** while it burns and only **spots** new
@@ -227,16 +248,31 @@ PBR material struct is built before the latter, so patching there renders white.
 
 ### Missions & campaign (see the `bmf-mission` skill)
 
-A **6-mission linear-unlock campaign** sits on top of the sandbox. A `MissionDef`
-(`missions/types.ts`, `missions/catalog.ts`) is **pure SCENARIO data** (seed, where the fires/
-crews/structures sit, win/lose) — `config.ts` `MISSIONS` holds the mechanic VALUES. `Game` resolves
-a def's placement specs against the seeded `World` (`missions/scenario.ts`) and feeds a per-frame
+An **8-mission linear-unlock campaign** sits on top of the sandbox. A `MissionDef`
+(`missions/types.ts`) is **pure SCENARIO data** (seed, where the fires/crews/structures sit, win/lose) —
+`config.ts` `MISSIONS` holds the mechanic VALUES. The campaign missions live in
+`maps/saskatchewan/missions.ts`; `missions/catalog.ts` is now a **thin assembler** (`CAMPAIGN = allMissions()`
+from the maps registry). Placements are RELATIVE + seed-robust and may be authored in real **km / lat-lon**
+(`offsetKm`/`distanceKm`/`spreadKm`/`lengthKm`, `point` lat/lon) so they transfer across map sizes. `Game`
+resolves a def's specs against the seeded `World` (`missions/scenario.ts`) and feeds a per-frame
 `MissionSignals` snapshot to `missions/MissionRuntime.ts`, which latches objectives (`extinguishAll`/
-`extinguishCount`/`deliver`/`evacuate`/`survive`) and fails (`protect`/`timeout`/`fuelOut`).
+`extinguishCount`/`deliver`/`evacuate`/`survive`/`backburn`) and fails (`protect`/`timeout`/`fuelOut`/`rescue`).
 `missions/MissionDirector.ts` runs the reactive radio-comms/ignite/wind **beats**. `main.ts` routes
 `?m=<id>` / the `MissionSelect` menu; **switching a mission is a page reload** (no Three.js
 teardown). `missions/progress.ts` persists unlock + best score to localStorage and is authoritative
-for unlocks. **3 helicopters are playable** (`meshes/heliModels.ts` registry + `ui/profile.ts`
+for unlocks.
+
+**Mission factory + oracle (the generator layer).** `missions/oracle.ts` is the engine-agnostic "perfect
+player" (`build`/`run`/`isCompletable`) — the shared completability trust anchor for the CI gate AND the
+factory. `missions/factory/` (`archetypes.ts` = parametric templates · `index.ts` `generateMission(...)` ·
+`MapContext.ts` build-time town adapter) is a deterministic PRODUCER of the SAME `MissionDef` — zero downstream
+churn. The **Daily Burn** (`missions/daily.ts`) is a thin factory shim, pinned to the always-winnable
+`extinguish` archetype. Archetypes emit construct-correct (feature-relative, no World build at runtime) defs;
+`verify:campaign` proves completability + in-province fires across many seeds OFFLINE (never run the oracle on
+a phone). The 8 hand-authored missions stay canonical; the factory + the hold-the-line/mop-up archetypes
+(rotation, co-op) are reserved for future modes once balanced — see the maps-foundation handoff/memory.
+
+**3 helicopters are playable** (`meshes/heliModels.ts` registry + `ui/profile.ts`
 picker; physics is shared). Audio is `audio/HeliAudio.ts` (a recorded rotor loop + procedural
 scoop/drop/win SFX). The optional global leaderboard (`leaderboard/`) posts scores to Supabase via
 env-gated plain `fetch` and degrades to "offline" when unconfigured.
@@ -253,7 +289,8 @@ analog stick. Touch overrides keyboard when the stick is engaged.
 ### Tuning
 
 `src/three/config.ts` is the **single source of gameplay + visual tuning** — ~30 blocks now:
-`WORLD3D`/`TERRAIN`/`LAKE_SHAPE`/`STREAM`/`BIOMES` (world gen), `FLIGHT`/`WASH`/`BUCKET3D`
+`WORLD3D`/`MAPGEO` (world size + true-shape mask: `unitsPerKm`, `worldSizeMin/Max`, `outlineBlendBand`,
+`offProvinceLevel`)/`TERRAIN`/`LAKE_SHAPE`/`STREAM`/`BIOMES` (world gen), `FLIGHT`/`WASH`/`BUCKET3D`
 (physics feel), `FIRE3D`/`STRUCTURES`/`COMMUNITIES`/`ROADS` (fire + map), `MISSIONS`/`SCORE`
 (campaign mechanics + scoring), `QUALITY`/`POSTFX`/`GODRAYS`/`GRADE`/`FIRELIGHT`/`EMBERS`/`WATER`/
 `CLOUDS`/`SPRAY`/`SMOKE`/`HAZE` (visuals), `AUDIO`, `CAMERA`, `FAUNA`, `INSTRUMENTS`. Prefer
@@ -287,14 +324,20 @@ the right block.
 `docs/ROADMAP.md` is the approved plan and is **largely shipped**: Phase 1 (unified `World` + AGL
 flight), Track **A** (noise → biomes → placement → rivers), Track **B** (water, atmosphere, bloom,
 smoke/embers, terrain shading, models/foliage + tree LOD), Track **C** (fire dynamics + stakes,
-fire size classes, rotor wash + ground effect), and Track **D** (the 6-mission campaign, which
+fire size classes, rotor wash + ground effect), and Track **D** (the 8-mission campaign, which
 also realized the C6 fuel/range model) are all marked **done**. Remaining/optional: C5 assists,
 C6 forward fuel caches, SSAO, and a few polish items — check the roadmap's status markers before
-starting. World scale is **2100u** (enlarged from 1500 so the big anchored lakes stop swallowing the land),
-bounded and streaming-ready behind the `World` API.
-Consult it so a new feature lands in the right track. (Live Playwright visual passes are noted as
-"pending" on several phases — the MCP browser was repeatedly locked; see the **`bmf-verify`** skill
-for how to verify live anyway.)
+starting.
+
+**Beyond the roadmap — the maps-foundation + factory slices (2026-06, shipped & live):** the world is no
+longer a fixed 2100u square. Slice 1 made the engine **scale-invariant** (rectangular fire grid via
+`fireGridFor`, km-authored placements, engine-decided size, `missions/oracle.ts`); Slice 2 **flipped
+Saskatchewan to its true province shape** (`geo.fit:'bounds'`, ~1029×1996u, outline-masked); Slice 3 added
+the **mission factory** (`missions/factory/`). The canonical record + remaining increments (the varied/rotating
+daily, co-op `buildCoop`, the pre-bake table) are in the spec `~/.claude/plans/mutable-inventing-trinket.md`
+and the auto-memory `map-foundation-and-mission-factory`. Consult `docs/ROADMAP.md` so a new feature lands in
+the right track. (Live Playwright visual passes are noted as "pending" on several phases — the MCP browser was
+repeatedly locked; see the **`bmf-verify`** skill for how to verify live anyway.)
 
 ## Skill routing
 

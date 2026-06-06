@@ -105,7 +105,7 @@ export interface PlacePins {
 
 /** Per-world generation options: which MAP/region to grow, and any authored name pins. */
 export interface WorldOptions {
-  regionId?: string; // region/map id (see world/regions.ts); omit → the default Saskatchewan map
+  regionId?: string; // region/map id (see the maps/ registry); omit → the default Saskatchewan map
   pins?: PlacePins; // mission-authored names laid over the seeded ones
   homeBase?: string; // which MapAnchor base is the operational HOME (spawn/refuel) — placed first; omit → region home
   region?: Region; // a DRAFT region object to grow directly (map editor live preview), overriding regionId lookup
@@ -156,7 +156,7 @@ export class World {
   readonly placement: Placement;
   /** Seeded noise field that shapes the base terrain (Track A1). */
   private readonly noise: Noise2D;
-  /** Per-map terrain parameters (world/terrainProfile.ts) — boreal shield vs mountains, behind one generator. */
+  /** Per-map terrain parameters (maps/<region>/terrain.ts) — boreal shield vs mountains, behind one generator. */
   private readonly profile: TerrainProfile;
   private readonly baseFbm: FbmParams;
   private readonly ridgeFbm: FbmParams;
@@ -201,7 +201,7 @@ export class World {
   constructor(seed: number = WORLD3D.seed, opts: WorldOptions = {}) {
     this.rng = mulberry32(seed);
     // Names draw from their own seeded streams (off the world seed) over the chosen region's pools
-    // (world/regions.ts), independent of the main rng ordering — so picking a map and naming a
+    // (the maps/ registry), independent of the main rng ordering — so picking a map and naming a
     // feature never shifts the rest of world generation.
     // A draft region (map-editor live preview) is grown verbatim; otherwise resolve the map by id.
     this.region = opts.region ?? getRegion(opts.regionId);
@@ -226,7 +226,7 @@ export class World {
     this.nameSource = createNameSource(seed ^ 0x27d4eb2f, this.region.names);
     // Offset the noise seed off the rng seed so terrain and placement RNG don't correlate.
     this.noise = new Noise2D(seed ^ 0x9e3779b9);
-    // The per-map terrain profile (world/terrainProfile.ts): every heightfield parameter lives here so
+    // The per-map terrain profile (maps/<region>/terrain.ts): every heightfield parameter lives here so
     // ONE generator grows the SK boreal shield or the BC mountains. Default → Saskatchewan (the values
     // are config TERRAIN verbatim), so this seam is byte-identical for the live map.
     this.profile = getTerrainProfile(opts.regionId);

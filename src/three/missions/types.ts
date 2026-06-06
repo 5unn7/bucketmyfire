@@ -19,7 +19,7 @@ export type SizeClass = 'spot' | 'small' | 'medium' | 'large' | 'mega';
  * A reference to a placed site, resolved by `World.getCommunity` (see scenario.ts). One of:
  *   • a `number` — index into the map's ambient/anchored TOWN sites (legacy index form),
  *   • `'base'` — the mission's HOME base/depot,
- *   • a `string` MapAnchor id ('la-ronge', 'weyakwin', …) — an authored anchored place (regions.ts).
+ *   • a `string` MapAnchor id ('la-ronge', 'weyakwin', …) — an authored anchored place (maps/<region>/region.ts).
  * The `(string & {})` keeps `'base'` a distinct literal in autocomplete while accepting any anchor id.
  */
 // eslint-disable-next-line @typescript-eslint/ban-types -- `string & {}` is the intentional "keep-literal-autocomplete" idiom documented above, not an accidental empty-object type
@@ -209,11 +209,11 @@ export interface MissionDef {
   intel?: string; // longer pre-flight briefing paragraph (the briefing card body; falls back to brief)
   difficulty: 1 | 2 | 3 | 4 | 5;
   seed: number; // world seed — each mission grows its own boreal map
-  // Which MAP/region this mission is set in (see world/regions.ts REGIONS; shares ids with the
+  // Which MAP/region this mission is set in (see maps/<region>/region.ts anchors; shares ids with the
   // ui/profile.ts MAPS picker). Drives the place-name pools. Omit → the default Saskatchewan map.
   map?: string;
   // Which fire BASE the sortie spawns / refuels from — a MapAnchor id in the `map` region
-  // (see world/regions.ts ANCHORS: 'la-ronge', 'denare-beach', 'buffalo-narrows', …). The home
+  // (see maps/<region>/region.ts anchors: 'la-ronge', 'denare-beach', 'buffalo-narrows', …). The home
   // depot is NAMED from this anchor today; Phase 1 (docs/MAPS.md) will also POSITION it there.
   // Distinct from `places.communities`, which name the towns you PROTECT. Omit → the region's
   // `home` anchor (La Ronge on saskatchewan), else the seeded largest-lake base.

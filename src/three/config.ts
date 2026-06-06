@@ -23,7 +23,7 @@ export const WORLD3D = {
 // Real-world map projection + lake sizing (anchored maps like Saskatchewan). Anchors carry REAL
 // latitude/longitude; World projects them with a cosine ("sinusoidal") projection so true distances
 // AND the province's converging-meridian trapezoid (wider south, narrower north) come out right — see
-// world/regions.ts `geo` + `outline`. The province is scaled to fill `fill` of the square world's
+// maps/<region>/region.ts `geo` + `outline`. The province is scaled to fill `fill` of the square world's
 // height; everything outside the border (E/W margins, the open south reserved for v2) is off-province
 // wilderness, muted on the radar so the map reads as Saskatchewan rather than a filled square.
 export const MAPGEO = {
