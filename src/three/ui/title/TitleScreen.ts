@@ -4,10 +4,10 @@ import { loadProfile, missionsCleared } from '../profile';
 import { signalFirstFrame } from '../../splashSignal';
 
 /**
- * TitleScreen — the home screen. Full-bleed wildfire key art (a Huey on a slung bucket dropping
- * water over a burning ridge) with a dark gradient rising from the bottom, and the hero plate —
- * typographic ember wordmark + the brand hook + the action cluster (PLAY · Daily Burn + 🔥 streak ·
- * Leaderboard) — anchored over that gradient so text and buttons stay legible against the busy fire.
+ * TitleScreen — the home screen. Wildfire key art (a Bell helicopter on a slung bucket dropping water
+ * over a burning ridge) — full-bleed on phones, a centred rounded 16:9 card on desktop. The ember
+ * wordmark sits TOP-RIGHT; a dark gradient rises from the bottom through the tagline + the single PLAY
+ * button so they stay legible against the fire. (Daily Burn + Leaderboard live in the wizard.)
  *
  * Pure DOM, no WebGL (the old 3D AttractScene + GitHub-grid wordmark were removed), so the home
  * boots instantly. The background image is preloaded; the cold-start splash holds until it's ready
@@ -89,15 +89,15 @@ export class TitleScreen {
     const frame = div({ backgroundImage: `url("${BG_URL}")`, backgroundSize: 'cover', backgroundPosition: 'center' });
     frame.className = 'bmf-home-frame';
 
-    // Legibility gradient — transparent over the art up top, deepening to near-opaque at the bottom
-    // (inside the frame) where the wordmark + buttons sit.
+    // Legibility gradient — clean dark rising from the bottom up through where the tagline + button
+    // sit; the upper art (and the top-right wordmark) stay clear of it.
     frame.appendChild(
       div({
         position: 'absolute',
         inset: '0',
         pointerEvents: 'none',
         background:
-          'linear-gradient(180deg, rgba(4,6,10,0.30) 0%, rgba(4,6,10,0) 24%, rgba(4,6,10,0) 42%, rgba(4,6,10,0.60) 70%, rgba(3,5,8,0.95) 100%)',
+          'linear-gradient(180deg, rgba(4,6,10,0) 40%, rgba(4,6,10,0.55) 64%, rgba(2,4,7,0.96) 100%)',
       }),
     );
 
@@ -115,29 +115,37 @@ export class TitleScreen {
       pointerEvents: 'none',
     });
 
-    // Typographic ember wordmark (system font, ember-gradient fill + glow) — not a pixel grid.
+    // Typographic ember wordmark (system font, ember-gradient fill + glow) — pinned TOP-RIGHT of the
+    // frame as a corner mark; a dark drop-shadow under the ember glow keeps it legible over the fire.
     const word = el('h1', {
+      position: 'absolute',
+      top: 'max(18px, env(safe-area-inset-top))',
+      right: 'max(20px, env(safe-area-inset-right))',
       margin: '0',
+      textAlign: 'right',
+      whiteSpace: 'nowrap',
       fontWeight: FW.black,
-      letterSpacing: '0.02em',
-      lineHeight: '0.96',
-      fontSize: 'clamp(34px, 9vw, 60px)',
+      letterSpacing: '0.04em',
+      lineHeight: '0.92',
+      fontSize: 'clamp(20px, 4.4vw, 36px)',
       background: `linear-gradient(176deg, ${UI.emberHi} 0%, ${UI.ember} 52%, ${UI.fire} 100%)`,
       backgroundClip: 'text',
       color: 'transparent',
-      filter: 'drop-shadow(0 3px 22px rgba(255,106,44,0.5))',
+      filter: 'drop-shadow(0 2px 10px rgba(0,0,0,0.7)) drop-shadow(0 2px 18px rgba(255,106,44,0.45))',
+      pointerEvents: 'none',
     });
     word.style.setProperty('-webkit-background-clip', 'text');
     word.style.setProperty('-webkit-text-fill-color', 'transparent');
     word.setAttribute('aria-label', 'Bucket My Fire');
     word.textContent = 'BUCKET MY FIRE';
+    frame.appendChild(word);
 
     const hook = div(
       { fontSize: FS.md, letterSpacing: '0.02em', color: UI.text, opacity: '0.92', textShadow: '0 1px 16px rgba(0,0,0,0.85)' },
-      'A bucket, a chopper, a wildfire.',
+      'Ready to fight the fire?',
     );
 
-    hero.append(word, hook);
+    hero.append(hook);
 
     // Returning pilot: a quiet "welcome back" line ABOVE the button.
     let welcome: HTMLElement | null = null;
