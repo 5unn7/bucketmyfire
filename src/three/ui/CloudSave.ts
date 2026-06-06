@@ -9,6 +9,7 @@ import {
   loadFromCloud,
 } from '../leaderboard/cloudSave';
 import { UI, FS, FW, R, el, div, setBlur } from './theme';
+import { makeButton } from './components';
 
 /**
  * Cloud-save overlay — a small frosted modal in the game's cockpit language (matching
@@ -35,8 +36,8 @@ class CloudSave {
   private readonly status: HTMLDivElement;
   private readonly callsign: HTMLInputElement;
   private readonly email: HTMLInputElement;
-  private readonly saveBtn: HTMLDivElement;
-  private readonly loadBtn: HTMLDivElement;
+  private readonly saveBtn: HTMLButtonElement;
+  private readonly loadBtn: HTMLButtonElement;
   private readonly linkNote: HTMLDivElement;
   private busy = false;
 
@@ -105,8 +106,8 @@ class CloudSave {
       this.status = div({});
       this.callsign = document.createElement('input');
       this.email = document.createElement('input');
-      this.saveBtn = div({});
-      this.loadBtn = div({});
+      this.saveBtn = el('button', {});
+      this.loadBtn = el('button', {});
       this.linkNote = div({});
       this.root.appendChild(panel);
       document.body.appendChild(this.root);
@@ -131,8 +132,8 @@ class CloudSave {
 
     // Action buttons.
     const actions = div({ display: 'flex', gap: '10px' });
-    this.saveBtn = this.actionBtn('⬆  Save', UI.accent, () => void this.doSave());
-    this.loadBtn = this.actionBtn('⬇  Load', UI.ok, () => void this.doLoad());
+    this.saveBtn = this.actionBtn('⬆  Save', () => void this.doSave());
+    this.loadBtn = this.actionBtn('⬇  Load', () => void this.doLoad());
     actions.appendChild(this.saveBtn);
     actions.appendChild(this.loadBtn);
     panel.appendChild(actions);
@@ -230,32 +231,19 @@ class CloudSave {
     return input;
   }
 
-  private actionBtn(label: string, accent: string, onTap: () => void): HTMLDivElement {
-    const btn = div(
-      {
-        flex: '1',
-        textAlign: 'center',
-        fontSize: FS.md,
-        fontWeight: FW.bold,
-        letterSpacing: '0.5px',
-        color: accent,
-        cursor: 'pointer',
-        padding: '12px',
-        borderRadius: R.md,
-        border: `1px solid ${accent}66`,
-        background: 'rgba(255,255,255,0.03)',
-        userSelect: 'none',
-        transition: 'box-shadow 0.12s ease, opacity 0.12s ease',
-      },
+  /** Save / Load — kit `secondary` Buttons on the cockpit register (cloud-save is a utility, not a
+   *  brand surface). The busy state is reflected by toggling the elements in setBusy(). */
+  private actionBtn(label: string, onTap: () => void): HTMLButtonElement {
+    const h = makeButton({
       label,
-    );
-    btn.addEventListener('pointerenter', () => (btn.style.boxShadow = `0 0 0 1px ${accent}66`));
-    btn.addEventListener('pointerleave', () => (btn.style.boxShadow = 'none'));
-    btn.addEventListener('pointerdown', (e) => {
-      e.stopPropagation();
-      if (!this.busy) onTap();
+      variant: 'secondary',
+      register: 'cockpit',
+      onClick: () => {
+        if (!this.busy) onTap();
+      },
     });
-    return btn;
+    h.el.style.flex = '1';
+    return h.el;
   }
 
   private setBusy(on: boolean): void {

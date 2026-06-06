@@ -3,6 +3,7 @@ import { MAX_CALLSIGN } from './callsign';
 import { isConfigured, saveToCloud } from '../leaderboard/cloudSave';
 import { submitLead } from '../leaderboard/client';
 import { UI, FS, FW, R, el, div, setBlur, prefersReducedMotion } from './theme';
+import { makeButton } from './components';
 
 /**
  * Squadron Store screen — the merch surface, currently a placeholder "fire in progress" screen
@@ -33,7 +34,7 @@ class ShopScreen {
   private readonly status: HTMLDivElement;
   private readonly callsign: HTMLInputElement;
   private readonly email: HTMLInputElement;
-  private readonly notifyBtn: HTMLDivElement;
+  private readonly notifyBtn: HTMLButtonElement;
   private flameTimer = 0;
   private busy = false;
 
@@ -131,7 +132,7 @@ class ShopScreen {
       this.status = div({});
       this.callsign = document.createElement('input');
       this.email = document.createElement('input');
-      this.notifyBtn = div({});
+      this.notifyBtn = el('button', {});
       this.root.appendChild(panel);
       document.body.appendChild(this.root);
       return;
@@ -220,31 +221,19 @@ class ShopScreen {
     return input;
   }
 
-  private actionBtn(label: string, onTap: () => void): HTMLDivElement {
-    const btn = div(
-      {
-        textAlign: 'center',
-        fontSize: FS.md,
-        fontWeight: FW.bold,
-        letterSpacing: '0.5px',
-        color: UI.ink,
-        cursor: 'pointer',
-        padding: '13px',
-        borderRadius: R.md,
-        background: `linear-gradient(180deg, ${UI.emberHi}, ${UI.ember})`,
-        boxShadow: UI.emberGlow,
-        userSelect: 'none',
-        transition: 'opacity 0.12s ease, transform 0.12s ease',
-      },
+  /** The primary CTA — a kit `primary` Button on the warm "fight" register (the store is a brand
+   *  surface, not the cockpit). The busy state is reflected by toggling the element in doNotify(). */
+  private actionBtn(label: string, onTap: () => void): HTMLButtonElement {
+    return makeButton({
       label,
-    );
-    btn.addEventListener('pointerenter', () => (btn.style.transform = 'translateY(-1px)'));
-    btn.addEventListener('pointerleave', () => (btn.style.transform = 'none'));
-    btn.addEventListener('pointerdown', (e) => {
-      e.stopPropagation();
-      if (!this.busy) onTap();
-    });
-    return btn;
+      variant: 'primary',
+      register: 'fight',
+      size: 'lg',
+      block: true,
+      onClick: () => {
+        if (!this.busy) onTap();
+      },
+    }).el;
   }
 
   private showStatus(text: string, color: string): void {
