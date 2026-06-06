@@ -144,8 +144,9 @@ export const FW = {
 export const R = {
   xs: '2px', // ticks, tiny chips
   sm: '8px', // small chips
-  md: '12px', // cards, buttons, chips (the default)
-  lg: '14px', // panels, decision surfaces
+  md: '12px', // cards, chips (the default)
+  lg: '10px', // buttons + panels — a tighter, more technical/rugged radius (was 14px; the soft
+  // pill-ish buttons read off-brand for a firefighting/aviation product)
   xl: '18px', // modals, hero cards
   pill: '99px', // pills, fill tracks, badges
   round: '50%', // LEDs, avatars, round buttons

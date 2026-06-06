@@ -81,42 +81,42 @@ export class TitleScreen {
     const cleared = missionsCleared();
     const streak = dailyStreak();
 
-    // Root carries the key art (cover) over a dark fallback so there's never a white flash.
-    const root = div({
-      position: 'fixed',
-      inset: '0',
-      zIndex: '50',
-      overflow: 'hidden',
-      backgroundColor: '#0a0e16',
-      backgroundImage: `url("${BG_URL}")`,
-      backgroundSize: 'cover',
-      backgroundPosition: 'center',
-      backgroundRepeat: 'no-repeat',
-      fontFamily: UI.font,
-      color: UI.text,
-      pointerEvents: 'none',
-    });
+    // Root: a flex-centred stage on a dark backing. On phones the frame fills it; on desktop the
+    // frame is a centred rounded portrait CARD and this dark backing shows in the margins. (Layout
+    // lives in the injected `.bmf-home-*` classes so media queries can switch fill ↔ framed.)
+    const root = div({ position: 'fixed', inset: '0', zIndex: '50', fontFamily: UI.font, color: UI.text, pointerEvents: 'none' });
+    root.className = 'bmf-home-root';
+
+    // Blurred ambient backdrop — fills the desktop margins around the card with a darkened, blurred
+    // zoom of the same art so the framed look feels intentional, not letterboxed. Hidden behind the
+    // full-bleed frame on phones.
+    const backdrop = div({ backgroundImage: `url("${BG_URL}")` });
+    backdrop.className = 'bmf-home-backdrop';
+    root.appendChild(backdrop);
+
+    // The framed key art. Its aspect-ratio matches the source image (3:4) on desktop, so `cover`
+    // shows the WHOLE picture with no crop; on phones it goes full-bleed (radius 0).
+    const frame = div({ backgroundImage: `url("${BG_URL}")`, backgroundSize: 'cover', backgroundPosition: 'center' });
+    frame.className = 'bmf-home-frame';
 
     // Legibility gradient — transparent over the art up top, deepening to near-opaque at the bottom
-    // where the wordmark + buttons sit. A faint top darken keeps any future top chrome readable too.
-    root.appendChild(
+    // (inside the frame) where the wordmark + buttons sit.
+    frame.appendChild(
       div({
         position: 'absolute',
         inset: '0',
-        zIndex: '1',
         pointerEvents: 'none',
         background:
-          'linear-gradient(180deg, rgba(4,6,10,0.34) 0%, rgba(4,6,10,0) 22%, rgba(4,6,10,0) 40%, rgba(4,6,10,0.62) 70%, rgba(3,5,8,0.94) 100%)',
+          'linear-gradient(180deg, rgba(4,6,10,0.30) 0%, rgba(4,6,10,0) 24%, rgba(4,6,10,0) 42%, rgba(4,6,10,0.60) 70%, rgba(3,5,8,0.95) 100%)',
       }),
     );
 
-    // Hero plate — anchored to the BOTTOM, centred, over the gradient.
+    // Hero plate — anchored to the BOTTOM of the FRAME, centred, over the gradient.
     const hero = div({
       position: 'absolute',
       left: 'max(20px, env(safe-area-inset-left))',
       right: 'max(20px, env(safe-area-inset-right))',
-      bottom: 'max(30px, env(safe-area-inset-bottom))',
-      zIndex: '2',
+      bottom: 'max(26px, env(safe-area-inset-bottom))',
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
@@ -174,7 +174,8 @@ export class TitleScreen {
       );
     }
 
-    root.appendChild(hero);
+    frame.appendChild(hero);
+    root.appendChild(frame);
 
     if (!reduce) {
       word.style.animation = 'bmf-title-rise 0.7s ease 0.06s both';
@@ -197,7 +198,7 @@ export class TitleScreen {
       justifyContent: 'center',
       gap: '12px',
       padding: '17px 44px',
-      borderRadius: R.pill,
+      borderRadius: R.lg,
       border: 'none',
       fontFamily: UI.font,
       fontSize: FS.title,
@@ -236,6 +237,17 @@ function injectTitleStyles(): void {
   const tag = document.createElement('style');
   tag.textContent = `
   @keyframes bmf-title-rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+  .bmf-home-root { display: flex; align-items: center; justify-content: center; background: #06080e; overflow: hidden; }
+  .bmf-home-backdrop { position: absolute; inset: 0; background-size: cover; background-position: center; filter: blur(30px) brightness(0.40) saturate(1.04); transform: scale(1.14); }
+  .bmf-home-frame { position: relative; overflow: hidden; width: 100%; height: 100%; border-radius: 0; }
+  /* Desktop / landscape: a centred rounded PORTRAIT card (3:4, matching the art) with margin, so the
+     whole image is seen and it doesn't cover the entire viewport. Phones stay full-bleed (above). */
+  @media (min-width: 768px) and (orientation: landscape) {
+    .bmf-home-frame {
+      width: auto; height: min(86vh, calc(94vw * 4 / 3)); aspect-ratio: 3 / 4; max-width: 94vw;
+      border-radius: 22px; box-shadow: 0 30px 90px rgba(0,0,0,0.62), 0 0 0 1px rgba(255,255,255,0.07);
+    }
+  }
   `;
   document.head.appendChild(tag);
 }
