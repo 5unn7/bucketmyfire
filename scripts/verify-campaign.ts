@@ -186,11 +186,12 @@ for (const m of CAMPAIGN) {
   console.log(`      (no action → ${passive.r.runtime.state} @${passive.elapsed.toFixed(0)}s)`);
 }
 
-// --- Rectangular (true-shape) map completability: the campaign gate above only ever builds the
-// SQUARE world, so it proves nothing about the rect fire grid / per-axis bounds the engine now runs.
-// Drive a minimal extinguish mission through `saskatchewan-true` (geo.fit:'bounds' → 81×157 cells) and
-// prove a perfect player still wins AND a do-nothing pilot does NOT — so the gate can't lie on rect maps. ---
-console.log('\nRectangular-map completability (saskatchewan-true)\n');
+// --- Rectangular (true-shape) map completability: SK is now itself a bounds-fit, outline-masked
+// rectangular world (Slice 2), so this drives a minimal RANDOM-fire extinguish mission straight on
+// `saskatchewan` and proves a perfect player wins AND a do-nothing pilot does NOT. It exercises the
+// rect fire grid + the in-province fire-seeding guard on a clean isolated scenario (the 8 campaign
+// missions cover the authored placements; this covers the random-seed + rectangular-grid path). ---
+console.log('\nRectangular-map completability (saskatchewan, true-shape)\n');
 {
   const rectProbe: MissionDef = {
     id: 'rect-probe',
@@ -199,7 +200,7 @@ console.log('\nRectangular-map completability (saskatchewan-true)\n');
     brief: 'Headless rectangular-map completability probe.',
     difficulty: 2,
     seed: 4242,
-    map: 'saskatchewan-true',
+    map: 'saskatchewan',
     fires: [{ at: 'random', count: 3, size: 'medium', minFromOrigin: 120 }],
     objectives: [{ kind: 'extinguishAll' }],
   };
@@ -207,7 +208,7 @@ console.log('\nRectangular-map completability (saskatchewan-true)\n');
   ok('rect map: fires seeded on the bounds world', res.firesInitial > 0, `firesInitial=${res.firesInitial}`);
   ok('rect map: completable by a perfect player', res.win, `state=${res.state} @${res.elapsed.toFixed(0)}s`);
   ok('rect map: a no-op pilot does NOT win (genuine difficulty)', !res.noopWins);
-  console.log(`  ${res.win && !res.noopWins ? '✓' : '✗'} saskatchewan-true win@${res.elapsed.toFixed(0)}s score ${res.score} (firesInitial=${res.firesInitial}, noopWins=${res.noopWins})`);
+  console.log(`  ${res.win && !res.noopWins ? '✓' : '✗'} saskatchewan win@${res.elapsed.toFixed(0)}s score ${res.score} (firesInitial=${res.firesInitial}, noopWins=${res.noopWins})`);
 }
 
 // --- Daily Burn completability: a runtime-built daily challenge must be clearable on EVERY seed (it

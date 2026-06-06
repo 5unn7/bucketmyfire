@@ -195,8 +195,8 @@ function bootMission(mission: MissionDef): void {
   // uh-60), e.g. ?m=first-light&autostart&heli=uh-60. Unknown ids fall back to the saved default.
   const heliOverride = params.get('heli');
   // QA / dev: force the world MAP regardless of the saved pick with ?region=<id> (e.g.
-  // ?region=saskatchewan-true to fly the true-shape rectangular playfield). Unknown ids fall back to the
-  // default map inside World.getRegion, so a typo can't crash the boot.
+  // ?region=british-columbia). Unknown ids fall back to the default map (saskatchewan, now the
+  // true-shape rectangular playfield) inside World.getRegion, so a typo can't crash the boot.
   const regionOverride = params.get('region');
   let profile = defaultProfile();
   if (heliOverride && HELI_MODELS[heliOverride]) profile = { ...profile, heliId: heliOverride };

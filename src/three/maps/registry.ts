@@ -10,31 +10,14 @@ import { saskatchewan } from './saskatchewan';
 import { britishColumbia } from './british-columbia';
 import { alberta } from './alberta';
 import { ontario } from './ontario';
-import { makeSaskatchewanTrue } from '../world/maps/saskatchewan-true';
 
-// saskatchewan-true — the bounds-fit rectangle test bed (KEPT through Slice 1; deleted when SK itself
-// flips to province shape in Slice 2). Derived from the SK region AFTER it is fully built: `saskatchewan`
-// is a resolved imported value here, so there is no temporal-dead-zone hazard. No terrain (falls back to
-// SK's) and no campaign (the 8 missions are tagged map:'saskatchewan').
-const saskatchewanTrue: MapModule = {
-  id: 'saskatchewan-true',
-  country: 'canada',
-  card: {
-    id: 'saskatchewan-true',
-    name: 'Saskatchewan · True Shape',
-    tagline: 'The province, edge to edge',
-    blurb: 'The same northern-Saskatchewan world, fitted to the province’s real outline so the boundary sits at the map edge — no off-province margin. The full campaign flies here on Saskatchewan’s true silhouette.',
-    available: true,
-    accent: '#3f7d4a',
-    glyph: '🗺️',
-    imageUrl: 'maps/Saskatchewan.webp',
-  },
-  region: makeSaskatchewanTrue(saskatchewan.region),
-};
+// NOTE: the `saskatchewan-true` bounds-fit test bed was DELETED in Slice 2 — `saskatchewan` itself is now
+// the true-shape, outline-masked rectangular world (its region declares geo.fit:'bounds'), so a separate
+// rectangle map is redundant.
 
 // Registry ORDER is load-bearing: saskatchewan first → MAPS[0] / firstAvailable resolve to it; matches
 // the legacy world/regions.ts REGIONS insertion order so regionIds() is unchanged for the editor.
-const MAPS: readonly MapModule[] = [saskatchewan, saskatchewanTrue, britishColumbia, alberta, ontario];
+const MAPS: readonly MapModule[] = [saskatchewan, britishColumbia, alberta, ontario];
 const BY_ID = new Map<string, MapModule>(MAPS.map((m) => [m.id, m]));
 
 export const DEFAULT_REGION_ID = 'saskatchewan';
