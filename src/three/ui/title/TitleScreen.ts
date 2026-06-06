@@ -1,9 +1,4 @@
-import * as THREE from 'three';
-import { QualityTier } from '../../render/QualityTier';
-import { Composer } from '../../postfx/Composer';
-import { AttractScene } from '../../menu/AttractScene';
 import type { MissionDef } from '../../missions/types';
-import { createGridTitle } from '../GridTitle';
 import { UI, FS, FW, R, el, div, prefersReducedMotion } from '../theme';
 import { makeButton, makeBadge } from '../components';
 import { loadProfile, missionsCleared } from '../profile';
@@ -12,102 +7,169 @@ import { openLeaderboard } from '../Leaderboard';
 import { signalFirstFrame } from '../../splashSignal';
 
 /**
- * TitleScreen — the home screen. It owns a lightweight WebGL renderer + animation loop driving the
- * 3D `AttractScene` backdrop, with a DOM overlay (the ember wordmark, a tagline, a hero PLAY button,
- * and the Leaderboard chip) layered on top. Pressing PLAY tears the whole thing down — renderer,
- * scene, listeners, canvas, overlay — and calls `onPlay`, which mounts the existing pre-flight wizard
- * (`MenuFlow`). The menu→mission jump is a full page reload, so disposing here lets the gameplay
- * renderer start from a clean GPU.
+ * TitleScreen — the home screen. A PURE-DOM "Ember Horizon": a night sky over a glowing ember
+ * horizon beyond a ridgeline, with embers drifting up the sky (a cheap pre-baked canvas particle
+ * system), under a typographic ember wordmark + the brand hook + an action cluster (PLAY · Daily
+ * Burn + streak · Leaderboard). Pressing PLAY tears it all down and calls `onPlay` (mounts MenuFlow).
  *
- * It mirrors `main.ts`'s renderer bones (ACES tone-map, tier-driven DPR + shadows, the post-fx
- * Composer for bloom/god-rays/grade, tab-blur pause, resize, context-loss recovery) but carries none
- * of the mission machinery. Replaces the bare `new MenuFlow(...)` landing in the router.
- *
- * This is the first screen of the home-screen redesign; the moving scene layers (helicopter, fire,
- * clouds, trees) and the richer overlay (returning-pilot quick-fly, settings) arrive in later phases.
+ * The old 3D attract backdrop + GitHub-grid wordmark were removed — no WebGL renderer / composer /
+ * AttractScene here anymore, so the home boots instantly with zero GPU scene work. The only motion
+ * is the ember canvas (one rAF loop, fixed-cap particles, paused while the tab is hidden, gated off
+ * for reduced-motion). Zero binary assets — geometry from gradients + canvas, colours from `UI` fire
+ * tokens. Replaces the bare `new MenuFlow(...)` landing in the router; `main.ts` is unchanged.
  */
+
+// Scene backdrop hexes — the night-sky gradient. These are a procedural SCENE (like the old 3D
+// backdrop), not a DOM surface token; the fire/ember colours below all come from `UI`.
+const SKY = 'linear-gradient(180deg, #05070e 0%, #090e1b 34%, #160f1e 58%, #2a160f 82%, #3c1a0d 100%)';
+
+interface Ember {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  size: number;
+  age: number;
+  life: number;
+  sprite: number; // index into the baked sprites
+}
+
 export class TitleScreen {
   private readonly parent: HTMLElement;
   private readonly onPlay: () => void;
-
-  private readonly tier: QualityTier;
-  private readonly renderer: THREE.WebGLRenderer;
-  private readonly attract: AttractScene;
-  private readonly composer: Composer;
   private readonly root: HTMLDivElement;
 
+  private canvas: HTMLCanvasElement | null = null;
+  private ctx: CanvasRenderingContext2D | null = null;
+  private readonly sprites: HTMLCanvasElement[] = [];
+  private embers: Ember[] = [];
+  private dpr = 1;
+  private vw = 0;
+  private vh = 0;
+  private target = 0;
+
+  private raf = 0;
   private prevTime = 0;
   private hidden = false;
   private disposed = false;
+  private firstFramed = false;
 
   constructor(parent: HTMLElement, catalog: MissionDef[], onPlay: () => void) {
     this.parent = parent;
     this.onPlay = onPlay;
     injectTitleStyles();
 
-    // --- Renderer (mirrors main.ts bootMission, minus the mission machinery) ---
-    this.tier = new QualityTier(); // device probe — must precede setPixelRatio + Composer construction
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(this.tier.dpr);
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.02;
-    this.renderer.shadowMap.type = THREE.PCFShadowMap;
-    this.renderer.shadowMap.enabled = this.tier.current.shadows;
-    // The canvas covers the viewport behind the DOM overlay; updateStyle=false on setSize keeps our
-    // CSS sizing (fixed inset:0) instead of the renderer stamping px width/height each resize.
-    Object.assign(this.renderer.domElement.style, {
-      position: 'fixed',
+    this.root = this.buildScene(catalog);
+    parent.appendChild(this.root);
+
+    if (!prefersReducedMotion()) {
+      // The ember canvas is the only moving layer — set it up and run one rAF loop.
+      const made = this.buildCanvas();
+      this.canvas = made.canvas;
+      this.ctx = made.ctx;
+      this.bakeSprites();
+      this.resizeCanvas();
+      window.addEventListener('resize', this.onResize);
+      window.addEventListener('orientationchange', this.onResize);
+      document.addEventListener('visibilitychange', this.onVisibility);
+      this.raf = requestAnimationFrame(this.loop);
+    }
+
+    // No WebGL frame to wait for — clear the cold-start splash on the next paint.
+    requestAnimationFrame(() => signalFirstFrame());
+  }
+
+  /** Stop the loop, drop listeners + DOM. Idempotent. */
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    if (this.raf) cancelAnimationFrame(this.raf);
+    window.removeEventListener('resize', this.onResize);
+    window.removeEventListener('orientationchange', this.onResize);
+    document.removeEventListener('visibilitychange', this.onVisibility);
+    this.root.remove();
+  }
+
+  private play(): void {
+    if (this.disposed) return;
+    this.dispose();
+    this.onPlay();
+  }
+
+  /** Jump straight to today's Daily Burn (?daily → full reload, so no teardown needed). */
+  private playDaily(): void {
+    const url = new URL(location.href);
+    url.searchParams.delete('m');
+    url.searchParams.set('daily', '1');
+    location.assign(url.toString());
+  }
+
+  // --- Ember canvas ----------------------------------------------------------
+
+  private buildCanvas(): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } {
+    const canvas = document.createElement('canvas');
+    Object.assign(canvas.style, {
+      position: 'absolute',
       inset: '0',
       width: '100%',
       height: '100%',
       display: 'block',
-      zIndex: '0',
       pointerEvents: 'none',
+      zIndex: '2', // above the ridge (z1) so embers rise in front of the hills
     } as Partial<CSSStyleDeclaration>);
-    this.renderer.setSize(parent.clientWidth, parent.clientHeight, false);
-    parent.appendChild(this.renderer.domElement);
-
-    this.attract = new AttractScene(parent.clientWidth / parent.clientHeight, this.tier.current.shadows);
-    this.composer = new Composer(this.renderer, this.attract.scene, this.attract.camera, this.tier);
-
-    // Adaptive DPR: re-apply to renderer + composer in lockstep (recompile-free).
-    this.tier.onDpr((dpr) => {
-      this.renderer.setPixelRatio(dpr);
-      this.composer.setPixelRatio(dpr);
-    });
-
-    this.renderer.domElement.addEventListener('webglcontextlost', this.onContextLost, false);
-
-    this.root = this.buildOverlay(catalog);
-    parent.appendChild(this.root);
-
-    window.addEventListener('resize', this.onResize);
-    window.addEventListener('orientationchange', this.onResize);
-    document.addEventListener('visibilitychange', this.onVisibility);
-
-    this.renderer.setAnimationLoop(this.loop);
+    this.root.appendChild(canvas);
+    return { canvas, ctx: canvas.getContext('2d') as CanvasRenderingContext2D };
   }
 
-  /** Stop the loop, free GPU + DOM, drop listeners. Idempotent. */
-  dispose(): void {
-    if (this.disposed) return;
-    this.disposed = true;
-    this.renderer.setAnimationLoop(null);
-    window.removeEventListener('resize', this.onResize);
-    window.removeEventListener('orientationchange', this.onResize);
-    document.removeEventListener('visibilitychange', this.onVisibility);
-    this.renderer.domElement.removeEventListener('webglcontextlost', this.onContextLost);
-    this.attract.dispose();
-    this.renderer.dispose();
-    this.renderer.domElement.remove();
-    this.root.remove();
+  /** Pre-bake a few radial-gradient ember sprites (white-hot core → ember tint → transparent), so the
+   *  loop is just `drawImage` with additive blending — no per-particle gradient cost. */
+  private bakeSprites(): void {
+    const tints = [UI.emberHi, UI.fire, UI.warn];
+    for (const tint of tints) {
+      const s = document.createElement('canvas');
+      s.width = 32;
+      s.height = 32;
+      const c = s.getContext('2d') as CanvasRenderingContext2D;
+      const g = c.createRadialGradient(16, 16, 0, 16, 16, 16);
+      g.addColorStop(0, 'rgba(255,244,214,0.95)');
+      g.addColorStop(0.35, tint);
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      c.fillStyle = g;
+      c.fillRect(0, 0, 32, 32);
+      this.sprites.push(s);
+    }
   }
 
-  // --- Loop + lifecycle handlers (stable refs so they're removable) -----------
+  private resizeCanvas(): void {
+    if (!this.canvas || !this.ctx) return;
+    this.dpr = Math.min(window.devicePixelRatio || 1, 2);
+    this.vw = this.parent.clientWidth;
+    this.vh = this.parent.clientHeight;
+    this.canvas.width = Math.round(this.vw * this.dpr);
+    this.canvas.height = Math.round(this.vh * this.dpr);
+    this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    this.target = Math.min(72, Math.max(24, Math.round(this.vw / 16)));
+  }
+
+  /** Spawn one ember at the fire line (just above the ridge), rising into the sky. */
+  private spawn(seed = false): Ember {
+    const horizon = this.vh * 0.74;
+    return {
+      x: Math.random() * this.vw,
+      y: seed ? horizon - Math.random() * this.vh * 0.6 : horizon + Math.random() * 14,
+      vx: (Math.random() - 0.5) * 16,
+      vy: -(18 + Math.random() * 46),
+      size: 1.6 + Math.random() * 3.2,
+      age: seed ? Math.random() * 3 : 0,
+      life: 3 + Math.random() * 3.5,
+      sprite: (Math.random() * this.sprites.length) | 0,
+    };
+  }
 
   private readonly loop = (time: number): void => {
-    if (this.hidden) {
-      this.prevTime = 0; // backgrounded — skip + reseed so resume doesn't lurch the drift
+    this.raf = requestAnimationFrame(this.loop);
+    if (this.hidden || !this.ctx) {
+      this.prevTime = 0;
       return;
     }
     if (this.prevTime === 0) {
@@ -116,121 +178,127 @@ export class TitleScreen {
     }
     const dt = Math.min((time - this.prevTime) / 1000, 1 / 20);
     this.prevTime = time;
-    this.tier.sample(dt); // adaptive-DPR watchdog
-    this.attract.update(dt);
-    this.composer.render(this.renderer, this.attract.scene, this.attract.camera, this.attract.sunDir);
-    signalFirstFrame(); // first attract frame is on screen — let the cold-start splash fade to it
+
+    // Top up to target (a few per frame so it fills in rather than popping).
+    while (this.embers.length < this.target) this.embers.push(this.spawn(this.embers.length < this.target - 6));
+
+    const ctx = this.ctx;
+    ctx.clearRect(0, 0, this.vw, this.vh);
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = this.embers.length - 1; i >= 0; i--) {
+      const e = this.embers[i];
+      e.age += dt;
+      e.x += (e.vx + Math.sin((e.age + i) * 1.3) * 8) * dt;
+      e.y += e.vy * dt;
+      if (e.age >= e.life || e.y < this.vh * 0.06) {
+        this.embers[i] = this.spawn();
+        continue;
+      }
+      const t = e.age / e.life;
+      const alpha = t < 0.18 ? t / 0.18 : 1 - (t - 0.18) / 0.82; // quick fade-in, long fade-out
+      const flick = 0.75 + Math.sin((e.age + i) * 9) * 0.25; // ember twinkle
+      ctx.globalAlpha = Math.max(0, alpha) * flick;
+      const d = e.size * 2;
+      ctx.drawImage(this.sprites[e.sprite], e.x - e.size, e.y - e.size, d, d);
+    }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+
+    if (!this.firstFramed) {
+      this.firstFramed = true;
+      signalFirstFrame();
+    }
   };
 
-  private readonly onResize = (): void => {
-    const w = this.parent.clientWidth;
-    const h = this.parent.clientHeight;
-    this.renderer.setSize(w, h, false);
-    this.composer.setSize(w, h);
-    this.attract.resize(w / h);
-  };
-
+  private readonly onResize = (): void => this.resizeCanvas();
   private readonly onVisibility = (): void => {
     this.hidden = document.hidden;
     if (!this.hidden) this.prevTime = 0;
   };
 
-  private readonly onContextLost = (e: Event): void => {
-    // The 3D backdrop is gone, but the DOM overlay still works — paint the menu gradient behind it so
-    // the player keeps a usable PLAY screen instead of staring at a dead canvas.
-    e.preventDefault();
-    this.renderer.setAnimationLoop(null);
-    this.renderer.domElement.style.display = 'none';
-    this.root.style.background = MENU_GRADIENT;
-  };
+  // --- DOM scene -------------------------------------------------------------
 
-  private play(): void {
-    if (this.disposed) return;
-    this.dispose();
-    this.onPlay();
-  }
-
-  /** Jump straight to today's Daily Burn (the date-seeded challenge + its own per-day board). A full
-   *  reload via ?daily, so no teardown needed — the page reboots into the daily mission. */
-  private playDaily(): void {
-    const url = new URL(location.href);
-    url.searchParams.delete('m');
-    url.searchParams.set('daily', '1');
-    location.assign(url.toString());
-  }
-
-  // --- DOM overlay ------------------------------------------------------------
-
-  private buildOverlay(catalog: MissionDef[]): HTMLDivElement {
+  private buildScene(catalog: MissionDef[]): HTMLDivElement {
     const reduce = prefersReducedMotion();
     const profile = loadProfile();
     const cleared = missionsCleared();
     const streak = dailyStreak();
 
-    // Transparent layer over the canvas (click-through; interactive children opt back in). Holds a
-    // fallback gradient only if the context is lost.
     const root = div({
       position: 'fixed',
       inset: '0',
       zIndex: '50',
+      overflow: 'hidden',
+      background: SKY,
       fontFamily: UI.font,
       color: UI.text,
       pointerEvents: 'none',
-      overflow: 'hidden',
     });
 
-    // Cinematic legibility scrim — darkens the lower-left where the hero sits and the very bottom,
-    // letting the live 3D attract scene own the upper-right. Pure CSS, no extra draw cost.
-    root.appendChild(
-      div({
-        position: 'absolute',
-        inset: '0',
-        pointerEvents: 'none',
-        background:
-          'linear-gradient(105deg, rgba(6,10,14,0.80) 0%, rgba(6,10,14,0.46) 32%, rgba(6,10,14,0) 60%),' +
-          'linear-gradient(0deg, rgba(4,7,11,0.82) 0%, rgba(4,7,11,0) 38%)',
-      }),
-    );
-
-    // Hero block — anchored LOWER-LEFT (game key-art composition), left-aligned, capped width.
-    const hero = div({
+    // Fire glow beyond the ridge — the wildfire is coming over the next hills.
+    const glow = div({
       position: 'absolute',
-      left: 'max(28px, env(safe-area-inset-left))',
-      right: 'max(20px, env(safe-area-inset-right))',
-      bottom: 'max(34px, env(safe-area-inset-bottom))',
+      inset: '0',
+      zIndex: '0',
+      pointerEvents: 'none',
+      background:
+        `radial-gradient(120% 52% at 50% 100%, ${UI.ember}66 0%, ${UI.fire}26 34%, transparent 64%),` +
+        `radial-gradient(58% 26% at 50% 100%, ${UI.emberHi}66 0%, transparent 72%)`,
+    });
+    if (!reduce) glow.style.animation = 'bmf-horizon-pulse 5.5s ease-in-out infinite';
+    root.appendChild(glow);
+
+    // Ridgeline silhouette (two layers for depth) anchored to the bottom.
+    root.appendChild(this.ridge(0.74, '#0b0a12', 1, `1px solid ${UI.fire}`)); // far ridge, faint ember rim
+    root.appendChild(this.ridge(0.82, '#040509', 1, 'none')); // near ridge, near-black
+
+    // Hero content — centred column over the scene.
+    const col = div({
+      position: 'absolute',
+      inset: '0',
+      zIndex: '3',
       display: 'flex',
       flexDirection: 'column',
-      alignItems: 'flex-start',
-      gap: '14px',
-      maxWidth: '620px',
+      alignItems: 'center',
+      justifyContent: 'center',
+      textAlign: 'center',
+      gap: '16px',
+      padding:
+        'max(28px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) ' +
+        'max(28px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left))',
+      boxSizing: 'border-box',
       pointerEvents: 'none',
     });
 
-    // Kicker (the essence) over the wordmark.
     const kicker = div(
-      {
-        fontSize: FS.label,
-        letterSpacing: '0.34em',
-        textTransform: 'uppercase',
-        color: UI.ember,
-        fontWeight: FW.heavy,
-        textShadow: '0 1px 12px rgba(0,0,0,0.75)',
-      },
+      { fontSize: FS.label, letterSpacing: '0.4em', textTransform: 'uppercase', color: UI.ember, fontWeight: FW.heavy, textShadow: '0 1px 14px rgba(0,0,0,0.6)' },
       'Fight the wildfire',
     );
 
-    // Ember wordmark — left-aligned (override the builder's auto-centering).
-    const logo = createGridTitle('BUCKET MY FIRE', '440px');
-    logo.style.margin = '0';
+    // Typographic ember wordmark (system font, ember-gradient fill + glow) — replaces the pixel grid.
+    const word = el('h1', {
+      margin: '0',
+      fontWeight: FW.black,
+      letterSpacing: '0.02em',
+      lineHeight: '0.96',
+      fontSize: 'clamp(38px, 11vw, 74px)',
+      background: `linear-gradient(176deg, ${UI.emberHi} 0%, ${UI.ember} 52%, ${UI.fire} 100%)`,
+      backgroundClip: 'text',
+      color: 'transparent',
+      filter: 'drop-shadow(0 3px 26px rgba(255,106,44,0.45))',
+    });
+    word.style.setProperty('-webkit-background-clip', 'text');
+    word.style.setProperty('-webkit-text-fill-color', 'transparent');
+    word.setAttribute('aria-label', 'Bucket My Fire');
+    word.textContent = 'BUCKET MY FIRE';
 
-    // The descriptive hook (brand platform), under the wordmark.
     const hook = div(
-      { fontSize: FS.md, letterSpacing: '0.01em', color: UI.text, opacity: '0.9', textShadow: '0 1px 12px rgba(0,0,0,0.8)' },
+      { fontSize: FS.md, letterSpacing: '0.01em', color: UI.text, opacity: '0.9', textShadow: '0 1px 14px rgba(0,0,0,0.7)' },
       'A bucket, a chopper, a wildfire.',
     );
 
-    // Action cluster: the hero PLAY, today's Daily Burn (+ streak chip), and the leaderboard.
-    const actions = div({ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginTop: '6px', pointerEvents: 'auto' });
+    // Action cluster: hero PLAY · Daily Burn (+ streak) · Leaderboard.
+    const actions = div({ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', flexWrap: 'wrap', marginTop: '10px', pointerEvents: 'auto' });
     const play = this.buildPlayButton();
     actions.appendChild(play);
 
@@ -244,32 +312,59 @@ export class TitleScreen {
     }
     dailyWrap.appendChild(makeButton({ label: 'Daily Burn', icon: '🔥', variant: 'secondary', register: 'fight', onClick: () => this.playDaily() }).el);
     actions.appendChild(dailyWrap);
-
     actions.appendChild(makeButton({ label: 'Leaderboard', icon: '🏆', variant: 'ghost', onClick: () => openLeaderboard(catalog) }).el);
 
-    hero.append(kicker, logo, hook, actions);
+    col.append(kicker, word, hook, actions);
 
-    // Returning pilot: a quiet "welcome back" line under the actions.
     if (profile?.name) {
-      hero.appendChild(
+      col.appendChild(
         div(
-          { fontSize: FS.meta, color: UI.dim, marginTop: '2px', textShadow: '0 1px 10px rgba(0,0,0,0.7)' },
+          { fontSize: FS.meta, color: UI.dim, marginTop: '4px', textShadow: '0 1px 10px rgba(0,0,0,0.6)' },
           `Welcome back, ${profile.name}${cleared > 0 ? ` · ${cleared} sortie${cleared === 1 ? '' : 's'} flown` : ''}`,
         ),
       );
     }
 
-    root.appendChild(hero);
+    root.appendChild(col);
 
-    // Staggered entrance (reduced-motion users get it static; GridTitle owns its ember sweep regardless).
     if (!reduce) {
-      kicker.style.animation = 'bmf-title-rise 0.5s ease 0.02s both';
-      logo.style.animation = 'bmf-title-rise 0.6s ease 0.08s both';
-      hook.style.animation = 'bmf-title-rise 0.6s ease 0.22s both';
-      actions.style.animation = 'bmf-title-rise 0.6s cubic-bezier(0.34,1.4,0.64,1) 0.34s both';
+      kicker.style.animation = 'bmf-title-rise 0.55s ease 0.02s both';
+      word.style.animation = 'bmf-title-rise 0.7s ease 0.10s both';
+      hook.style.animation = 'bmf-title-rise 0.6s ease 0.26s both';
+      actions.style.animation = 'bmf-title-rise 0.6s cubic-bezier(0.34,1.4,0.64,1) 0.38s both';
     }
 
     return root;
+  }
+
+  /** A jagged ridgeline pinned to the bottom, its top edge at `topFrac` of the viewport height. */
+  private ridge(topFrac: number, fill: string, opacity: number, rimBorder: string): HTMLDivElement {
+    const band = div({
+      position: 'absolute',
+      left: '0',
+      right: '0',
+      top: `${Math.round(topFrac * 100)}%`,
+      bottom: '0',
+      zIndex: '1',
+      opacity: String(opacity),
+      pointerEvents: 'none',
+    });
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 100 30');
+    svg.setAttribute('preserveAspectRatio', 'none');
+    Object.assign(svg.style, { width: '100%', height: '100%', display: 'block' } as Partial<CSSStyleDeclaration>);
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    // A simple jagged hill/treeline profile (kept deterministic so it doesn't reshuffle on resize).
+    path.setAttribute('d', 'M0,12 L8,7 L15,11 L23,4 L31,10 L39,6 L48,12 L56,5 L64,10 L72,7 L81,12 L89,8 L100,11 L100,30 L0,30 Z');
+    path.setAttribute('fill', fill);
+    if (rimBorder !== 'none') {
+      path.setAttribute('stroke', UI.fire);
+      path.setAttribute('stroke-width', '0.3');
+      path.setAttribute('stroke-opacity', '0.5');
+    }
+    svg.appendChild(path);
+    band.appendChild(svg);
+    return band;
   }
 
   private buildPlayButton(): HTMLButtonElement {
@@ -278,8 +373,7 @@ export class TitleScreen {
     const hover = `0 18px 54px ${UI.ember}99, inset 0 2px 0 rgba(255,255,255,0.45)`;
     const b = el('button', {
       pointerEvents: 'auto',
-      marginTop: '6px',
-      minWidth: '236px',
+      minWidth: '230px',
       display: 'inline-flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -317,9 +411,6 @@ export class TitleScreen {
 
 // --- module-level ----------------------------------------------------------
 
-/** Fallback backdrop painted only if the WebGL context is lost (mirrors MenuFlow's gradient). */
-const MENU_GRADIENT = 'radial-gradient(120% 90% at 50% 0%, rgba(20,32,44,0.86), rgba(4,7,11,0.94))';
-
 let stylesInjected = false;
 function injectTitleStyles(): void {
   if (stylesInjected) return;
@@ -327,6 +418,7 @@ function injectTitleStyles(): void {
   const tag = document.createElement('style');
   tag.textContent = `
   @keyframes bmf-title-rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+  @keyframes bmf-horizon-pulse { 0%, 100% { opacity: 0.82; } 50% { opacity: 1; } }
   `;
   document.head.appendChild(tag);
 }
