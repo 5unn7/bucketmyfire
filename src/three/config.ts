@@ -39,6 +39,12 @@ export const MAPGEO = {
   worldSizeMax: 3000, // largest allowed longest-axis extent (units) — scale DOWN above this (caps the budget)
   boundsFill: 0.98, // SUPERSEDED by unitsPerKm + the clamp above (kept for the radar/border comments); no longer
   // sizes the world. Was: the province's LONGEST projected axis fills this fraction of a fixed budget.
+  // PROVINCE-OUTLINE MASK (Slice 2 — bounds-fit maps only): the visible land edge traces the real province
+  // outline instead of filling the rectangle. The ground falls off to `offProvinceLevel` across a blend band
+  // straddling the border (no cliff, no hard flight wall — beyond reads as off-province lowland + distance fog,
+  // NOT ocean). Only active when a region's geo opts in via `fit:'bounds'`; square maps are untouched.
+  outlineBlendBand: 90, // half-width (units) the ground transitions over, centred on the outline (±90u → ~180u total)
+  offProvinceLevel: -12, // lowland Y the ground falls to beyond the border (below SK land ~[−5,9] but NOT a deep ocean)
   // Lake radius from REAL surface area (km²), compressed onto a playable band: radius = lerp(minR,maxR,t),
   // t = (√area − √areaMin)/(√areaMax − √areaMin) clamped 0..1. √area ∝ linear size, so a giant (Reindeer,
   // ~6650 km²) reads huge while a small lake stays scoopable — at true province scale a to-scale lake

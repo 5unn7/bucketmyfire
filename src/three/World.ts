@@ -187,6 +187,10 @@ export class World {
   private readonly offsetZKm: number;
   /** River valleys shaped under the bridges (set after construction via setBridgeValleys); empty = no shaping. */
   private bridgeValleys: BridgeValley[] = [];
+  /** The province outline projected to world XZ, cached once (the projection frame is fixed at construction).
+   *  `groundHeightAt` (per terrain vertex) + placement guards point-in-polygon against this, so it must NOT
+   *  re-project the lat/lon ring every call. Null = not yet built or no geo. */
+  private cachedOutline: { x: number; z: number }[] | null = null;
 
   /**
    * @param seed world seed — threads through noise/hydrology/placement/fire RNG so the same
@@ -412,7 +416,38 @@ export class World {
    *  shades the exterior against. Null on procedural maps (no geo). */
   provinceOutline(): { x: number; z: number }[] | null {
     if (!this.geo) return null;
-    return this.geo.outline.map((c) => this.project(c.lat, c.lon));
+    if (!this.cachedOutline) this.cachedOutline = this.geo.outline.map((c) => this.project(c.lat, c.lon));
+    return this.cachedOutline;
+  }
+
+  /**
+   * Signed distance (world units) from (x,z) to the province outline: NEGATIVE inside, POSITIVE outside,
+   * 0 on procedural maps (no geo, so the mask is a no-op there). Ray-cast point-in-polygon for the sign +
+   * min point-to-segment distance for the magnitude — O(outline edges), and SK is 4 convex corners, so this
+   * is cheap even called per terrain vertex. Reads the CACHED projected ring (never re-projects).
+   */
+  private insideProvince(x: number, z: number): number {
+    const ring = this.provinceOutline();
+    if (!ring || ring.length < 3) return 0;
+    let inside = false;
+    let minD2 = Infinity;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const a = ring[i];
+      const b = ring[j];
+      if (a.z > z !== b.z > z && x < ((b.x - a.x) * (z - a.z)) / (b.z - a.z) + a.x) inside = !inside;
+      const d2 = pointToSegDist2(x, z, a.x, a.z, b.x, b.z);
+      if (d2 < minD2) minD2 = d2;
+    }
+    const d = Math.sqrt(minD2);
+    return inside ? -d : d;
+  }
+
+  /** Public boolean: is (x,z) inside the province polygon? True on procedural/square maps with no mask (geo
+   *  present but not bounds-fit) so callers don't special-case. Used by placement guards to keep lakes/fires/
+   *  structures off the lowered off-province band on a true-shape map. */
+  isInProvince(x: number, z: number): boolean {
+    if (!this.geo || this.geo.fit !== 'bounds') return true;
+    return this.insideProvince(x, z) < 0;
   }
 
   /** Decorative place labels (far-north + southern reference points) projected to world XZ — pure radar labels,
@@ -1362,7 +1397,9 @@ export class World {
       if (w > 0) h = lerp(h, channelProfile(rv.d, rv.river.width, rv.surf), w);
     }
     // Bridge valleys: raise the banks toward each deck so the bridges span valleys, not stilts.
-    return this.applyBridgeValleys(x, z, h);
+    h = this.applyBridgeValleys(x, z, h);
+    // Province-outline mask (bounds-fit maps only): trace the real province edge. No-op on square maps.
+    return this.applyOutlineFalloff(x, z, h);
   }
 
   /**
@@ -1397,6 +1434,27 @@ export class World {
       if (want > target) target = want; // smooth-max across valleys → nearby bridges merge, never spike
     }
     return target;
+  }
+
+  /**
+   * PROVINCE-OUTLINE MASK (Slice 2 — bounds-fit maps only): lower the ground toward `offProvinceLevel`
+   * across a blend band straddling the projected outline, so the visible land edge traces the real province
+   * instead of filling the rectangle. LOWER-ONLY (Math.min) so it never fights the lake basin carve or a
+   * bridge raise — whichever is lower wins, giving a smooth transition, never a notch. The smoothstep puts
+   * the half-lowered point exactly ON the outline, fully lowered one band past it (beyond = off-province
+   * lowland; the distance fog swallows it — no ocean, no cliff, no hard flight wall). `flightFloorAt` reads
+   * `groundHeightAt`, so the altitude band follows automatically. GATED on `fit:'bounds'` → square/procedural
+   * maps are a no-op (byte-identical). Called last in `groundHeightAt` (after lakes/river/bridges).
+   */
+  private applyOutlineFalloff(x: number, z: number, h: number): number {
+    if (!this.geo || this.geo.fit !== 'bounds') return h;
+    const band = MAPGEO.outlineBlendBand;
+    const low = MAPGEO.offProvinceLevel;
+    const sd = this.insideProvince(x, z); // − inside, + outside
+    if (sd <= -band) return h; // well inside → untouched
+    if (sd >= band) return Math.min(h, low); // well outside → lowland (min so an even-lower carve still wins)
+    const t = (sd + band) / (2 * band); // 0 at the inner band edge → 0.5 on the outline → 1 at the outer edge
+    return Math.min(h, lerp(h, low, smoothstep(t)));
   }
 
   // --- Water -------------------------------------------------------------------
@@ -1831,6 +1889,21 @@ function pointToRiver(x: number, z: number, r: RiverRuntime): { d: number; surf:
 function smoothstep(t: number): number {
   const c = t < 0 ? 0 : t > 1 ? 1 : t;
   return c * c * (3 - 2 * c);
+}
+
+/** Squared distance from point (px,pz) to segment (ax,az)–(bx,bz). Squared to avoid a sqrt in the
+ *  per-vertex point-in-polygon loop (insideProvince takes one sqrt over the min). */
+function pointToSegDist2(px: number, pz: number, ax: number, az: number, bx: number, bz: number): number {
+  const vx = bx - ax;
+  const vz = bz - az;
+  const wx = px - ax;
+  const wz = pz - az;
+  const len2 = vx * vx + vz * vz;
+  let t = len2 > 0 ? (wx * vx + wz * vz) / len2 : 0;
+  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  const dx = px - (ax + t * vx);
+  const dz = pz - (az + t * vz);
+  return dx * dx + dz * dz;
 }
 
 /** Quintic smootherstep (Perlin) — like smoothstep but with zero 1st AND 2nd derivative at both ends,
