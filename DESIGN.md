@@ -14,20 +14,20 @@
 
 ## Brand Platform
 
-> **Keystone: Fight the wildfire.**
+> **Keystone: Fight the fire.**
 
 The fire is the enemy — alive, spreading, winning unless you stop it. The brand is not
 "firefighting," not "save the forest," not pilot heroics, not a cause lecture. There is a
-wildfire, and you fight it. Every surface below serves that one idea.
+fire, and you fight it. Every surface below serves that one idea.
 
 - **The enemy has a face.** The fire is the antagonist everywhere: it spreads with wind, flanks
   you, reaches the cabins. Frame it as a living threat, never a static target to tidy up.
 - **A fight you can lose.** That is the stake. No participation trophy, no softening.
 - **Voice: dry, direct, calm.** The fire is loud enough; say it straight. No hype, no preach, no
   cosplay. (Same voice as the in-game dispatcher comms.)
-- **The two lines.** Essence (the rallying idea): **"Fight the wildfire."** Hook (the descriptive
-  setup): **"A bucket, a chopper, a wildfire."** — it sets the board; the fight is the command
-  under it.
+- **The line.** Essence (the rallying command): **"Fight the fire."** That is the brand line —
+  short, primal, declarative. **Retired:** the three-noun hook *"A bucket, a chopper, a wildfire"*
+  — do not bring it back (rejected repeatedly by the owner). One line, "Fight the fire," everywhere.
 - **Anti-slop, brand-wide.** No "simulator" as the lead noun, no "save the forest / before it
   spreads," no "battle raging wildfires," no console-grade / asserted-realism flexing. Plain,
   declarative, factual. Let the cabins carry the gravity.
@@ -54,7 +54,7 @@ New surface? Ask: is the player being **briefed / rewarded / sold** (warm), or *
 - **Who it's for:** a phone-first player who wants a real flight *feel* in a browser, plus a
   6-mission campaign and a global leaderboard.
 - **Project type:** real-3D Three.js game with a DOM heads-up display and full-screen menus.
-- **The one thing to remember:** *fight the wildfire* (see Brand Platform). The in-flight UI sells
+- **The one thing to remember:** *fight the fire* (see Brand Platform). The in-flight UI sells
   the cockpit — instruments, not chrome; the brand surfaces sell the fight. If an in-game screen
   feels like a web app instead of a cockpit, it's wrong even if it's "clean."
 

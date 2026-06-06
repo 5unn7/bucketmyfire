@@ -125,7 +125,7 @@ export class HomeScreen {
       <div class="row" style="gap:12px;">
         <div class="glyph flicker">${FLAME_ONLY}</div>
         <div><div style="font-size:var(--fs-title);font-weight:var(--fw-black);">Today's Burn</div>
-        <div class="mono" style="font-size:var(--fs-tag);letter-spacing:.14em;color:var(--dim);margin-top:3px;">${dailyDateLabel(new Date()).toUpperCase()} · GENERATED</div></div>
+        <div class="mono" style="font-size:var(--fs-tag);letter-spacing:.14em;color:var(--dim);margin-top:3px;">${dailyDateLabel(new Date()).toUpperCase()}</div></div>
       </div>
       <span class="streak">${FLAME_ONLY}${streak}-day</span>
     </div>

@@ -8,10 +8,14 @@
  *   - Settings — sound + reduced-motion toggles, callsign, region, reset progress (minimal)
  * Each is a back-to-Home overlay (Home stays mounted underneath). No-scroll / single-viewport.
  */
+import type { MissionDef } from '../../missions/types';
 import { HELIS, MAPS, isHeliUnlocked, missionsCleared, loadProfile, saveProfile, type Profile, type CatalogItem } from '../profile';
 import { isConfigured } from '../../leaderboard/client';
 import { resetProgress } from '../../missions/progress';
+import { openLeaderboard } from '../Leaderboard';
+import { openShop } from '../ShopScreen';
 import { injectHomeStyles, spawnEmbers } from './styles';
+import { railNav } from './rail';
 import { DEFS, FLAME, ic } from './icons';
 
 const MUTE_KEY = 'bmf.audio.muted.v1';
@@ -20,29 +24,72 @@ function currentProfile(): Profile {
   return loadProfile() ?? { name: '', mapId: 'saskatchewan', heliId: HELIS[0].id };
 }
 
-/** Build a focused full-screen overlay (back → Home). Returns the root + a close() helper. */
-function overlay(title: string, sub: string, body: string): { root: HTMLDivElement; close: () => void } {
+// — Rail context + router —————————————————————————————————————————————————————
+// The bottom rail now rides ON every menu overlay (not just the hub), so it must stay visible the
+// whole time you're "in the menus". The hub seeds the catalog (Board needs it) and tracks the one
+// open overlay so tapping another rail tab swaps panels in place instead of stacking them.
+let menuCatalog: MissionDef[] = [];
+let activeOverlay: { key: string; close: () => void } | null = null;
+
+/** HomeScreen seeds the campaign catalog so the rail's Board tab can open the leaderboard. */
+export function setMenuCatalog(catalog: MissionDef[]): void {
+  menuCatalog = catalog;
+}
+
+/** Route a rail tap: close the current panel (if any), then open the target. `home` just falls back
+ *  to the hub mounted underneath. Board/Shop are their own immersive screens (no rail of their own). */
+export function navigateRail(key: string): void {
+  if (activeOverlay && activeOverlay.key === key) return; // already on this panel
+  const prev = activeOverlay;
+  prev?.close();
+  switch (key) {
+    case 'home':
+      return; // hub is underneath
+    case 'maps':
+      return openMaps();
+    case 'hangar':
+      return openHangar();
+    case 'coop':
+      return openCoop();
+    case 'settings':
+      return openSettings();
+    case 'board':
+      return openLeaderboard(menuCatalog);
+    case 'shop':
+      return openShop();
+  }
+}
+
+/** Build a focused full-screen overlay WITH the persistent bottom rail (`key` = its active tab).
+ *  Back / Esc / the rail's Home tab all return to the hub. Returns the root + a close() helper. */
+function overlay(key: string, title: string, sub: string, body: string): { root: HTMLDivElement; close: () => void } {
   injectHomeStyles();
   const root = document.createElement('div');
-  root.className = 'bmf-app norail';
+  root.className = 'bmf-app';
   root.style.zIndex = '60';
   root.innerHTML =
     DEFS +
     `<div class="scene"></div><div class="embers"></div>` +
     `<div class="pad"><div class="appbar"><button class="back" data-x aria-label="Back">${ic('back')}</button>` +
-    `<div><div class="ttl">${title}</div><div class="sub">${sub}</div></div></div>${body}</div>`;
+    `<div><div class="ttl">${title}</div><div class="sub">${sub}</div></div></div>${body}</div>` +
+    railNav(key);
   document.body.appendChild(root);
   const embers = root.querySelector<HTMLElement>('.embers');
   if (embers) spawnEmbers(embers, 10);
   const close = (): void => {
     window.removeEventListener('keydown', onKey);
     root.remove();
+    if (activeOverlay && activeOverlay.close === close) activeOverlay = null;
   };
   function onKey(e: KeyboardEvent): void {
     if (e.key === 'Escape') close();
   }
   window.addEventListener('keydown', onKey);
   root.querySelector('[data-x]')?.addEventListener('click', close);
+  root.querySelectorAll<HTMLElement>('.rail [data-rail]').forEach((b) =>
+    b.addEventListener('click', () => navigateRail(b.dataset.rail || 'home')),
+  );
+  activeOverlay = { key, close };
   return { root, close };
 }
 
@@ -70,7 +117,7 @@ export function openMaps(): void {
       </div></article>`;
   }).join('<div style="height:12px"></div>');
 
-  const { root, close } = overlay('Maps', 'Choose a theatre', `<div style="margin-top:6px;">${cards}</div>`);
+  const { root, close } = overlay('maps', 'Maps', 'Choose a theatre', `<div style="margin-top:6px;">${cards}</div>`);
   root.querySelectorAll<HTMLElement>('[data-map]').forEach((el) => {
     const id = el.dataset.map;
     if (!id) return;
@@ -93,7 +140,7 @@ export function openHangar(): void {
     `<div class="grow"><div style="font-size:var(--fs-md);font-weight:var(--fw-semibold);">Earn your fleet</div>` +
     `<div class="muted" style="font-size:var(--fs-meta);margin-top:2px;">Bell 212 unlocks at 2 missions · UH-60 at 5. You've cleared ${cleared}.</div></div></div></div>`;
 
-  const { root } = overlay('Hangar', 'Your aircraft', body);
+  const { root } = overlay('hangar', 'Hangar', 'Your aircraft', body);
 
   const refresh = (): void => {
     const sel = currentProfile().heliId;
@@ -152,7 +199,7 @@ export function openCoop(): void {
   const body = `<div style="margin-top:10px;">
     <span class="pill soon">Coming soon</span>
     <h1 class="h-big" style="margin-top:14px;">Fly it together.</h1>
-    <p class="muted" style="margin-top:10px;font-size:var(--fs-body);line-height:1.5;max-width:34ch;">Host or join by code and fight one big fire together — shared world, shared water, shared glory.</p>
+    <p class="muted" style="margin-top:10px;font-size:var(--fs-body);line-height:1.5;max-width:34ch;">Host or join by code. One fire, one team.</p>
     <div class="card metal" style="margin-top:18px;">
       <div class="row between"><div class="row" style="gap:12px;"><div class="glyph">${ic('users')}</div>
       <div><div style="font-size:var(--fs-md);font-weight:var(--fw-semibold);">Get notified</div>

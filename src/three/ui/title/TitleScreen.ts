@@ -133,7 +133,7 @@ export class TitleScreen {
 
     const hook = div(
       { fontSize: FS.md, letterSpacing: '0.02em', color: UI.text, opacity: '0.92', textShadow: '0 1px 16px rgba(0,0,0,0.85)' },
-      'Ready to fight the fire?',
+      'Fight the fire.',
     );
 
     // Returning pilot: a quiet "welcome back" line ABOVE the tagline.

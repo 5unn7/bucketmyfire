@@ -67,7 +67,7 @@ const STRUCTURED_DATA = {
       url: 'https://bucketmyfire.com/',
       image: 'https://bucketmyfire.com/og-image.jpg',
       description:
-        'Fly a helicopter, fill from the lakes, and fight the wildfire before it reaches the town. A real-feel helicopter flight sim, free in your browser.',
+        'Fly a helicopter, fill from the lakes, and fight the fire before it reaches the town. A real-feel helicopter flight sim, free in your browser.',
       genre: ['Flight simulator', 'Helicopter game', 'Wildfire firefighting game'],
       gamePlatform: 'Web browser',
       applicationCategory: 'GameApplication',
@@ -85,7 +85,7 @@ const STRUCTURED_DATA = {
           name: 'What is Bucket My Fire?',
           acceptedAnswer: {
             '@type': 'Answer',
-            text: 'Bucket My Fire is a free browser-based helicopter wildfire flight sim. You fly a helitanker, fill a slung bucket from lakes, and fight a spreading wildfire before it reaches the town.',
+            text: 'Bucket My Fire is a free browser-based helicopter wildfire flight sim. You fly a helitanker, fill a slung bucket from lakes, and fight a spreading fire before it reaches the town.',
           },
         },
         {
