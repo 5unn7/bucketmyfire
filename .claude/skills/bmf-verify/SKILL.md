@@ -7,11 +7,12 @@ description: >-
   shaders/VFX, HUD, fuel/range, structures. Covers the three verification levels (build gate →
   pure-sim Node assertions → live headless via the `window.__game` debug hook), the
   `?autostart&m=<id>&qa` URL contract, the runtime debug handles (`__game.fireSystem.igniteAt`,
-  `__game.heliSim.position` teleport), and the recurring "MCP Playwright browser is locked"
-  workaround (vite preview + temp playwright-core driving on-disk Chromium). Reach for this
-  skill any time you'd otherwise hand-roll a Playwright script or wonder "did my shader/sim
-  change actually take?" — especially for GLSL changes, which pass `tsc`/`npm run build` even
-  when broken and only fail at runtime.
+  `__game.heliSim.position` teleport), and the committed verification suite — the pure-Node gates
+  (`verify:campaign`/`crash`/`voice`/`feel`/`world`/`ui`, all under `npm run verify`) plus the
+  CI-gated headless render/shader smoke (`npm run verify:render` on the committed
+  `scripts/headless.mjs` Playwright harness). Reach for this skill any time you'd otherwise hand-roll
+  a Playwright script or wonder "did my shader/sim change actually take?" — especially for GLSL
+  changes, which pass `tsc`/`npm run build` even when broken and only fail at runtime.
 ---
 
 # Verifying a bucketmyfire change (headless)
@@ -49,6 +50,26 @@ It builds the real scenario sims per mission (`World` + `FireSystem` + `Structur
 asserts every mission reaches `won`/`verified` with each goal latched, plus that a no-op/starve
 run does **not** win. Read [scripts/verify-campaign.ts](../../../scripts/verify-campaign.ts) — it
 is the template for any sim test.
+
+**The other committed pure-Node gates** (same esbuild-bundle-to-Node shape; pick the one(s) that
+cover what you touched):
+
+```bash
+npm run verify:crash   # crash/explosion path: HelicopterSim.beginCrash/updateCrash + HealthSim explode gate
+npm run verify:voice   # generative radio-voice brand invariants (deterministic, place-aware, slop-free)
+npm run verify:feel    # CONTROL-FEEL golden trace: a scripted maneuver through HelicopterSim + BucketSim
+                       #   asserts the trajectory digest matches scripts/feel-baseline.json. Touch a
+                       #   FLIGHT/BUCKET3D constant or the integrator and this fails with a per-field diff.
+npm run verify:world   # seed -> world DETERMINISM: World field digest must be byte-identical + match
+                       #   scripts/world-baseline.json (catches a stray Math.random() in world-gen).
+npm run verify:ui      # DESIGN-TOKEN guard: one `UI` object + a RATCHET on hard-coded #hex/rgba/blur
+                       #   literals in src/three/ui/** (fails on a NET increase vs scripts/ui-baseline.json).
+npm run verify         # the whole pure-Node suite above, chained (the fast local gate; ~seconds)
+```
+
+`feel`/`world`/`ui` are **golden/ratchet** gates: when you change the thing on purpose, re-record the
+baseline with `npm run verify:<name> -- --update` and commit the (reviewable) baseline diff. Their
+baselines are committed JSON, so they must be regenerated against the state you actually commit.
 
 **To write a new one-off sim check**, follow that file's shape: import the sim(s), inject the
 `World` field callbacks they need (e.g. `FireSystem` takes `groundHeightAt`/`isOverWater`/
@@ -103,27 +124,47 @@ lakes, fires[] }` (each fire `{ x, z, y, intensity, size, fuel }`). Read it to a
 - **Kill the CONTROLS scrim** (it blocks the view): find the `div` whose `textContent` starts
   with `CONTROLS`, walk up ≤6 parents to the `position:fixed` one, set `display:none`.
 
-[scripts/shot.mjs](../../../scripts/shot.mjs) is a complete worked example: boots
-`?autostart&m=first-sortie`, waits for `__game.debug.fires.length > 0`, ignites a spread, frames
-it, and screenshots (plus a radar crop). Copy it.
+**The committed render/shader gate.** GLSL is now covered by an automated, CI-gated smoke test —
+you usually don't need to hand-roll a Playwright script:
 
-### When the MCP Playwright browser is locked (happens almost every session)
+```bash
+npm run build && npm run verify:render
+```
 
-If the MCP browser errors with "Browser is already in use … use --isolated", drive Chromium
-yourself:
+[scripts/verify-render.mjs](../../../scripts/verify-render.mjs) boots the built `dist/` in headless
+swiftshader Chromium across three routes — the **home screen** (`/`), a **mission** (`?autostart&qa`),
+and the **`?kit`** gallery — and **fails on any shader / page / console error**. On the mission route it
+ignites a blaze (fire/smoke/ember/heat-haze/bloom/god-ray shaders) AND drives a **scoop→drop** (fills the
+bucket + latches a bambi dump) so the **`WaterSpray` shader compiles + runs** — its `Points` sets
+`visible = anyAlive`, so Three never compiles that material until a real drop, and it asserts the spray
+actually rendered. It's wired into `.github/workflows/deploy.yml` as a hard gate, so a broken shader now
+BLOCKS the auto-deploy. (The home route asserts only "boots clean + has interactive content" — the home
+layout is in flux, so it deliberately doesn't pin a specific button.)
+
+`playwright` is a committed **devDependency** (no more temp-install dance for the gate); the browser
+is fetched once with `npx playwright install chromium`. The reusable harness it's built on,
+[scripts/headless.mjs](../../../scripts/headless.mjs) (`launchBrowser` / `boot` / `screenshot`), is
+the committed replacement for the long-lost `shot.mjs` — import it for one-off captures or new live
+checks instead of copy-pasting browser boilerplate.
+
+### For ad-hoc captures or when the MCP Playwright browser is locked
+
+For a NEW one-off live check (a screenshot, a behaviour you can't fold into `verify:render`), prefer
+importing the committed [scripts/headless.mjs](../../../scripts/headless.mjs) — it already has the
+`launchBrowser`/`boot`/`screenshot` helpers + the swiftshader flags, using the committed `playwright`
+devDep (so no temp install). If the MCP browser errors with "Browser is already in use … use
+--isolated", that harness sidesteps it entirely. Two realities still apply:
 
 1. **Serve the no-HMR build, not the dev server.** In this environment something re-touches
    `src/three/Input.ts` every ~12s, and `npm run dev`'s HMR does a full page reload on it —
    which resets the heli to start altitude, so a slow headless descent never reaches low AGL.
-   Build first, then `npx vite preview --port <p>` against `dist/` (no HMR, no reloads).
-   *(Short screenshot runs that finish in a few seconds are fine on `npm run dev` and don't need
-   `?qa`.)*
-2. **Drive on-disk Chromium via a throwaway `playwright-core`.** `npm i playwright-core@1.60.0`
-   in a TEMP dir (keep the project `node_modules` clean). Launch with `executablePath` pointing
-   at the installed browser, e.g. `C:/Users/Sunny/AppData/Local/ms-playwright/chromium-1208/
-   chrome-win64/chrome.exe`, and WebGL args:
-   `['--use-angle=swiftshader','--enable-unsafe-swiftshader','--ignore-gpu-blocklist','--use-gl=angle']`.
-3. **Remember `?qa`** on the preview build URL (step above), since `__game` is gated off in prod.
+   Build first, then `vite preview` against `dist/` (no HMR, no reloads) — `verify-render.mjs`
+   already spawns/tears down its own preview server, so copy that pattern.
+2. **Remember `?qa`** on the preview build URL, since `__game` is gated off in a prod build.
+
+*(The old throwaway `playwright-core` temp-install dance is no longer needed — `playwright` is a real
+devDep now. The `.og-shot.cjs` local OG-card capture still drives an on-disk Chromium by absolute path
+if you need a pinned-version example.)*
 
 **Headless realities:** swiftshader can crash the renderer on long heavy-scene runs — guard with
 `page.on('crash')`, wrap `evaluate`s in try/catch, and **screenshot as early as the condition you
@@ -135,8 +176,16 @@ a min distance).
 
 - Changed a **`sim/*.ts`** number or rule, or anything seed-dependent → **Level 2** (Node). Fast,
   deterministic, no browser flake.
-- Changed a **shader / material / VFX / post / sky / lighting** → **Level 3** (live). Shaders pass
-  the build even when broken; only a real GL context reveals it.
-- Changed a **mission def** → `npm run verify:campaign` (Level 2) is the gate; optionally Level 3
+- Changed **flight / bucket feel** (`HelicopterSim`/`BucketSim` or a `FLIGHT`/`BUCKET3D` value) →
+  `npm run verify:feel` (re-baseline with `-- --update` if the change was intentional).
+- Changed **world / terrain / biome / lake generation** (or anything that could leak `Math.random`
+  into world-gen) → `npm run verify:world`.
+- Changed a **DOM UI module** (`src/three/ui/**`) → `npm run verify:ui` (don't hard-code colours/blur;
+  use `theme.ts` tokens — the ratchet fails on new literals).
+- Changed a **shader / material / VFX / post / sky / lighting** → `npm run build && npm run
+  verify:render` (Level 3, automated). Shaders pass the build even when broken; only a real GL context
+  reveals it.
+- Changed a **mission def** → `npm run verify:campaign` (Level 2) is the gate; optionally `verify:render`
   for a visual look. See the **bmf-mission** skill.
+- Not sure / touched several areas → `npm run verify` (all pure-Node gates) then `npm run verify:render`.
 - Always finish on a green `npm run build` (Level 1).

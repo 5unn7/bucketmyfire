@@ -138,7 +138,7 @@ export class Game {
   private readonly frame = new FrameContext(); // shared time/wind/sun uniform bus (B0)
   private readonly ripples = new Ripples(); // 8-slot water ripple pool (B1)
   private readonly spray = new WaterSpray(); // pooled water-drop spray (B4/C2)
-  private readonly smoke = new SmokePlume(); // pooled per-fire smoke plumes (B4)
+  private readonly smoke = new SmokePlume(this.frame); // pooled per-fire smoke plumes (B4); shares the uTime bus
   private readonly embers = new Embers(); // pooled per-fire sparks/embers (cinematic layer)
   private readonly ambientEmbers = new AmbientEmbers(); // subtle drifting amber motes around the camera
   private readonly audio = new HeliAudio(); // procedural rotor drone + scoop/drop/win SFX
@@ -2252,8 +2252,12 @@ export class Game {
     } else {
       // "Submerged" is read from the World water plane under the bucket's XZ (last frame's position —
       // one-frame lag is imperceptible), consistent with the flight floor and every other height query.
-      const wl = this.world.waterLevelAt(this.bucketSim.position.x, this.bucketSim.position.z);
-      dipping = wl !== null && this.bucketSim.position.y <= wl + BUCKET3D.dipThreshold;
+      // Forgiving on both axes so a SUNK or TIPPED-OVER bucket reliably scoops, not just a perfect surface
+      // kiss: (1) a small horizontal `dipReach` tolerates the bucket swinging a little past the shoreline,
+      // and (2) the test is on the bucket's UNDERSIDE — so once the mouth is at/below the surface (and
+      // deeper always counts) it fills, instead of demanding the higher origin point sit in a thin band.
+      const wl = this.world.scoopWaterAt(this.bucketSim.position.x, this.bucketSim.position.z, BUCKET3D.dipReach);
+      dipping = wl !== null && this.bucketSim.position.y - BUCKET3D.bottomOffset <= wl + BUCKET3D.dipThreshold;
       // Collision surface under the bucket (terrain raised to any treetop it'd catch on).
       const obstacleY = this.obstacles.heightAt(this.bucketSim.position.x, this.bucketSim.position.z);
       this.bucketObstacleY = obstacleY; // cache the raw surface under the bucket for the drop-AGL term
@@ -2329,7 +2333,7 @@ export class Game {
     // must NOT slop water out — otherwise going deeper would cancel the fill and "stop scooping". ---
     const overWater = this.world.isOverWater(bp.x, bp.z);
     let scraping = false;
-    if (this.bucketSim.contact && this.bucketSim.dragSpeed > BUCKET3D.spillDragMin && !overWater) {
+    if (this.bucketSim.contact && this.bucketSim.dragSpeed > BUCKET3D.spillDragMin && !overWater && !dipping) {
       scraping = true;
       if (this.water > 0) {
         const spill = BUCKET3D.spillPerDrag * this.bucketSim.dragSpeed * (dtMs / 1000);

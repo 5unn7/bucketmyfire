@@ -68,10 +68,30 @@ jobs:
           # bundle; absent -> errors log to the console only. See src/three/telemetry/errorBeacon.ts.
           VITE_ERROR_BEACON_URL: ${{ secrets.VITE_ERROR_BEACON_URL }}
 
-      # Hard gate: prove a perfect player can still complete every mission (catches sim/
-      # scenario regressions that a type-check can't). Pure Node, no browser, ~1s.
-      - name: Verify campaign completability
-        run: npm run verify:campaign
+      # Hard gate (pure Node, no browser, ~seconds): the full verification suite —
+      #   campaign (mission completability + fire-grid/suppression invariants + factory),
+      #   crash   (crash/health physics),
+      #   voice   (generative brand-voice invariants),
+      #   feel    (flight + bucket control-feel golden trace),
+      #   world   (seed -> world determinism; also a co-op prereq), and
+      #   ui      (design-token discipline ratchet).
+      # Each catches a regression class the type-check can't see. The feel/world/ui baselines are
+      # committed; an INTENTIONAL change is re-baselined with `npm run verify:<name> -- --update`.
+      - name: Verify sims / feel / world / UI (pure-Node gates)
+        run: npm run verify
+
+      # Live render / shader smoke — the ONLY gate that catches GLSL-compile errors (they pass tsc +
+      # vite build + verify:campaign and only fail in a real WebGL context). Boots the built dist/ in
+      # headless swiftshader Chromium across the title, a mission, and the ?kit gallery, failing on any
+      # shader / page / console error. Serves dist/ via `vite preview`, so it needs the Build step above.
+      # `--with-deps` pulls the apt libraries Chromium needs on the runner.
+      # (If swiftshader ever proves flaky in CI, add `continue-on-error: true` here while it settles —
+      #  the verification-systems plan's intent is a HARD gate.)
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Verify render / shaders (headless WebGL)
+        run: npm run verify:render
 
       # History-preserving publish: commits dist/ ON TOP of the existing gh-pages branch
       # (force_orphan defaults false), so a bad deploy can be rolled back with one revert

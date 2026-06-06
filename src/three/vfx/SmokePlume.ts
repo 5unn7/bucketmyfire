@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { SMOKE } from '../config';
+import type { FrameContext } from '../render/FrameContext';
 
 /**
  * Per-fire smoke plumes (Track B4) as a VOLUME. One pooled `THREE.Points` cloud shared by every
@@ -11,10 +12,16 @@ import { SMOKE } from '../config';
  * cloud you can't see through — the helicopter flies AROUND it.
  *
  * COLOR IS ZONED by how far a puff has climbed above the crown it left (`vRise`, world units):
- *   - fire-lit ORANGE on the lowest puffs (the smoke base catches the flame's light),
+ *   - fire-lit ORANGE→RED on the lowest puffs (the smoke base catches the flame's light),
  *   - oily NEAR-BLACK billows low in the fresh, dense body,
  *   - GREY for most of the column's height,
  *   - dispersing to PALE grey at the anvil / oldest puffs.
+ *
+ * NEBULA-STYLE LIFE (all GPU-side off the shared `uTime`, so still one draw call, no per-frame CPU,
+ * no recompiles): each puff CHURNS (its sprite rotates continuously over its life, half CW / half
+ * CCW), the column BILLOWS (a travelling sideways S-wave climbs it, so it convects and rolls instead
+ * of rising as a straight cone), and the fire-lit base FLICKERS like living firelight. All tunable
+ * in `SMOKE` (`spin`/`swayAmp`/`swayFreq`/`swayWave`/`warmFlicker`/`flickerSpeed`/`emberColor`).
  *
  * Engine-touching (it owns a Points mesh) so it lives outside `sim/`; the gameplay layer calls
  * `emit()` for each burning fire and `update(dt, windVx, windVz)` every frame.
@@ -44,7 +51,12 @@ export class SmokePlume {
   private readonly heatAttr: THREE.BufferAttribute;
   private readonly baseAttr: THREE.BufferAttribute;
 
-  constructor() {
+  /**
+   * @param frame the shared per-frame uniform bus — the shader grabs its `uTime` reference so the
+   *   churn/billow/flicker advance off the same clock as every other animated material (no separate
+   *   plumbing, no drift). Constructed in `Game` after `frame`, so the reference is live.
+   */
+  constructor(frame: FrameContext) {
     const n = SMOKE.max;
     this.positions = new Float32Array(n * 3);
     this.velocities = new Float32Array(n * 3);
@@ -79,10 +91,12 @@ export class SmokePlume {
     const material = new THREE.ShaderMaterial({
       uniforms: {
         uTex: { value: tex },
+        uTime: frame.uTime, // SHARED reference — churn/billow/flicker ride the global clock
         uBody: { value: new THREE.Color(SMOKE.bodyColor) },
         uDark: { value: new THREE.Color(SMOKE.darkColor) },
         uPale: { value: new THREE.Color(SMOKE.paleColor) },
         uWarm: { value: new THREE.Color(SMOKE.warmColor) },
+        uEmber: { value: new THREE.Color(SMOKE.emberColor) },
         uOpacity: { value: SMOKE.opacity },
         uHeatOpacity: { value: SMOKE.heatOpacity },
         uStartSize: { value: SMOKE.startSize },
@@ -90,10 +104,16 @@ export class SmokePlume {
         uHeatSize: { value: SMOKE.heatSize },
         uWarmRise: { value: SMOKE.warmRise },
         uWarmStrength: { value: SMOKE.warmStrength },
+        uWarmFlicker: { value: SMOKE.warmFlicker },
+        uFlickerSpeed: { value: SMOKE.flickerSpeed },
         uDarkLo: { value: SMOKE.darkLo },
         uDarkHi: { value: SMOKE.darkHi },
         uDarkStrength: { value: SMOKE.darkStrength },
         uPaleRise: { value: SMOKE.paleRise },
+        uSpin: { value: SMOKE.spin },
+        uSway: { value: SMOKE.swayAmp },
+        uSwayFreq: { value: SMOKE.swayFreq },
+        uSwayWave: { value: SMOKE.swayWave },
         uMaxScreenSize: { value: SMOKE.maxScreenSize },
         uNearFadeLo: { value: SMOKE.nearFadeLo },
         uNearFadeHi: { value: SMOKE.nearFadeHi },
@@ -111,19 +131,40 @@ export class SmokePlume {
         varying float vHeat;
         varying float vRise;   // world units this puff has climbed above its crown
         varying float vViewZ;  // distance in FRONT of the camera (for the near-camera fade)
+        varying float vAngle;  // continuously-churning sprite rotation (nebula-style roil)
+        uniform float uTime;
         uniform float uStartSize;
         uniform float uEndSize;
         uniform float uHeatSize;
         uniform float uMaxScreenSize;
+        uniform float uSpin;
+        uniform float uSway;
+        uniform float uSwayFreq;
+        uniform float uSwayWave;
         void main() {
           vLife = aLife;
           vSeed = aSeed;
           vHeat = aHeat;
           vRise = position.y - aBaseY;
           float age = 1.0 - aLife;
+
+          // CONVECTIVE BILLOW: a travelling sideways S-wave climbs the column, so the plume meanders
+          // and rolls like real convection instead of rising as a straight cone. Anchored at the seat
+          // (× age) and phased per-puff + by rise so neighbours wander out of step. World-space, before
+          // model-view, so it bends the actual column (and reads from every camera angle).
+          vec3 wp = position;
+          float phase = aSeed * 6.2831 + vRise * uSwayWave;
+          float swing = uSway * age * (0.5 + 0.5 * aHeat);
+          wp.x += swing * sin(uTime * uSwayFreq + phase);
+          wp.z += swing * cos(uTime * uSwayFreq * 1.13 + phase); // detuned → an orbital roll, not a flat sway
+
+          // CHURN: each puff's sprite rotates continuously over its life, half CW / half CCW at a
+          // seed-varied rate — the nebula "rotation.z" move that keeps the lumps roiling, not frozen.
+          vAngle = aSeed * 6.2831 + uTime * uSpin * (aSeed - 0.5) * 2.0;
+
           float size = mix(uStartSize, uEndSize, age); // billows out as it ages
           size *= 1.0 + uHeatSize * aHeat;              // a hot fire's puffs are much bigger
-          vec4 mv = modelViewMatrix * vec4(position, 1.0);
+          vec4 mv = modelViewMatrix * vec4(wp, 1.0);
           vViewZ = -mv.z;
           // Cap the on-screen size so no single puff can fill the whole frame (which would slam it
           // to a solid near-black) — many overlapping puffs build the volume, the fragment near-fade
@@ -134,14 +175,18 @@ export class SmokePlume {
       fragmentShader: /* glsl */ `
         precision highp float;
         uniform sampler2D uTex;
+        uniform float uTime;
         uniform vec3 uBody;
         uniform vec3 uDark;
         uniform vec3 uPale;
         uniform vec3 uWarm;
+        uniform vec3 uEmber;
         uniform float uOpacity;
         uniform float uHeatOpacity;
         uniform float uWarmRise;
         uniform float uWarmStrength;
+        uniform float uWarmFlicker;
+        uniform float uFlickerSpeed;
         uniform float uDarkLo;
         uniform float uDarkHi;
         uniform float uDarkStrength;
@@ -153,12 +198,13 @@ export class SmokePlume {
         varying float vHeat;
         varying float vRise;
         varying float vViewZ;
+        varying float vAngle;
 
         void main() {
-          // Rotate each puff's UV by a per-puff angle so the same sprite never reads as a tiled grid.
+          // Rotate each puff's UV by its continuously-churning angle so the lumps roil over their
+          // life (and never read as a frozen tiled grid).
           vec2 pc = gl_PointCoord - vec2(0.5);
-          float ang = vSeed * 6.2831;
-          float c = cos(ang), s = sin(ang);
+          float c = cos(vAngle), s = sin(vAngle);
           pc = mat2(c, -s, s, c) * pc;
           vec4 tex = texture2D(uTex, pc + vec2(0.5));
           float cover = tex.a;        // soft puff coverage (the sprite's alpha)
@@ -179,9 +225,15 @@ export class SmokePlume {
           // Disperse/lighten toward the anvil (high rise) and as the puff ages out.
           float pale = smoothstep(uPaleRise, uPaleRise + 80.0, rise) + smoothstep(0.6, 1.0, age) * 0.4;
           col = mix(col, uPale, clamp(pale, 0.0, 0.7));
-          // Fire-lit ORANGE on the lowest, freshest puffs (the base catches the flame light).
+          // FIRE-LIT base: the lowest, freshest puffs catch the flame light. Like the nebula's coloured
+          // point lights, the glow has TONE (orange soft rim → deep-red dense core) and FLICKERS like
+          // living firelight (a cheap two-octave wobble off the shared clock, per-puff de-phased).
           float warm = smoothstep(uWarmRise, 0.0, rise) * vHeat * smoothstep(0.45, 0.0, age);
-          col += uWarm * warm * uWarmStrength;
+          float ph = vSeed * 40.0;
+          float flick = 1.0 + uWarmFlicker * (0.6 * sin(uTime * uFlickerSpeed + ph)
+                                            + 0.4 * sin(uTime * uFlickerSpeed * 1.7 + ph * 1.3));
+          vec3 fireTone = mix(uWarm, uEmber, dens); // soft edges glow orange, the dense core glows red-hot
+          col += fireTone * warm * uWarmStrength * flick;
 
           // Soft-particle NEAR fade: a puff you fly into dissolves as it nears the eye instead of
           // slamming the frame to solid near-black (the source of the into-smoke black flicker).

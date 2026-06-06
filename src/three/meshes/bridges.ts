@@ -110,7 +110,7 @@ export class BridgeCollider {
     this.halfRoad = BRIDGE.roadway / 2;
     this.deckUnderY = BRIDGE.deckClearance;
     this.deckTopY = BRIDGE.deckClearance + BRIDGE.deckThickness;
-    this.trussTopY = this.deckTopY + BRIDGE.trussHeight;
+    this.trussTopY = this.deckTopY + BRIDGE.trussHeight + BRIDGE.trussPeakRise; // covers the camelback peak — a conservative ceiling for the solid superstructure
     this.halfPier = BRIDGE.pierWidth / 2;
     this.pierC = this.halfSpan - this.halfPier;
     this.channelHalf = this.halfSpan - BRIDGE.pierWidth;
@@ -195,23 +195,53 @@ function pushBeam(
   out.push(g);
 }
 
-/** One vertical truss plane (chords + end posts + a Warren zigzag of `trussBays` triangles) at z = `zside`. */
-function buildTrussPlane(steel: THREE.BufferGeometry[], zside: number, deckTopY: number, trussTopY: number): void {
+/**
+ * Top-chord height (LOCAL Y) at panel node `i` — a polygonal camelback peaking at midspan (a Parker
+ * truss). The bearings (i = 0 / i = N) sit at deck level; the inclined end posts rise to the first
+ * interior node, and the chord arches up to `trussHeight + trussPeakRise` over the channel centre.
+ */
+function trussTopChordY(i: number, deckTopY: number): number {
+  const N = BRIDGE.trussBays;
+  if (i <= 0 || i >= N) return deckTopY;
+  const f = Math.sin((Math.PI * i) / N); // 0 at the ends → 1 at the centre
+  return deckTopY + BRIDGE.trussHeight + BRIDGE.trussPeakRise * f;
+}
+
+/**
+ * One vertical truss plane at z = `zside`: a flat bottom chord at deck level, a POLYGONAL (camelback)
+ * top chord, inclined end posts at the bearings, a vertical at every interior panel point, and
+ * interior diagonals that lean UP toward midspan — i.e. a Parker/Pratt through-truss, the rusted-
+ * railway-bridge look (verticals + center-leaning diagonals), not a plain Warren zigzag.
+ */
+function buildTrussPlane(steel: THREE.BufferGeometry[], zside: number, deckTopY: number): void {
   const halfSpan = BRIDGE.span / 2;
-  const bayW = BRIDGE.span / BRIDGE.trussBays;
+  const N = BRIDGE.trussBays;
+  const bayW = BRIDGE.span / N;
   const t = BRIDGE.trussBeam;
-  // Bottom + top chords (full length) and the two end posts that close the plane.
-  pushBeam(steel, -halfSpan, deckTopY, zside, halfSpan, deckTopY, zside, t);
-  pushBeam(steel, -halfSpan, trussTopY, zside, halfSpan, trussTopY, zside, t);
-  pushBeam(steel, -halfSpan, deckTopY, zside, -halfSpan, trussTopY, zside, t);
-  pushBeam(steel, halfSpan, deckTopY, zside, halfSpan, trussTopY, zside, t);
-  // Zigzag diagonals B_i → T_i → B_{i+1}: each pair frames one triangle (the "5–6 triangle" look).
-  for (let i = 0; i < BRIDGE.trussBays; i++) {
-    const b0 = -halfSpan + i * bayW;
-    const b1 = -halfSpan + (i + 1) * bayW;
-    const tm = -halfSpan + (i + 0.5) * bayW;
-    pushBeam(steel, b0, deckTopY, zside, tm, trussTopY, zside, t);
-    pushBeam(steel, tm, trussTopY, zside, b1, deckTopY, zside, t);
+  const x = (i: number) => -halfSpan + i * bayW;
+  const ty = (i: number) => trussTopChordY(i, deckTopY);
+
+  // Bottom chord (flat, full length) — the deck-level chord you fly under.
+  pushBeam(steel, x(0), deckTopY, zside, x(N), deckTopY, zside, t);
+  // Inclined end posts: each bearing up to the first/last interior top node.
+  pushBeam(steel, x(0), deckTopY, zside, x(1), ty(1), zside, t);
+  pushBeam(steel, x(N), deckTopY, zside, x(N - 1), ty(N - 1), zside, t);
+  // Polygonal top chord across the interior nodes (the camelback).
+  for (let i = 1; i < N - 1; i++) {
+    pushBeam(steel, x(i), ty(i), zside, x(i + 1), ty(i + 1), zside, t);
+  }
+  // Vertical at every interior panel point (the Pratt hangers).
+  for (let i = 1; i < N; i++) {
+    pushBeam(steel, x(i), deckTopY, zside, x(i), ty(i), zside, t * 0.9);
+  }
+  // Interior diagonals, each leaning UP toward midspan (bottom-outer → top-inner).
+  const centre = N / 2;
+  for (let p = 1; p <= N - 2; p++) {
+    if (p + 0.5 < centre) {
+      pushBeam(steel, x(p), deckTopY, zside, x(p + 1), ty(p + 1), zside, t * 0.85);
+    } else {
+      pushBeam(steel, x(p + 1), deckTopY, zside, x(p), ty(p), zside, t * 0.85);
+    }
   }
 }
 
@@ -234,22 +264,50 @@ export function createBridge(site: BridgeSite): Bridge {
   const halfSpan = BRIDGE.span / 2;
   const halfRoad = BRIDGE.roadway / 2;
   const deckTopY = BRIDGE.deckClearance + BRIDGE.deckThickness;
-  const trussTopY = deckTopY + BRIDGE.trussHeight;
 
-  // --- Steel superstructure: two truss planes (one each side of the roadway) + a few top braces ---
+  // --- Steel superstructure: two Parker/Pratt truss planes + overhead bracing (a through-truss) ---
   const steel: THREE.BufferGeometry[] = [];
-  buildTrussPlane(steel, halfRoad, deckTopY, trussTopY);
-  buildTrussPlane(steel, -halfRoad, deckTopY, trussTopY);
-  // Transverse top bracing at each top node so the two planes read as one 3D structure, not two ribbons.
-  const bayW = BRIDGE.span / BRIDGE.trussBays;
-  for (let i = 0; i <= BRIDGE.trussBays; i++) {
-    const x = -halfSpan + i * bayW;
-    pushBeam(steel, x, trussTopY, halfRoad, x, trussTopY, -halfRoad, BRIDGE.trussBeam * 0.85);
+  buildTrussPlane(steel, halfRoad, deckTopY);
+  buildTrussPlane(steel, -halfRoad, deckTopY);
+  // Overhead bracing ties the two planes into one 3D box (so it reads as a tunnel you fly under, not
+  // two flat ribbons): a transverse strut at each top node + an X sway-brace across each top panel.
+  const N = BRIDGE.trussBays;
+  const bayW = BRIDGE.span / N;
+  const nodeX = (i: number) => -halfSpan + i * bayW;
+  for (let i = 1; i < N; i++) {
+    const ty = trussTopChordY(i, deckTopY);
+    pushBeam(steel, nodeX(i), ty, halfRoad, nodeX(i), ty, -halfRoad, BRIDGE.trussBeam * 0.7);
+  }
+  for (let i = 1; i < N - 1; i++) {
+    const y0 = trussTopChordY(i, deckTopY);
+    const y1 = trussTopChordY(i + 1, deckTopY);
+    pushBeam(steel, nodeX(i), y0, halfRoad, nodeX(i + 1), y1, -halfRoad, BRIDGE.trussBeam * 0.5);
+    pushBeam(steel, nodeX(i), y0, -halfRoad, nodeX(i + 1), y1, halfRoad, BRIDGE.trussBeam * 0.5);
   }
 
-  const steelMat = new THREE.MeshStandardMaterial({ color: 0x5d6b6e, metalness: 0.55, roughness: 0.6 });
+  const steelMat = new THREE.MeshStandardMaterial({
+    color: BRIDGE.steelColor,
+    metalness: BRIDGE.steelMetalness,
+    roughness: BRIDGE.steelRoughness,
+  });
   const steelGeo = mergeGeometries(steel);
   steel.forEach((g) => g.dispose());
+  // Bake a vertical weathering tint: rust-streaked + darker near the deck, cleaner steel up at the
+  // crown. One-time, multiplies the base rust colour — no texture, no shader recompile.
+  if (BRIDGE.weathering) {
+    const pos = steelGeo.attributes.position;
+    const rise = BRIDGE.trussHeight + BRIDGE.trussPeakRise || 1;
+    const col = new Float32Array(pos.count * 3);
+    for (let i = 0; i < pos.count; i++) {
+      const f = Math.min(1, Math.max(0, (pos.getY(i) - deckTopY) / rise));
+      const v = 0.62 + 0.4 * f; // brightness: dark/rusty low → near-full at the crown
+      col[i * 3] = v;
+      col[i * 3 + 1] = v * 0.93; // warm (rust) bias
+      col[i * 3 + 2] = v * 0.84;
+    }
+    steelGeo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    steelMat.vertexColors = true;
+  }
   const steelMesh = new THREE.Mesh(steelGeo, steelMat);
   steelMesh.castShadow = true;
   group.add(steelMesh);

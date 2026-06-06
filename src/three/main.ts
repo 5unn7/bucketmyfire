@@ -7,14 +7,16 @@ import { ENV } from './config';
 import { shouldAutostart, defaultProfile } from './ui/Onboarding';
 import { MenuFlow } from './ui/flow/MenuFlow';
 import { HomeScreen } from './ui/home/HomeScreen';
+import { TitleScreen } from './ui/title/TitleScreen';
 import { CAMPAIGN, missionById } from './missions/catalog';
 import { buildDailyMission, isDailyId } from './missions/daily';
 import { HELI_MODELS } from './meshes/heliModels';
-import { coldStartSeen } from './ui/profile';
+import { coldStartSeen, hasNamedProfile } from './ui/profile';
 import { openLeaderboard } from './ui/Leaderboard';
 import { resetStaleStorage } from './storage/reset';
 import { installErrorBeacon } from './telemetry/errorBeacon';
 import { signalFirstFrame } from './splashSignal';
+import { showLoading, hideLoading } from './ui/LoadingOverlay';
 import type { MissionDef } from './missions/types';
 import type { EndScreenHooks } from './HUD';
 
@@ -101,22 +103,26 @@ function routeMission(): void {
   if (selectedId) {
     bootMission(missionById(selectedId) ?? CAMPAIGN[0]);
   } else {
-    // No `?m=` → the home HUB (HomeScreen): the branded dispatch board — pilot dossier, Daily Burn,
-    // Continue-mission card, and the bottom-rail menu (Maps / Hangar / Co-op / Board / Shop / Settings).
-    // Continue → boots the next mission (`?m=`), Daily → `?daily`, Campaign → the mission-select page.
+    // No `?m=` → TitleScreen is always the first screen. PLAY routes based on pilot status:
+    // returning pilot (saved callsign) → HomeScreen hub; new pilot → identity wizard (MenuFlow).
     // Headless/deep-link (?m= / ?autostart / ?qa) bypasses this branch and boots the game directly.
-    new HomeScreen(container, CAMPAIGN, {
-      onContinue: (id) => gotoCampaign(id),
-      onDaily: () => {
-        const url = new URL(location.href);
-        url.searchParams.set('daily', '1');
-        url.searchParams.delete('m');
-        location.assign(url.toString());
-      },
-      onCampaign: () => {
-        // The full mission carousel (the existing pre-flight page); picking a sortie reloads via `?m=`.
-        new MenuFlow(container, CAMPAIGN, (id) => gotoCampaign(id), { skipToMissions: true });
-      },
+    new TitleScreen(container, CAMPAIGN, () => {
+      if (hasNamedProfile()) {
+        new HomeScreen(container, CAMPAIGN, {
+          onContinue: (id) => gotoCampaign(id),
+          onDaily: () => {
+            const url = new URL(location.href);
+            url.searchParams.set('daily', '1');
+            url.searchParams.delete('m');
+            location.assign(url.toString());
+          },
+          onCampaign: () => {
+            new MenuFlow(container, CAMPAIGN, (id) => gotoCampaign(id), { skipToMissions: true });
+          },
+        });
+      } else {
+        new MenuFlow(container, CAMPAIGN, (id) => gotoCampaign(id));
+      }
     });
   }
 }
@@ -332,15 +338,27 @@ function bootMission(mission: MissionDef): void {
    *  at its scene/camera, and rewrite the `?m=` deep link so a refresh resumes the right mission. This
    *  is the Phase-2 win — it removes a full bundle re-parse + renderer rebuild from every retry/advance. */
   function switchMission(m: MissionDef): void {
-    game.dispose();
-    game = buildGame(m);
-    buildComplete = false; // the new Game has its own deferred queue to pump
-    composer.setScene(game.scene, game.camera);
-    applyEnvironment(game.scene, envTex); // re-point the cached env map at the freshly built scene
-    const url = new URL(location.href);
-    url.searchParams.delete('daily'); // a campaign switch never carries a stale ?daily
-    url.searchParams.set('m', m.id);
-    history.replaceState(null, '', url.toString());
+    // The new Game's constructor regenerates the World (terrain + forest) synchronously — a multi-
+    // second frame freeze with no static splash to hide it (this path never reloads). Show the
+    // ember-rise loader, then yield two frames so it actually paints before the heavy ctor blocks
+    // the thread; otherwise the overlay node is mounted but never composited before the stall.
+    showLoading();
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        game.dispose();
+        game = buildGame(m);
+        buildComplete = false; // the new Game has its own deferred queue to pump
+        composer.setScene(game.scene, game.camera);
+        applyEnvironment(game.scene, envTex); // re-point the cached env map at the freshly built scene
+        const url = new URL(location.href);
+        url.searchParams.delete('daily'); // a campaign switch never carries a stale ?daily
+        url.searchParams.set('m', m.id);
+        history.replaceState(null, '', url.toString());
+        // Hide once the new scene has composited at least one frame (the render loop draws it on the
+        // next tick after setScene), so the loader hands off to real pixels, not a black flash.
+        requestAnimationFrame(() => requestAnimationFrame(() => hideLoading()));
+      }),
+    );
   }
 
   // Dev/QA hook (gated exactly like __game): drive an in-place mission switch headlessly, e.g.

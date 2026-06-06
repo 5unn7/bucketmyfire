@@ -417,7 +417,10 @@ export const BUCKET3D = {
   // a swung bucket still lands meaningful water on the fire, so you don't have to hover dead-on. Per-cell
   // potency is unchanged (the douse dilute term scales with this), it just covers ~2× the area → a typical
   // fire clears in 1–2 passes. The predicted-impact ring mirrors this exactly, so what you aim is what hits.
-  dipThreshold: 1.2, // bucket counts as "in the water" within this of the surface
+  dipThreshold: 1.2, // bucket fills while its UNDERSIDE is at/below the surface (deeper always counts), or
+  // within this much ABOVE it — so a sunk or tipped-over bucket reliably scoops, not just a perfect surface kiss.
+  dipReach: 4, // horizontal tolerance (units) on the water test — a swung/tilted bucket whose origin drifts
+  // this far past a lake's shoreline still scoops, so "looks like it's in the lake" == "it fills".
   // Physical scoop tip: while the bucket is submerged it eases a forward tilt and a
   // small downward dip offset, then levels out when it lifts clear. Vertical follow
   // (load-scaled) keeps the dip smooth so mainly the tilt + tiny dip read.
@@ -668,9 +671,15 @@ export const BRIDGE = {
   roadway: 14, // deck WIDTH along the flow = the front-to-back depth of the tunnel you thread
   deckClearance: 9, // height of the deck UNDERSIDE above the river surface = the headroom you fly under. Lowered (was 14) so the deck sits NEAR the terrain — the banks barely rise to meet it, killing the lumpy raised-mound look where two bridges sit close. Raise back toward 14 for taller fly-under arches at the cost of more terrain raise.
   deckThickness: 2.4, // deck slab thickness
-  trussHeight: 11, // the triangulated truss rises this far ABOVE the deck (the superstructure)
-  trussBays: 6, // number of triangle panels per truss plane (the "5–6 triangle" Warren-truss look)
-  trussBeam: 1.1, // truss member (chord/diagonal/post) cross-section thickness
+  trussHeight: 11, // top-chord HAUNCH height above the deck (the truss height at the panel points nearest the banks)
+  trussPeakRise: 6, // EXTRA top-chord rise at midspan above `trussHeight` -> a polygonal camelback (Parker-truss) silhouette peaking over the channel. 0 = a flat-top Warren truss
+  trussBays: 6, // panels per truss plane; interior panel points carry the verticals and the diagonals lean toward midspan = a Pratt web (the riveted-railway look)
+  trussBeam: 1.1, // truss member (chord/diagonal/post/end-post) cross-section thickness
+  // Weathered-steel look (the rusted railway-truss read). All procedural: one MeshStandardMaterial + a baked vertex tint, no texture, no recompile.
+  steelColor: 0x6f4a35, // base rust-brown of the steel members
+  steelMetalness: 0.32, // low: oxidised iron reads matte, not chromed
+  steelRoughness: 0.86,
+  weathering: true, // bake a vertical rust gradient into the steel (darker/warmer near the deck, cleaner at the crown). false = flat colour
   pierWidth: 12, // each bank pier's footprint across the span — sits at the span ENDS, leaving the centre clear
   // --- Collision (the airframe-vs-bridge strike test; engine-agnostic, in meshes/bridges.ts) ---
   heliReach: 4.5, // horizontal collision radius of the airframe + rotor disc added to every solid part
@@ -861,6 +870,15 @@ export const STRUCTURES = {
   roofTints: [0x4a2f1c, 0x3c3a33, 0x55402a, 0x32302b], // shingle / tin / tar-paper roofs
   woodpileChance: 0.5, // chance a cabin gets a stacked-log woodpile beside it
   shedChance: 0.4, // chance a cabin gets a small lean-to shed
+  // Cabin detailing — the homestead read from the chase cam (all procedural, built once). The roof
+  // peak stays ~4u, still well under the ~6–8u boreal canopy, so cabins don't poke above the trees.
+  roofRiseFactor: 0.9, // gable rise as a fraction of cabinSize (the pitch)
+  roofOverhang: 0.28, // eave/gable overhang as a fraction of the body footprint (real eaves, not flush)
+  foundationTint: 0x4f4a44, // stone/earth footing skirt at the base (grounds the cabin)
+  trimTint: 0x8a7a5e, // window/door frame
+  windowTint: 0x241f19, // dark glazing (kept emissive-free so the fire glow owns the emissive channel)
+  porchChance: 0.45, // chance of a covered front porch (two posts + a low shed roof)
+  stovepipeChance: 0.4, // chance the chimney is a thin metal stovepipe instead of a stone stack
 } as const;
 
 // Burning structures (the stakes, made VISIBLE). A structure within fire range used to only get a
@@ -1495,6 +1513,18 @@ export const SMOKE = {
   darkHi: 64, // …and fades back to grey by here (so the black sits in the lower-mid body)
   darkStrength: 0.95, // how black the oily pockets get (0..1 mix toward darkColor)
   paleRise: 120, // grey disperses toward pale above this rise (the dissipating top)
+  // --- Nebula-style LIFE: churn + convective billow + lit-by-fire flicker (GPU-only, uTime-driven) -
+  // The redstapler "nebula" look = soft cloud sprites that slowly ROTATE and are LIT by coloured
+  // fire lights. We bring that life to the column without a 2nd draw call: each puff churns (its
+  // sprite rotates over its life, mixed CW/CCW), the column BILLOWS (a travelling sideways S-wave so
+  // it convects instead of rising as a straight cone), and the fire-lit base FLICKERS like firelight.
+  spin: 0.28, // churn: per-puff sprite rotation rate (rad/s); mixed direction by seed (0 = old static look)
+  swayAmp: 7, // convective billow: max lateral wander (world units) at the top of a puff's life
+  swayFreq: 0.5, // temporal frequency of that billow (how fast the column meanders)
+  swayWave: 0.02, // spatial frequency vs rise — gives a travelling S-curve up the column (0 = sways as a block)
+  emberColor: 0xff2e08, // deep-red ember tone the DENSE core of a lit base puff glows (orange rim → red core)
+  warmFlicker: 0.4, // 0..1: how much the fire-lit base glow pulses like living firelight
+  flickerSpeed: 7, // temporal frequency of that base flicker (Hz-ish)
 } as const;
 
 // Heat haze / refraction (Track B4). The classic "this is HOT" shimmer: a subtle screen-space

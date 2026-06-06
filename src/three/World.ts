@@ -1916,6 +1916,27 @@ export class World {
   }
 
   /**
+   * Water-surface Y scoopable from (x, z) with a horizontal tolerance `reach`, else null. A direct hit
+   * (over a lake/river) returns its surface exactly like `waterLevelAt`; otherwise a lake whose irregular
+   * shoreline is within `reach` of (x, z) still counts (its flat `waterLevel`). The slung bucket reads this
+   * so a swung / tipped-over bucket that drifts a little past the exact waterline still fills — "looks like
+   * it's in the lake" == "it scoops". `reach <= 0` is identical to `waterLevelAt`. O(lakes), like `lakeAt`.
+   */
+  scoopWaterAt(x: number, z: number, reach: number): number | null {
+    const direct = this.waterLevelAt(x, z);
+    if (direct !== null) return direct;
+    if (reach <= 0) return null;
+    for (const lake of this.lakes) {
+      const dx = x - lake.x;
+      const dz = z - lake.z;
+      const d = Math.hypot(dx, dz);
+      if (d > lake.r * 2.5 + reach) continue; // cheap reject — past the boundary + the tolerance
+      if (d - this.lakeRadius(lake, Math.atan2(dz, dx)) <= reach) return lake.waterLevel;
+    }
+    return null;
+  }
+
+  /**
    * Signed distance (world units) to the nearest lake's shoreline: negative inside
    * the water, positive on land. Approximated along the radial to each center, which
    * is exact for the star-convex lake boundaries. Used by biomes for the shore band.

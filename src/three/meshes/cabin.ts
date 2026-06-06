@@ -19,6 +19,14 @@ function pick<T>(arr: readonly T[], rng: () => number): T {
   return arr[Math.floor(rng() * arr.length) % arr.length];
 }
 
+/** Scale an RGB hex toward black by `f` (0..1) — for corner logs / ridge caps a shade off the base. */
+function darken(hex: number, f: number): number {
+  const r = Math.round(((hex >> 16) & 255) * f);
+  const g = Math.round(((hex >> 8) & 255) * f);
+  const b = Math.round((hex & 255) * f);
+  return (r << 16) | (g << 8) | b;
+}
+
 /**
  * Procedural buildings to defend (Track C3 — stakes). A log cabin (box body + gable
  * roof + stone chimney) or a larger lakeside depot (wide body + flat roof + a helipad
@@ -72,19 +80,53 @@ function buildCabin(seed: number): StructureMesh {
   const logTint = pick(STRUCTURES.logTints, rng);
   const roofTint = pick(STRUCTURES.roofTints, rng);
 
-  const bw = s * 2 * wf;
-  const bd = s * 1.5 * df;
+  const bw = s * 2 * wf; // body width (X)
+  const bd = s * 1.5 * df; // body depth (Z)
   const wallH = s * 1.1 * hf;
-  const body = addBox(group, parts, logTint, bw, wallH, bd, 0, wallH / 2, 0);
+  const ov = STRUCTURES.roofOverhang;
+
+  // Stone/earth footing skirt — a short, slightly wider course that grounds the cabin from the air.
+  const foundH = s * 0.18;
+  addBox(group, parts, STRUCTURES.foundationTint, bw * 1.06, foundH, bd * 1.06, 0, foundH / 2, 0);
+
+  // Log body, sitting on the footing.
+  const body = addBox(group, parts, logTint, bw, wallH, bd, 0, foundH + wallH / 2, 0);
   body.mesh.castShadow = true;
   body.mesh.receiveShadow = true;
+  const wallTop = foundH + wallH;
 
-  // Gable roof: a prism made from a triangular extrude, spanning the body (sized to the body).
-  addRoof(group, parts, roofTint, bw * 1.1, s * 0.9, bd * 1.14, wallH);
+  // Corner logs: a darker post poking proud at each corner — the notched-corner log-cabin read.
+  const cr = s * 0.16;
+  const cornerTint = darken(logTint, 0.82);
+  for (const sx of [-1, 1])
+    for (const sz of [-1, 1])
+      addCylinder(group, parts, cornerTint, cr, wallH, (sx * bw) / 2, foundH + wallH / 2, (sz * bd) / 2);
 
-  // Stone chimney up one (randomly chosen) gable end.
+  // Door + two small windows on the front (+Z) wall: dark glazing in a light frame.
+  const doorH = wallH * 0.6;
+  addBox(group, parts, 0x2c2018, s * 0.45, doorH, s * 0.08, 0, foundH + doorH / 2, bd / 2);
+  const winY = foundH + wallH * 0.58;
+  for (const wx of [-bw * 0.28, bw * 0.28]) {
+    addBox(group, parts, STRUCTURES.trimTint, s * 0.42, s * 0.4, s * 0.06, wx, winY, bd / 2);
+    addBox(group, parts, STRUCTURES.windowTint, s * 0.3, s * 0.28, s * 0.1, wx, winY, bd / 2 + 0.01);
+  }
+
+  // Gable roof with real eaves on all four sides, plus a ridge cap beam along the peak.
+  const rise = s * STRUCTURES.roofRiseFactor;
+  addRoof(group, parts, roofTint, bw * (1 + ov), rise, bd * (1 + ov * 1.3), wallTop);
+  addBox(group, parts, darken(roofTint, 0.8), bw * (1 + ov) * 1.02, s * 0.12, s * 0.16, 0, wallTop + rise, 0);
+
+  // Chimney up one (randomly chosen) gable end: a stone stack, or a thin metal stovepipe (variety).
   const cside = rng() < 0.5 ? 1 : -1;
-  addBox(group, parts, 0x6f7176, s * 0.4, s * 1.4, s * 0.4, bw * 0.35, wallH * 0.5 + s * 0.5, cside * bd * 0.3);
+  if (rng() < STRUCTURES.stovepipeChance) {
+    addCylinder(group, parts, 0x3a3d40, s * 0.12, wallH * 1.15, bw * 0.34, wallTop + wallH * 0.25, cside * bd * 0.28);
+  } else {
+    const chimH = wallH + s * 0.8; // founded on the footing, poking above the eave like a real stack
+    addBox(group, parts, 0x6f7176, s * 0.4, chimH, s * 0.4, bw * 0.34, foundH + chimH / 2, cside * bd * 0.28);
+  }
+
+  // Optional covered front porch (posts + a low shed roof) — a strong homestead read.
+  if (rng() < STRUCTURES.porchChance) addPorch(group, parts, roofTint, logTint, bw, bd, foundH, wallH, s);
 
   // Optional outbuildings beside the cabin (seeded), set off to +X so they clear the body.
   if (rng() < STRUCTURES.woodpileChance) addWoodpile(group, parts, rng, bw * 0.5 + s * 0.5, -bd * 0.2, s);
@@ -116,6 +158,30 @@ function addShed(group: THREE.Group, parts: Part[], wallTint: number, roofTint: 
   // Slanted roof slab (tilt about Z so it sheds toward +X).
   const roof = addBox(group, parts, roofTint, w * 1.25, s * 0.12, d * 1.2, x, h + s * 0.1, z);
   roof.mesh.rotation.z = 0.22;
+}
+
+/** A covered front porch on the +Z wall: two posts carrying a low, slightly-sloped shed roof. */
+function addPorch(
+  group: THREE.Group,
+  parts: Part[],
+  roofTint: number,
+  postTint: number,
+  bw: number,
+  bd: number,
+  foundH: number,
+  wallH: number,
+  s: number,
+): void {
+  const depth = s * 0.9; // how far the porch reaches out past the front wall (+Z)
+  const z0 = bd / 2; // the front wall line
+  const postH = wallH * 0.82;
+  const pz = z0 + depth;
+  for (const px of [-bw * 0.4, bw * 0.4]) {
+    addCylinder(group, parts, darken(postTint, 0.9), s * 0.1, postH, px, foundH + postH / 2, pz);
+  }
+  // Low shed roof from the wall out over the posts, sloped down toward the front.
+  const roof = addBox(group, parts, roofTint, bw * 0.95, s * 0.1, depth + s * 0.25, 0, foundH + postH + s * 0.05, z0 + depth / 2);
+  roof.mesh.rotation.x = -0.12;
 }
 
 // --- Depot ------------------------------------------------------------------

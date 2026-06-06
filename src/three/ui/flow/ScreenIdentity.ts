@@ -1,60 +1,85 @@
 /**
- * Screen 1 — Identity. The ember grid logo, a required callsign, and an optional email (passwordless
- * cloud save). Lifts the proven validation/persist logic out of the old first-run `runWelcome` gate:
- * `validateCallsign` + async `isNameTaken`, optional `isValidEmail` → best-effort `saveToCloud`. The
- * flow's footer "Continue" button runs the submit; it stays disabled until a plausible callsign is in.
+ * Screen 1 — Identity. New pilot registration: a required callsign and an optional cloud-save email.
+ *
+ * Brand register: focus/accent states use ember (warm), not cyan — menu surfaces are the fight,
+ * the cockpit stays cool. (DESIGN.md → Two registers.)
  */
 
-import { createGridTitle } from '../GridTitle';
-import { UI, FS, FW, R, el, div, setBlur } from '../theme';
+import { UI, FS, FW, R, el, div } from '../theme';
 import { validateCallsign, MAX_CALLSIGN } from '../callsign';
 import { isNameTaken, getClientId } from '../../leaderboard/client';
-import { isValidEmail, isConfigured, isCloudLinked, saveToCloud } from '../../leaderboard/cloudSave';
+import { isValidEmail, isConfigured, saveToCloud } from '../../leaderboard/cloudSave';
 import { loadProfile, saveProfile, findItem, firstAvailable, isHeliUnlocked, MAPS, HELIS } from '../profile';
-import { openLeaderboard } from '../Leaderboard';
-import { openCloudSave } from '../CloudSave';
-import { utilityChip } from '../menuShared';
 import type { FlowCtx } from './types';
 
-function flowLabel(text: string, optional = false): HTMLDivElement {
-  const d = div({ fontSize: FS.label, letterSpacing: '0.18em', textTransform: 'uppercase', color: UI.accent, opacity: '0.85', fontWeight: FW.semibold, margin: '0 2px 10px' }, text);
-  if (optional) d.appendChild(el('span', { color: UI.dim, fontWeight: FW.medium, textTransform: 'none', letterSpacing: '0' }, '  — optional'));
+/** Uppercase field label in the warm/ember register for brand surfaces. */
+function fieldLabel(text: string, optional = false): HTMLDivElement {
+  const d = div(
+    {
+      fontSize: FS.label,
+      letterSpacing: '0.20em',
+      textTransform: 'uppercase',
+      fontWeight: FW.bold,
+      color: UI.ember,
+      margin: '0 0 8px',
+    },
+    text,
+  );
+  if (optional) {
+    d.appendChild(
+      el(
+        'span',
+        { color: UI.faint, fontWeight: FW.medium, textTransform: 'none', letterSpacing: '0', fontSize: FS.sm },
+        ' — optional',
+      ),
+    );
+  }
   return d;
 }
 
-function field(pin: string, input: HTMLInputElement): HTMLDivElement {
+/**
+ * A styled text input with an ember focus ring — warm register for brand/menu surfaces.
+ * Accepts `size` to set font-size + vertical padding so the name field is larger than the email.
+ */
+function inputField(
+  input: HTMLInputElement,
+  size: 'lg' | 'md' = 'lg',
+): HTMLDivElement {
   const wrap = div({
     display: 'flex',
     alignItems: 'center',
-    gap: '12px',
     background: UI.field,
     border: `1px solid ${UI.stroke}`,
     borderRadius: R.lg,
-    padding: '4px 6px 4px 16px',
-    transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
+    padding: '0 16px',
+    transition: 'border-color 0.18s ease, box-shadow 0.18s ease',
   });
-  setBlur(wrap);
-  wrap.appendChild(el('span', { fontSize: FS.title, opacity: '0.8' }, pin));
+
+  const fontSize = size === 'lg' ? FS.xl : FS.md;
+  const fontWeight = size === 'lg' ? FW.semibold : FW.medium;
+  const padding = size === 'lg' ? '14px 0' : '11px 0';
+
   Object.assign(input.style, {
     flex: '1',
-    minWidth: '0',
     background: 'transparent',
     border: 'none',
     outline: 'none',
     color: '#fff',
-    fontSize: FS.xl,
-    fontWeight: FW.semibold,
-    padding: '12px 0',
+    fontSize,
+    fontWeight,
+    padding,
     fontFamily: 'inherit',
   } as Partial<CSSStyleDeclaration>);
+
   input.addEventListener('focus', () => {
-    wrap.style.borderColor = UI.accentSoft;
-    wrap.style.boxShadow = `0 0 0 3px ${UI.accent}1f`;
+    wrap.style.borderColor = UI.ember;
+    wrap.style.boxShadow = `0 0 0 3px ${UI.ember}28, 0 2px 16px ${UI.ember}14`;
   });
   input.addEventListener('blur', () => {
     wrap.style.borderColor = UI.stroke;
     wrap.style.boxShadow = 'none';
   });
+
   wrap.appendChild(input);
   return wrap;
 }
@@ -62,23 +87,33 @@ function field(pin: string, input: HTMLInputElement): HTMLDivElement {
 export function buildIdentityScreen(ctx: FlowCtx): HTMLElement {
   const root = div({ maxWidth: '560px', margin: '0 auto', width: '100%', display: 'flex', flexDirection: 'column' });
 
-  // Utility chips, demoted to the top-right.
-  const utils = div({ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginBottom: '14px' });
-  utils.append(
-    utilityChip('🏆', 'Leaderboard', () => openLeaderboard(ctx.catalog)),
-    utilityChip('☁', isCloudLinked() ? 'Saved' : 'Save', () => openCloudSave()),
-  );
-  root.appendChild(utils);
-
-  // Ember grid logo + tagline.
-  const hero = div({ display: 'flex', justifyContent: 'center', margin: '2px 0 8px' });
-  hero.appendChild(createGridTitle('BUCKET MY FIRE'));
-  root.appendChild(hero);
+  // — Header: registration moment —
   root.appendChild(
-    div({ textAlign: 'center', fontSize: FS.meta, letterSpacing: '0.22em', textTransform: 'uppercase', color: UI.dim, margin: '0 0 28px' }, 'Fight the wildfire'),
+    div(
+      { fontSize: FS.hero, fontWeight: FW.black, letterSpacing: '-0.01em', color: UI.text, marginBottom: '8px' },
+      'New Pilot',
+    ),
   );
 
-  // Callsign (required).
+  // Ember accent bar
+  root.appendChild(
+    div({
+      height: '3px',
+      width: '42px',
+      background: `linear-gradient(90deg, ${UI.ember} 0%, ${UI.emberHi} 100%)`,
+      borderRadius: R.pill,
+      marginBottom: '10px',
+    }),
+  );
+
+  root.appendChild(
+    div(
+      { fontSize: FS.body, color: UI.dim, lineHeight: '1.5', marginBottom: '30px' },
+      'Choose a callsign. This is the name the leaderboard flies under.',
+    ),
+  );
+
+  // — Callsign (required) —
   const nameInput = document.createElement('input');
   nameInput.type = 'text';
   nameInput.maxLength = MAX_CALLSIGN;
@@ -87,12 +122,20 @@ export function buildIdentityScreen(ctx: FlowCtx): HTMLElement {
   nameInput.spellcheck = false;
   nameInput.value = loadProfile()?.name ?? '';
   nameInput.setAttribute('enterkeyhint', 'next');
-  root.appendChild(flowLabel('Callsign'));
-  root.appendChild(field('🎖️', nameInput));
-  const nameMsg = div({ fontSize: FS.meta, fontWeight: FW.semibold, minHeight: '16px', margin: '8px 2px 0', color: UI.dim });
+
+  root.appendChild(fieldLabel('Callsign'));
+  root.appendChild(inputField(nameInput, 'lg'));
+
+  const nameMsg = div({
+    fontSize: FS.meta,
+    fontWeight: FW.semibold,
+    minHeight: '18px',
+    margin: '7px 0 26px',
+    color: UI.dim,
+  });
   root.appendChild(nameMsg);
 
-  // Email (optional).
+  // — Email (optional, secondary) —
   const emailInput = document.createElement('input');
   emailInput.type = 'email';
   emailInput.maxLength = 254;
@@ -101,24 +144,24 @@ export function buildIdentityScreen(ctx: FlowCtx): HTMLElement {
   emailInput.spellcheck = false;
   emailInput.inputMode = 'email';
   emailInput.setAttribute('enterkeyhint', 'go');
-  const emailSection = div({ marginTop: '20px' });
-  emailSection.appendChild(flowLabel('Email', true));
-  emailSection.appendChild(field('✉️', emailInput));
+
+  const emailSection = div({});
+  emailSection.appendChild(fieldLabel('Email', true));
+  emailSection.appendChild(inputField(emailInput, 'md'));
   emailSection.appendChild(
     div(
-      { fontSize: FS.sm, lineHeight: '1.5', color: UI.dim, margin: '9px 2px 0' },
+      { fontSize: FS.sm, color: UI.faint, lineHeight: '1.5', margin: '8px 0 0' },
       isConfigured()
-        ? 'Optional — save your scores forever and restore them on any device. Your email is hashed on your device (never shared). Your callsign is public on the leaderboard.'
-        : 'Cloud save is offline right now — your progress is still kept safely in this browser.',
+        ? 'Cloud-saves your scores. Hashed on device — never shared.'
+        : 'Cloud save is offline right now. Progress is kept safely in this browser.',
     ),
   );
   root.appendChild(emailSection);
 
-  // Plain-language consent + the legally-required policy links. Email is OPTIONAL and play is never
-  // gated on it (COPPA-safe); this affirmation covers the cloud-save email and the general terms.
-  const legal = div({ textAlign: 'center', fontSize: FS.sm, lineHeight: '1.5', color: UI.dim, margin: '24px 2px 4px' });
+  // — Legal —
+  const legal = div({ textAlign: 'center', fontSize: FS.sm, color: UI.faint, margin: '28px 0 0', lineHeight: '1.6' });
   const policyLink = (label: string, href: string): HTMLAnchorElement => {
-    const a = el('a', { color: UI.accent, textDecoration: 'underline', cursor: 'pointer', whiteSpace: 'nowrap' }, label) as HTMLAnchorElement;
+    const a = el('a', { color: UI.dim, textDecoration: 'underline', cursor: 'pointer' }, label) as HTMLAnchorElement;
     a.href = href;
     a.target = '_blank';
     a.rel = 'noopener noreferrer';
@@ -127,9 +170,10 @@ export function buildIdentityScreen(ctx: FlowCtx): HTMLElement {
   legal.append('By continuing you agree to our ', policyLink('Terms', '/terms.html'), ' and ', policyLink('Privacy Policy', '/privacy.html'), '.');
   root.appendChild(legal);
 
+  // — Logic —
   const setMsg = (t: string, bad: boolean): void => {
     nameMsg.textContent = t;
-    nameMsg.style.color = bad ? UI.warm : UI.dim;
+    nameMsg.style.color = bad ? UI.warn : UI.dim;
   };
   const valid = (): boolean => nameInput.value.trim().length >= 2;
 
@@ -159,7 +203,7 @@ export function buildIdentityScreen(ctx: FlowCtx): HTMLElement {
     } catch {
       /* offline — allow the name through */
     }
-    // Persist the profile first (callsign survives even if the cloud call fails), keeping any valid
+    // Persist the profile (callsign survives even if the cloud call fails), keeping any valid
     // saved map/heli; then pin to the cloud if an email was given (best-effort, never blocks).
     const cur = loadProfile();
     const savedHeli = findItem(HELIS, cur?.heliId);
@@ -197,11 +241,10 @@ export function buildIdentityScreen(ctx: FlowCtx): HTMLElement {
     }
   });
 
-  // Wire the persistent footer button for this screen.
   ctx.footer.setPrimary('Continue', () => void submit());
   ctx.footer.setPrimaryEnabled(valid());
 
-  // Desktop only — autofocusing on touch pops the keyboard over the logo.
+  // Desktop only — autofocusing on touch pops the keyboard over the layout.
   if (!('ontouchstart' in window)) requestAnimationFrame(() => nameInput.focus());
 
   return root;
