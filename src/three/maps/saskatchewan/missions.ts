@@ -116,7 +116,10 @@ export const SASKATCHEWAN_MISSIONS: MissionDef[] = [
     wind: { strengthScale: 1.3 },
     fire: { spreadScale: 0.95 }, // the front genuinely advances on the town
     bucket: 'valve',
-    fires: [{ at: 'nearCommunity', community: 'denare-beach', offset: 70, size: 'medium', count: 3 }],
+    // Denare Beach sits on the eastern (Manitoba) border — only ~40u of land east of it — so the front is
+    // authored on the INLAND (west) side as a cluster and runs east onto the lakeside town (real: fire in the
+    // bush, town on the water). A full ring here would push a head off the province edge into the fogged void.
+    fires: [{ at: 'cluster', anchor: { community: 'denare-beach' }, bearing: 3.4, distance: 55, spread: 45, count: 3, size: 'medium' }],
     structures: { depot: true, groups: [{ community: 'denare-beach', cabins: 6 }] },
     objectives: [{ kind: 'survive', seconds: 180, label: 'Hold for 3:00' }],
     fails: [{ kind: 'protect', min: 4, label: 'Defend Denare Beach' }],
@@ -322,10 +325,12 @@ export const SASKATCHEWAN_MISSIONS: MissionDef[] = [
     payload: 'water',
     fuel: true, // first taste of the range model: mop-up is a long, fuel-hungry patrol
     fires: [
-      // The burn scar: a patch of smouldering hotspots in the black, with a scoop source (Amisk Lake) on hand.
-      { at: 'cluster', anchor: { community: 'denare-beach' }, distance: 95, spread: 120, count: 5, size: 'small' },
-      // Two hotspots closer to the cabins — the dangerous ones that re-establish onto town if ignored.
-      { at: 'nearCommunity', community: 'denare-beach', offset: 60, size: 'small', count: 2 },
+      // The burn scar: a patch of smouldering hotspots in the black, biased INLAND (Denare Beach hugs the
+      // eastern border — ~40u of land east of it) with a scoop source (Amisk Lake) on hand. bearing≈195° (WSW)
+      // keeps the whole complex on real province land; an unbiased (due-east) cluster would smoulder in the void.
+      { at: 'cluster', anchor: { community: 'denare-beach' }, bearing: 3.4, distance: 75, spread: 70, count: 5, size: 'small' },
+      // Two hotspots closer to the cabins — the dangerous ones that re-establish onto town if ignored (inland-biased).
+      { at: 'cluster', anchor: { community: 'denare-beach' }, bearing: 2.7, distance: 45, spread: 30, count: 2, size: 'small' },
     ],
     structures: { depot: true, groups: [{ community: 'denare-beach', cabins: 5 }] },
     objectives: [{ kind: 'extinguishAll' }],

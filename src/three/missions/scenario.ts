@@ -55,14 +55,21 @@ function nearestLake(world: World, x: number, z: number): { x: number; z: number
   return best;
 }
 
-/** Nearest flammable, dry point to (x,z) within a small search — so a seeded fire catches. */
+/**
+ * Nearest flammable, dry, IN-PROVINCE point to (x,z) within a small search — so a seeded fire catches on
+ * real land. The `isInProvince` term keeps an authored `cluster`/`nearCommunity` seed off the lowered, fogged
+ * off-province plateau on a true-shape (bounds-fit) map (the outline mask drops the GROUND there but leaves
+ * the biome FUEL, so without this an off-province seed would ignite in the void past the radar's border).
+ * No-op on square maps (`isInProvince` → true), so those stay byte-identical. Mirrors the `fireSite` guard.
+ */
 export function fuelPointNear(world: World, x: number, z: number): { x: number; z: number } {
-  if (!world.isOverWater(x, z) && world.placement.fuelAt(x, z) >= 0.3) return { x, z };
+  const ok = (px: number, pz: number) => world.isInProvince(px, pz) && !world.isOverWater(px, pz) && world.placement.fuelAt(px, pz) >= 0.3;
+  if (ok(x, z)) return { x, z };
   for (let r = 12; r <= 90; r += 12) {
     for (let a = 0; a < Math.PI * 2; a += Math.PI / 6) {
       const px = x + Math.cos(a) * r;
       const pz = z + Math.sin(a) * r;
-      if (!world.isOverWater(px, pz) && world.placement.fuelAt(px, pz) >= 0.3) return { x: px, z: pz };
+      if (ok(px, pz)) return { x: px, z: pz };
     }
   }
   return { x, z };

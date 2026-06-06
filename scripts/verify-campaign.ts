@@ -18,7 +18,7 @@ import { FireSystem, fireGridFor, CELL_U } from '../src/three/sim/FireSystem';
 import { MissionRuntime } from '../src/three/missions/MissionRuntime';
 import { CAMPAIGN } from '../src/three/missions/catalog';
 import { buildDailyMission, dailyMissionId } from '../src/three/missions/daily';
-import { run, isCompletable } from '../src/three/missions/oracle';
+import { run, build, isCompletable } from '../src/three/missions/oracle';
 import { SIZE_CLASS } from '../src/three/missions/scenario';
 import type { MissionDef, MissionSignals } from '../src/three/missions/types';
 import { WORLD3D, BUCKET3D, FIRE3D } from '../src/three/config';
@@ -168,6 +168,19 @@ for (const m of CAMPAIGN) {
 
   const goalSummary = goals.map((t) => `${t.label}=${t.status}@${t.completedAt?.toFixed(0) ?? '-'}s`).join(', ');
   console.log(`  ${r.runtime.state === 'won' ? '✓' : '✗'} ${m.name.padEnd(16)} won@${elapsed.toFixed(0)}s score ${String(r.runtime.score).padStart(6)} | ${goalSummary}`);
+
+  // --- Slice 2: every RENDERED FIRE (cluster centroid — the flame mesh / smoke / light the player sees) must
+  // be IN-PROVINCE on a true-shape (bounds-fit) map. The outline mask drops the off-province GROUND but leaves
+  // the biome FUEL, and the completability oracle is province-blind (it douses fire wherever it is), so a fire
+  // seeded on the lowered fogged plateau passes the win check yet reads as fire burning in the void past the
+  // radar's border. The placement guards (fuelPointNear / fireSite isInProvince) walk seed CENTRES inland; this
+  // asserts the resulting rendered fires sit on real land. No-op on square maps (isInProvince → true). ---
+  {
+    const rig = build(m);
+    const reps = rig.fire.active();
+    const offFires = reps.filter((f) => !rig.world.isInProvince(f.x, f.z));
+    ok(`${m.id}: all rendered fires in-province`, offFires.length === 0, `${offFires.length}/${reps.length} fires off-province`);
+  }
 
   // --- Fail-latching: missions WITH constraints must latch lost when a constraint trips ---
   if ((m.fails ?? []).length > 0) {
