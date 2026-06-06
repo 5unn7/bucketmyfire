@@ -1,6 +1,6 @@
 import type { MissionDef } from '../missions/types';
 import { loadProfile } from './profile';
-import { getProgress, bestScore } from '../missions/progress';
+import { getProgress } from '../missions/progress';
 import {
   isConfigured,
   getClientId,
@@ -11,12 +11,17 @@ import {
   type MissionEntry,
   type CareerEntry,
 } from '../leaderboard/client';
+import { dailyMissionId, dailyDateLabel, isDailyId } from '../missions/daily';
+import { dailyStreak, bestDailyStreak } from '../missions/streak';
 import { UI, FS, FW, R, div, setBlur } from './theme';
+import { makeTabs, makeIconButton, makeStat } from './components';
 
 /**
  * Global leaderboard overlay — a full-screen frosted-glass panel in the game's cockpit language
- * (matching the pre-flight menu / HUD.ts). A tab strip switches between the overall CAREER board (sum
- * of each pilot's best-per-mission score) and one board per mission (each pilot's best run there).
+ * (matching the pre-flight menu / HUD.ts). A two-way switch picks between TOTAL (every pilot's overall
+ * standing — campaign + daily summed, the all-time board) and TODAY'S DAILY BURN (the shared per-day
+ * race, ranked by score then time, with the player's local streak). Per-mission boards still exist in
+ * the DB (keyed by mission id) but aren't surfaced here — the two boards people actually race on.
  *
  * The redesign over the old flat list:
  *   • a gold/silver/bronze PODIUM for the top three (the board's focal point);
@@ -32,7 +37,9 @@ import { UI, FS, FW, R, div, setBlur } from './theme';
 
 // Visual tokens (UI) + `div`/`setBlur` come from ./theme — the one cockpit palette
 // (gold/silver/bronze, cardGlass, rowMine, etc. were folded in there).
-const CAREER = '__career__';
+
+/** Which board is showing: TOTAL (career + daily combined) or today's DAILY BURN. */
+type Board2 = 'total' | 'daily';
 
 /** A board row normalised for rendering — podium, list and the sticky YOU card all consume this. */
 interface Ranked {
@@ -53,18 +60,19 @@ export function openLeaderboard(catalog: MissionDef[], initialMissionId?: string
 class Leaderboard {
   private readonly root: HTMLDivElement;
   private readonly body: HTMLDivElement;
-  private readonly refreshBtn: HTMLDivElement;
+  private readonly refreshBtn: HTMLButtonElement;
   private readonly catalog: MissionDef[];
   private readonly myName: string;
   private readonly myClient: string;
-  private active: string; // CAREER or a mission id
+  private active: Board2;
   private reqToken = 0; // guards against a slow fetch overwriting a newer tab
 
   constructor(catalog: MissionDef[], initialMissionId?: string) {
     this.catalog = catalog;
     this.myName = (loadProfile()?.name ?? '').trim();
     this.myClient = getClientId();
-    this.active = initialMissionId && catalog.some((m) => m.id === initialMissionId) ? initialMissionId : CAREER;
+    // Open on the Daily board when launched from a daily end-screen; otherwise the all-time Total.
+    this.active = initialMissionId && isDailyId(initialMissionId) ? 'daily' : 'total';
 
     this.root = div({
       position: 'fixed',
@@ -92,16 +100,27 @@ class Leaderboard {
     // Header: title + refresh + close.
     const head = div({ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' });
     head.appendChild(div({ fontSize: FS.display, fontWeight: FW.heavy, letterSpacing: '0.5px', flex: '1' }, '🏆 Leaderboard'));
-    this.refreshBtn = this.iconButton('⟳', 'Refresh', () => this.load());
+    this.refreshBtn = makeIconButton({ glyph: '⟳', size: 36, title: 'Refresh', onClick: () => this.load() }).el;
     head.appendChild(this.refreshBtn);
-    head.appendChild(this.iconButton('✕', 'Close', () => this.close()));
+    head.appendChild(makeIconButton({ glyph: '✕', size: 36, title: 'Close', onClick: () => this.close() }).el);
     panel.appendChild(head);
 
     panel.appendChild(
       div({ fontSize: FS.body, color: UI.dim, marginBottom: '14px' }, 'Global standings — the top helicopter pilots.'),
     );
 
-    panel.appendChild(this.tabStrip());
+    // Two boards: TOTAL (career + daily combined) and today's DAILY BURN. A kit segmented switch
+    // replaces the old flat scroll of one tab per mission.
+    const tabs = makeTabs(['Total', '🔥 Daily Burn'], (i) => {
+      const next: Board2 = i === 0 ? 'total' : 'daily';
+      if (next === this.active) return;
+      this.active = next;
+      this.load();
+    });
+    if (this.active === 'daily') tabs.select(1);
+    const tabRow = div({ margin: '2px 0' });
+    tabRow.appendChild(tabs.el);
+    panel.appendChild(tabRow);
 
     this.body = div({ marginTop: '14px' });
     panel.appendChild(this.body);
@@ -121,56 +140,6 @@ class Leaderboard {
     if (e.key === 'Escape') this.close();
   }
 
-  // --- Tabs ------------------------------------------------------------------
-
-  /** Horizontal, scrollable tab strip: Career first, then every mission in order. */
-  private tabStrip(): HTMLDivElement {
-    const strip = div({ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px', scrollbarWidth: 'none' });
-    const tabs: { id: string; el: HTMLDivElement }[] = [];
-
-    const make = (id: string, text: string): HTMLDivElement => {
-      const t = div(
-        {
-          flex: 'none',
-          fontSize: FS.body,
-          fontWeight: FW.bold,
-          letterSpacing: '0.5px',
-          whiteSpace: 'nowrap',
-          cursor: 'pointer',
-          padding: '8px 14px',
-          borderRadius: R.pill,
-          border: `1px solid ${UI.stroke}`,
-          background: UI.cardGlass,
-          transition: 'border-color 0.12s ease, color 0.12s ease',
-        },
-        text,
-      );
-      setBlur(t);
-      t.addEventListener('pointerdown', (e) => {
-        e.stopPropagation();
-        if (this.active === id) return;
-        this.active = id;
-        for (const tab of tabs) this.styleTab(tab.el, tab.id === id);
-        this.load();
-      });
-      tabs.push({ id, el: t });
-      return t;
-    };
-
-    strip.appendChild(make(CAREER, '★ CAREER'));
-    for (const m of this.catalog) strip.appendChild(make(m.id, m.name));
-    for (const tab of tabs) this.styleTab(tab.el, tab.id === this.active);
-    // Scroll the active tab into view (helps when opening straight to a late mission).
-    queueMicrotask(() => tabs.find((t) => t.id === this.active)?.el.scrollIntoView({ inline: 'center', block: 'nearest' }));
-    return strip;
-  }
-
-  private styleTab(el: HTMLDivElement, on: boolean): void {
-    el.style.borderColor = on ? UI.accent : UI.stroke;
-    el.style.color = on ? UI.accent : UI.text;
-    el.style.boxShadow = on ? `0 0 0 1px ${UI.accent}55` : 'none';
-  }
-
   // --- Load + render ---------------------------------------------------------
 
   /** Fetch + render the active board. A request token guards against out-of-order responses. */
@@ -183,7 +152,7 @@ class Leaderboard {
     this.setRefreshing(true);
     this.body.replaceChildren(this.skeleton());
     try {
-      if (this.active === CAREER) {
+      if (this.active === 'total') {
         const { rows, total } = await fetchCareerTop(50);
         if (token !== this.reqToken) return;
         const ranked = rows.map((r, i) => this.fromCareer(r, i + 1));
@@ -193,18 +162,20 @@ class Leaderboard {
           if (token !== this.reqToken) return;
           if (s) standing = this.fromCareer(s.entry, s.rank);
         }
-        this.renderBoard(ranked, total || ranked.length, standing);
+        this.renderBoard(ranked, total || ranked.length, standing, false);
       } else {
-        const { rows, total } = await fetchMissionTop(this.active, 25);
+        // Today's Daily Burn — its own board, keyed by the date-stamped mission id.
+        const id = dailyMissionId(new Date());
+        const { rows, total } = await fetchMissionTop(id, 25);
         if (token !== this.reqToken) return;
         const ranked = rows.map((r, i) => this.fromMission(r, i + 1));
         let standing = ranked.find((r) => r.mine) ?? null;
         if (!standing) {
-          const s = await fetchMissionStanding(this.active);
+          const s = await fetchMissionStanding(id);
           if (token !== this.reqToken) return;
           if (s) standing = this.fromMission(s.entry, s.rank);
         }
-        this.renderBoard(ranked, total || ranked.length, standing);
+        this.renderBoard(ranked, total || ranked.length, standing, true);
       }
     } finally {
       if (token === this.reqToken) this.setRefreshing(false);
@@ -223,14 +194,15 @@ class Leaderboard {
     return { rank, pilot: r.pilot, value: r.total.toLocaleString(), sub, mine };
   }
 
-  private renderBoard(ranked: Ranked[], total: number, standing: Ranked | null): void {
+  private renderBoard(ranked: Ranked[], total: number, standing: Ranked | null, daily: boolean): void {
     if (ranked.length === 0) {
       const empty = div({});
+      if (daily) empty.appendChild(this.dailyHeader());
       empty.appendChild(
         this.note(
-          this.active === CAREER
-            ? 'No runs yet — fly a mission and be the first on the board.'
-            : 'No runs on this mission yet — set the pace.',
+          daily
+            ? 'No runs on today’s burn yet — clear it and set the pace.'
+            : 'No runs yet — fly a mission and be the first on the board.',
         ),
       );
       const local = this.localPanel();
@@ -240,6 +212,7 @@ class Leaderboard {
     }
 
     const frag = div({});
+    if (daily) frag.appendChild(this.dailyHeader());
     frag.appendChild(this.contextBar(total, standing));
     frag.appendChild(this.podium(ranked.slice(0, 3)));
 
@@ -255,6 +228,40 @@ class Leaderboard {
     if (standing && standing.rank > 3) frag.appendChild(this.youCard(standing, total));
 
     this.body.replaceChildren(frag);
+  }
+
+  // --- Daily header ----------------------------------------------------------
+
+  /** The Daily Burn strip above its board: today's date + the player's local streak (works offline —
+   *  the streak is client-side). Frames the daily as a recurring race, not just another mission. */
+  private dailyHeader(): HTMLDivElement {
+    const card = div({
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: '14px',
+      flexWrap: 'wrap',
+      margin: '2px 0 14px',
+      padding: '13px 16px',
+      borderRadius: R.lg,
+      background: UI.cardGlass,
+      border: `1px solid ${UI.stroke}`,
+    });
+    setBlur(card);
+
+    const left = div({ minWidth: '0' });
+    left.appendChild(div({ fontSize: FS.label, fontWeight: FW.heavy, letterSpacing: '2px', color: UI.fire }, '🔥 DAILY BURN'));
+    left.appendChild(div({ fontSize: FS.title, fontWeight: FW.heavy, marginTop: '2px' }, dailyDateLabel(new Date())));
+    left.appendChild(div({ fontSize: FS.meta, color: UI.dim, marginTop: '2px' }, 'One shared map · ranked by score, then time'));
+    card.appendChild(left);
+
+    const streak = dailyStreak();
+    const best = bestDailyStreak();
+    const tiles = div({ display: 'flex', gap: '22px', flex: 'none' });
+    tiles.appendChild(makeStat({ label: 'Day streak', value: streak > 0 ? `${streak}🔥` : '—', align: 'center' }));
+    tiles.appendChild(makeStat({ label: 'Best', value: best > 0 ? `${best}` : '—', align: 'center' }));
+    card.appendChild(tiles);
+    return card;
   }
 
   // --- Context bar + podium --------------------------------------------------
@@ -442,6 +449,7 @@ class Leaderboard {
 
   private renderOffline(): void {
     const wrap = div({});
+    if (this.active === 'daily') wrap.appendChild(this.dailyHeader()); // streak is local — still useful offline
     wrap.appendChild(
       this.note(
         'The global leaderboard is offline. Your scores are still saved on this device — ' +
@@ -459,25 +467,21 @@ class Leaderboard {
    * otherwise. Returns null when there's nothing recorded yet (a fresh pilot sees just the note).
    */
   private localPanel(): HTMLDivElement | null {
+    // The daily's streak already rides in the daily header, and daily wins aren't kept in the
+    // progress store, so the daily tab has no separate "your device" SCORE panel.
+    if (this.active === 'daily') return null;
+
     const prog = getProgress();
     const tiles: { label: string; value: string }[] = [];
-
-    if (this.active === CAREER) {
-      const cleared = prog.completed.length;
-      if (cleared === 0) return null;
-      const careerScore = Object.values(prog.best).reduce((a, b) => a + b, 0);
-      const topMission = Object.values(prog.best).reduce((m, b) => Math.max(m, b), 0);
-      tiles.push(
-        { label: 'Missions', value: `${cleared}/${this.catalog.length}` },
-        { label: 'Career score', value: careerScore.toLocaleString() },
-        { label: 'Best mission', value: topMission.toLocaleString() },
-      );
-    } else {
-      const b = bestScore(this.active);
-      if (b == null) return null;
-      const name = this.catalog.find((m) => m.id === this.active)?.name ?? 'this mission';
-      tiles.push({ label: name, value: b.toLocaleString() });
-    }
+    const cleared = prog.completed.length;
+    if (cleared === 0) return null;
+    const careerScore = Object.values(prog.best).reduce((a, b) => a + b, 0);
+    const topMission = Object.values(prog.best).reduce((m, b) => Math.max(m, b), 0);
+    tiles.push(
+      { label: 'Missions', value: `${cleared}/${this.catalog.length}` },
+      { label: 'Career score', value: careerScore.toLocaleString() },
+      { label: 'Best mission', value: topMission.toLocaleString() },
+    );
 
     const panel = div({
       maxWidth: '440px',
@@ -519,43 +523,6 @@ class Leaderboard {
 
   private note(text: string): HTMLDivElement {
     return div({ fontSize: FS.md, color: UI.dim, lineHeight: '1.55', textAlign: 'center', padding: '26px 16px 22px' }, text);
-  }
-
-  // --- Header buttons --------------------------------------------------------
-
-  private iconButton(glyph: string, title: string, onClick: () => void): HTMLDivElement {
-    const b = div({
-      flex: 'none',
-      width: '36px',
-      height: '36px',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      fontSize: FS.lg,
-      fontWeight: FW.bold,
-      color: UI.dim,
-      cursor: 'pointer',
-      borderRadius: R.round,
-      border: `1px solid ${UI.stroke}`,
-      background: UI.cardGlass,
-      transition: 'color 0.12s ease, border-color 0.12s ease',
-    });
-    b.title = title;
-    b.textContent = glyph;
-    setBlur(b);
-    b.addEventListener('pointerenter', () => {
-      b.style.color = UI.text;
-      b.style.borderColor = `${UI.accent}66`;
-    });
-    b.addEventListener('pointerleave', () => {
-      b.style.color = UI.dim;
-      b.style.borderColor = UI.stroke;
-    });
-    b.addEventListener('pointerdown', (e) => {
-      e.stopPropagation();
-      onClick();
-    });
-    return b;
   }
 
   private setRefreshing(on: boolean): void {
