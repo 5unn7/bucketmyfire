@@ -2179,10 +2179,10 @@ export class Game {
     const sinkArmed = !overWater;
 
     // Priority: an imminent slam (fast sink, very low) → PULL UP; closing on the canopy that low →
-    // TERRAIN — PULL UP; a fast descent while merely low → SINK RATE; an approaching canopy → TERRAIN.
+    // TERRAIN — PULL UP; an approaching canopy → TERRAIN. (The lower-severity "SINK RATE" caution was
+    // retired — only the imminent-slam PULL UP fires for a fast descent now.)
     if (sinkArmed && agl < CRASH.pullUpAlt && sink >= CRASH.sinkWarningRate) return 'PULL UP';
     if (terrainClose && agl < CRASH.pullUpAlt) return 'TERRAIN — PULL UP';
-    if (sinkArmed && agl < CRASH.cautionAlt && sink >= CRASH.sinkCautionRate) return 'SINK RATE';
     if (terrainClose) return 'TERRAIN';
     return null;
   }
