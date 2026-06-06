@@ -20,7 +20,8 @@ import { Structures } from './sim/Structures';
 import { createFire, FireMesh } from './meshes/fire';
 import { createStructure, StructureMesh } from './meshes/cabin';
 import { Lake } from './Lake';
-import { World } from './World';
+import { World, type CommunitySite } from './World';
+import { createSettlement, createSettlementMaterial, type SettlementTier } from './meshes/settlement';
 import { Fauna } from './Fauna';
 import { buildMinimap } from './world/minimap';
 import { ChaseCamera } from './ChaseCamera';
@@ -46,7 +47,7 @@ import { HeliAudio } from './audio/HeliAudio';
 import { Profile } from './ui/profile';
 import { createCrewFigures, CrewFigures } from './meshes/crewFigures';
 import { createLandingZone, LandingZoneMesh } from './meshes/landingZone';
-import { createBridge, computeBridgeSites, type Bridge } from './meshes/bridges';
+import { createBridge, type Bridge } from './meshes/bridges';
 import { CrewTransport, CrewZone } from './sim/CrewTransport';
 import { Backburn } from './sim/Backburn';
 import { FuelSim } from './sim/FuelSim';
@@ -64,7 +65,7 @@ import { coached, coachBump } from './ui/hints';
 import type { MissionDef, MissionSignals, MissionAction, ZonePlacement, ScoreTally } from './missions/types';
 import type { EndScreenHooks } from './HUD';
 import { seedFires, structurePlan, crewZones, resolveCrewZone, igniteFromPlacement, backburnLine } from './missions/scenario';
-import { WORLD3D, FLIGHT, STARTUP, BUCKET3D, DROP_PHYSICS, DROP_FX, FIREHEAD, CAMERA, FIRE3D, WATER, WASH, SPRAY, SMOKE, EMBERS, INSTRUMENTS, ROADS, MISSIONS, COMMUNITIES, SCORE, FOREST, TREE_TEX, STRUCT_FIRE, CRASH, BRIDGE, resolveHeliClass } from './config';
+import { WORLD3D, FLIGHT, STARTUP, BUCKET3D, DROP_PHYSICS, DROP_FX, FIREHEAD, CAMERA, FIRE3D, WATER, WASH, SPRAY, SMOKE, EMBERS, INSTRUMENTS, ROADS, MISSIONS, COMMUNITIES, SETTLEMENT3D, HELIPAD, SCORE, FOREST, TREE_TEX, STRUCT_FIRE, CRASH, BRIDGE, resolveHeliClass } from './config';
 
 // Instrument calibration factors (world units → real-world HUD units). Derived from
 // the FLIGHT caps so the gauges stay consistent if those are retuned.
@@ -260,6 +261,8 @@ export class Game {
   private readonly homeBeacons: { zone: LandingZoneMesh; x: number; z: number }[] = []; // green home columns to dim while the heli is parked on the pad
   private readonly fuelSim?: FuelSim; // range model — now universal (every mission unless `fuel:false`)
   private rtbWarned = false; // latched once Dispatch has called the low-fuel return-to-base (re-arms above the warn line)
+  private lowFuelAlert: string | null = null; // persistent centred caption while on the reserve (cleared on refuel/shutdown)
+  private fuelLost = false; // Game-level dry-tank loss (universal, not just `fuelOut` missions) — routes the fuel end-banner cause
   private readonly slung: THREE.Group; // the mesh hanging on the longline (bucket or crew basket)
   private readonly slungAnchorY: number; // its swivel-head local Y (rope attach point)
   private readonly depotXZ: { x: number; z: number } | null; // HOME base/depot site (cold-start + crew base + radar anchor)
@@ -311,11 +314,10 @@ export class Game {
     // Grow the mission's MAP (its authored region, else the player's chosen map, else the default)
     // and lay any authored place-name pins over the seeded ones so briefings match the radar.
     this.world = new World(mission.seed, { regionId: mission.map ?? this.mapId, pins: mission.places, homeBase: mission.homeBase });
-    // Resolve the bridge sites up front (empty off-SK / when disabled) and shape their river VALLEYS
-    // into the terrain BEFORE the mesh + structures sample the ground, so each bridge spans its banks
-    // instead of standing tall. The same sites build the bridge meshes + colliders further below.
-    const bridgeSites = computeBridgeSites(this.world);
-    this.world.setBridgeValleys(bridgeSites);
+    // Bridge sites are resolved INSIDE World (after rivers, before roads) so the roads route over the decks
+    // and the river VALLEYS are already shaped into the terrain. Read them here to build the meshes/colliders
+    // below; empty off-SK / when disabled. (The deck-riding road draping uses these too — see roadSurfaceAt.)
+    const bridgeSites = this.world.bridgeSites();
     this.wind = new Wind(mission.wind?.angle, mission.wind?.strengthScale ?? 1);
     this.fauna = new Fauna(this.scene, this.world);
     this.depotXZ = (() => {
@@ -335,21 +337,32 @@ export class Game {
     // decorative depot building HERE — scenery only, never a Structure, so it never pads a mission's
     // `protect` survivor count. (For a QA skip the heli stays airborne at origin; the pads are just scenery.)
     const bases = this.world.bases();
+    const padGrades: { x: number; z: number; r: number; level: number }[] = [];
+    const forwardDepots: { x: number; z: number; i: number }[] = [];
     for (let i = 0; i < bases.length; i++) {
       const b = bases[i];
       const isHome = i === 0;
       const pad = isHome ? this.helipadXZ : this.findHelipadSpot({ x: b.x, z: b.z });
       if (!pad) continue;
+      const padY = this.world.groundHeightAt(pad.x, pad.z); // the pad sits at — and grades the ground TO — this height
       const padMesh = createHelipad();
-      padMesh.position.set(pad.x, this.world.groundHeightAt(pad.x, pad.z), pad.z);
+      padMesh.position.set(pad.x, padY, pad.z);
       this.scene.add(padMesh);
       this.landingPads.push({ x: pad.x, z: pad.z });
-      if (!isHome) {
-        const depotMesh = createStructure('depot', 7000 + i); // decorative forward-base building (NOT a Structure)
-        depotMesh.group.position.set(b.x, this.world.groundHeightAt(b.x, b.z), b.z);
-        depotMesh.group.rotation.y = i * 1.7;
-        this.scene.add(depotMesh.group);
-      }
+      padGrades.push({ x: pad.x, z: pad.z, r: HELIPAD.gradeRadius, level: padY });
+      if (!isHome) forwardDepots.push({ x: b.x, z: b.z, i });
+    }
+    // Grade the terrain FLAT under every base pad BEFORE the terrain mesh builds (createTerrain, below), so each
+    // slab sits flush on level ground — no hillside poking through the pad (the "cutoff"). Levels to the pad's own
+    // height, so it barely perturbs the world. The pad Y sampled above already used the natural (pre-grade) value.
+    this.world.setPadLevels(padGrades);
+    // Forward-base depot buildings — placed AFTER the grade so they sit on the now-final ground (the pad grade
+    // feathers out to a forward base's centre, so a pre-grade Y would float/sink the building).
+    for (const d of forwardDepots) {
+      const depotMesh = createStructure('depot', 7000 + d.i); // decorative forward-base building (NOT a Structure)
+      depotMesh.group.position.set(d.x, this.world.groundHeightAt(d.x, d.z), d.z);
+      depotMesh.group.rotation.y = d.i * 1.7;
+      this.scene.add(depotMesh.group);
     }
 
     // Crew landing pads (crew missions): resolve each crew endpoint to a flat dry landing spot — the
@@ -372,7 +385,7 @@ export class Game {
       const p = this.helipadXZ;
       const crewAtHome = this.crewZones.some((z) => Math.hypot(z.x - p.x, z.z - p.z) < 4);
       if (!crewAtHome) {
-        const home = createLandingZone(true);
+        const home = createLandingZone(true, MISSIONS.zoneSmoke, false); // beacon-only: the concrete helipad IS the pad here
         home.group.position.set(p.x, this.world.groundHeightAt(p.x, p.z), p.z);
         this.scene.add(home.group);
         this.homeBeacons.push({ zone: home, x: p.x, z: p.z });
@@ -392,21 +405,24 @@ export class Game {
       this.heliSim.yaw = p.yaw;
     }
 
-    // Resolve the mission's building plan UP FRONT so the cleared yards — AND the radar place-
-    // name labels — line up with where buildings actually stand (the depot's base + each defended
-    // hamlet), not every named-but-unbuilt community site. Unbuilt sites would otherwise grow
-    // phantom clearings in the bush and float a town name over empty forest. The forest scatter
-    // (below) reads these via World.clearingFactor, so resolving them here, in order, matters.
+    // POPULATED MAP (2026-06-05): every settlement is decorated below, so cleared yards + radar place-names line
+    // up with real buildings everywhere — no phantom clearings, no town name floating over empty bush. Each
+    // community carries a population `tier` (city / base / community) that sizes its cleared yard + its skyline.
+    // The mission's structure plan still drives the DEFENDED hamlets (real, burnable cabins); those are excluded
+    // from the decorative scatter so a town never doubles up (decoration doesn't burn).
     const structPlan = structurePlan(this.world, this.mission);
-    const builtSites: { name: string; x: number; z: number }[] = [];
-    // Every base — home depot AND the forward refuel pads — gets a cleared yard + a radar place-name
-    // (they all have a helipad/building standing there now, not just the home depot).
-    for (const b of this.world.bases()) builtSites.push({ name: b.name, x: b.x, z: b.z });
-    for (const g of structPlan.groups) builtSites.push({ name: g.community.name, x: g.community.x, z: g.community.z });
-    // Hamlets get the full yard; crew LZs get a NARROW cleared patch (per-centre radius) so the heli
-    // can set its skids down without the canopy in the way — but the bush around them stays forest.
+    const defended = new Set(structPlan.groups.map((g) => g.community)); // hamlets that get real (burnable) Structures
+    const tierOf = (c: CommunitySite): SettlementTier => c.tier ?? (c.kind === 'base' ? 'base' : 'community');
+    const settlements = this.world.communities.map((c) => {
+      const tier = tierOf(c);
+      return { name: c.name, x: c.x, z: c.z, tier, clearRadius: SETTLEMENT3D.tiers[tier].clearRadius, site: c };
+    });
+    // Radar place-names: every settlement (all now have buildings under them).
+    const builtSites: { name: string; x: number; z: number }[] = settlements.map((s) => ({ name: s.name, x: s.x, z: s.z }));
+    // Forest-clearing + dirt-yard per settlement, sized by tier (a city clears a wide pad, a hamlet a small one);
+    // crew LZs get a NARROW cleared patch so the heli can set its skids down without the canopy in the way.
     const lzClearings = this.crewZones.map((z) => ({ x: z.x, z: z.z, radius: MISSIONS.lzClearRadius }));
-    this.world.setClearings([...builtSites, ...lzClearings]);
+    this.world.setClearings([...settlements.map((s) => ({ x: s.x, z: s.z, radius: s.clearRadius })), ...lzClearings]);
 
     // Atmosphere (B2): a gradient sky dome + aerial-perspective fog + sun/hemisphere
     // light, all configured from one time-of-day preset so they stay coherent (fog
@@ -487,11 +503,33 @@ export class Game {
     // one transparent vertex-coloured material. Drawn before the roads/buildings (renderOrder
     // -1) so those layer cleanly on top; the forest already thinned here via clearingFactor.
     const yardMat = createYardMaterial();
-    for (const c of builtSites) {
+    for (const s of settlements) {
       this.deferredBuild.push(() => {
-        this.scene.add(createYardPatch(c.x, c.z, (x, z) => this.world.groundHeightAt(x, z), yardMat)); // DEFERRED
+        this.scene.add(createYardPatch(s.x, s.z, (x, z) => this.world.groundHeightAt(x, z), yardMat, s.clearRadius)); // DEFERRED
         return true;
       });
+    }
+    // Decorative skyline / cabins POPULATING every settlement (cities dense, bases medium, communities sparse).
+    // Pure scenery off a LOCAL seed (never world.rng) → determinism + the verifier are untouched. A defended
+    // hamlet is skipped (its real, burnable Structures stand there instead). Each is merged to ≈1 draw call,
+    // deferred, and candidates avoid the landing pads / crew LZs so you can still set down at a base.
+    if (SETTLEMENT3D.enabled) {
+      const settleMat = createSettlementMaterial();
+      const avoid = this.landingPads.map((p) => ({ x: p.x, z: p.z, r: SETTLEMENT3D.padClear }));
+      for (const s of settlements) {
+        if (defended.has(s.site)) continue;
+        // A base always keeps its depot/pad clear at the centre, even when it's rendered city-tier (Prince Albert).
+        const innerHole = s.site.kind === 'base' ? Math.max(SETTLEMENT3D.tiers[s.tier].innerHole, SETTLEMENT3D.baseInnerHole) : SETTLEMENT3D.tiers[s.tier].innerHole;
+        const seed = (Math.floor(s.x) * 73856093) ^ (Math.floor(s.z) * 19349663); // deterministic, off world.rng
+        this.deferredBuild.push(() => {
+          const g = createSettlement(
+            { x: s.x, z: s.z, tier: s.tier, groundAt: (x, z) => this.world.groundHeightAt(x, z), isWater: (x, z) => this.world.isOverWater(x, z), seed, innerHole, avoid },
+            settleMat,
+          );
+          if (g) this.scene.add(g);
+          return true;
+        });
+      }
     }
 
     // Highways (A5): draped GRAVEL ribbons linking the communities. The deck DRAPES on the
@@ -505,7 +543,32 @@ export class Game {
       metalness: 0,
       vertexColors: true,
     });
+    // Road draping height. Over a BRIDGE deck the road rides the deck TOP — so the carriageway crosses the span
+    // (fly-under tunnel still open below, truss arching over); over other water it's a low causeway; on land it
+    // hugs the ground. The deck footprint is the bridge's local (along-flow × across-span) box, grown by
+    // deckRideMargin so the ribbon fully sits on it (roads were snapped to cross AT each bridge in World).
+    const decks = bridgeSites.map((s) => ({
+      cx: s.x,
+      cz: s.z,
+      ax: s.ax,
+      az: s.az,
+      top: s.surfaceY + BRIDGE.deckClearance + BRIDGE.deckThickness,
+      halfRoad: BRIDGE.roadway / 2 + BRIDGE.deckRideMargin, // along-flow (deck depth)
+      halfSpan: BRIDGE.span / 2 + BRIDGE.deckRideMargin, // across-span (deck length)
+    }));
+    const deckAt = (x: number, z: number): number | null => {
+      for (const d of decks) {
+        const dx = x - d.cx;
+        const dz = z - d.cz;
+        const u = dx * d.ax + dz * d.az; // along the flow (deck depth)
+        const v = dx * d.az - dz * d.ax; // across the span (deck length)
+        if (Math.abs(u) <= d.halfRoad && Math.abs(v) <= d.halfSpan) return d.top;
+      }
+      return null;
+    };
     const roadSurfaceAt = (x: number, z: number): number => {
+      const deck = deckAt(x, z);
+      if (deck !== null) return deck;
       const wl = this.world.waterLevelAt(x, z);
       return wl !== null ? wl + ROADS.bridgeLift : this.world.groundHeightAt(x, z) + ROADS.lift;
     };
@@ -732,7 +795,7 @@ export class Game {
     if (this.crewZones.length) {
       for (const z of this.crewZones) {
         const gy = this.world.groundHeightAt(z.x, z.z);
-        const lz = createLandingZone(!z.single); // the reusable base renders as the always-lit HOME pad
+        const lz = createLandingZone(!z.single, MISSIONS.zoneSmoke, z.single); // base zone (!single) sits on the concrete helipad → beacon-only, no doubled ring
         lz.group.position.set(z.x, gy, z.z);
         this.scene.add(lz.group);
         this.lzMeshes.push(lz);
@@ -762,9 +825,10 @@ export class Game {
 
     // Fuel/range model (Track C6) — only constructed when the mission opts in.
     // Fuel/range (C6) is now the UNIVERSAL pressure: every mission burns fuel and you return to a base
-    // to top up. A mission may still opt out with `fuel: false` (e.g. a pure tutorial). The `fuelOut`
-    // FAIL stays opt-in (only the "range" missions hard-fail on a dry tank); elsewhere a dry tank just
-    // cuts the engine into a forced landing — the universal RTB callout warns you long before that.
+    // to top up. A mission may still opt out with `fuel: false` (e.g. a pure tutorial). Running the tank
+    // dry is now a UNIVERSAL loss (loseOnFuel) — the opt-in `fuelOut` FAIL still drives a mission's stated
+    // stakes, but every fuel mission now ends if you run empty. The 20% RTB callout + held LOW FUEL — RTB
+    // caption warn you long before that.
     if (this.mission.fuel !== false) this.fuelSim = new FuelSim();
 
     this.runtime = new MissionRuntime(this.mission);
@@ -1147,6 +1211,13 @@ export class Game {
         } else if (!this.fuelSim.low) {
           this.rtbWarned = false;
         }
+        // Persistent low-fuel caption: an unmissable centred warning HELD while airborne below the reserve,
+        // and cleared the instant you refuel back above the line (or shut down). It shares the GPWS caption
+        // slot but yields to a crash hazard, which takes priority — see the setAlert combine below.
+        this.lowFuelAlert = this.fuelSim.low && !this.fuelSim.starved && !refueling ? 'LOW FUEL — RTB' : null;
+        // Dry tank is now a UNIVERSAL loss: run the tank empty on ANY fuel mission and the sortie is over
+        // (the opt-in `fuelOut` fail used to be the only one that lost — elsewhere the engine just cut).
+        if (this.fuelSim.starved) this.loseOnFuel();
       }
 
       // Crash hazards (after the flight step so position/AGL/sink are current): detect a tree strike
@@ -1157,8 +1228,9 @@ export class Game {
       this.updateBridgePass(dt);
     }
 
-    // Drive the centred hazard caption — cleared whenever the sim is frozen or already crashing.
-    this.hud.setAlert(frozen || this.heliSim.crashing ? null : hazardAlert);
+    // Drive the centred caption — cleared whenever the sim is frozen or already crashing. A crash hazard
+    // (SINK RATE / PULL UP) takes the slot first; otherwise a held LOW FUEL — RTB warning shows.
+    this.hud.setAlert(frozen || this.heliSim.crashing ? null : (hazardAlert ?? this.lowFuelAlert));
 
     // --- Pose the airframe from the sim (YZX: yaw about +Y, pitch +Z, roll +X) ---
     const g = this.heli.group;
@@ -1772,7 +1844,7 @@ export class Game {
       refined = { ...base, x: spot.x, z: spot.z };
     }
     const gy = this.world.groundHeightAt(refined.x, refined.z);
-    const lz = createLandingZone(!refined.single);
+    const lz = createLandingZone(!refined.single, MISSIONS.zoneSmoke, refined.single); // a base endpoint sits on the helipad → beacon-only
     lz.group.position.set(refined.x, gy, refined.z);
     this.scene.add(lz.group);
     this.lzMeshes.push(lz);
@@ -1928,6 +2000,7 @@ export class Game {
    */
   private failCause(): 'tree' | 'impact' | 'airframe' | 'bridge' | 'fuel' | 'casualty' | 'timeout' | 'structures' | 'fire' {
     if (this.crashed) return this.crashCause ?? 'airframe'; // a crash isn't a mission-rule loss
+    if (this.fuelLost) return 'fuel'; // universal dry-tank loss (latched Game-level, runtime may not have failed)
     // Otherwise map the constraint that actually latched (precise — not a re-guess from signals).
     switch (this.runtime.failedKind) {
       case 'rescue':
@@ -1953,6 +2026,23 @@ export class Game {
     if (this.won || this.lost) return;
     this.lost = true;
     this.finalScore = this.runtime.score;
+  }
+
+  /**
+   * Universal fuel-out loss: running the tank completely dry now ends the sortie on EVERY fuel mission,
+   * not just the opt-in `fuelOut`-fail ones. Kept Game-level (like finishCrash) so it's universal and the
+   * campaign verifier is untouched; `fuelLost` routes the end banner to the fuel cause/sub-line. Fires
+   * once (guarded on the outcome). The same dispatch line covers both the universal and opt-in paths.
+   */
+  private loseOnFuel(): void {
+    if (this.won || this.lost || this.crashed) return;
+    this.lost = true;
+    this.fuelLost = true;
+    this.finalScore = this.runtime.score;
+    this.lowFuelAlert = null;
+    this.hud.setAlert(null);
+    this.hud.pushComms('dispatch', "Water-1, you're out of fuel. That's the sortie — should've watched the gauge.", 'alert');
+    this.audio.playSquelch('alert');
   }
 
   /**
@@ -2234,9 +2324,12 @@ export class Game {
     if (this.water < this.capacity) this.bucketFull = false; // re-arm after any release (drop / spill)
 
     // --- Scrape: the bucket is dragging on terrain/treetops (the sim clamps + drags it). Drag fast
-    // enough and a loaded bucket slops water out the top — the cost of flying too low. ---
+    // enough and a loaded bucket slops water out the top — the cost of flying too low. This is a
+    // DIRT/CANOPY scrape only: dragging along a lake BOTTOM (deep dip) is a scoop, not a spill, so it
+    // must NOT slop water out — otherwise going deeper would cancel the fill and "stop scooping". ---
+    const overWater = this.world.isOverWater(bp.x, bp.z);
     let scraping = false;
-    if (this.bucketSim.contact && this.bucketSim.dragSpeed > BUCKET3D.spillDragMin) {
+    if (this.bucketSim.contact && this.bucketSim.dragSpeed > BUCKET3D.spillDragMin && !overWater) {
       scraping = true;
       if (this.water > 0) {
         const spill = BUCKET3D.spillPerDrag * this.bucketSim.dragSpeed * (dtMs / 1000);
@@ -2244,7 +2337,6 @@ export class Game {
       }
     }
 
-    const overWater = this.world.isOverWater(bp.x, bp.z);
     const dropping = this.updateDrop(c, dtMs);
     return { scooping, scraping, dropping, overWater };
   }
