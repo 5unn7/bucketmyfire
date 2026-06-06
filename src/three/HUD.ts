@@ -24,6 +24,7 @@ import { UI, FS, FW, R, GRADE, el, frosted, makeCanvas, clamp01, anchor, setBlur
 import { onLayout, type LayoutState } from './ui/layout';
 import { shareScoreCard } from './ui/shareCard';
 import { openShop } from './ui/ShopScreen';
+import { makeButton, type ButtonOpts } from './ui/components';
 import { dailyStreak } from './missions/streak';
 
 export interface HudState {
@@ -1142,20 +1143,20 @@ export class HUD {
     if (this.end) {
       // Primary action row — the obvious next move (advance / retry) + back to the menu.
       const row = el('div', { display: 'flex', gap: '10px', justifyContent: 'center', marginTop: '20px', flexWrap: 'wrap' });
-      if (s.won && this.end.hasNext) row.appendChild(bannerButton('NEXT ▸', UI.accent, this.end.onNext));
-      if (!s.won) row.appendChild(bannerButton('↻ RETRY', UI.fire, this.end.onRetry));
-      row.appendChild(bannerButton('MENU', UI.dim, this.end.onMenu));
+      if (s.won && this.end.hasNext) row.appendChild(bannerButton('NEXT ▸', 'primary', this.end.onNext));
+      if (!s.won) row.appendChild(bannerButton('↻ RETRY', 'primary', this.end.onRetry));
+      row.appendChild(bannerButton('MENU', 'ghost', this.end.onMenu));
       card.appendChild(row);
       // Secondary row — leaderboard + share (the free viral loop; OG tags already unfurl the link).
       const row2 = el('div', { display: 'flex', gap: '10px', justifyContent: 'center', marginTop: '10px', flexWrap: 'wrap' });
-      if (this.end.onLeaderboard) row2.appendChild(bannerButton('🏆 LEADERBOARD', UI.accent, this.end.onLeaderboard));
+      if (this.end.onLeaderboard) row2.appendChild(bannerButton('🏆 LEADERBOARD', 'secondary', this.end.onLeaderboard));
       row2.appendChild(this.shareButton(s));
       card.appendChild(row2);
       // Win-only merch hook — surfaced at the highest-intent moment (just won, grade glowing). Opens
       // the Squadron Store screen (a placeholder "fire in progress" + Notify-me email capture for now;
       // the email both backs up the player's progress and lands us the lead). Real store drops in later.
       if (s.won) {
-        const store = bannerButton('🪧 SQUADRON STORE', UI.warm, () => openShop());
+        const store = bannerButton('🪧 SQUADRON STORE', 'store', () => openShop());
         const storeRow = el('div', { display: 'flex', justifyContent: 'center', marginTop: '12px' });
         storeRow.appendChild(store);
         card.appendChild(storeRow);
@@ -1172,12 +1173,12 @@ export class HUD {
 
   /** A Share button for the end screen: Web Share API where available (the native mobile sheet),
    *  else copy a link to the clipboard with an inline "✓ COPIED" confirmation. */
-  private shareButton(s: HudState): HTMLDivElement {
-    const btn = bannerButton('↗ SHARE', UI.water, () => void this.shareRun(s, btn));
+  private shareButton(s: HudState): HTMLButtonElement {
+    const btn = bannerButton('↗ SHARE', 'secondary', () => void this.shareRun(s, btn));
     return btn;
   }
 
-  private async shareRun(s: HudState, btn: HTMLDivElement): Promise<void> {
+  private async shareRun(s: HudState, btn: HTMLButtonElement): Promise<void> {
     // Share an IMAGE score-card (it unfurls as a picture everywhere) instead of bare text — the
     // single biggest virality upgrade (audit FIX #9). Web Share file -> clipboard image -> download
     // -> text link is all handled in shareCard.ts; here we just reflect the outcome on the button.
@@ -1340,7 +1341,7 @@ export class HUD {
     card.appendChild(
       el('div', { fontSize: FS.md, lineHeight: '1.55', color: 'rgba(231,247,255,0.86)', marginBottom: '18px' }, this.personalize(def.intel ?? def.brief)),
     );
-    const begin = bannerButton('BEGIN FLIGHT ▸', UI.accent, () => {
+    const begin = bannerButton('BEGIN FLIGHT ▸', 'primary', () => {
       scrim.remove();
       onBegin();
     });
@@ -2333,25 +2334,24 @@ function fmtTime(sec: number): string {
 }
 
 /** A pill button for the mission end banner. */
-function bannerButton(text: string, accent: string, onClick: () => void): HTMLDivElement {
-  const b = el('div', {
-    padding: '10px 18px',
-    borderRadius: R.pill,
-    border: `1px solid ${accent}`,
-    color: accent,
-    fontSize: FS.md,
-    fontWeight: FW.bold,
-    letterSpacing: '1px',
-    cursor: 'pointer',
-    pointerEvents: 'auto',
-    background: 'rgba(255,255,255,0.04)',
-  });
-  b.textContent = text;
-  b.addEventListener('pointerdown', (e) => {
-    e.stopPropagation();
-    onClick();
-  });
-  return b;
+type BannerKind = 'primary' | 'secondary' | 'ghost' | 'store';
+/**
+ * End-screen / briefing action button — now a kit `Button`. The mission-end + pre-flight briefing
+ * are the warm "fight" register (DESIGN.md → two registers), so there is ONE hierarchy instead of
+ * the old five-colour rainbow: the hero action (advance / retry / begin) is fight-gold `primary`,
+ * the merch hook is a fight `secondary`, info actions (leaderboard / share) are quiet cockpit
+ * `secondary`, and the back-out (menu) is a `ghost`.
+ */
+function bannerButton(text: string, kind: BannerKind, onClick: () => void): HTMLButtonElement {
+  const cfg: ButtonOpts =
+    kind === 'primary'
+      ? { variant: 'primary', register: 'fight' }
+      : kind === 'store'
+        ? { variant: 'secondary', register: 'fight' }
+        : kind === 'ghost'
+          ? { variant: 'ghost' }
+          : { variant: 'secondary', register: 'cockpit' };
+  return makeButton({ label: text, ...cfg, onClick }).el;
 }
 
 /** The "NEW AIRCRAFT UNLOCKED" celebration strip on the end screen — one accent-framed panel listing
