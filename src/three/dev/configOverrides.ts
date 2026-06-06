@@ -14,9 +14,11 @@
  * in the headless Node bundle (`scripts/verify-campaign.ts` pulls in `config.ts` → here).
  * In Node, `applyConfigOverrides()` is a no-op and the game runs on the pristine defaults.
  *
- * Origin-scoped by nature: a normal player on the prod origin never opens the panel, so no
- * overrides exist for them and `applyConfigOverrides()` no-ops. Tweaks made on `localhost`
- * (or a LAN dev IP, for phone testing) live only on that origin.
+ * GATED by entry point: overrides only TAKE EFFECT in a dev build or on a prod `?qa`/`?tune`
+ * session (the same gate that mounts the panel). On a normal prod load `applyConfigOverrides()`
+ * wipes any stale overrides a one-off `?qa` visit left behind and no-ops — so a tweaked
+ * `dropRadius`/`winBonus` can never reach a scored run / the global leaderboard. Tweaks are also
+ * origin-scoped (localStorage), so `localhost` / LAN-dev edits live only on that origin.
  */
 
 const KEY = 'bmf.config.overrides.v1';
@@ -129,12 +131,42 @@ function deepAssign(target: Dict, src: Dict): void {
 }
 
 /**
+ * Are the tuning-panel overrides allowed to take effect on THIS load? Always in a dev build;
+ * in a prod build ONLY when the QA/tune entry point is explicitly opted into via `?qa` / `?tune`
+ * on the URL — the same gate that mounts the panel itself (`main.ts`).
+ *
+ * SECURITY (leaderboard integrity): the panel can mutate any gameplay block (SCORE/FIRE3D/FLIGHT…)
+ * and the diff persists to localStorage. Without this gate a single `?qa` visit would leave those
+ * overrides active on every *later* plain-URL load, letting a tweaked `dropRadius`/`winBonus` feed
+ * the auto-submitted global score. Gating apply (and wiping stale overrides when not gated, below)
+ * keeps a normal scored run on the pristine source-code defaults.
+ */
+function overridesAllowed(): boolean {
+  if (import.meta.env.DEV) return true;
+  try {
+    const q = new URLSearchParams(window.location.search);
+    return q.has('qa') || q.has('tune');
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Apply saved overrides onto the live config objects (mutating them in place, so every
  * module that imported a reference picks up the change). Called once at the bottom of
  * `config.ts`. No-op in Node and when nothing is stored.
+ *
+ * In a prod build outside the `?qa` / `?tune` entry point, any overrides left over from a prior
+ * QA session are WIPED (not applied) so they can never bleed into a scored run.
  */
 export function applyConfigOverrides(registry: Record<string, Dict>): void {
   if (!browser()) return;
+  if (!overridesAllowed()) {
+    // Prod, no QA opt-in: a normal player. Discard any stale overrides a one-off ?qa visit left
+    // behind so the scored run uses the source-code defaults, then no-op.
+    if (countOverrides() > 0) clearAllOverrides();
+    return;
+  }
   const o = loadOverrides();
   const blocks = Object.keys(o);
   if (blocks.length === 0) return;

@@ -1,0 +1,44 @@
+# gitleaks config for bucketmyfire — secret scanning for git history + working tree.
+#
+# Run locally:   gitleaks detect --config .gitleaks.toml --redact
+# Pre-commit:    gitleaks protect --staged --config .gitleaks.toml --redact
+#
+# What this guards against: a real credential ever landing in the repo — the Supabase
+# SERVICE_ROLE key (full DB bypass), a private key, an AWS/Stripe-live/GitHub-PAT token, etc.
+#
+# What is DELIBERATELY allowlisted (these are public by design, see CLAUDE.md / .env.example):
+#   * the Supabase ANON key — RLS-gated, public, and intentionally shipped in the static bundle;
+#   * `.env.example` — empty placeholders only;
+#   * `package-lock.json` integrity hashes — base64 SRI digests, not secrets;
+#   * built bundles (dist/, gh-pages assets) — the anon key is *meant* to be in there.
+#
+# The real `.env` (with the live anon key) is gitignored and never tracked, so history stays clean.
+
+# Inherit the full upstream gitleaks ruleset (AWS, GCP, private keys, Stripe, GitHub, Slack, JWTs…).
+[extend]
+useDefault = true
+
+[allowlist]
+description = "bucketmyfire — public-by-design values and non-secret hashes"
+
+# Files/paths that are public by design or full of secret-looking-but-harmless data.
+paths = [
+  '''\.env\.example$''',
+  '''package-lock\.json$''',
+  '''(^|/)dist/''',
+  '''\.gitleaks\.toml$''',
+  '''(^|/)docs/''',
+]
+
+# The Supabase ANON (public, RLS-gated) key — safe to ship in a static client bundle (CLAUDE.md).
+# Allowlisted by its stable `"role":"anon"` JWT identity (ref-scoped) so the high-entropy default
+# JWT rule doesn't flag it, while a SERVICE_ROLE key (different payload) is still caught.
+regexes = [
+  # Project anon key (this exact public token, wherever it legitimately appears).
+  '''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Indub3JydGZrZnFyZ2lwbWdnZndoIiwicm9sZSI6ImFub24i[A-Za-z0-9._-]+''',
+  # Empty/placeholder env assignments (`VITE_SUPABASE_ANON_KEY=` with nothing after).
+  '''VITE_SUPABASE_[A-Z_]+=\s*$''',
+]
+
+# Belt-and-suspenders: a SERVICE_ROLE Supabase key must NEVER be allowlisted. This is a no-op
+# documentation rule — the default JWT rule already catches it; we just never exempt it.

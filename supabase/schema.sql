@@ -239,11 +239,14 @@ end $$;
 -- ===========================================================================
 -- UNLIKE cloud_saves (which hashes the email so we can never contact the player), this table
 -- intentionally stores a PLAINTEXT, emailable address — its whole purpose is to let us reach a
--- player when a teased feature ships. Anyone (anon) may INSERT a bounded, well-formed row, but
--- there is NO select/update/delete policy, so rows can't be enumerated or scraped through the REST
--- API (same lock model as `scores`-insert + `client_errors`-read). The owner reads it from the
--- Supabase dashboard (service role). This is an explicit, consented signup — the player typed their
--- email into a "Notify me" field — so storing it plaintext is appropriate.
+-- player when a teased feature ships. This is an explicit, consented signup — the player typed
+-- their email into a "Notify me" field — so storing it plaintext is appropriate.
+--
+-- The table is FULLY LOCKED (RLS on, ZERO policies, all privs revoked) exactly like `cloud_saves`
+-- and `client_errors`: the ONLY door is the SECURITY DEFINER `submit_lead` RPC below. Direct anon
+-- INSERT was removed deliberately — with the public anon key in the static bundle, an open insert
+-- grant lets anyone script an unbounded flood of rows (free-tier row-budget exhaustion / junk
+-- data). Routing through the RPC lets the server VALIDATE, DEDUPE, and THROTTLE before any write.
 
 create table if not exists public.leads (
   id          bigint generated always as identity primary key,
@@ -261,16 +264,76 @@ create table if not exists public.leads (
 );
 
 create index if not exists leads_created_idx on public.leads (created_at desc);
+-- Supports the throttle lookups in submit_lead (recent rows by device, and the email dedupe).
+create index if not exists leads_client_recent_idx on public.leads (client_id, created_at desc);
+create index if not exists leads_email_lower_idx    on public.leads (lower(email));
 
 alter table public.leads enable row level security;
-
+-- Drop the legacy open-insert policy (this table shipped with anon direct-insert before it was
+-- locked behind the RPC) so re-applying this file fully migrates an already-live project.
 drop policy if exists "leads: anyone can insert" on public.leads;
-create policy "leads: anyone can insert"
-  on public.leads for insert
-  with check (
-    char_length(email) between 5 and 254
-    and email ~* '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$'
-  );
+-- No policies + revoke = anon/authenticated have NO direct table access. The RPC is the only door.
+revoke all on public.leads from anon, authenticated;
 
--- No SELECT/UPDATE/DELETE policies → those are denied for anon by default (insert-only, unscrapable).
-grant insert on public.leads to anon;
+-- Capture a marketing/notify lead. SECURITY DEFINER writes past RLS; the function VALIDATES the
+-- email, DEDUPES (a known email just refreshes its row), and THROTTLES per device + per email so a
+-- scripted client can't flood the table. Returns true when the signup is accepted (whether it
+-- inserted, refreshed, or was silently throttled — the caller only needs "we got it"); false only
+-- on a malformed email. Standard definer hardening: empty search_path + schema-qualified refs.
+create or replace function public.submit_lead(
+  p_email text, p_source text, p_pilot text, p_client_id text
+) returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_email  text := lower(trim(p_email));
+  v_recent int;
+  v_exists boolean;
+begin
+  -- Validate format/length (mirrors the table CHECKs so a bad input is rejected, not raised).
+  if v_email is null
+     or char_length(v_email) not between 5 and 254
+     or v_email !~* '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$' then
+    return false;
+  end if;
+
+  -- Dedupe: a returning email just touches its newest row's timestamp — no pile of duplicates.
+  update public.leads
+     set created_at = now(),
+         source     = coalesce(left(p_source, 24), source),
+         pilot      = coalesce(nullif(left(p_pilot, 24), ''), pilot)
+   where lower(email) = v_email
+     and id = (select max(id) from public.leads where lower(email) = v_email);
+  if found then
+    return true;
+  end if;
+
+  -- Throttle a NEW email: cap fresh signups per device to 5/hour (NULL client_id → global-ish
+  -- guard on the email itself, already deduped above). Over the cap → accept-but-drop (no insert),
+  -- so an attacker can't tell they're throttled and a real user never sees an error.
+  if p_client_id is not null then
+    select count(*) into v_recent
+      from public.leads
+     where client_id = left(p_client_id, 64)
+       and created_at > now() - interval '1 hour';
+    if v_recent >= 5 then
+      return true;
+    end if;
+  end if;
+
+  insert into public.leads (email, source, pilot, client_id)
+  values (
+    v_email,
+    left(p_source, 24),
+    nullif(left(p_pilot, 24), ''),
+    left(p_client_id, 64)
+  );
+  return true;
+end;
+$$;
+
+-- Only anon may call the narrow RPC; the table itself stays sealed.
+revoke all on function public.submit_lead(text, text, text, text) from public;
+grant execute on function public.submit_lead(text, text, text, text) to anon;

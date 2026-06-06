@@ -164,26 +164,27 @@ export async function submitScore(s: ScoreSubmission): Promise<boolean> {
 /**
  * Capture a marketing lead — the player's PLAINTEXT email + where it came from (`source`, e.g.
  * 'shop' / 'coop'). Unlike cloud-save (which hashes the email so we can NEVER contact them), this
- * stores a real, emailable address in the insert-only `leads` table so we can actually reach them
- * when the feature ships. Fire-and-forget: true on a 2xx, false on anything else. Never throws.
- * Requires the `leads` table from supabase/schema.sql to be applied to the project.
+ * stores a real, emailable address so we can actually reach them when the feature ships.
+ *
+ * Goes through the `submit_lead` SECURITY DEFINER RPC (not a direct table insert): the locked
+ * `leads` table denies anon direct access, and the RPC validates + DEDUPES + THROTTLES server-side
+ * so the public anon key can't be scripted to flood the table. Fire-and-forget: true on a 2xx,
+ * false on anything else. Never throws. Requires supabase/schema.sql to be applied to the project.
  */
 export async function submitLead(email: string, source: string, pilot?: string): Promise<boolean> {
   if (!isConfigured()) return false;
   const e = email.trim().toLowerCase();
   if (e.length < 5 || e.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return false;
   const clean = pilot ? cleanCallsign(pilot).slice(0, 24) : '';
-  const body = [
-    {
-      email: e,
-      source: source.slice(0, 24),
-      pilot: clean.length >= 2 ? clean : null,
-      client_id: getClientId(),
-    },
-  ];
+  const body = {
+    p_email: e,
+    p_source: source.slice(0, 24),
+    p_pilot: clean.length >= 2 ? clean : null,
+    p_client_id: getClientId(),
+  };
   const t = withTimeout(8000);
   try {
-    const res = await fetch(`${URL_BASE}/rest/v1/leads`, {
+    const res = await fetch(`${URL_BASE}/rest/v1/rpc/submit_lead`, {
       method: 'POST',
       headers: headers({ 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
       body: JSON.stringify(body),
