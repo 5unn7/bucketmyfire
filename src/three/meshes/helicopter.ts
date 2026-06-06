@@ -62,7 +62,6 @@ export function createHelicopter(heliId?: string): HelicopterMesh {
   const deckMat = new THREE.MeshStandardMaterial({ color: 0x44484f, roughness: 0.55, metalness: 0.35 });
   const metalMat = new THREE.MeshStandardMaterial({ color: 0x70757d, roughness: 0.38, metalness: 0.75 });
   const darkMetalMat = new THREE.MeshStandardMaterial({ color: 0x3a3e44, roughness: 0.45, metalness: 0.6 });
-  const bladeMat = new THREE.MeshStandardMaterial({ color: 0x191b1f, roughness: 0.5, metalness: 0.3 });
   const glassMat = new THREE.MeshStandardMaterial({
     color: 0x3d586e,
     roughness: 0.08,
@@ -218,91 +217,15 @@ export function createHelicopter(heliId?: string): HelicopterMesh {
   const rotor = new THREE.Group();
   rotor.name = 'mainRotor';
   rotor.position.set(mastX, hubY, 0);
-
-  const swashUpper = solid(new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.04, 6, 12), metalMat), 'swashplateUpper');
-  swashUpper.rotation.x = Math.PI / 2;
-  swashUpper.position.y = -0.18;
-  rotor.add(swashUpper);
-
-  const hub = solid(new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.18, 0.3), metalMat), 'rotorHub');
-  rotor.add(hub);
-  const hubCap = solid(new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 0.2, 8), metalMat), 'rotorHubCap');
-  hubCap.position.y = 0.15;
-  rotor.add(hubCap);
-
-  for (const sgn of [-1, 1]) {
-    const grip = solid(new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.5, 8), metalMat), 'bladeGrip');
-    grip.rotation.z = Math.PI / 2;
-    grip.position.set(sgn * 0.52, 0, 0);
-    rotor.add(grip);
-    const link = solid(new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.32, 6), darkMetalMat), 'pitchLink');
-    link.position.set(sgn * 0.42, -0.12, 0.16);
-    link.rotation.x = 0.2;
-    rotor.add(link);
-  }
-
-  // Two long airfoil blades (span ~5.2 → ~11 disc), pre-coned.
-  const bladeGeo = airfoilSpan(0.5, 0.06, 5.0);
-  bladeGeo.rotateY(Math.PI / 2); // span Z → span X
-  bladeGeo.rotateZ(0.045); // pre-cone: tips up
-  bladeGeo.translate(0.68, 0, 0); // start outboard of the grip
-  for (const sgn of [-1, 1]) {
-    const blade = solid(new THREE.Mesh(bladeGeo, bladeMat), 'rotorBlade');
-    blade.rotation.y = sgn < 0 ? Math.PI : 0;
-    rotor.add(blade);
-  }
-
-  // Stabilizer bar (flybar) crossed 90° to the blades, with paddle weights + links.
-  const flybar = solid(new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 4.0, 8), metalMat), 'flybar');
-  flybar.rotation.x = Math.PI / 2;
-  flybar.position.y = 0.2;
-  rotor.add(flybar);
-  for (const sgn of [-1, 1]) {
-    const weight = solid(new THREE.Mesh(new THREE.CapsuleGeometry(0.09, 0.26, 3, 6), darkMetalMat), 'flybarWeight');
-    weight.rotation.x = Math.PI / 2;
-    weight.position.set(0, 0.2, sgn * 1.95);
-    rotor.add(weight);
-    const rod = solid(new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.32, 6), darkMetalMat), 'flybarLink');
-    rod.position.set(0, 0.06, sgn * 0.5);
-    rod.rotation.x = sgn * 0.4;
-    rotor.add(rod);
-  }
-
-  // Faint disc so the spin reads as a blur even when slow.
-  const disc = new THREE.Mesh(
-    new THREE.CylinderGeometry(5.4, 5.4, 0.02, 24),
-    new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.9, metalness: 0, transparent: true, opacity: 0.07, side: THREE.DoubleSide }),
-  );
-  disc.name = 'rotorDisc';
-  rotor.add(disc);
+  populateProcRotorGroup(rotor, 1.0); // scale=1 = canonical 205A-1 proportions
   group.add(rotor);
 
   // === TAIL ROTOR — on the fin, disc facing RIGHT (+Z, starboard) ===========
-  // A static MOUNT group is yawed −90° so its local X points to world +Z and carries
-  // the gearbox. The returned `tailRotor` is an INNER group with no base rotation, so
-  // the caller's `rotation.x` spin is a CLEAN spin about that mount's X (= world Z):
-  // the disc sweeps the world X-Y plane and faces sideways, the correct anti-torque
-  // orientation, with no Euler cross-coupling. A 2-blade rotor is one bar through the hub.
-  const tailMount = new THREE.Group();
-  tailMount.name = 'tailRotorMount';
-  tailMount.position.set(-5.85, 2.7, 0.2);
-  tailMount.rotation.y = -Math.PI / 2;
-  group.add(tailMount);
-
-  const tailGearbox = solid(new THREE.Mesh(new THREE.SphereGeometry(0.17, 8, 6), deckMat), 'tailGearbox');
-  tailGearbox.scale.set(1.2, 1, 1);
-  tailGearbox.position.z = -0.1; // sit against the fin
-  tailMount.add(tailGearbox);
-
   const tailRotor = new THREE.Group();
   tailRotor.name = 'tailRotor';
-  tailMount.add(tailRotor);
-  const tailHub = solid(new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.22, 8), metalMat), 'tailRotorHub');
-  tailHub.rotation.z = Math.PI / 2; // hub axis along local X (the spin axis)
-  tailRotor.add(tailHub);
-  const tBlade = airfoilSpan(0.15, 0.04, 1.7); // full diameter (2 blades = one bar)
-  tBlade.rotateX(Math.PI / 2); // span Z → span local Y (radial in the disc plane)
-  tailRotor.add(solid(new THREE.Mesh(tBlade, bladeMat), 'tailBlade'));
+  const tailMountGrp = makeProcTailMount(tailRotor, 1.0);
+  tailMountGrp.position.set(-5.85, 2.7, 0.2);
+  group.add(tailMountGrp);
 
   // === LANDING GEAR — tubular skids =======================================
   for (const side of [-1, 1]) {
@@ -436,12 +359,114 @@ function buildHull(
   return geo;
 }
 
+// --- Shared materials for the exported proc-rotor builders -------------------
+// Module-level singletons reused across all helicopter instances and game restarts.
+// Flagged `userData.shared` so Game.dispose()'s scene traversal skips them.
+const PROC_ROTOR_METAL = new THREE.MeshStandardMaterial({ color: 0x70757d, roughness: 0.38, metalness: 0.75 });
+const PROC_ROTOR_DARK  = new THREE.MeshStandardMaterial({ color: 0x3a3e44, roughness: 0.45, metalness: 0.6 });
+const PROC_ROTOR_BLADE = new THREE.MeshStandardMaterial({ color: 0x191b1f, roughness: 0.5,  metalness: 0.3 });
+const PROC_ROTOR_DISC  = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.9,  metalness: 0, transparent: true, opacity: 0.07, side: THREE.DoubleSide });
+PROC_ROTOR_METAL.userData.shared = true;
+PROC_ROTOR_DARK.userData.shared  = true;
+PROC_ROTOR_BLADE.userData.shared = true;
+PROC_ROTOR_DISC.userData.shared  = true;
+
+/**
+ * Populate `target` with the Bell 205A-1 / Bell 212 two-blade main-rotor assembly:
+ * upper swashplate, hub box + cap, blade grips + pitch links, two airfoil blades
+ * (pre-coned), the Bell-Hiller stabilizer bar (flybar) with weighted paddles, and a
+ * faint translucent disc so the spin reads as a blur. `scale` = targetLen / 10.5
+ * (the canonical 205A-1 baseline). Caller positions `target` at the mast hub and
+ * increments `target.rotation.y` each frame.
+ */
+export function populateProcRotorGroup(target: THREE.Object3D, scale: number): void {
+  const s = scale;
+  const cast = (m: THREE.Mesh, name: string): THREE.Mesh => { m.name = name; m.castShadow = true; return m; };
+
+  const swashU = cast(new THREE.Mesh(new THREE.TorusGeometry(0.22*s, 0.04*s, 6, 12), PROC_ROTOR_METAL), 'swashplateUpper');
+  swashU.rotation.x = Math.PI / 2; swashU.position.y = -0.18*s;
+  target.add(swashU);
+
+  const hub = cast(new THREE.Mesh(new THREE.BoxGeometry(0.66*s, 0.18*s, 0.3*s), PROC_ROTOR_METAL), 'rotorHub');
+  target.add(hub);
+  const hubCap = cast(new THREE.Mesh(new THREE.CylinderGeometry(0.16*s, 0.2*s, 0.2*s, 8), PROC_ROTOR_METAL), 'rotorHubCap');
+  hubCap.position.y = 0.15*s;
+  target.add(hubCap);
+
+  for (const sgn of [-1, 1]) {
+    const grip = cast(new THREE.Mesh(new THREE.CylinderGeometry(0.09*s, 0.09*s, 0.5*s, 8), PROC_ROTOR_METAL), 'bladeGrip');
+    grip.rotation.z = Math.PI / 2; grip.position.set(sgn * 0.52*s, 0, 0);
+    target.add(grip);
+    const link = cast(new THREE.Mesh(new THREE.CylinderGeometry(0.022*s, 0.022*s, 0.32*s, 6), PROC_ROTOR_DARK), 'pitchLink');
+    link.position.set(sgn * 0.42*s, -0.12*s, 0.16*s); link.rotation.x = 0.2;
+    target.add(link);
+  }
+
+  const bladeGeo = airfoilSpan(0.5*s, 0.06*s, 5.0*s);
+  bladeGeo.rotateY(Math.PI / 2); bladeGeo.rotateZ(0.045); bladeGeo.translate(0.68*s, 0, 0);
+  for (const sgn of [-1, 1]) {
+    const blade = cast(new THREE.Mesh(bladeGeo, PROC_ROTOR_BLADE), 'rotorBlade');
+    blade.rotation.y = sgn < 0 ? Math.PI : 0;
+    target.add(blade);
+  }
+
+  const flybar = cast(new THREE.Mesh(new THREE.CylinderGeometry(0.035*s, 0.035*s, 4.0*s, 8), PROC_ROTOR_METAL), 'flybar');
+  flybar.rotation.x = Math.PI / 2; flybar.position.y = 0.2*s;
+  target.add(flybar);
+  for (const sgn of [-1, 1]) {
+    const wt = cast(new THREE.Mesh(new THREE.CapsuleGeometry(0.09*s, 0.26*s, 3, 6), PROC_ROTOR_DARK), 'flybarWeight');
+    wt.rotation.x = Math.PI / 2; wt.position.set(0, 0.2*s, sgn * 1.95*s);
+    target.add(wt);
+    const rod = cast(new THREE.Mesh(new THREE.CylinderGeometry(0.018*s, 0.018*s, 0.32*s, 6), PROC_ROTOR_DARK), 'flybarLink');
+    rod.position.set(0, 0.06*s, sgn * 0.5*s); rod.rotation.x = sgn * 0.4;
+    target.add(rod);
+  }
+
+  const disc = new THREE.Mesh(new THREE.CylinderGeometry(5.4*s, 5.4*s, 0.02*s, 24), PROC_ROTOR_DISC);
+  disc.name = 'rotorDisc';
+  target.add(disc);
+}
+
+/**
+ * Build the tail-rotor MOUNT group that carries `tailTarget` (the spin group).
+ * Also populates `tailTarget` with a gearbox-flanking hub cylinder + single airfoil
+ * blade. Mount has rotation.y = −π/2 so `tailTarget.rotation.x` sweeps the disc
+ * sideways (anti-torque). `scale` = targetLen / 10.5. Caller positions the returned
+ * mount in the parent group, then adds it with `group.add(mount)`.
+ */
+export function makeProcTailMount(tailTarget: THREE.Object3D, scale: number): THREE.Group {
+  const s = scale;
+  const cast = (m: THREE.Mesh, name: string): THREE.Mesh => { m.name = name; m.castShadow = true; return m; };
+
+  const mount = new THREE.Group();
+  mount.name = 'tailRotorMount';
+  mount.rotation.y = -Math.PI / 2;
+
+  const gearbox = cast(new THREE.Mesh(new THREE.SphereGeometry(0.17*s, 8, 6), PROC_ROTOR_METAL), 'tailGearbox');
+  gearbox.scale.set(1.2, 1, 1); gearbox.position.z = -0.1*s;
+  mount.add(gearbox);
+
+  tailTarget.position.set(0, 0, 0);
+  tailTarget.rotation.set(0, 0, 0);
+  mount.add(tailTarget);
+
+  const tailHub = cast(new THREE.Mesh(new THREE.CylinderGeometry(0.08*s, 0.08*s, 0.22*s, 8), PROC_ROTOR_METAL), 'tailRotorHub');
+  tailHub.rotation.z = Math.PI / 2;
+  tailTarget.add(tailHub);
+
+  const tBlade = airfoilSpan(0.15*s, 0.04*s, 1.7*s);
+  tBlade.rotateX(Math.PI / 2); // span → local Y (disc plane)
+  tailTarget.add(cast(new THREE.Mesh(tBlade, PROC_ROTOR_BLADE), 'tailBlade'));
+
+  return mount;
+}
+
 /**
  * A symmetric lenticular airfoil (ellipse cross-section: `chord` × `thick`) extruded
  * along Z for `span`, centered on Z, with a small bevel so the ends round off. Used
  * for the rotor blades, the elevator, and the tail-rotor bar.
  */
-function airfoilSpan(chord: number, thick: number, span: number): THREE.BufferGeometry {
+export function airfoilSpan(chord: number, thick: number, span: number): THREE.BufferGeometry {
   const shape = new THREE.Shape();
   shape.absellipse(0, 0, chord / 2, thick / 2, 0, Math.PI * 2, false, 0);
   const geo = new THREE.ExtrudeGeometry(shape, {
