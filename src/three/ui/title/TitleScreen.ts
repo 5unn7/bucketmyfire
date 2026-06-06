@@ -96,7 +96,9 @@ export class TitleScreen {
 
     // The framed key art. Its aspect-ratio matches the source image (3:4) on desktop, so `cover`
     // shows the WHOLE picture with no crop; on phones it goes full-bleed (radius 0).
-    const frame = div({ backgroundImage: `url("${BG_URL}")`, backgroundSize: 'cover', backgroundPosition: 'center' });
+    // Bias the crop UPWARD (28% from top) so the 16:9 landscape crop keeps the helicopter + bucket in
+    // frame (the source is portrait; a centred crop would cut the heli off the top).
+    const frame = div({ backgroundImage: `url("${BG_URL}")`, backgroundSize: 'cover', backgroundPosition: 'center 28%' });
     frame.className = 'bmf-home-frame';
 
     // Legibility gradient — transparent over the art up top, deepening to near-opaque at the bottom
@@ -240,11 +242,12 @@ function injectTitleStyles(): void {
   .bmf-home-root { display: flex; align-items: center; justify-content: center; background: #06080e; overflow: hidden; }
   .bmf-home-backdrop { position: absolute; inset: 0; background-size: cover; background-position: center; filter: blur(30px) brightness(0.40) saturate(1.04); transform: scale(1.14); }
   .bmf-home-frame { position: relative; overflow: hidden; width: 100%; height: 100%; border-radius: 0; }
-  /* Desktop / landscape: a centred rounded PORTRAIT card (3:4, matching the art) with margin, so the
-     whole image is seen and it doesn't cover the entire viewport. Phones stay full-bleed (above). */
+  /* Desktop / landscape: a centred rounded 16:9 card, sized to leave a ~20px margin all round (the
+     largest 16:9 box that fits inside the viewport minus 40px). Phones stay full-bleed (above). */
   @media (min-width: 768px) and (orientation: landscape) {
     .bmf-home-frame {
-      width: auto; height: min(86vh, calc(94vw * 4 / 3)); aspect-ratio: 3 / 4; max-width: 94vw;
+      width: min(calc(100vw - 40px), calc((100vh - 40px) * 16 / 9));
+      height: auto; aspect-ratio: 16 / 9;
       border-radius: 22px; box-shadow: 0 30px 90px rgba(0,0,0,0.62), 0 0 0 1px rgba(255,255,255,0.07);
     }
   }
