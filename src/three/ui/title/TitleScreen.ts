@@ -6,10 +6,10 @@ import { openShop } from '../ShopScreen';
 import { signalFirstFrame } from '../../splashSignal';
 
 /**
- * TitleScreen — the home screen. Wildfire key art (a Bell helicopter on a slung bucket dropping water
- * over a burning ridge) — full-bleed on phones, a centred rounded 16:9 card on desktop. The ember
- * wordmark sits TOP-RIGHT; a dark gradient rises from the bottom through the tagline + the single PLAY
- * button so they stay legible against the fire. (Daily Burn + Leaderboard live in the wizard.)
+ * TitleScreen — the home screen. Full-bleed 16:9 wildfire key art (a Bell helicopter on a slung
+ * bucket dropping water over a burning ridge), covering every viewport. The ember wordmark sits
+ * TOP-RIGHT; a dark gradient rises from the bottom through the tagline + PLAY/Shop so they stay
+ * legible against the fire. (Daily Burn + Leaderboard live in the wizard.)
  *
  * Pure DOM, no WebGL (the old 3D AttractScene + GitHub-grid wordmark were removed), so the home
  * boots instantly. The background image is preloaded; the cold-start splash holds until it's ready
@@ -71,23 +71,12 @@ export class TitleScreen {
     const profile = loadProfile();
     const cleared = missionsCleared();
 
-    // Root: a flex-centred stage on a dark backing. On phones the frame fills it; on desktop the
-    // frame is a centred rounded portrait CARD and this dark backing shows in the margins. (Layout
-    // lives in the injected `.bmf-home-*` classes so media queries can switch fill ↔ framed.)
+    // Root: the stage, dark fallback behind the art (no white flash before the image decodes).
     const root = div({ position: 'fixed', inset: '0', zIndex: '50', fontFamily: UI.font, color: UI.text, pointerEvents: 'none' });
     root.className = 'bmf-home-root';
 
-    // Blurred ambient backdrop — fills the desktop margins around the card with a darkened, blurred
-    // zoom of the same art so the framed look feels intentional, not letterboxed. Hidden behind the
-    // full-bleed frame on phones.
-    const backdrop = div({ backgroundImage: `url("${BG_URL}")` });
-    backdrop.className = 'bmf-home-backdrop';
-    root.appendChild(backdrop);
-
-    // The framed key art. Its aspect-ratio matches the source image (3:4) on desktop, so `cover`
-    // shows the WHOLE picture with no crop; on phones it goes full-bleed (radius 0).
-    // The source art is already 16:9, so on the desktop 16:9 card it shows uncropped; on a portrait
-    // phone `cover` keeps the centred helicopter in frame.
+    // Full-bleed key art on every viewport. The source is 16:9, so it fills a desktop cleanly; on a
+    // portrait phone `cover` centre-crops to keep the helicopter in frame.
     const frame = div({ backgroundImage: `url("${BG_URL}")`, backgroundSize: 'cover', backgroundPosition: 'center' });
     frame.className = 'bmf-home-frame';
 
@@ -235,18 +224,8 @@ function injectTitleStyles(): void {
   const tag = document.createElement('style');
   tag.textContent = `
   @keyframes bmf-title-rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
-  .bmf-home-root { display: flex; align-items: center; justify-content: center; background: #06080e; overflow: hidden; }
-  .bmf-home-backdrop { position: absolute; inset: 0; background-size: cover; background-position: center; filter: blur(30px) brightness(0.40) saturate(1.04); transform: scale(1.14); }
-  .bmf-home-frame { position: relative; overflow: hidden; width: 100%; height: 100%; border-radius: 0; }
-  /* Desktop / landscape: a centred rounded 16:9 card, sized to leave a ~20px margin all round (the
-     largest 16:9 box that fits inside the viewport minus 40px). Phones stay full-bleed (above). */
-  @media (min-width: 768px) and (orientation: landscape) {
-    .bmf-home-frame {
-      width: min(calc(100vw - 40px), calc((100vh - 40px) * 16 / 9));
-      height: auto; aspect-ratio: 16 / 9;
-      border-radius: 22px; box-shadow: 0 30px 90px rgba(0,0,0,0.62), 0 0 0 1px rgba(255,255,255,0.07);
-    }
-  }
+  .bmf-home-root { background: #06080e; overflow: hidden; }
+  .bmf-home-frame { position: absolute; inset: 0; overflow: hidden; }
   `;
   document.head.appendChild(tag);
 }
