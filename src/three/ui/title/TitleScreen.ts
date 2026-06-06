@@ -17,7 +17,7 @@ import { signalFirstFrame } from '../../splashSignal';
 
 // Key-art background — a `public/` asset, referenced through BASE_URL so it resolves under any
 // deploy base (root or the /bucketmyfire/ project-pages path).
-const BG_URL = `${import.meta.env.BASE_URL}images/Website/homescreen-bg.webp`;
+const BG_URL = `${import.meta.env.BASE_URL}images/Website/home212-bg.webp`;
 
 export class TitleScreen {
   private readonly onPlay: () => void;
@@ -84,9 +84,9 @@ export class TitleScreen {
 
     // The framed key art. Its aspect-ratio matches the source image (3:4) on desktop, so `cover`
     // shows the WHOLE picture with no crop; on phones it goes full-bleed (radius 0).
-    // Bias the crop UPWARD (28% from top) so the 16:9 landscape crop keeps the helicopter + bucket in
-    // frame (the source is portrait; a centred crop would cut the heli off the top).
-    const frame = div({ backgroundImage: `url("${BG_URL}")`, backgroundSize: 'cover', backgroundPosition: 'center 28%' });
+    // The source art is already 16:9, so on the desktop 16:9 card it shows uncropped; on a portrait
+    // phone `cover` keeps the centred helicopter in frame.
+    const frame = div({ backgroundImage: `url("${BG_URL}")`, backgroundSize: 'cover', backgroundPosition: 'center' });
     frame.className = 'bmf-home-frame';
 
     // Legibility gradient — transparent over the art up top, deepening to near-opaque at the bottom
