@@ -195,6 +195,49 @@ const CSS = `
 .bmf-app .dots i{ width:6px; height:6px; border-radius:50%; background:var(--track); transition:width .2s, background .2s; }
 .bmf-app .dots i.on{ width:18px; border-radius:var(--r-pill); background:var(--menu); }
 
+/* ===== hero carousel — Maps + Hangar share ONE shell (full-bleed, one card at a time) ===== */
+.bmf-app .carousel{ position:relative; margin:8px -16px 0; }
+.bmf-app .ctrack{ display:flex; gap:14px; overflow-x:auto; scroll-snap-type:x mandatory; -webkit-overflow-scrolling:touch; scrollbar-width:none; padding:14px 16px 6px; }
+.bmf-app .ctrack::-webkit-scrollbar{ display:none; }
+.bmf-app .cslide{ scroll-snap-align:center; flex:0 0 min(82%,360px); cursor:pointer; opacity:.42; transform:scale(.91);
+  transition:opacity .34s ease, transform .34s cubic-bezier(.16,.84,.3,1); }
+.bmf-app .cslide.active{ opacity:1; transform:scale(1); }
+.bmf-app .cslide .artcard{ height:100%; }
+.bmf-app .cslide .artcard .inner{ min-height:330px; }
+.bmf-app .cslide .artcard.heli .inner{ min-height:368px; }
+.bmf-app .cslide.locked .artcard{ filter:grayscale(.5) brightness(.72); }
+.bmf-app .cslide:not(.active):hover{ opacity:.66; }
+
+.bmf-app .cnav{ position:absolute; top:46%; transform:translateY(-50%); z-index:6; width:42px; height:42px; border-radius:50%; display:grid; place-items:center; cursor:pointer; color:var(--ember-hi); padding:0;
+  background:rgba(10,13,16,0.74); border:1px solid var(--warm-stroke); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+  box-shadow:0 6px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06); transition:transform .14s, background .14s, opacity .22s; }
+.bmf-app .cnav svg{ width:20px; height:20px; }
+.bmf-app .cnav.prev{ left:6px; } .bmf-app .cnav.next{ right:6px; }
+.bmf-app .cnav:hover{ background:rgba(255,106,44,0.18); transform:translateY(-50%) scale(1.07); }
+.bmf-app .cnav.hide{ opacity:0; pointer-events:none; }
+
+.bmf-app .cmeta{ display:flex; align-items:center; justify-content:center; gap:8px; margin-top:11px;
+  font-family:var(--mono); font-size:var(--fs-micro); letter-spacing:.18em; text-transform:uppercase; color:var(--faint); font-weight:var(--fw-bold); }
+.bmf-app .cmeta b{ color:var(--ember-hi); }
+
+/* heli hero — procedural "hangar bay" art tinted by the airframe accent (--accent) */
+.bmf-app .artcard.heli .heli-art{ position:absolute; inset:0; z-index:0; overflow:hidden;
+  background:radial-gradient(95% 72% at 50% 30%, color-mix(in srgb, var(--accent,#c8362a) 50%, transparent), transparent 68%),
+    radial-gradient(120% 90% at 50% 122%, rgba(255,106,44,0.32), transparent 58%),
+    linear-gradient(160deg,#181c20 0%,#0b0e11 76%); }
+.bmf-app .artcard.heli .heli-art .grid{ position:absolute; inset:0; opacity:.15;
+  background-image:linear-gradient(rgba(255,255,255,0.6) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.6) 1px,transparent 1px); background-size:28px 28px;
+  -webkit-mask:radial-gradient(circle at 50% 33%, #000 4%, transparent 68%); mask:radial-gradient(circle at 50% 33%, #000 4%, transparent 68%); }
+.bmf-app .artcard.heli .heli-art .ring{ position:absolute; top:18px; left:50%; transform:translateX(-50%); width:150px; height:150px; border-radius:50%;
+  border:1px dashed color-mix(in srgb, var(--accent,#c8362a) 62%, transparent); opacity:.45; animation:bmf-rotor 9s linear infinite; }
+@keyframes bmf-rotor{ to{ transform:translateX(-50%) rotate(360deg); } }
+.bmf-app .artcard.heli .heli-art .mark{ position:absolute; top:36px; left:0; right:0; display:grid; place-items:center; }
+.bmf-app .artcard.heli .heli-art .mark svg{ width:112px; height:112px; color:#fff; opacity:.94; filter:drop-shadow(0 8px 26px rgba(0,0,0,0.6)); }
+
+.bmf-app .specgrid{ display:grid; grid-template-columns:1fr 1fr; gap:8px 16px; margin:11px 0 2px; }
+.bmf-app .specgrid .spec{ grid-template-columns:50px 1fr; gap:8px; margin:0; }
+.bmf-app .specgrid .spec .name{ color:rgba(255,255,255,0.62); }
+
 /* ===== bottom rail ===== */
 .bmf-app .rail{ position:absolute; left:0; right:0; bottom:0; z-index:40; height:calc(var(--rail-h) + env(safe-area-inset-bottom)); padding-bottom:env(safe-area-inset-bottom);
   background:linear-gradient(180deg,#15191d 0%, #0c0f12 100%); border-top:1px solid var(--bevel-top); box-shadow:0 -8px 24px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.05); }
@@ -260,7 +303,8 @@ const CSS = `
 
 @media (prefers-reduced-motion: reduce){
   .bmf-app .rise{ opacity:1 !important; transform:none !important; animation:none !important; }
-  .bmf-app .helmet .sheen,.bmf-app .mote,.bmf-app .glyph.flicker svg path,.bmf-app .crt-streak{ animation:none !important; }
+  .bmf-app .helmet .sheen,.bmf-app .mote,.bmf-app .glyph.flicker svg path,.bmf-app .crt-streak,.bmf-app .artcard.heli .heli-art .ring{ animation:none !important; }
+  .bmf-app .cslide{ opacity:1 !important; transform:none !important; }
   .bmf-app .embers{ display:none; }
 }
 
@@ -268,8 +312,15 @@ const CSS = `
 @media (min-width:740px){
   .bmf-app.home .pad{ max-width:620px; }
   .bmf-app.home .artcard .inner{ min-height:300px; }
+  /* Menu overlays (Maps · Hangar · Co-op · Settings) get the same roomier centred column. */
+  .bmf-app:not(.home):not(.newpilot) .pad{ max-width:600px; }
+  /* The hero carousel grows into a bigger card with more peek + larger chevrons. */
+  .bmf-app .cslide{ flex:0 0 min(72%,440px); }
+  .bmf-app .cslide .artcard .inner{ min-height:360px; }
+  .bmf-app .cslide .artcard.heli .inner{ min-height:396px; }
+  .bmf-app .cnav{ width:46px; height:46px; } .bmf-app .cnav svg{ width:22px; height:22px; }
 }
-/* ===== desktop: 2-column dashboard + floating dock rail ===== */
+/* ===== desktop: 2-column home dashboard · flanked-hero carousels · floating dock rail ===== */
 @media (min-width:1040px){
   .bmf-app.home .pad{ max-width:1000px; display:grid; grid-template-columns:380px 1fr; column-gap:24px; align-items:start; align-content:start;
     padding-top:calc(env(safe-area-inset-top) + 32px); padding-bottom:116px; }
@@ -278,10 +329,26 @@ const CSS = `
   .bmf-app.home .z-cont{ grid-column:2; }
   .bmf-app.home .z-cont .artcard .inner{ min-height:460px; }
   .bmf-app.home .sec{ margin-top:6px; }
+  /* Menu overlays: a wide centred column; the carousel becomes a chevron-flanked hero. */
+  .bmf-app:not(.home):not(.newpilot) .pad{ max-width:760px;
+    padding-top:calc(env(safe-area-inset-top) + 30px); padding-bottom:120px; }
+  .bmf-app .carousel{ margin:8px -22px 0; } .bmf-app .ctrack{ padding-left:22px; padding-right:22px; }
+  .bmf-app .cslide{ flex:0 0 min(58%,480px); }
+  .bmf-app .cslide .artcard .inner{ min-height:418px; }
+  .bmf-app .cslide .artcard.heli .inner{ min-height:452px; }
+  .bmf-app .cnav{ width:52px; height:52px; } .bmf-app .cnav svg{ width:24px; height:24px; }
+  .bmf-app .cnav.prev{ left:-8px; } .bmf-app .cnav.next{ right:-8px; }
+  .bmf-app .artcard.heli .heli-art .mark svg{ width:140px; height:140px; }
+  .bmf-app .artcard.heli .heli-art .ring{ width:188px; height:188px; top:24px; }
   /* Floating dock rail — shared by the hub AND every menu overlay so it reads the same everywhere. */
   .bmf-app .rail{ left:50%; right:auto; transform:translateX(-50%); bottom:18px; width:auto; min-width:540px; height:auto; padding-bottom:0;
     border:1px solid var(--bevel-top); border-radius:var(--r-xl); box-shadow:0 14px 44px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.06); }
   .bmf-app .rail .keys{ max-width:none; height:66px; }
+}
+/* ===== large desktop: cap the column so the hero carousel never sprawls ===== */
+@media (min-width:1320px){
+  .bmf-app:not(.home):not(.newpilot) .pad{ max-width:820px; }
+  .bmf-app .cslide{ flex:0 0 520px; }
 }
 `;
 

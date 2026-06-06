@@ -93,10 +93,98 @@ function overlay(key: string, title: string, sub: string, body: string): { root:
   return { root, close };
 }
 
+// — Hero carousel (shared by Maps + Hangar) ——————————————————————————————————
+// One full-bleed, center-snap, one-card-at-a-time strip with chevrons + dots + an "n / total"
+// counter. Both pickers render their items as poster `.cslide`s and wire this same controller so
+// the two screens read identically. Tapping an off-centre slide brings it to centre; the active
+// slide's own CTA does the selecting.
+function carousel(slides: string[], counterLabel: string): string {
+  const n = slides.length;
+  return (
+    `<div class="carousel">` +
+    (n > 1 ? `<button class="cnav prev hide" data-cnav="-1" aria-label="Previous">${ic('back')}</button>` : '') +
+    `<div class="ctrack" data-ctrack>${slides.join('')}</div>` +
+    (n > 1 ? `<button class="cnav next" data-cnav="1" aria-label="Next">${ic('chevron-right')}</button>` : '') +
+    `</div>` +
+    (n > 1 ? `<div class="dots" data-cdots>${slides.map((_, i) => `<i class="${i === 0 ? 'on' : ''}"></i>`).join('')}</div>` : '') +
+    `<div class="cmeta"><b data-cidx>1</b> / ${n} · ${counterLabel}</div>`
+  );
+}
+
+/** Wire the carousel in `root`: scroll → active slide (scale-up + dots + counter + chevron fade),
+ *  chevrons + off-centre taps re-centre. `onActive(i)` fires on each settle. Returns a `center(i)`. */
+function wireCarousel(root: HTMLElement, initial: number, onActive?: (i: number) => void): (i: number) => void {
+  const track = root.querySelector<HTMLElement>('[data-ctrack]');
+  if (!track) return () => {};
+  const slides = Array.from(track.querySelectorAll<HTMLElement>('.cslide'));
+  const dots = root.querySelector<HTMLElement>('[data-cdots]');
+  const idxEl = root.querySelector<HTMLElement>('[data-cidx]');
+  const prev = root.querySelector<HTMLElement>('.cnav.prev');
+  const next = root.querySelector<HTMLElement>('.cnav.next');
+  let active = -1;
+
+  const center = (i: number): void => {
+    const s = slides[i];
+    if (!s) return;
+    track.scrollTo({ left: s.offsetLeft - (track.clientWidth - s.clientWidth) / 2, behavior: 'smooth' });
+  };
+  const setActive = (i: number): void => {
+    i = Math.max(0, Math.min(slides.length - 1, i));
+    if (i === active) return;
+    active = i;
+    slides.forEach((s, k) => s.classList.toggle('active', k === i));
+    dots && Array.from(dots.children).forEach((d, k) => d.classList.toggle('on', k === i));
+    if (idxEl) idxEl.textContent = String(i + 1);
+    prev?.classList.toggle('hide', i === 0);
+    next?.classList.toggle('hide', i === slides.length - 1);
+    onActive?.(i);
+  };
+  const nearest = (): number => {
+    const mid = track.scrollLeft + track.clientWidth / 2;
+    let best = 0;
+    let bd = Infinity;
+    slides.forEach((s, k) => {
+      const d = Math.abs(s.offsetLeft + s.clientWidth / 2 - mid);
+      if (d < bd) {
+        bd = d;
+        best = k;
+      }
+    });
+    return best;
+  };
+
+  let raf = 0;
+  track.addEventListener(
+    'scroll',
+    () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        setActive(nearest());
+      });
+    },
+    { passive: true },
+  );
+  prev?.addEventListener('click', () => center(active - 1));
+  next?.addEventListener('click', () => center(active + 1));
+  // Tap an off-centre slide → bring it to centre (active slide keeps its own CTA clickable).
+  slides.forEach((s, k) =>
+    s.addEventListener('click', () => {
+      if (k !== active) center(k);
+    }),
+  );
+
+  // Jump to the initial pick without animation, then latch state.
+  const start = slides[initial] ? initial : 0;
+  track.scrollLeft = slides[start].offsetLeft - (track.clientWidth - slides[start].clientWidth) / 2;
+  setActive(start);
+  return center;
+}
+
 // ============================ MAPS ============================
 export function openMaps(): void {
   const pro = currentProfile();
-  const cards = MAPS.map((m) => {
+  const slides = MAPS.map((m) => {
     const selected = m.id === pro.mapId && m.available;
     const cover = m.imageUrl
       ? `<img class="img" src="${m.imageUrl}" alt="">`
@@ -105,41 +193,49 @@ export function openMaps(): void {
       ? `<span class="pill ${selected ? 'ok' : ''}">${selected ? 'Selected' : 'Live'}</span>`
       : `<span class="pill soon">Soon</span>`;
     const stats = m.stats
-      ? `<div class="ctx-row" style="margin-top:10px;"><span class="ctx">${ic('map')}${m.stats.area}</span><span class="ctx">${ic('droplet')}${m.stats.lakes}</span></div>`
+      ? `<div class="ctx-row" style="margin-top:11px;"><span class="ctx">${ic('map')}${m.stats.area}</span><span class="ctx">${ic('droplet')}${m.stats.lakes}</span></div>`
       : '';
-    return `<article class="artcard" data-map="${m.available ? m.id : ''}" style="${m.available ? '' : 'filter:grayscale(.5) brightness(.7);'}">
-      ${cover}<div class="scrim"></div><div class="brackets"><i></i><i></i><i></i></div>
-      <div class="inner" style="min-height:190px;">
-        <div class="row between"><span class="chip ghost">${m.tagline}</span>${badge}</div>
-        <div class="grow"></div>
-        <h2 class="h-big" style="font-size:var(--fs-display);">${m.name}</h2>
-        ${stats}
+    const cta = !m.available
+      ? `<button class="btn ghost block is-disabled" style="margin-top:15px;">${ic('lock')}Coming soon</button>`
+      : selected
+        ? `<button class="btn ghost block is-disabled" style="margin-top:15px;">${ic('check')}Selected theatre</button>`
+        : `<button class="btn primary block" style="margin-top:15px;" data-map="${m.id}">${ic('play')}Deploy here</button>`;
+    return `<article class="cslide${m.available ? '' : ' locked'}">
+      <div class="artcard">
+        ${cover}<div class="scrim"></div><div class="brackets"><i></i><i></i><i></i></div>
+        <div class="inner">
+          <div class="row between"><span class="chip ghost">${m.tagline}</span>${badge}</div>
+          <div class="grow"></div>
+          <h2 class="h-big" style="font-size:var(--fs-display);">${m.name}</h2>
+          ${stats}
+          ${cta}
+        </div>
       </div></article>`;
-  }).join('<div style="height:12px"></div>');
-
-  const { root, close } = overlay('maps', 'Maps', 'Choose a theatre', `<div style="margin-top:6px;">${cards}</div>`);
-  root.querySelectorAll<HTMLElement>('[data-map]').forEach((el) => {
-    const id = el.dataset.map;
-    if (!id) return;
-    el.style.cursor = 'pointer';
-    el.addEventListener('click', () => {
-      saveProfile({ ...currentProfile(), mapId: id });
-      close();
-    });
   });
+
+  const initial = Math.max(0, MAPS.findIndex((m) => m.id === pro.mapId && m.available));
+  const { root, close } = overlay('maps', 'Maps', 'Choose a theatre', carousel(slides, 'Theatre'));
+  wireCarousel(root, initial);
+  root.querySelectorAll<HTMLElement>('[data-map]').forEach((b) =>
+    b.addEventListener('click', (e) => {
+      e.stopPropagation(); // don't let the slide's re-centre handler swallow the pick
+      saveProfile({ ...currentProfile(), mapId: b.dataset.map! });
+      close();
+    }),
+  );
 }
 
 // ============================ HANGAR ============================
 export function openHangar(): void {
   const cleared = missionsCleared();
+  const slides = HELIS.map((h) => heliSlide(h, cleared));
   const body =
-    `<div class="hscroll" style="margin-top:8px;" id="fleet">` +
-    HELIS.map((h) => heliCard(h, cleared)).join('') +
-    `</div><div class="dots" id="fleetDots">${HELIS.map((_, i) => `<i class="${i === 0 ? 'on' : ''}"></i>`).join('')}</div>` +
-    `<div class="card metal" style="margin-top:18px;"><div class="row" style="gap:12px;"><div class="glyph">${FLAME}</div>` +
+    carousel(slides, 'Airframe') +
+    `<div class="card metal" style="margin-top:16px;"><div class="row" style="gap:12px;"><div class="glyph">${FLAME}</div>` +
     `<div class="grow"><div style="font-size:var(--fs-md);font-weight:var(--fw-semibold);">Earn your fleet</div>` +
     `<div class="muted" style="font-size:var(--fs-meta);margin-top:2px;">Bell 212 unlocks at 2 missions · UH-60 at 5. You've cleared ${cleared}.</div></div></div></div>`;
 
+  const initial = Math.max(0, HELIS.findIndex((h) => h.id === currentProfile().heliId));
   const { root } = overlay('hangar', 'Hangar', 'Your aircraft', body);
 
   const refresh = (): void => {
@@ -154,44 +250,39 @@ export function openHangar(): void {
       } else if (id === sel) {
         foot.innerHTML = `<button class="btn ghost block is-disabled">${ic('check')}Equipped</button>`;
       } else {
-        foot.innerHTML = `<button class="btn primary block" data-pick="${id}">Select</button>`;
+        foot.innerHTML = `<button class="btn primary block" data-pick="${id}">${ic('play')}Fly this</button>`;
       }
     });
     root.querySelectorAll<HTMLElement>('[data-pick]').forEach((b) =>
-      b.addEventListener('click', () => {
+      b.addEventListener('click', (e) => {
+        e.stopPropagation();
         saveProfile({ ...currentProfile(), heliId: b.dataset.pick! });
         refresh();
       }),
     );
   };
   refresh();
-
-  const fleet = root.querySelector<HTMLElement>('#fleet');
-  const dots = root.querySelector<HTMLElement>('#fleetDots');
-  if (fleet && dots) {
-    fleet.addEventListener(
-      'scroll',
-      () => {
-        const i = Math.round(fleet.scrollLeft / (fleet.scrollWidth / HELIS.length));
-        dots.querySelectorAll('i').forEach((d, k) => d.classList.toggle('on', k === Math.min(i, HELIS.length - 1)));
-      },
-      { passive: true },
-    );
-  }
+  wireCarousel(root, initial);
 }
 
-function heliCard(h: CatalogItem, cleared: number): string {
+function heliSlide(h: CatalogItem, cleared: number): string {
   const unlocked = isHeliUnlocked(h, cleared);
   const specs = (h.specs ?? [])
     .map((s) => `<div class="spec"><span class="name">${s.label}</span><span class="track"><i style="width:${Math.round(s.value * 100)}%"></i></span></div>`)
     .join('');
-  return `<article class="card warm cut" data-heli="${h.id}" style="width:clamp(264px,82vw,300px);${unlocked ? '' : 'filter:grayscale(.5) brightness(.74);'}">
-    <div class="row between"><div><div style="font-size:var(--fs-lg);font-weight:var(--fw-heavy);">${h.name}</div>
-    <div class="mono" style="font-size:var(--fs-tag);letter-spacing:.1em;color:var(--dim);margin-top:2px;text-transform:uppercase;">${h.tagline}</div></div>
-    <div class="glyph">${ic('heli')}</div></div>
-    <div style="margin-top:12px;">${specs}</div>
-    <div class="heli-foot" style="margin-top:14px;"></div>
-  </article>`;
+  const badge = unlocked ? `<span class="pill ok">Flyable</span>` : `<span class="pill locked">Locked</span>`;
+  return `<article class="cslide${unlocked ? '' : ' locked'}">
+    <div class="artcard heli" data-heli="${h.id}" style="--accent:${h.accent};">
+      <div class="heli-art"><span class="grid"></span><span class="ring"></span><span class="mark">${ic('heli')}</span></div>
+      <div class="scrim"></div><div class="brackets"><i></i><i></i><i></i></div>
+      <div class="inner">
+        <div class="row between"><span class="chip ghost">${h.tagline}</span>${badge}</div>
+        <div class="grow"></div>
+        <h2 class="h-big" style="font-size:var(--fs-display);">${h.name}</h2>
+        <div class="specgrid">${specs}</div>
+        <div class="heli-foot" style="margin-top:14px;"></div>
+      </div>
+    </div></article>`;
 }
 
 // ============================ CO-OP (stub) ============================
