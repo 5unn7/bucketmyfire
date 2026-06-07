@@ -789,7 +789,7 @@ export class HUD {
    * until `onBegin` fires. Dismissed on BEGIN or a tap on the scrim.
    */
   showBriefing(def: MissionDef, onBegin: () => void): void {
-    this.endScreen.missionName = def.name; // remember for the end-screen Share text
+    this.endScreen.setContext(def); // capture name/place/index + prior best for the end-screen + Share text
     const scrim = el('div', {
       position: 'fixed',
       inset: '0',
