@@ -8,7 +8,7 @@ description: >-
   pure-sim Node assertions → live headless via the `window.__game` debug hook), the
   `?autostart&m=<id>&qa` URL contract, the runtime debug handles (`__game.fireSystem.igniteAt`,
   `__game.heliSim.position` teleport), and the committed verification suite — the pure-Node gates
-  (`verify:campaign`/`crash`/`voice`/`feel`/`world`/`ui`, all under `npm run verify`) plus the
+  (`verify:campaign`/`crash`/`voice`/`feel`/`world`/`coach`/`ui`/`tokens`, all under `npm run verify`) plus the
   CI-gated headless render/shader smoke (`npm run verify:render` on the committed
   `scripts/headless.mjs` Playwright harness). Reach for this skill any time you'd otherwise hand-roll
   a Playwright script or wonder "did my shader/sim change actually take?" — especially for GLSL
@@ -57,13 +57,16 @@ cover what you touched):
 ```bash
 npm run verify:crash   # crash/explosion path: HelicopterSim.beginCrash/updateCrash + HealthSim explode gate
 npm run verify:voice   # generative radio-voice brand invariants (deterministic, place-aware, slop-free)
+npm run verify:coach   # first-flight COACH director invariants (deterministic step sequence + gating)
 npm run verify:feel    # CONTROL-FEEL golden trace: a scripted maneuver through HelicopterSim + BucketSim
                        #   asserts the trajectory digest matches scripts/feel-baseline.json. Touch a
                        #   FLIGHT/BUCKET3D constant or the integrator and this fails with a per-field diff.
 npm run verify:world   # seed -> world DETERMINISM: World field digest must be byte-identical + match
                        #   scripts/world-baseline.json (catches a stray Math.random() in world-gen).
 npm run verify:ui      # DESIGN-TOKEN guard: one `UI` object + a RATCHET on hard-coded #hex/rgba/blur
-                       #   literals in src/three/ui/** (fails on a NET increase vs scripts/ui-baseline.json).
+                       #   literals in src/three/ui/** (.ts AND .css; fails on a NET increase vs scripts/ui-baseline.json).
+npm run verify:tokens  # esbuild-bundles gen-tokens.ts --check: fails if mockups/tokens.css DRIFTED from
+                       #   theme.ts. Regenerate with `npm run gen:tokens` and commit the result.
 npm run verify         # the whole pure-Node suite above, chained (the fast local gate; ~seconds)
 ```
 

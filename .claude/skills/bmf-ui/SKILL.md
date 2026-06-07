@@ -40,6 +40,7 @@ the cardinal law of the whole UI layer, and the `verify:ui` gate gives it teeth.
 | Knowledge | The one source | Rule |
 | --- | --- | --- |
 | Colour / surface / blur / shadow / type / radius **tokens** | [`src/three/ui/theme.ts`](../../../src/three/ui/theme.ts) — the `UI`, `HOME`, `BOARD`, `GRADE`, `FS`, `FW`, `R` objects | Read a token. If a value isn't there, **add it there first**, then use it. Never hard-code a `#hex`/`rgba()`/`blur()`/`px` in a module. |
+| Token **CSS custom properties** (the `var(--x)` layer) + the mockups' tokens | [`src/three/ui/tokens.ts`](../../../src/three/ui/tokens.ts) (`tokenDecls`/`tokenBlock`, derived FROM `theme.ts`) → `npm run gen:tokens` writes [`mockups/tokens.css`](../../../mockups/tokens.css) | The live UI injects it (`.bmf-app` via `home/styles.ts`; `:root` globally via the kit). **Never hand-mirror a token value** into CSS or a mockup — change `theme.ts`, then `gen:tokens`. `verify:tokens` guards drift. |
 | The **prose** system — roles, state semantics, the two registers, motion, anti-patterns | [`DESIGN.md`](../../../DESIGN.md) (repo root) | The human spec. Read it before any visual change. `theme.ts` is its machine-readable half. |
 | Reusable **components** (button, card, modal, field, badge, stat, list row, progress, tabs, headers) | [`src/three/ui/components/`](../../../src/three/ui/components/) (+ spec `docs/specs/ui-component-system.md`) | Compose these. Don't hand-roll a rival button/card. |
 | **Placement / responsive / safe-area** | [`src/three/ui/layout.ts`](../../../src/three/ui/layout.ts) + `anchor()` in `theme.ts` | Mount via `anchor(place)`; read breakpoints from `layout.ts`. Don't absolutely-position by hand. |
@@ -84,10 +85,15 @@ so the law can't drift per screen. New surface? Ask DESIGN.md's question: is the
    `makeIconButton`, `makeCard`, `openModal`, `makeField`, `makeBadge`/`makeGradeChip`/`makeStars`,
    `makeStat`, `makeListRow`, `makeProgress`, `makeTabs`, and the `sectionHeading`/`selectHeading`/
    `stepHeading` headers. Screens **compose components**, not raw `div`s. This is the layer that
-   killed the "5 rival buttons" problem — keep it that way.
+   killed the "5 rival buttons" problem — keep it that way. The **one button of record** is `.btn`:
+   `makeButton()` emits it and string-markup screens write the same `class="btn …"`, both styled once
+   in `components/base.ts` (no round pills, rugged `R.lg`). Registers: `.cockpit` (cyan) vs the warm
+   default — note `makeButton`'s TS default `register` is `cockpit`, so pass `register:'fight'` for a
+   warm brand button.
 2. **A theme helper** ([`theme.ts`](../../../src/three/ui/theme.ts)) when there's no component for
    it: `el`/`div` (inline-styled element), `frosted()` (the glass panel), `scrim()` (modal
-   backdrop), `button()` (round touch button), `anchor(place)` (safe-area placement), `setBlur()`,
+   backdrop), `button()` (the round **HUD touch** control — a separate widget, NOT the `.btn` system),
+   `anchor(place)` (safe-area placement), `setBlur()`,
    `makeCanvas()` (DPR-crisp 2D canvas for tapes/radar), `prefersReducedMotion()`.
 3. **Raw `div` + tokens** only for a true one-off — and still every value is a `UI`/`FS`/`FW`/`R`
    token, never a literal.
@@ -142,6 +148,10 @@ burning world:
   (`glow`/`emberGlow`) and short transitions, not neon and not new per-frame cost.
 - **Don't bleed vehicle-identity colour into functional UI.** A data bar / button / status is
   `accent`, not the aircraft's livery red/clay (that lives only on the icon halo + tagline).
+- **Never `innerHTML` user or remote text.** There's no `escapeHtml` helper. The callsign is
+  sanitized (`cleanCallsign` — at input *and* in `loadProfile` on read), but anything carrying
+  user/remote strings — leaderboard names (remote, **not** re-sanitized on display), free input —
+  must be built with `textContent` or DOM nodes, never interpolated into an `innerHTML` template.
 
 When the task is a *taste* call ("is this on-brand / does it look slop / which of these reads
 better") rather than a build, that's the **creative-director** skill's job — bring it in to judge,
@@ -155,19 +165,23 @@ There's no test runner; the UI is verified by a type gate, a token-drift gate, a
    not sufficient: it happily ships an ugly or scrolling screen.
 2. **`npm run verify:ui`** — the design-system gate (`scripts/verify-ui.mjs`, plain Node, instant).
    It checks two things: **(a)** exactly one `export const UI` token object exists, and **(b)** the
-   count of raw colour/blur literals per file in `ui/**` has not risen above
+   count of raw colour/blur literals per file in `ui/**` (now scanning **`.ts` AND `.css`**, so
+   styling moved into a stylesheet still counts) has not risen above
    `scripts/ui-baseline.json`. If you legitimately added art literals (an allowlisted file), re-baseline
    with `npm run verify:ui -- --update` **and say so in your summary** — don't silently ratchet it up.
 3. **Look at it.** The system can't see layout, hierarchy, or scroll.
    - **`?kit`** — `main.ts` mounts the live component gallery (`ui/components/gallery.ts`) at the
      `?kit` URL: every component × state on one page. Check new/changed kit pieces here.
-   - **`mockups/`** — static HTML previews of the screens that read `mockups/kit.css`. Useful as a
-     design reference, but **they are a hand-maintained parallel copy, not generated from `theme.ts`** —
-     trust the live TS UI over a mockup if they disagree, and don't treat editing a mockup as
-     shipping a change.
+   - **`mockups/`** — static HTML previews. Their design **tokens are generated**: `mockups/tokens.css`
+     is written from `theme.ts` by `npm run gen:tokens` (kit.css `@import`s it; `verify:tokens` fails
+     the build on drift), so token values no longer drift. The per-screen HTML and the `kit.css`
+     component CSS are still hand-maintained — trust the live TS UI if they disagree, and don't treat
+     editing a mockup as shipping a change.
    - **Live headless / a real phone** — boot the screen (`?m=<id>&qa`, `?daily`, bare URL for
      title→home) and confirm it **fits one viewport with no page scroll**, occludes cleanly, and
      reads against bright terrain. The 60fps + thumb-reach targets are real-device facts; note when
      a human should phone-test. See **bmf-verify** for the headless harness.
 
+After any `theme.ts` **token** change, run **`npm run gen:tokens`** and commit the regenerated
+`mockups/tokens.css` (generated, do-not-hand-edit; **`verify:tokens`** fails the deploy if it's stale).
 Then run the full `npm run verify` before handing off, so a UI change didn't break a sibling gate.
