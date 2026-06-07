@@ -2,9 +2,14 @@
 
 > The DOM UI layer (HUD, touch controls, menus, overlays) speaks one visual language: a
 > **glass cockpit**. This file is the prose system. The machine-readable source of truth is
-> [`src/three/ui/theme.ts`](src/three/ui/theme.ts) — every colour, surface, and effect lives
-> in its `UI` token object. **Read a value from `theme.ts`; never hard-code a colour/blur/shadow
-> in a module.** If a value isn't in `theme.ts`, add it there first.
+> [`src/three/ui/theme.ts`](src/three/ui/theme.ts) — every colour, surface, and effect lives in its
+> `UI` token object (plus the `HOME`/`BOARD`/`GRADE` ramps and `FS`/`FW`/`R` scales).
+> [`tokens.ts`](src/three/ui/tokens.ts) derives the CSS custom properties FROM those consts;
+> `npm run gen:tokens` writes them to the committed, **do-not-hand-edit**
+> [`mockups/tokens.css`](mockups/tokens.css) so the static mockups read the same tokens as the live
+> UI, and `npm run verify:tokens` fails the build if it drifts. **Read a value from `theme.ts`;
+> never hard-code a colour/blur/shadow, and never hand-mirror a token value, in a module or a
+> mockup.** If a value isn't in `theme.ts`, add it there first (then `gen:tokens`).
 >
 > Scope note: this governs the **2D DOM UI only**. The 3D world (terrain, water, fire, smoke,
 > sky, post-fx) is procedural GLSL/geometry tuned in [`src/three/config.ts`](src/three/config.ts)
@@ -172,6 +177,28 @@ logo). Inside the cockpit, that job stays with `accent` (cyan).
 These are **identity** colours, used only on the aircraft's **icon halo** and tagline. They must
 **not** drive functional UI (a spec meter, a button, a status). Functional fills use `accent`.
 
+## Buttons
+
+There is **one button of record** — the `.btn` class, defined once in the component kit
+([`ui/components/base.ts`](src/three/ui/components/base.ts) `injectKitStyles`, injected globally on
+`:root`) and emitted by [`makeButton()`](src/three/ui/components/Button.ts). Screens get it two ways
+and they are the **same** button: imperative code calls `makeButton({…})`; string-markup screens
+write `class="btn …"`. Don't hand-roll a `<button>` with inline styles.
+
+- **Variants:** `primary` (gold CTA) · `secondary` (warm glass) · `ghost` (quiet) · `danger` (warn),
+  plus an `ember` CSS class for warm-outline string markup. **No round pills** — every button uses
+  the rugged `R.lg` (10px) radius.
+- **Registers (two-register law):** the CSS default is the warm **fight** look; add `.cockpit` for
+  the cyan **instrument** look. `makeButton`'s `register` option does the same — note its TS default
+  is `cockpit`, so pass `register:'fight'` for a warm brand button.
+- **Sizes:** `sm` · `md` (default) · `lg`; add `block` for full-width.
+- **States:** `locked` (gated, non-interactive) · `is-disabled`/`[disabled]` · `is-loading` (spinner).
+  `makeButton` exposes `setEnabled`/`setLoading`/`setLocked`.
+- **Intentional carve-outs (NOT drift):** the in-flight HUD round touch controls (`theme.button()` —
+  joystick / DROP / eye / help) are a separate widget; and the **title-screen hero PLAY** is a
+  deliberately larger, glowier brand moment (token-driven, but bigger than a standard button). Both
+  are by design — don't fold them into `.btn`.
+
 ## Typography
 
 System font stack everywhere (zero binary assets, instant on mobile). The cockpit's character
@@ -224,9 +251,10 @@ thumb, skeleton-shimmer gradient) keep their tuned alphas. Those are rendering d
   home-indicators in landscape.
 - **Content column:** full-screen overlays centre a `max-width` column (mission select uses
   `980px`; leaderboard `640px`) so everything aligns to one left edge.
-- **Radii (`R`):** `R.round` 50% (LEDs, avatars, round buttons) · `R.pill` 99px (chips, tabs,
-  badges, fill tracks) · `R.xs` 2 · `R.sm` 8 · `R.md` 12 (cards, chips — the default) ·
-  `R.lg` 10 (buttons + panels — tighter/rugged) · `R.xl` 18 (modals, hero cards). One scale; pick the nearest step.
+- **Radii (`R`):** `R.round` 50% (LEDs, avatars, and the in-flight HUD touch buttons *only*) ·
+  `R.pill` 99px (chips, tabs, badges, fill tracks — **not** buttons) · `R.xs` 2 · `R.sm` 8 ·
+  `R.md` 12 (cards, chips — the default) · `R.lg` 10 (**the one `.btn` radius** + panels —
+  tighter/rugged, never a round pill) · `R.xl` 18 (modals, hero cards). One scale; pick the nearest step.
 - **Density:** comfortable. Pods/cells size from `layout.ts` breakpoints (`podSize`), shrinking
   ~8% on compact. The instrument strip wraps to a second row on a narrow phone, capped so it never
   collides with the radar.
@@ -262,6 +290,11 @@ only adaptive runtime lever.
 - **Don't use borders for separation.** Hairline strokes (`stroke`/`hair`) and surface contrast.
 - **Don't stack backdrop-blur layers.** One frosted surface blurs once; children are transparent.
 - **Don't over-glow.** Glow is a quiet instrument backlight, not neon.
+- **Don't hand-roll a button.** There's one `.btn` of record (`makeButton()` or `class="btn …"`).
+  The only exceptions are the HUD touch controls (`theme.button()`) and the title-screen hero PLAY.
+- **Don't `innerHTML` dynamic, user, or remote data.** There's no `escapeHtml` helper. The callsign
+  is sanitized (at input *and* on load), but build anything carrying user/remote text (leaderboard
+  names, free input) with `textContent` or DOM nodes — never interpolated into `innerHTML`.
 
 ## Decisions Log
 
@@ -272,3 +305,6 @@ only adaptive runtime lever.
 | 2026-06-04 | Leaderboard overlay made opaque + blurred | The old `0.9/0.96` gradient with no backdrop-blur let the mission grid bleed through behind an empty board. |
 | 2026-06-04 | Keep the system font stack (no display face) | Honors the zero-binary-asset ethos and mobile perf; the cockpit's character is instrument/number-driven, not type-personality-driven. |
 | 2026-06-04 | Tokenized type / weight / radius (`FS`/`FW`/`R`) + `track` fill | Swept ~150 inline `px` across theme/HUD/Input/MissionSelect/Leaderboard/CloudSave onto role-named scales; normalized a few odd steps (12.5/11.5→12, 19→18px; radii 7→8, 10/11→12, 16/20→18). Canvas numerals, the podium's off-scale emphasis, and injected-CSS-string stops stay inline by design. |
+| 2026-06-07 | Single token source: `theme.ts` → `tokens.ts` → generated `mockups/tokens.css` | `mockups/kit.css` hand-mirrored the tokens and drifted silently (its own README admitted it). Now mockups `@import` a generated file; `gen:tokens` writes it and `verify:tokens` (in the deploy gate) fails on drift. `verify:ui` now also scans `.css` so styling moved out of `.ts` can't hide. Added `textSubtle` for the ~0.82 body whites that had no token. (107a7f3, 1e05d7b) |
+| 2026-06-07 | One button of record: global `.btn`, emitted by `makeButton`; round pills removed | The button had re-forked into `.bmf-app .btn` (8px + a round-pill `.ember`) vs `makeButton` (10px, inline styles). Unified into one global `.btn` in the kit; `makeButton` emits the classes; rugged `R.lg` radius, no pills, `cockpit`/`fight` registers, `locked` folded in. HUD touch controls + the title hero PLAY are documented carve-outs. (f340607, 3198f4a) |
+| 2026-06-07 | Callsign sanitized on load, not just on save | `loadProfile()` runs `cleanCallsign`, closing a tampered-storage / cloud-restore self-XSS at the one chokepoint every screen reads through. (107a7f3) |

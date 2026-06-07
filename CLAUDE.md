@@ -50,6 +50,9 @@ npm run build      # tsc --noEmit type-gate, then vite build → dist/ (static s
 npm run typecheck  # tsc --noEmit only
 npm run preview    # serve the production build locally
 npm run verify:campaign  # esbuild-bundle the pure sims → Node; prove every mission is completable
+npm run verify     # full pure-Node gate suite (campaign·crash·voice·feel·world·coach·ui·tokens)
+npm run gen:tokens # regenerate mockups/tokens.css FROM theme.ts — run after ANY token change
+npm run verify:tokens    # CI check: mockups/tokens.css is in sync with theme.ts (red ⇒ run gen:tokens)
 npm run lint       # eslint over src/
 npm run format     # prettier over src/
 ```
@@ -78,6 +81,12 @@ Three escalating levels (use the cheapest that catches your bug class):
    `__game.heliSim.position` (teleport) drive it. URL router: `?autostart`, `?m=<missionId>`.
    `scripts/shot.mjs` is a full screenshot example. The **`bmf-verify`** skill documents the
    "MCP Playwright browser is locked" workaround (vite preview + temp `playwright-core`).
+
+The full pure-Node gate is **`npm run verify`** (campaign · crash · voice · feel · world · coach ·
+ui · tokens); **`npm run verify:all`** adds the headless render/shader smoke (`verify:render`). All
+are wired into `deploy.yml`, so a red gate blocks the deploy. **`verify:tokens`** fails when
+`mockups/tokens.css` has drifted from `theme.ts` — regenerate with **`npm run gen:tokens`** and
+commit the result (it is generated; do not hand-edit it).
 
 ## Architecture (the live 3D build, `src/three/`)
 
@@ -314,10 +323,18 @@ the right block.
   was removed this way once the 3D build was solid).
 - `Training/` and `water-b1-beauty.jpeg` hold concept/reference art — **not** game assets.
 - **DOM UI = one design system.** All HUD / menu / overlay styling reads tokens from
-  `src/three/ui/theme.ts` (the single `UI` palette + shared `el`/`div`/`setBlur`/`anchor`/`frosted`
-  helpers). The prose system — colour/state semantics, type scale, motion, anti-patterns — lives in
-  **`DESIGN.md`** at the repo root; read it before any visual/UI change. Never add a second `UI`
-  token object or hard-code a colour/blur/shadow in a module; add a token to `theme.ts` instead.
+  `src/three/ui/theme.ts` — the machine source: the `UI` palette + the `HOME`/`BOARD`/`GRADE` ramps +
+  `FS`/`FW`/`R` scales, plus shared `el`/`div`/`setBlur`/`anchor`/`frosted` helpers.
+  `src/three/ui/tokens.ts` (`tokenDecls`/`tokenBlock`) is the **derived CSS-custom-property layer**
+  built FROM those consts: the live UI injects it (`.bmf-app` via `home/styles.ts`; `:root` globally
+  via the kit `components/base.ts` `injectKitStyles`), and `npm run gen:tokens` writes the same vars
+  to `mockups/tokens.css` (mockups `@import` it; `verify:tokens` guards drift). Above tokens sits the
+  component kit (`ui/components/`) — the **one button of record** is `.btn` (defined in
+  `injectKitStyles`, emitted by `makeButton()`; no round pills). The prose system — colour/state
+  semantics, type scale, motion, the button system, anti-patterns — lives in **`DESIGN.md`** at the
+  repo root; read it before any visual/UI change. Never add a second `UI` token object, **never
+  hand-mirror a token value** (consume `theme.ts`/`tokens.ts`), and never hard-code a
+  colour/blur/shadow in a module — add it to `theme.ts` (then `gen:tokens`).
 - **No-scroll, single-viewport UI (hard rule).** The game is a fixed-viewport app, not a scrolling
   web page — **the page itself must never scroll.** Lock the app surface to the viewport
   (`100dvh`/`100svh`, body non-scrolling) and size every screen / menu / overlay to fit *above* the
