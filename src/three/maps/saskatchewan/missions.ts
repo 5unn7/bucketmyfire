@@ -65,10 +65,10 @@ export const SASKATCHEWAN_MISSIONS: MissionDef[] = [
     id: 'hover-training',
     index: 1,
     name: 'Low Hover Drill',
-    brief: 'Precision low-hover certification. Fly to five marked clearings on land and hold a steady hover three feet off the ground for twelve seconds at each — skids off the dirt, NOT touching, NOT climbing.',
-    tagline: 'Three feet off the ground. Don\'t touch. Five clearings.',
+    brief: 'Precision low-hover certification. Fly to five marked clearings on land and hold a low, steady hover just off the ground — about three feet — for twelve seconds at each. Settle in, hold it still, don\'t climb away.',
+    tagline: 'Low and steady, three feet off the ground. Five clearings.',
     intel:
-      "No bucket today, Water-1 — fundamentals. A precision low hover is the hardest thing you can do with this aircraft: you're three feet from the rotor wash hitting dirt, ground effect pushing back, every control input amplified. We've marked five clearings across the sector — La Ronge first, then the four corners: Buffalo Narrows, Southend, Denare Beach, Cypress Hills. Fly to each, descend to three feet, and HOLD it for twelve seconds. Don't touch the ground. Don't drift. Don't climb. When the timer clears, move on.",
+      "No bucket today, Water-1 — fundamentals. A precision low hover is the hardest thing you can do with this aircraft: three feet off the dirt, ground effect pushing back, every control input amplified. We've marked five clearings across the sector — La Ronge first, then the four corners: Buffalo Narrows, Southend, Denare Beach, Cypress Hills. Fly to each, descend low, and HOLD it steady for twelve seconds. Keep it down, keep it still, don't climb away. When the timer clears, move on.",
     difficulty: 1,
     seed: 987,
     map: 'saskatchewan',
@@ -91,7 +91,7 @@ export const SASKATCHEWAN_MISSIONS: MissionDef[] = [
     objectives: [{ kind: 'deliver', n: 5, label: 'Complete all five low-hover drills' }],
     fails: [],
     script: [
-      { id: 'start', trigger: { at: 'start' }, actions: [{ do: 'comms', speaker: 'dispatch', text: "Water-1, low-hover certification today. Fly to each marked clearing, descend to three feet, and hold it for twelve seconds without touching. La Ronge first — the four corners after." }] },
+      { id: 'start', trigger: { at: 'start' }, actions: [{ do: 'comms', speaker: 'dispatch', text: "Water-1, low-hover certification today. Fly to each marked clearing, settle into a low, steady hover just off the ground, and hold it for twelve seconds. La Ronge first — the four corners after." }] },
       { id: 'leg1', trigger: { at: 'crewDelivered', n: 1 }, actions: [{ do: 'comms', speaker: 'dispatch', text: "Twelve seconds clean — good hold. Northwest to Buffalo Narrows next." }] },
       { id: 'leg2', trigger: { at: 'crewDelivered', n: 2 }, actions: [{ do: 'comms', speaker: 'dispatch', text: "Buffalo Narrows. Across the top to Southend in the northeast." }] },
       { id: 'leg3', trigger: { at: 'crewDelivered', n: 3 }, actions: [{ do: 'comms', speaker: 'dispatch', text: "Southend. Swing east to Denare Beach." }] },

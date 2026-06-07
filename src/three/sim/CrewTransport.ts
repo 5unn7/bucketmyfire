@@ -172,13 +172,13 @@ export class CrewTransport {
   hint(): string | null {
     if (this._delivered >= this._total) return null;
     if (this.active >= 0) {
-      if (this.zones[this.active].lowHover) return 'Hold the hover — 3 ft off the ground, stay airborne';
+      if (this.zones[this.active].lowHover) return 'Hold it low and steady — about 3 ft off the ground';
       if (this.zones[this.active].hover) return 'Hold the hover steady — crew on the line';
       return this._carrying ? 'Crew disembarking — hold it on the deck' : 'Crew boarding — hold it on the deck';
     }
     // nav hint toward next low-hover spot (no crew carry state)
     const nextLH = this.zones.find((z, i) => z.lowHover && z.single && !(this.done[i] || this.lost[i]));
-    if (nextLH) return `Hover low over ${nextLH.label} — descend to 3 ft, hold it`;
+    if (nextLH) return `Hover low over ${nextLH.label} — settle to ~3 ft, hold it steady`;
     if (this._carrying) {
       const tgt = this.zones.find((z, i) => z.role === 'unload' && !(z.single && (this.done[i] || this.lost[i])));
       if (!tgt) return null;
@@ -243,7 +243,11 @@ export class CrewTransport {
   /** Is the heli holding zone `i`? A LOW HOVER zone needs near-ground AGL; a HOVER zone needs an
    *  airborne mid-altitude hover; a normal zone needs skids down and stopped. */
   private holding(i: number, agl: number, speed: number): boolean {
-    if (this.zones[i].lowHover) return agl > 0 && agl <= MISSIONS.lowHoverAglMax && speed <= MISSIONS.lowHoverSpeed;
+    // LOW HOVER: be LOW (within the ground-relative ceiling) and STEADY. `agl` already rides the
+    // flight floor (groundHeight + skid clearance), so this is measured from the GROUND. We accept the
+    // settled-on-the-floor rest (agl ≈ 0 ≈ skid height ≈ 3 ft off the dirt) up to the ceiling — no strict
+    // "must stay airborne" lower bound, which was unholdable since the heli naturally rests at the floor.
+    if (this.zones[i].lowHover) return agl <= MISSIONS.lowHoverAglMax && speed <= MISSIONS.lowHoverSpeed;
     if (this.zones[i].hover) return agl > MISSIONS.landAgl && agl <= MISSIONS.hoverAglMax && speed <= MISSIONS.hoverSpeed;
     return agl <= MISSIONS.landAgl && speed <= MISSIONS.landSpeed;
   }

@@ -1105,7 +1105,9 @@ export const MISSIONS = {
   // touchdown for the dwell while the crew board / disembark the cabin — then on to the next.
   // One crew at a time; no slung basket, no extra button — just fly it down and stop.
   lzRadius: 14, // horizontal distance (units) within which a touchdown counts as "on the zone" (narrow pad)
-  lzClearRadius: 20, // forest cleared within this of an LZ so the skids reach the ground (inner core fully clear)
+  lzClearRadius: 30, // forest cleared within this of an LZ so the skids reach the ground (inner core fully
+  // clear within radius·yardInner ≈ 15u — wider than lzRadius so NO trees sit beside the hover/landing spot
+  // where the rotor could strike; trees feather back in only outside the whole acceptance circle)
   landAgl: 1.2, // height above the eased pad floor (units) below which the heli counts as LANDED (skids down)
   landSpeed: 2.0, // airspeed (units/s) below which the heli counts as stopped (no boarding on the roll)
   pickupSec: 2.2, // landed dwell to BOARD a crew at a pickup/base zone
@@ -1116,12 +1118,14 @@ export const MISSIONS = {
   hoverSec: 5, // seconds of held hover over a hover-zone to complete the drop (the "5-second hover" drill)
   hoverAglMax: 12, // ceiling (units above the eased floor) for a valid hover — above landAgl, below this
   hoverSpeed: 3.5, // airspeed (units/s) below which the hover counts as "holding station" (a touch looser than landSpeed)
-  // LOW HOVER DRILL: nap-of-the-earth precision hover (3-4 ft off the ground, barely airborne).
-  // AGL is measured from the flight floor (groundHeight + groundClearance); at floor level the
-  // heli is sitting on the dirt. The low-hover band is just above that — not touching, not climbing.
+  // LOW HOVER DRILL: nap-of-the-earth precision hover, low and steady over the dirt. AGL is measured from
+  // the flight floor (groundHeight + skid clearance ≈ 3 ft), so the band is GROUND-relative. The drill
+  // counts from the settled rest on the floor up to the ceiling — the skill is holding it LOW and STILL,
+  // not threading a knife-edge above the rest point (which was unholdable). Keep `lowHoverAglMax` modest so
+  // a high hover doesn't count.
   lowHoverSec: 12, // seconds to hold the precision low hover at each spot
-  lowHoverAglMax: 2.2, // ceiling for a valid low hover (≈10 ft above the floor at 4.5 ft/unit)
-  lowHoverSpeed: 2.0, // max airspeed (units/s) — must be almost stationary
+  lowHoverAglMax: 2.2, // ceiling for a valid low hover (≈10 ft above the ground at 4.5 ft/unit)
+  lowHoverSpeed: 2.5, // max airspeed (units/s) — must be near-stationary (a touch forgiving for the drill)
   zoneSmoke: 0x39d0ff, // marker-smoke / ring tint for an ACTIVE (next) zone (cyan)
   zoneSmokeDone: 0x5a6b72, // tint once a zone is satisfied (greyed out)
   zoneHome: 0x5fe0a0, // persistent tint for the reusable HOME base zone — always lit, distinct green from the cyan LZs
