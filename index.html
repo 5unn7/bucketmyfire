@@ -94,174 +94,22 @@
         }
       }
 
-      /* Cold-start splash — the FIGHT register (warm ember), painted from static HTML on the
-         very first frame, before ~1MB of game JS parses. The hero is an animated ASCII flame
-         (frames swapped by the inline script below). Removed the moment the game signals its
-         first rendered frame ('bmf:ready'). */
-      #bmf-splash {
-        position: fixed;
-        inset: 0;
-        z-index: 9999;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: 20px;
-        /* Ember glow rising from where the flame sits, over near-black — the wildfire register. */
-        background: radial-gradient(130% 100% at 50% 78%, #2a120b 0%, #150a07 46%, #090605 100%);
-        color: #f4ead9;
-        transition: opacity 0.5s ease;
-        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-        -webkit-font-smoothing: antialiased;
-      }
-      #bmf-splash.bmf-hide {
-        opacity: 0;
-        pointer-events: none;
-      }
-      /* The ember-rise loader hero — the brand icon mark, built from inline SVG geometry so it
-         paints on the first frame with zero asset requests. Flames flicker on their own clocks,
-         the chevron holds as a steady ember bed, and embers drift up off the chevron edge. Pure
-         CSS — no JS drives it (unlike the old ASCII flame). */
-      #bmf-spin {
-        position: relative;
-        width: 96px;
-        height: 122px;
-        display: grid;
-        place-items: center;
-      }
-      #bmf-spin .mark {
-        width: 58px;
-        fill: #ff7a2f;
-        z-index: 1;
-        animation: bmf-glow 0.5s ease-in-out infinite alternate,
-          bmf-flicker 0.13s steps(2, end) infinite;
-      }
-      #bmf-spin .mark path,
-      #bmf-spin .mark polygon {
-        transform-box: fill-box;
-      }
-      #bmf-spin .f1 {
-        transform-origin: center bottom;
-        animation: bmf-flick1 0.52s ease-in-out infinite alternate;
-      }
-      #bmf-spin .f2 {
-        fill: #ffd27a;
-        transform-origin: center bottom;
-        animation: bmf-flick2 0.71s ease-in-out infinite alternate;
-      }
-      #bmf-spin .chev {
-        transform-origin: center;
-        animation: bmf-bed 1.5s ease-in-out infinite;
-      }
-      /* Embers originate ON the chevron and rise; per-spark --dx drift + --by start nudge. */
-      #bmf-spin .spark {
-        position: absolute;
-        bottom: calc(44px + var(--by, 0px));
-        left: 50%;
-        width: 5px;
-        height: 5px;
-        z-index: 2;
-        border-radius: 50%;
-        /* A glowing cinder, not a dot: white-hot core → amber → soft ember falloff to transparent,
-           so the edge reads as glow. Per-ember size + speed variance lives inline on each span. */
-        background: radial-gradient(
-          circle,
-          #fff4da 0%,
-          #ffce6a 38%,
-          rgba(255, 140, 55, 0.55) 68%,
-          rgba(255, 110, 40, 0) 100%
-        );
-        box-shadow: 0 0 6px 1px rgba(255, 145, 55, 0.5);
-        filter: blur(0.4px);
-        opacity: 0;
-        will-change: transform, opacity;
-        animation: bmf-rise 1.9s ease-out infinite;
-      }
-      @keyframes bmf-flick1 {
-        from { transform: scaleY(0.9) skewX(3deg); opacity: 0.75; }
-        to   { transform: scaleY(1.07) skewX(-4deg); opacity: 1; }
-      }
-      @keyframes bmf-flick2 {
-        from { transform: scaleY(1.06) skewX(-3deg); opacity: 1; }
-        to   { transform: scaleY(0.9) skewX(4deg); opacity: 0.72; }
-      }
-      @keyframes bmf-bed {
-        0%, 100% { opacity: 0.8; }
-        50% { opacity: 1; }
-      }
-      /* Warm glow flicker — floor kept high enough that even a frame frozen during World gen still
-         clearly glows. A touch under the demo's 10–20px / .45–.7. */
-      @keyframes bmf-glow {
-        from { filter: drop-shadow(0 0 10px rgba(255, 120, 40, 0.55)) brightness(0.98); }
-        to   { filter: drop-shadow(0 0 22px rgba(255, 170, 75, 0.82)) brightness(1.08); }
-      }
-      /* Fast candle flicker layered over the slow glow — a subtle, irregular brightness wobble. */
-      @keyframes bmf-flicker {
-        0%   { opacity: 1; }
-        50%  { opacity: 0.93; }
-        100% { opacity: 1; }
-      }
-      /* Rising cinder: fades in fast, TWINKLES (irregular brightness) as it climbs, SWAYS left/right
-         on the heat plume (±~3px on top of the per-ember --dx drift), and COOLS — shrinking toward a
-         dim mote before it winks out. The flicker + sway are what separate an ember from a dot. */
-      @keyframes bmf-rise {
-        0%   { opacity: 0;    transform: translate(0, 0) scale(0.5); }
-        10%  { opacity: 1;    transform: translate(calc(var(--dx, 0px) * 0.15 - 1px), -8px) scale(1); }
-        28%  { opacity: 0.5;  transform: translate(calc(var(--dx, 0px) * 0.4 + 3px), -24px) scale(0.92); }
-        48%  { opacity: 1;    transform: translate(calc(var(--dx, 0px) * 0.6 - 3px), -42px) scale(0.78); }
-        70%  { opacity: 0.45; transform: translate(calc(var(--dx, 0px) * 0.85 + 2px), -60px) scale(0.55); }
-        100% { opacity: 0;    transform: translate(var(--dx, 0px), -82px) scale(0.18); }
-      }
-      /* Reduced motion: the GLOBAL rule at the top of this <style> zeroes every animation duration
-         site-wide, which would otherwise freeze the loader into a dead icon. A loading indicator's
-         subtle motion is functional feedback ("still working"), so keep a GENTLE, non-flashing
-         version alive: a slow glow breath + slow-drifting embers, no fast flame flicker. The
-         id+class selectors out-specify the global `*` rule, so these !important values win. */
-      @media (prefers-reduced-motion: reduce) {
-        #bmf-spin .mark {
-          animation: bmf-glow 2.6s ease-in-out infinite alternate !important;
-        }
-        #bmf-spin .spark {
-          display: block;
-          animation-duration: 3.2s !important;
-          animation-iteration-count: infinite !important;
-        }
-      }
+      /* Cold-start splash CSS (the #bmf-splash full-screen wrapper + the .bmf-spin ember loader) is
+         INJECTED here at serve+build time by the `bmf-splash` Vite plugin (vite.config.ts), from the
+         ONE shared source src/three/ui/spinner.ts — the same module the in-app LoadingOverlay imports,
+         so the two loaders can never drift. It is appended AFTER this style block, so its
+         reduced-motion override (.bmf-spin) still out-specifies the global `*` kill above. The splash
+         markup is injected at the start of the document body with the same source. NOTE: do not write a
+         literal body/style/head start-tag in these comments — the plugin's injector regex-matches the
+         first such tag and would inject into the comment. */
     </style>
   </head>
   <body>
-    <!-- Instant-paint cold-start splash (see #bmf-splash in <style>). Static markup so the first tap
-         on a shared link shows the branded ember-rise loader — the icon mark, not a black void —
-         while the game JS downloads. The script below removes it once the game signals its first
+    <!-- The instant-paint cold-start splash (#bmf-splash) is injected as the first child of the
+         document body by the `bmf-splash` Vite plugin (vite.config.ts) from src/three/ui/spinner.ts, so
+         the first tap on a shared link shows the branded ember-rise loader — the icon mark, not a black
+         void — while the game JS downloads. The script below removes it once the game signals its first
          rendered frame ('bmf:ready'), with a 12s safety fallback. -->
-    <div id="bmf-splash" role="status" aria-label="Loading Bucket My Fire">
-      <div id="bmf-spin" aria-hidden="true">
-        <span class="spark" style="--dx: -4px; --by: -2px; left: 38%; width: 5px; height: 5px; animation-delay: 0s; animation-duration: 1.9s"></span>
-        <span class="spark" style="--dx: 5px; --by: 3px; left: 44%; width: 3px; height: 3px; animation-delay: 0.3s; animation-duration: 2.3s"></span>
-        <span class="spark" style="--dx: -7px; --by: 5px; left: 48%; width: 6px; height: 6px; animation-delay: 0.6s; animation-duration: 1.7s"></span>
-        <span class="spark" style="--dx: 4px; --by: 1px; left: 52%; width: 4px; height: 4px; animation-delay: 0.9s; animation-duration: 2.05s"></span>
-        <span class="spark" style="--dx: -5px; --by: -3px; left: 56%; width: 5px; height: 5px; animation-delay: 1.15s; animation-duration: 1.8s"></span>
-        <span class="spark" style="--dx: 8px; --by: 4px; left: 62%; width: 3px; height: 3px; animation-delay: 0.45s; animation-duration: 2.4s"></span>
-        <span class="spark" style="--dx: -2px; --by: 0px; left: 41%; width: 4px; height: 4px; animation-delay: 1.4s; animation-duration: 2.15s"></span>
-        <span class="spark" style="--dx: 6px; --by: -4px; left: 59%; width: 6px; height: 6px; animation-delay: 0.75s; animation-duration: 1.6s"></span>
-        <span class="spark" style="--dx: 1px; --by: 2px; left: 50%; width: 7px; height: 7px; animation-delay: 1.55s; animation-duration: 1.95s"></span>
-        <span class="spark" style="--dx: -6px; --by: 6px; left: 46%; width: 4px; height: 4px; animation-delay: 1.25s; animation-duration: 2.1s"></span>
-        <svg class="mark" viewBox="0 0 149.7 184.72">
-          <path
-            class="f1"
-            d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"
-          />
-          <path
-            class="f2"
-            d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"
-          />
-          <polygon
-            class="chev"
-            points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"
-          />
-        </svg>
-      </div>
-    </div>
     <noscript>
       <div
         style="
@@ -289,21 +137,21 @@
     <div id="game"></div>
     <script>
       /* Remove the splash once the game signals its FIRST rendered frame ('bmf:ready', fired from the
-         TitleScreen / mission render loop — and the fatal-message path — by splashSignal.ts). The old
-         trigger fired on canvas-MOUNT, which happens BEFORE the first frame composites, so on a slower
-         device the splash could fade onto a black canvas mid shader-compile. Waiting for the first real
-         frame hands the splash off to actual pixels. A hard 12s fallback can never strand a visitor on
-         the loading screen. No import — just a window event — so this stays in the static HTML. */
+         TitleScreen / mission render loop — the home hub — and the fatal-message path — by
+         splashSignal.ts). The old trigger fired on canvas-MOUNT, which happens BEFORE the first frame
+         composites, so on a slower device the splash could fade onto a black canvas mid shader-compile.
+         Waiting for the first real frame hands the splash off to actual pixels. A hard 12s fallback can
+         never strand a visitor on the loading screen. No import — just a window event — so this stays
+         in the static HTML. */
       (function () {
         var splash = document.getElementById('bmf-splash');
         if (!splash) return;
 
-        /* The ember-rise loader hero is pure inline SVG + CSS (see #bmf-spin in <style>) — it paints
-           and animates with no JS, so this script only handles tearing the splash down. Remove it once
-           the game signals its FIRST rendered frame ('bmf:ready', fired from the TitleScreen / mission
-           render loop — and the fatal-message path — by splashSignal.ts). Waiting for the first real
-           frame hands the splash off to actual pixels, not a black canvas mid shader-compile. A hard
-           12s fallback can never strand a visitor on the loading screen. */
+        /* The ember-rise loader hero is pure inline SVG + CSS (injected by the bmf-splash plugin from
+           src/three/ui/spinner.ts) — it paints and animates with no JS, so this script only handles
+           tearing the splash down. Remove it once the game signals its FIRST rendered frame
+           ('bmf:ready'). Waiting for the first real frame hands the splash off to actual pixels, not a
+           black canvas mid shader-compile. A hard 12s fallback can never strand a visitor here. */
         /* Minimum on-screen time. The ember-rise loader animates up from opacity 0 over ~1.7s; if
            the splash were torn down the instant the first frame paints (sub-second on a warm cache /
            the lightweight title route), the embers would never visibly rise and the glow would barely

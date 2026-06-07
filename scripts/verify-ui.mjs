@@ -29,8 +29,10 @@ const SRC_DIR = join(ROOT, 'src', 'three');
 const BASELINE = fileURLToPath(new URL('./ui-baseline.json', import.meta.url));
 
 // Pure ART surfaces — colours here are pixels drawn to <canvas>/SVG, not DOM styling the token system
-// governs. Excluded from the ratchet so legit drawing colour isn't counted as token drift.
-const ART_ALLOWLIST = new Set(['icons.ts', 'shareCard.ts', 'GridTitle.ts']);
+// governs. Excluded from the ratchet so legit drawing colour isn't counted as token drift. `spinner.ts`
+// is the cold-start ember loader: it MUST paint before any JS/tokens exist (it's inlined into index.html
+// by the bmf-splash Vite plugin), so it can't read theme.ts — its literals are unavoidable first-paint art.
+const ART_ALLOWLIST = new Set(['icons.ts', 'shareCard.ts', 'GridTitle.ts', 'spinner.ts']);
 
 // Same pattern verify uses to size this manually: a hex colour, an rgb/rgba(, or a blur(.
 const COLOR_RE = /#[0-9a-fA-F]{3,8}\b|\brgba?\(|\bblur\(/g;

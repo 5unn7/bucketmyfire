@@ -106,6 +106,12 @@ function routeMission(): void {
         location.assign(url.toString());
       },
     });
+    // The hub is pure DOM with no render loop, so nothing else fires the cold-start splash teardown
+    // — without this the splash lingers over the ready hub until the 12s safety net. On a warm-cache
+    // reload (the in-game ☰ HOME nav) the splash paints straight into the ~1MB JS-parse stall, which
+    // freezes its CSS embers mid-rise — reading as a "broken" frozen spinner. Hand off to the painted
+    // hub after two frames, exactly like the TitleScreen reveal.
+    requestAnimationFrame(() => requestAnimationFrame(() => signalFirstFrame()));
   };
 
   // Daily Burn: ?daily boots today's procedurally-seeded "clear every fire" challenge (FIX #1/#8) —

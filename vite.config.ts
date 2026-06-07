@@ -2,6 +2,7 @@ import { defineConfig, type Plugin } from 'vite';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { SPLASH_CSS, SPINNER_MARKUP, SPLASH_ATTRS } from './src/three/ui/spinner';
 
 // Project root (where index.html + shop.html live) — resolved for the multi-page build input.
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -143,11 +144,32 @@ function injectStructuredData(): Plugin {
   };
 }
 
+/**
+ * Cold-start splash. The branded ember loader (#bmf-splash) is injected — CSS into <head>, markup as
+ * the first child of <body> — from the ONE shared source `src/three/ui/spinner.ts`, the SAME module
+ * the in-app `LoadingOverlay` imports, so the two flame-mark loaders can't drift. Injected via
+ * transformIndexHtml (runs in BOTH dev-serve and build), so the splash is baked into the served HTML
+ * and paints on the first frame with zero runtime dependency. Tag-injection (not string-replace) keeps
+ * the markup out of Vite's HTML inline-proxy, matching the structured-data plugin above.
+ */
+function injectColdStartSplash(): Plugin {
+  return {
+    name: 'bmf-splash',
+    transformIndexHtml(_html, ctx) {
+      if (!ctx.path.endsWith('/index.html')) return; // game page only (not shop.html)
+      return [
+        { tag: 'style', attrs: { id: 'bmf-splash-css' }, children: SPLASH_CSS, injectTo: 'head' },
+        { tag: 'div', attrs: SPLASH_ATTRS, children: SPINNER_MARKUP, injectTo: 'body-prepend' },
+      ];
+    },
+  };
+}
+
 // bucketmyfire is a pure client-side Three.js game. Vite serves src/ in dev and
 // bundles a static site into dist/ for deployment to any static host.
 export default defineConfig({
   base: './',
-  plugins: [cacheModelsInDev(), injectStructuredData()],
+  plugins: [cacheModelsInDev(), injectStructuredData(), injectColdStartSplash()],
   server: {
     host: true, // expose on LAN so you can test on a real phone
     port: 5173,
