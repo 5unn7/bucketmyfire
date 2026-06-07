@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>bucketmyfire — Campaign</title>
+<link rel="stylesheet" href="kit.css">
+<style>
+  /* layout glue only */
+  .progbar{margin:14px 2px 4px;}
+  .progbar .bar-row{margin-bottom:6px;}
+
+  .mlist{display:flex;flex-direction:column;gap:11px;margin-top:6px;}
+
+  .mrow{display:flex;align-items:stretch;gap:13px;padding:12px;}
+  .mrow.locked{opacity:.5;}
+
+  /* thumb / poster on the left */
+  .mthumb{
+    position:relative;flex:0 0 auto;
+    width:60px;height:76px;border-radius:var(--r-sm);overflow:hidden;
+    display:grid;place-items:center;
+  }
+  .mthumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 42%;}
+  .mthumb .mthumb__scrim{position:absolute;inset:0;background:linear-gradient(180deg,rgba(4,7,10,0.05),rgba(4,7,10,0.62));}
+  .mthumb .brackets span{width:9px;height:9px;}
+
+  .mthumb__fallback{
+    width:100%;height:100%;border-radius:var(--r-sm);
+    display:grid;place-items:center;
+    background:linear-gradient(155deg,rgba(255,122,69,0.10),rgba(8,13,18,0.7));
+    border:1px solid var(--hair);
+  }
+  .mthumb__fallback .ghost{
+    font-family:var(--mono);font-size:26px;font-weight:var(--fw-black);
+    color:rgba(255,255,255,0.10);letter-spacing:-.02em;line-height:1;
+  }
+  .mrow.locked .mthumb__fallback{background:linear-gradient(155deg,rgba(255,255,255,0.03),rgba(8,13,18,0.6));}
+
+  /* body */
+  .mbody{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:5px;}
+  .mhead{display:flex;align-items:center;gap:8px;}
+  .mno{font-family:var(--mono);font-size:var(--fs-tag);letter-spacing:.2em;color:var(--dim);font-weight:var(--fw-bold);}
+  .mdiff{display:inline-flex;align-items:center;gap:1px;}
+  .mdiff .flame{width:9px;height:11px;}
+  .mdiff .flame path,.mdiff .flame polygon{fill:var(--ember);filter:drop-shadow(0 0 3px rgba(255,106,44,0.5));}
+  .mrow.locked .mdiff .flame path,.mrow.locked .mdiff .flame polygon{fill:rgba(255,255,255,0.22);filter:none;}
+
+  .mname{font-size:var(--fs-lg);font-weight:var(--fw-heavy);letter-spacing:.01em;color:#fff;line-height:1.05;}
+  .mrow.locked .mname{color:rgba(255,255,255,0.7);}
+
+  .mstat{display:flex;align-items:center;gap:9px;flex-wrap:wrap;}
+  .mstat .stars svg{width:13px;height:13px;}
+  .mstat .best{font-family:var(--mono);font-size:var(--fs-meta);color:var(--dim);}
+  .mstat .best b{color:var(--menu);font-weight:var(--fw-bold);}
+  .mstat .fly{font-family:var(--mono);font-size:var(--fs-meta);letter-spacing:.1em;text-transform:uppercase;color:var(--ember-hi);font-weight:var(--fw-bold);}
+  .mstat .gate{font-family:var(--mono);font-size:var(--fs-meta);color:var(--faint);}
+
+  /* NEXT mission emphasis */
+  .mrow.next{
+    border-color:var(--warm-stroke);
+    box-shadow:var(--shadow-card),0 0 22px rgba(255,106,44,0.16),inset 0 0 16px rgba(255,106,44,0.06);
+  }
+  .mrow.next .mname{text-shadow:0 0 14px rgba(255,140,60,0.35);}
+  .mrow.next .mthumb__fallback{background:linear-gradient(155deg,rgba(255,122,69,0.22),rgba(8,13,18,0.7));border-color:var(--warm-stroke);}
+  .mrow.next .mthumb__fallback .ghost{color:rgba(255,140,60,0.35);}
+</style>
+</head>
+<body data-screen="campaign" data-rail="false">
+<main class="app app--norail"><div class="app__pad">
+
+  <div class="appbar rise d1">
+    <button class="back" data-nav="home" aria-label="Back to home">
+      <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <div>
+      <div class="ttl">Saskatchewan</div>
+      <div class="sub">Campaign · 3 / 8 cleared</div>
+    </div>
+    <span class="spacer"></span>
+    <span class="chip chip--ghost">Boreal shield</span>
+  </div>
+
+  <div class="progbar rise d1">
+    <div class="bar-row"><span class="l">Theatre progress</span><span class="r">3 / 8 missions cleared</span></div>
+    <div class="bar"><i style="width:37.5%"></i></div>
+  </div>
+
+  <div class="sec rise d2"><span class="tag">Sortie Board</span><span class="line"></span><span class="stamp">8 Missions</span></div>
+
+  <div class="mlist">
+
+    <!-- 1 — CLEARED ★★★ -->
+    <article class="card clickable rise d2" data-nav="briefing">
+      <div class="mrow">
+        <div class="mthumb">
+          <img src="../public/images/Saskatchewan/FirstLight.webp" alt="" aria-hidden="true" decoding="async">
+          <div class="mthumb__scrim"></div>
+          <div class="brackets"><span></span><span></span><span></span></div>
+        </div>
+        <div class="mbody">
+          <div class="mhead">
+            <span class="mno">MISSION 01</span>
+            <span class="mdiff" aria-label="Difficulty 1">
+              <svg class="flame" viewBox="0 0 149.7 184.72"><polygon points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/><path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/><path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/></svg>
+            </span>
+          </div>
+          <div class="mname">First Light</div>
+          <div class="mstat">
+            <span class="stars" aria-label="3 of 3 stars">
+              <svg class="on" viewBox="0 0 24 24"><path d="M12 2l2.9 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77 5.82 21l1.18-6.88-5-4.87 7.1-1.01z"/></svg>
+              <svg class="on" viewBox="0 0 24 24"><path d="M12 2l2.9 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77 5.82 21l1.18-6.88-5-4.87 7.1-1.01z"/></svg>
+              <svg class="on" viewBox="0 0 24 24"><path d="M12 2l2.9 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77 5.82 21l1.18-6.88-5-4.87 7.1-1.01z"/></svg>
+            </span>
+            <span class="best">Best <b>8,420</b></span>
+            <span class="chip--status ok">Cleared</span>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <!-- 2 — CLEARED ★★☆ -->
+    <article class="card clickable rise d2" data-nav="briefing">
+      <div class="mrow">
+        <div class="mthumb"><div class="mthumb__fallback"><span class="ghost">02</span></div></div>
+        <div class="mbody">
+          <div class="mhead">
+            <span class="mno">MISSION 02</span>
+            <span class="mdiff" aria-label="Difficulty 1">
+              <svg class="flame" viewBox="0 0 149.7 184.72"><polygon points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/><path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/><path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/></svg>
+            </span>
+          </div>
+          <div class="mname">Spot Fire</div>
+          <div class="mstat">
+            <span class="stars" aria-label="2 of 3 stars">
+              <svg class="on" viewBox="0 0 24 24"><path d="M12 2l2.9 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77 5.82 21l1.18-6.88-5-4.87 7.1-1.01z"/></svg>
+              <svg class="on" viewBox="0 0 24 24"><path d="M12 2l2.9 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77 5.82 21l1.18-6.88-5-4.87 7.1-1.01z"/></svg>
+              <svg class="off" viewBox="0 0 24 24"><path d="M12 2l2.9 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77 5.82 21l1.18-6.88-5-4.87 7.1-1.01z"/></svg>
+            </span>
+            <span class="best">Best <b>5,900</b></span>
+            <span class="chip--status ok">Cleared</span>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <!-- 3 — CLEARED ★★★ -->
+    <article class="card clickable rise d3" data-nav="briefing">
+      <div class="mrow">
+        <div class="mthumb"><div class="mthumb__fallback"><span class="ghost">03</span></div></div>
+        <div class="mbody">
+          <div class="mhead">
+            <span class="mno">MISSION 03</span>
+            <span class="mdiff" aria-label="Difficulty 2">
+              <svg class="flame" viewBox="0 0 149.7 184.72"><polygon points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/><path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/><path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/></svg>
+              <svg class="flame" viewBox="0 0 149.7 184.72"><polygon points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/><path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/><path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/></svg>
+            </span>
+          </div>
+          <div class="mname">Crosswind</div>
+          <div class="mstat">
+            <span class="stars" aria-label="3 of 3 stars">
+              <svg class="on" viewBox="0 0 24 24"><path d="M12 2l2.9 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77 5.82 21l1.18-6.88-5-4.87 7.1-1.01z"/></svg>
+              <svg class="on" viewBox="0 0 24 24"><path d="M12 2l2.9 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77 5.82 21l1.18-6.88-5-4.87 7.1-1.01z"/></svg>
+              <svg class="on" viewBox="0 0 24 24"><path d="M12 2l2.9 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77 5.82 21l1.18-6.88-5-4.87 7.1-1.01z"/></svg>
+            </span>
+            <span class="best">Best <b>7,100</b></span>
+            <span class="chip--status ok">Cleared</span>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <!-- 4 — NEXT -->
+    <article class="card card--warm clickable next rise d3" data-nav="briefing">
+      <div class="mrow next">
+        <div class="mthumb"><div class="mthumb__fallback"><span class="ghost">04</span></div></div>
+        <div class="mbody">
+          <div class="mhead">
+            <span class="mno">MISSION 04</span>
+            <span class="mdiff" aria-label="Difficulty 2">
+              <svg class="flame" viewBox="0 0 149.7 184.72"><polygon points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/><path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/><path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/></svg>
+              <svg class="flame" viewBox="0 0 149.7 184.72"><polygon points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/><path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/><path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/></svg>
+            </span>
+            <span class="grow"></span>
+            <span class="chip">NEXT</span>
+          </div>
+          <div class="mname">Hold the Line</div>
+          <p class="clamp2 muted" style="font-size:var(--fs-meta);line-height:1.4;margin-top:1px;">Hold the ridge above La Ronge — keep the head fire off the depot until the crews dig their break.</p>
+          <div class="mstat">
+            <span class="fly">Fly ▸</span>
+            <span class="gate">Unflown · best run posts here</span>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <!-- 5 — LOCKED -->
+    <article class="card locked rise d4">
+      <div class="mrow locked">
+        <div class="mthumb"><div class="mthumb__fallback"><span class="ghost">05</span></div></div>
+        <div class="mbody">
+          <div class="mhead">
+            <span class="mno">MISSION 05</span>
+            <span class="mdiff" aria-label="Difficulty 3">
+              <svg class="flame" viewBox="0 0 149.7 184.72"><polygon points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/><path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/><path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/></svg>
+              <svg class="flame" viewBox="0 0 149.7 184.72"><polygon points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/><path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/><path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/></svg>
+              <svg class="flame" viewBox="0 0 149.7 184.72"><polygon points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/><path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/><path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/></svg>
+            </span>
+            <span class="grow"></span>
+            <span class="chip--status locked">Locked</span>
+          </div>
+          <div class="mname">Backburn</div>
+          <div class="mstat"><span class="gate">Clear mission 4 to unlock</span></div>
+        </div>
+      </div>
+    </article>
+
+    <!-- 6 — LOCKED -->
+    <article class="card locked rise d4">
+      <div class="mrow locked">
+        <div class="mthumb"><div class="mthumb__fallback"><span class="ghost">06</span></div></div>
+        <div class="mbody">
+          <div class="mhead">
+            <span class="mno">MISSION 06</span>
+            <span class="mdiff" aria-label="Difficulty 3">
+              <svg class="flame" viewBox="0 0 149.7 184.72"><polygon points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/><path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/><path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/></svg>
+              <svg class="flame" viewBox="0 0 149.7 184.72"><polygon points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/><path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/><path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/></svg>
+              <svg class="flame" viewBox="0 0 149.7 184.72"><polygon points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/><path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/><path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/></svg>
+            </span>
+            <span class="grow"></span>
+            <span class="chip--status locked">Locked</span>
+          </div>
+          <div class="mname">Evacuation</div>
+          <div class="mstat"><span class="gate">Clear mission 5 to unlock</span></div>
+        </div>
+      </div>
+    </article>
+
+    <!-- 7 — LOCKED -->
+    <article class="card locked rise d5">
+      <div class="mrow locked">
+        <div class="mthumb"><div class="mthumb__fallback"><span class="ghost">07</span></div></div>
+        <div class="mbody">
+          <div class="mhead">
+            <span class="mno">MISSION 07</span>
+            <span class="mdiff" aria-label="Difficulty 4">
+              <svg class="flame" viewBox="0 0 149.7 184.72"><polygon points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/><path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/><path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/></svg>
+              <svg class="flame" viewBox="0 0 149.7 184.72"><polygon points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/><path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/><path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/></svg>
+              <svg class="flame" viewBox="0 0 149.7 184.72"><polygon points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/><path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/><path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/></svg>
+              <svg class="flame" viewBox="0 0 149.7 184.72"><polygon points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/><path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/><path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/></svg>
+            </span>
+            <span class="grow"></span>
+            <span class="chip--status locked">Locked</span>
+          </div>
+          <div class="mname">Crown Fire</div>
+          <div class="mstat"><span class="gate">Clear mission 6 to unlock</span></div>
+        </div>
+      </div>
+    </article>
+
+    <!-- 8 — LOCKED -->
+    <article class="card locked rise d5">
+      <div class="mrow locked">
+        <div class="mthumb"><div class="mthumb__fallback"><span class="ghost">08</span></div></div>
+        <div class="mbody">
+          <div class="mhead">
+            <span class="mno">MISSION 08</span>
+            <span class="mdiff" aria-label="Difficulty 5">
+              <svg class="flame" viewBox="0 0 149.7 184.72"><polygon points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/><path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/><path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/></svg>
+              <svg class="flame" viewBox="0 0 149.7 184.72"><polygon points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/><path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/><path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/></svg>
+              <svg class="flame" viewBox="0 0 149.7 184.72"><polygon points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/><path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/><path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/></svg>
+              <svg class="flame" viewBox="0 0 149.7 184.72"><polygon points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/><path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/><path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/></svg>
+              <svg class="flame" viewBox="0 0 149.7 184.72"><polygon points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/><path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/><path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/></svg>
+            </span>
+            <span class="grow"></span>
+            <span class="chip--status locked">Locked</span>
+          </div>
+          <div class="mname">Last Stand</div>
+          <div class="mstat"><span class="gate">Clear mission 7 to unlock</span></div>
+        </div>
+      </div>
+    </article>
+
+  </div>
+
+</div></main>
+<script src="kit.js"></script>
+</body>
+</html>

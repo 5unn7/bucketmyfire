@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>bucketmyfire — Theatre</title>
+<link rel="stylesheet" href="kit.css">
+<style>
+  /* layout glue only */
+  .map-banner{ position:relative; height:160px; border-radius:var(--r-md) var(--r-md) 0 0; overflow:hidden; margin:-14px -15px 14px; }
+  .map-banner img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:50% 38%; transform:scale(1.05); }
+  .map-banner__scrim{ position:absolute; inset:0;
+    background:linear-gradient(180deg, rgba(6,4,3,0.10) 0%, rgba(6,4,3,0.30) 50%, rgba(13,16,19,0.96) 100%),
+      linear-gradient(90deg, rgba(4,3,2,0.45) 0%, transparent 55%); }
+  .map-banner__tag{ position:absolute; top:11px; left:12px; z-index:4; }
+  .map-banner__title{ position:absolute; left:14px; bottom:11px; right:14px; z-index:4; display:flex; align-items:flex-end; justify-content:space-between; gap:10px; }
+  .map-banner .brackets{ z-index:3; }
+  .teaser-grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .teaser{ opacity:.62; filter:grayscale(.35); }
+  .teaser .ghost-shape{ height:64px; border-radius:var(--r-sm); margin-bottom:11px; position:relative; overflow:hidden;
+    background:radial-gradient(120% 100% at 30% 120%, rgba(255,106,44,0.10), transparent 60%), linear-gradient(160deg,#1c2126,#10141880 70%);
+    border:1px solid var(--hair); display:grid; place-items:center; }
+  .teaser .ghost-shape span{ font-family:var(--mono); font-weight:var(--fw-black); font-size:30px; color:rgba(255,255,255,0.06); letter-spacing:.04em; }
+  .teaser .reg{ font-size:var(--fs-lg); font-weight:var(--fw-heavy); line-height:1.1; }
+  .teaser .biome{ font-family:var(--mono); font-size:var(--fs-micro); letter-spacing:.14em; text-transform:uppercase; color:var(--faint); margin-top:3px; }
+</style>
+</head>
+<body data-screen="maps">
+<main class="app">
+  <div class="app__pad">
+
+    <!-- ============ HEADER ============ -->
+    <header class="rise d1">
+      <div class="eyebrow">Theatre</div>
+      <h1 class="h-screen mt8">Choose your map</h1>
+      <p class="mt8" style="font-size:var(--fs-body);line-height:1.45;color:var(--dim);max-width:34ch;">Pick the ground you fly. One province is live. More are in the queue.</p>
+    </header>
+
+    <!-- ============ FEATURED — SASKATCHEWAN ============ -->
+    <div class="sec rise d2"><span class="tag">Active</span><span class="line"></span><span class="stamp">1 of 4</span></div>
+    <article class="card card--warm card--cut clickable rise d2" data-nav="campaign" aria-label="Saskatchewan — live theatre">
+      <div class="map-banner">
+        <img src="../public/images/Saskatchewan/FirstLight.webp" alt="" aria-hidden="true" decoding="async">
+        <div class="map-banner__scrim"></div>
+        <div class="brackets"><span></span><span></span><span></span><span></span></div>
+        <div class="map-banner__tag"><span class="chip--status ok"><span class="led" style="margin-right:5px"></span>Live</span></div>
+        <div class="map-banner__title">
+          <div>
+            <div class="kicker" style="color:var(--ember-hi);">Boreal shield · Canada</div>
+            <h2 class="h-big" style="font-size:var(--fs-display);text-shadow:0 2px 10px rgba(0,0,0,0.8);">Saskatchewan</h2>
+          </div>
+          <span class="chip"><span class="led ember" style="margin-right:4px"></span>Selected</span>
+        </div>
+      </div>
+
+      <div class="ctx-row">
+        <span class="ctx"><span class="k">AREA</span> ~1,000 × 2,000</span>
+        <span class="ctx"><span class="k">BIOME</span> Boreal shield</span>
+        <span class="ctx hot"><span class="k">MISSIONS</span> 8</span>
+        <span class="ctx"><span class="k">LAKES</span> Many</span>
+      </div>
+
+      <div class="row between mt16">
+        <span class="mono" style="font-size:var(--fs-micro);letter-spacing:.16em;text-transform:uppercase;color:var(--faint);font-weight:var(--fw-bold);display:flex;align-items:center;gap:7px;"><span class="led ember"></span>3 of 8 cleared</span>
+        <button class="btn btn--ember sm" data-nav="campaign"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>Enter theatre</button>
+      </div>
+    </article>
+
+    <!-- ============ MORE REGIONS (LOCKED) ============ -->
+    <div class="sec rise d3"><span class="tag">More regions</span><span class="line"></span><span class="stamp">In the queue</span></div>
+    <div class="teaser-grid rise d3">
+
+      <div class="card card--cut teaser" aria-label="British Columbia — coming soon">
+        <div class="ghost-shape"><span>BC</span></div>
+        <div class="reg">British Columbia</div>
+        <div class="biome">Coast mountains</div>
+        <div class="mt12"><span class="chip--status soon">Soon</span></div>
+      </div>
+
+      <div class="card card--cut teaser" aria-label="Alberta — coming soon">
+        <div class="ghost-shape"><span>AB</span></div>
+        <div class="reg">Alberta</div>
+        <div class="biome">Foothills · prairie</div>
+        <div class="mt12"><span class="chip--status soon">Soon</span></div>
+      </div>
+
+      <div class="card card--cut teaser" style="grid-column:1 / -1;" aria-label="Ontario — coming soon">
+        <div class="row gap12">
+          <div class="ghost-shape" style="width:80px;height:56px;flex:0 0 auto;margin-bottom:0;"><span style="font-size:24px;">ON</span></div>
+          <div class="grow" style="min-width:0;">
+            <div class="reg">Ontario</div>
+            <div class="biome">Mixed wood · lakeland</div>
+          </div>
+          <span class="chip--status soon" style="align-self:center;">Soon</span>
+        </div>
+      </div>
+
+    </div>
+
+    <p class="rise d4 mono" style="text-align:center;margin-top:18px;font-size:var(--fs-micro);letter-spacing:.18em;text-transform:uppercase;color:var(--faint);font-weight:var(--fw-bold);">New ground as the fires move</p>
+
+  </div>
+</main>
+<script src="kit.js"></script>
+</body>
+</html>

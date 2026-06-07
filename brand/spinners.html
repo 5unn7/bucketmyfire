@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bucket My Fire — Loading spinner variants</title>
+    <style>
+      :root {
+        --ember: #ff7a2f;
+        --ember-hi: #ffd27a;
+        --paper: #f4ead9;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; }
+      body {
+        min-height: 100vh;
+        background: radial-gradient(130% 100% at 50% 78%, #2a120b 0%, #150a07 46%, #090605 100%);
+        color: var(--paper);
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        -webkit-font-smoothing: antialiased;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 48px 24px 64px;
+      }
+      .wordmark {
+        width: 240px;
+        max-width: 70vw;
+        margin-bottom: 8px;
+        filter: drop-shadow(0 4px 20px rgba(0,0,0,.5));
+      }
+      .tag {
+        font-size: 12px;
+        letter-spacing: .08em;
+        opacity: .5;
+        margin-bottom: 48px;
+      }
+      .grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 28px;
+        justify-content: center;
+        width: 100%;
+        max-width: 980px;
+      }
+      .card {
+        flex: 1 1 260px;
+        max-width: 300px;
+        background: rgba(255,255,255,.03);
+        border: 1px solid rgba(255,255,255,.07);
+        border-radius: 16px;
+        padding: 36px 24px 26px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 22px;
+        backdrop-filter: blur(6px);
+      }
+      .stage {
+        height: 150px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .name {
+        font-weight: 800;
+        letter-spacing: .14em;
+        text-transform: uppercase;
+        font-size: 13px;
+      }
+      .name b { color: var(--ember); }
+      .desc {
+        font-size: 12px;
+        line-height: 1.5;
+        opacity: .6;
+        text-align: center;
+        margin-top: -10px;
+      }
+      /* shared spinner glow */
+      .spinner { filter: drop-shadow(0 0 14px rgba(255,120,40,.55)); }
+
+      /* ───────── Variant 1 — counter-rotating (3D, on centre axis) ───────── */
+      .v1 { perspective: 620px; position: relative; width: 92px; height: 114px; }
+      .v1 .layer {
+        position: absolute; inset: 0; width: 100%; height: 100%;
+        backface-visibility: visible;
+        filter: drop-shadow(0 0 14px rgba(255,120,40,.55));
+      }
+      .v1 .flames { animation: flipCW 1.9s linear infinite; }
+      .v1 .chev   { animation: flipCCW 1.9s linear infinite; }
+      @keyframes flipCW  { to { transform: rotateY(360deg); } }
+      @keyframes flipCCW { to { transform: rotateY(-360deg); } }
+
+      /* ───────── Variant 2 — matrix draw-on ───────── */
+      .v2 path, .v2 polygon {
+        fill: none;
+        stroke: var(--ember);
+        stroke-width: 5;
+        stroke-linejoin: round;
+        stroke-dasharray: 620;
+        stroke-dashoffset: 620;
+        animation: draw 2.2s ease-in-out infinite;
+      }
+      .v2 .f2  { animation-delay: .18s; }
+      .v2 .chev { animation-delay: .36s; }
+      @keyframes draw {
+        0%   { stroke-dashoffset: 620; opacity: .25; }
+        45%  { stroke-dashoffset: 0;   opacity: 1; }
+        70%  { stroke-dashoffset: 0;   opacity: 1; }
+        100% { stroke-dashoffset: -620; opacity: .25; }
+      }
+
+      /* ───────── Variant 3 — ember sweep (the surprise) ───────── */
+      /* The icon shape is an alpha mask on the wrapper; a larger conic-gradient layer
+         rotates underneath it, so a sweep of fire passes across the mark. */
+      .v3 {
+        position: relative;
+        width: 120px;
+        height: 148px;
+        -webkit-mask: var(--icon-mask) center / contain no-repeat;
+        mask: var(--icon-mask) center / contain no-repeat;
+        filter: drop-shadow(0 0 16px rgba(255,120,40,.6));
+        animation: breathe 2.5s ease-in-out infinite;
+      }
+      .v3::before {
+        content: "";
+        position: absolute;
+        /* oversize + offset so the spinning square always covers the mask */
+        inset: -40%;
+        background: conic-gradient(
+          from 0deg,
+          #2a120b 0deg,
+          #ff5320 55deg,
+          #ffd27a 105deg,
+          #ff7a2f 150deg,
+          #2a120b 230deg,
+          #2a120b 360deg
+        );
+        animation: rotate2d 1.25s linear infinite;
+      }
+      @keyframes rotate2d { to { transform: rotate(360deg); } }
+      @keyframes breathe { 0%,100% { transform: scale(.96); } 50% { transform: scale(1.04); } }
+
+      /* ───────── Variant 4 — flame flicker (procedural fire) ───────── */
+      /* Each flame path flickers on its own clock — scale/skew from its base, organic + offset.
+         The chevron holds as a steady ember bed with a slow glow breath. */
+      .v4 path, .v4 polygon { transform-box: fill-box; }
+      .v4 .f1 { fill: var(--ember);    transform-origin: center bottom; animation: flick1 .52s ease-in-out infinite alternate; }
+      .v4 .f2 { fill: var(--ember-hi); transform-origin: center bottom; animation: flick2 .71s ease-in-out infinite alternate; }
+      .v4 .chev { fill: var(--ember); transform-origin: center; animation: bed 1.5s ease-in-out infinite; }
+      .v4 { animation: glowflick .43s ease-in-out infinite alternate; }
+      @keyframes flick1 { from { transform: scaleY(.9)  skewX(3deg);  opacity:.72; } to { transform: scaleY(1.08) skewX(-4deg); opacity:1; } }
+      @keyframes flick2 { from { transform: scaleY(1.07) skewX(-3deg); opacity:1; }  to { transform: scaleY(.88) skewX(4deg);  opacity:.7; } }
+      @keyframes bed { 0%,100% { opacity:.78; } 50% { opacity:1; } }
+      @keyframes glowflick { from { filter: drop-shadow(0 0 10px rgba(255,110,30,.45)); } to { filter: drop-shadow(0 0 20px rgba(255,160,70,.7)); } }
+
+      /* ───────── Variant 5 — orbit ring (branded classic spinner) ───────── */
+      .v5 { position: relative; width: 100px; height: 100px; display: grid; place-items: center; }
+      .v5 .ring { position: absolute; inset: 0; animation: rotate2d 1.05s cubic-bezier(.6,.1,.4,.9) infinite; }
+      .v5 .ring circle { fill: none; stroke: var(--ember); stroke-width: 4; stroke-linecap: round; stroke-dasharray: 66 240; }
+      .v5 .ring .trail { stroke: var(--ember-hi); opacity: .35; stroke-dasharray: 20 286; }
+      .v5 .mark { width: 48px; fill: var(--ember-hi); animation: breathe 1.6s ease-in-out infinite; }
+
+      /* ───────── Variant 6 — ember rise (generative sparks) ───────── */
+      .v6 { position: relative; width: 100px; height: 130px; display: grid; place-items: center; }
+      .v6 .mark { width: 60px; fill: var(--ember); z-index: 1; animation: glowflick .43s ease-in-out infinite alternate; }
+      /* flames flicker on their own clocks; chevron holds as a steady ember bed */
+      .v6 .mark path, .v6 .mark polygon { transform-box: fill-box; }
+      .v6 .f1 { transform-origin: center bottom; animation: flick1 .52s ease-in-out infinite alternate; }
+      .v6 .f2 { fill: var(--ember-hi); transform-origin: center bottom; animation: flick2 .71s ease-in-out infinite alternate; }
+      .v6 .chev { transform-origin: center; animation: bed 1.5s ease-in-out infinite; }
+      /* Embers originate ON the chevron (its top edge sits ~46px above the container floor)
+         and rise from there. Per-spark --by nudges the start up/down along the V. */
+      .v6 .spark {
+        position: absolute; bottom: calc(46px + var(--by, 0px)); left: 50%;
+        width: 4px; height: 4px; border-radius: 50%;
+        background: var(--ember-hi); box-shadow: 0 0 6px 1px var(--ember);
+        opacity: 0; animation: rise 1.7s ease-in infinite;
+      }
+      @keyframes rise {
+        0%   { transform: translate(0,0) scale(1);   opacity: 0; }
+        12%  { opacity: 1; }
+        100% { transform: translate(var(--dx,0), -82px) scale(.25); opacity: 0; }
+      }
+
+      .footer { margin-top: 44px; font-size: 12px; opacity: .4; text-align: center; }
+    </style>
+  </head>
+  <body>
+    <img class="wordmark" src="./logo/SVG/white wordmark.svg" alt="Bucket My Fire" />
+    <div class="tag">loading spinner — three variants</div>
+
+    <div class="grid">
+      <!-- Variant 1 -->
+      <div class="card">
+        <div class="stage">
+          <div class="v1">
+            <!-- flames layer: spins one way around the vertical centre axis -->
+            <svg class="layer flames" viewBox="0 0 149.7 184.72" fill="var(--ember)">
+              <path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/>
+              <path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/>
+            </svg>
+            <!-- chevron layer: counter-spins around the same axis -->
+            <svg class="layer chev" viewBox="0 0 149.7 184.72" fill="var(--ember-hi)">
+              <polygon points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/>
+            </svg>
+          </div>
+        </div>
+        <div class="name">1 · Counter-<b>rotate</b> 3D</div>
+        <div class="desc">Flames and chevron spin opposite ways around the vertical centre axis — a 3D flip of the two parts.</div>
+      </div>
+
+      <!-- Variant 2 -->
+      <div class="card">
+        <div class="stage">
+          <svg class="spinner v2" width="92" viewBox="0 0 149.7 184.72">
+            <path class="f1" d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/>
+            <path class="f2" d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/>
+            <polygon class="chev" points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/>
+          </svg>
+        </div>
+        <div class="name">2 · <b>Matrix</b> draw-on</div>
+        <div class="desc">The logo traces itself in sequence — flames then chevron — then fades and redraws. The mark assembling.</div>
+      </div>
+
+      <!-- Variant 3 -->
+      <div class="card">
+        <div class="stage">
+          <div class="spinner v3" style="--icon-mask: url(&quot;data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20149.7%20184.72'%3E%3Cpolygon%20points='149.7%20134.09%2074.92%20184.72%200%20134.31%20.57%20108.82%2074.83%20158.71%20148.67%20108.67%20149.7%20134.09'/%3E%3Cpath%20d='M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z'/%3E%3Cpath%20d='M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z'/%3E%3C/svg%3E&quot;)"></div>
+        </div>
+        <div class="name">3 · Ember <b>sweep</b></div>
+        <div class="desc">A radar-sweep of fire passes over the mark while it breathes — like the logo is catching light.</div>
+      </div>
+
+      <!-- Variant 4 -->
+      <div class="card">
+        <div class="stage">
+          <svg class="spinner v4" width="92" viewBox="0 0 149.7 184.72">
+            <path class="f1" d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/>
+            <path class="f2" d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/>
+            <polygon class="chev" points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/>
+          </svg>
+        </div>
+        <div class="name">4 · Flame <b>flicker</b></div>
+        <div class="desc">Each flame burns on its own clock — scale, skew and glow flickering organically over a steady ember bed.</div>
+      </div>
+
+      <!-- Variant 5 -->
+      <div class="card">
+        <div class="stage">
+          <div class="spinner v5">
+            <svg class="ring" viewBox="0 0 100 100">
+              <circle class="trail" cx="50" cy="50" r="46"/>
+              <circle cx="50" cy="50" r="46"/>
+            </svg>
+            <svg class="mark" viewBox="0 0 149.7 184.72">
+              <path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/>
+              <path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/>
+              <polygon points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/>
+            </svg>
+          </div>
+        </div>
+        <div class="name">5 · Orbit <b>ring</b></div>
+        <div class="desc">The mark sits still while an ember arc orbits it — the classic spinner, in the brand's clothes.</div>
+      </div>
+
+      <!-- Variant 6 -->
+      <div class="card">
+        <div class="stage">
+          <div class="spinner v6">
+            <span class="spark" style="--dx:-3px; --by:-2px; left:38%; animation-delay:0s"></span>
+            <span class="spark" style="--dx:6px;  --by:4px;  left:44%; animation-delay:.22s"></span>
+            <span class="spark" style="--dx:-8px; --by:6px;  left:48%; animation-delay:.45s"></span>
+            <span class="spark" style="--dx:4px;  --by:2px;  left:52%; animation-delay:.68s"></span>
+            <span class="spark" style="--dx:-5px; --by:-3px; left:56%; animation-delay:.9s"></span>
+            <span class="spark" style="--dx:9px;  --by:5px;  left:62%; animation-delay:1.12s"></span>
+            <span class="spark" style="--dx:-2px; --by:0px;  left:41%; animation-delay:1.3s"></span>
+            <span class="spark" style="--dx:7px;  --by:-4px; left:59%; animation-delay:1.5s"></span>
+            <span class="spark" style="--dx:0px;  --by:3px;  left:50%; animation-delay:1.62s"></span>
+            <svg class="mark" viewBox="0 0 149.7 184.72">
+              <path class="f1" d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/>
+              <path class="f2" d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/>
+              <polygon class="chev" points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/>
+            </svg>
+          </div>
+        </div>
+        <div class="name">6 · Ember <b>rise</b></div>
+        <div class="desc">A steady glowing mark sheds embers that drift up and fade — generative sparks, never the same frame twice.</div>
+      </div>
+    </div>
+
+    <div class="footer">brand/spinners.html · pick one and it replaces the ASCII-flame cold-start splash</div>
+  </body>
+</html>

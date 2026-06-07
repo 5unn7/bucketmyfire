@@ -1,0 +1,36 @@
+{
+  "date": "2026-06-06",
+  "window": "7d",
+  "metrics": {
+    "commits": 126,
+    "contributors": 1,
+    "prs_merged": 0,
+    "insertions": 72773,
+    "deletions": 12703,
+    "net_loc": 60070,
+    "test_loc": 0,
+    "test_ratio": 0,
+    "active_days": 5,
+    "sessions": 17,
+    "deep_sessions": 8,
+    "avg_session_minutes": 64,
+    "loc_per_session_hour": 4200,
+    "feat_pct": 0.56,
+    "fix_pct": 0.20,
+    "peak_hour": 0,
+    "ai_assisted_commits": 124
+  },
+  "authors": {
+    "5unn7": {
+      "commits": 126,
+      "insertions": 72773,
+      "deletions": 12703,
+      "test_ratio": 0,
+      "top_area": "src/three/"
+    }
+  },
+  "version_range": ["fresh-start", "2026-06-06"],
+  "streak_days": 5,
+  "tweetable": "Week of Jun 2: 126 commits (solo), 72.8k LOC, 8 deep sessions, peak: midnight | Streak: 5d 🔥 | 98% AI-assisted",
+  "ai_assisted_commits": 124
+}

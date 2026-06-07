@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>bucketmyfire — Settings</title>
+<link rel="stylesheet" href="kit.css">
+<style>
+  /* layout glue only — the kit fills .srow .ic icons; these rows use outline
+     icons, so re-stroke them (and bump to 18px to read in the 30px tile) */
+  .set-row .ic svg{ width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.9; stroke-linecap:round; stroke-linejoin:round; }
+  .set-row.clickable{ cursor:pointer; transition:background .14s ease; border-radius:var(--r-sm); }
+  .set-row.clickable:hover{ background:var(--rowmine); }
+  .set-row .chev{ width:18px; height:18px; flex:0 0 auto; color:var(--dim); }
+  .set-row .chev svg{ width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+  .set-foot{ text-align:center; margin-top:26px; }
+</style>
+</head>
+<body data-screen="settings">
+<main class="app"><div class="app__pad">
+
+  <!-- ============ HEADER ============ -->
+  <header class="rise d1">
+    <div class="eyebrow">Field settings</div>
+    <h1 class="h-screen mt8">Settings</h1>
+  </header>
+
+  <!-- ============ AUDIO ============ -->
+  <div class="sec rise d1"><span class="tag">Audio</span><span class="line"></span><span class="stamp">Cockpit</span></div>
+  <section class="card rise d1">
+    <div class="srow set-row">
+      <div class="ic"><svg viewBox="0 0 24 24"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg></div>
+      <div class="lab"><div class="t">Sound</div><div class="s">Engine, scoop, drop, impacts</div></div>
+      <div class="toggle on" data-toggle role="switch" tabindex="0" aria-checked="true" aria-label="Sound"><span class="knob"></span></div>
+    </div>
+    <div class="srow set-row">
+      <div class="ic"><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>
+      <div class="lab"><div class="t">Music</div><div class="s">Menu and ambient score</div></div>
+      <div class="toggle on" data-toggle role="switch" tabindex="0" aria-checked="true" aria-label="Music"><span class="knob"></span></div>
+    </div>
+  </section>
+
+  <!-- ============ DISPLAY ============ -->
+  <div class="sec rise d2"><span class="tag">Display</span><span class="line"></span><span class="stamp">Comfort</span></div>
+  <section class="card rise d2">
+    <div class="srow set-row">
+      <div class="ic"><svg viewBox="0 0 24 24"><polyline points="13 2 13 9 20 9"/><path d="M4 13a8 8 0 0 0 11 7"/><path d="M20 11A8 8 0 0 0 9 4"/></svg></div>
+      <div class="lab"><div class="t">Reduced motion</div><div class="s">Calm transitions, no parallax</div></div>
+      <div class="toggle" data-toggle role="switch" tabindex="0" aria-checked="false" aria-label="Reduced motion"><span class="knob"></span></div>
+    </div>
+  </section>
+
+  <!-- ============ ACCOUNT ============ -->
+  <div class="sec rise d3"><span class="tag">Account</span><span class="line"></span><span class="stamp">Pilot file</span></div>
+  <section class="card rise d3">
+    <div class="srow set-row">
+      <div class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M5 21a7 7 0 0 1 14 0"/></svg></div>
+      <div class="lab"><div class="t">Pilot</div><div class="s">DUSTOFF · Veteran</div></div>
+      <button class="btn btn--ghost sm" data-nav="onboarding">Edit</button>
+    </div>
+    <div class="srow set-row">
+      <div class="ic"><svg viewBox="0 0 24 24"><path d="M18 16a4 4 0 0 0-.7-7.9 6 6 0 0 0-11.7 1.7A4 4 0 0 0 6 16h12z"/></svg></div>
+      <div class="lab"><div class="t">Cloud save</div><div class="s">servicesmarakana@…</div></div>
+      <span class="chip--status ok">Linked</span>
+    </div>
+    <div class="srow set-row clickable" data-nav="maps" role="button" tabindex="0" aria-label="Change region">
+      <div class="ic"><svg viewBox="0 0 24 24"><path d="M12 21s7-5.7 7-11a7 7 0 0 0-14 0c0 5.3 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></svg></div>
+      <div class="lab"><div class="t">Region</div><div class="s">Saskatchewan</div></div>
+      <span class="chev"><svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></span>
+    </div>
+  </section>
+
+  <!-- ============ DATA ============ -->
+  <div class="sec rise d4"><span class="tag">Data</span><span class="line"></span><span class="stamp">Careful</span></div>
+  <section class="card rise d4">
+    <div class="srow set-row danger">
+      <div class="ic"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></div>
+      <div class="lab"><div class="t">Reset progress</div><div class="s">Wipes unlocks, scores and streak</div></div>
+      <button class="btn btn--danger sm" data-open="#resetConfirm">Reset…</button>
+    </div>
+  </section>
+
+  <!-- ============ FOOTER ============ -->
+  <div class="set-foot rise d5">
+    <div class="mono" style="font-size:var(--fs-meta);color:var(--dim);letter-spacing:.1em;">bucketmyfire v1.0 · Marakana</div>
+    <div class="faint mono mt8" style="font-size:var(--fs-meta);letter-spacing:.12em;">Privacy · Terms</div>
+  </div>
+
+</div></main>
+
+<!-- ============ RESET CONFIRM (bottom sheet) ============ -->
+<div class="modal-wrap" id="resetConfirm" aria-hidden="true" role="dialog" aria-modal="true" aria-label="Reset progress">
+  <div class="backdrop" data-close></div>
+  <div class="sheet">
+    <div class="grab"></div>
+    <div class="hd">
+      <h3>Reset progress</h3>
+      <button class="x" data-close aria-label="Cancel">✕</button>
+    </div>
+    <p style="font-size:var(--fs-body);line-height:1.5;color:rgba(255,255,255,0.84);">
+      This wipes every unlock, score and your streak. Cloud save can't bring it back. No undo.
+    </p>
+    <button class="btn btn--danger block mt16">Wipe it all</button>
+    <button class="btn btn--ghost block mt12" data-close>Keep my progress</button>
+  </div>
+</div>
+
+<script src="kit.js"></script>
+</body>
+</html>

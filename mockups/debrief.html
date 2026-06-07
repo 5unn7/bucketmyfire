@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>bucketmyfire — Debrief</title>
+<link rel="stylesheet" href="kit.css">
+<style>
+  /* layout glue only */
+  .debrief-art{ position:absolute; inset:0; z-index:0; overflow:hidden; border-radius:inherit; }
+  .debrief-art img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:50% 30%; opacity:.5; transform:scale(1.06); }
+  .debrief-art .scrim{ position:absolute; inset:0;
+    background:linear-gradient(180deg, rgba(6,4,3,0.72) 0%, rgba(6,4,3,0.86) 55%, rgba(4,3,2,0.96) 100%); }
+  .outcome{ position:relative; z-index:1; text-align:center; }
+  .grade-row{ display:flex; align-items:center; justify-content:center; gap:16px; margin-top:16px; }
+  .grade-row .stars svg{ width:22px; height:22px; }
+  .breakrow{ display:flex; align-items:baseline; justify-content:space-between; gap:12px; padding:10px 0; }
+  .breakrow + .breakrow{ border-top:1px solid var(--hair); }
+  .breakrow .lab{ font-size:var(--fs-body); color:rgba(255,255,255,0.82); }
+  .breakrow .pts{ font-family:var(--mono); font-size:var(--fs-md); color:var(--menu); font-weight:var(--fw-bold); }
+  .recessed{ background:var(--recess); border:1px solid var(--hair); border-radius:var(--r-sm);
+    box-shadow:inset 0 2px 6px rgba(0,0,0,0.55); padding:6px 14px; }
+  .hairrule{ height:1px; background:linear-gradient(90deg, transparent, rgba(255,194,74,0.30), transparent); margin:14px 0 2px; }
+  .total-row{ display:flex; align-items:baseline; justify-content:space-between; gap:12px; padding:12px 0 6px; }
+</style>
+</head>
+<body data-screen="debrief" data-rail="false">
+<main class="app app--norail">
+  <div class="app__pad">
+
+    <!-- ============ OUTCOME ============ -->
+    <section class="card card--warm card--cut pad-lg rise d1" style="position:relative; overflow:hidden;">
+      <div class="debrief-art">
+        <img src="../public/images/Saskatchewan/FirstLight.webp" alt="" aria-hidden="true" decoding="async">
+        <div class="scrim"></div>
+      </div>
+      <div class="brackets"><span></span><span></span><span></span><span></span></div>
+
+      <div class="outcome">
+        <div class="eyebrow" style="color:var(--ok); letter-spacing:.34em;">Fire out</div>
+        <h1 class="h-big" style="margin-top:8px;">Hold the Line</h1>
+        <div class="row gap8 mt8 mono" style="justify-content:center; font-size:var(--fs-meta); letter-spacing:.16em; text-transform:uppercase; color:rgba(255,255,255,0.78);">
+          <span class="led ember"></span><span>La Ronge · Mission 04 / 08</span>
+        </div>
+
+        <div class="grade-row">
+          <div class="grade A">A</div>
+          <span class="stars" aria-label="2 of 3 stars">
+            <svg class="on" viewBox="0 0 24 24"><path d="M12 2l2.9 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77 5.82 21l1.18-6.88-5-4.87 7.1-1.01z"/></svg>
+            <svg class="on" viewBox="0 0 24 24"><path d="M12 2l2.9 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77 5.82 21l1.18-6.88-5-4.87 7.1-1.01z"/></svg>
+            <svg class="off" viewBox="0 0 24 24"><path d="M12 2l2.9 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77 5.82 21l1.18-6.88-5-4.87 7.1-1.01z"/></svg>
+          </span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SCORE ============ -->
+    <div class="sec rise d2"><span class="tag">Score</span><span class="line"></span><span class="stamp">New best</span></div>
+
+    <section class="card card--warm card--cut rise d2">
+      <div class="recessed">
+        <div class="breakrow"><span class="lab">Fires extinguished</span><span class="pts">+4,800</span></div>
+        <div class="breakrow"><span class="lab">Structures saved</span><span class="pts">+1,200</span></div>
+        <div class="breakrow"><span class="lab">Water efficiency</span><span class="pts">+600</span></div>
+        <div class="breakrow"><span class="lab">Time bonus</span><span class="pts">+410</span></div>
+      </div>
+
+      <div class="hairrule"></div>
+      <div class="total-row">
+        <span class="mono" style="font-size:var(--fs-meta); letter-spacing:.2em; color:var(--faint); text-transform:uppercase; font-weight:var(--fw-bold);">Total</span>
+        <span class="mono" style="font-size:var(--fs-display); color:var(--gold); font-weight:var(--fw-black); text-shadow:0 0 18px rgba(255,214,107,0.4);">7,010</span>
+      </div>
+
+      <div class="mt12">
+        <div class="bar-row"><span class="l">Previous best 6,210</span><span class="r" style="color:var(--ok);">+800 over</span></div>
+        <div class="bar cap"><i style="width:100%;"></i></div>
+      </div>
+    </section>
+
+    <!-- ============ ACTIONS ============ -->
+    <button class="btn btn--primary block lg mt20 rise d3" data-nav="briefing">
+      <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>Next mission
+    </button>
+
+    <div class="row gap12 mt12 rise d3">
+      <button class="btn btn--secondary grow" data-nav="briefing">
+        <svg viewBox="0 0 24 24"><path d="M12 5V2L8 6l4 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg>Replay
+      </button>
+      <button class="btn btn--secondary grow">
+        <svg viewBox="0 0 24 24"><path d="M18 8a3 3 0 1 0-2.82-4H15a3 3 0 0 0 .12.83L8.6 8.6a3 3 0 1 0 0 6.8l6.52 3.77A3 3 0 1 0 18 16a2.98 2.98 0 0 0-1.96.74L9.7 13.1a3.03 3.03 0 0 0 0-2.2l6.34-3.64A2.98 2.98 0 0 0 18 8z"/></svg>Share
+      </button>
+    </div>
+
+    <button class="btn btn--ghost block mt12 rise d4" data-nav="campaign">Back to campaign</button>
+
+  </div>
+</main>
+<script src="kit.js"></script>
+</body>
+</html>

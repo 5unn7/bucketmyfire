@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>bucketmyfire — Briefing</title>
+<link rel="stylesheet" href="kit.css">
+<style>
+  /* layout glue only */
+  .brief-hero{ min-height:236px; }
+  .obj{ display:flex; align-items:flex-start; gap:11px; padding:11px 0; }
+  .obj:first-child{ padding-top:2px; }
+  .obj:last-child{ padding-bottom:2px; }
+  .obj + .obj{ border-top:1px solid var(--hair); }
+  .obj__ic{ width:30px; height:30px; flex:0 0 auto; border-radius:var(--r-sm); display:flex; align-items:center; justify-content:center;
+            border:1px solid var(--stroke); background:var(--card-soft); }
+  .obj__ic svg{ width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+  .obj__body{ flex:1; min-width:0; }
+  .obj__t{ display:flex; align-items:center; gap:8px; font-size:var(--fs-md); font-weight:var(--fw-bold); letter-spacing:.01em; }
+  .obj__s{ font-size:var(--fs-meta); color:var(--dim); margin-top:3px; line-height:1.4; }
+  .obj__tag{ font-family:var(--mono); font-size:var(--fs-tag); letter-spacing:.16em; text-transform:uppercase; font-weight:var(--fw-bold);
+             padding:2px 7px; border-radius:3px; border:1px solid var(--hair); white-space:nowrap; flex:0 0 auto; }
+  .o-dot{ width:7px; height:7px; border-radius:50%; flex:0 0 auto; }
+  .intel-p{ font-size:var(--fs-body); line-height:1.5; color:rgba(255,255,255,0.86); padding-left:12px; border-left:3px solid var(--fire); }
+  .load__glyph{ width:48px; height:48px; flex:0 0 auto; border-radius:var(--r-sm); display:flex; align-items:center; justify-content:center;
+                border:1px solid var(--warm-stroke); background:rgba(255,106,44,0.08); }
+  .load__glyph .flame{ width:24px; height:24px; }
+</style>
+</head>
+<body data-screen="briefing" data-rail="false">
+<main class="app app--norail">
+  <div class="app__pad">
+
+    <!-- ============ APPBAR ============ -->
+    <div class="appbar rise d1">
+      <button class="back" data-nav="campaign" aria-label="Back to campaign">
+        <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <div>
+        <div class="ttl">Briefing</div>
+        <div class="sub">Pre-flight · Mission 04</div>
+      </div>
+      <span class="spacer"></span>
+      <span class="chip chip--ghost">Diff 2</span>
+    </div>
+
+    <!-- ============ HERO ============ -->
+    <article class="artcard rise d1">
+      <img class="artcard__img" src="../public/images/Saskatchewan/FirstLight.webp" alt="" aria-hidden="true" decoding="async">
+      <div class="artcard__scrim"></div>
+      <div class="brackets"><span></span><span></span><span></span></div>
+      <div class="artcard__inner brief-hero">
+        <div class="row gap8"><span class="chip">Mission 04</span><span class="chip chip--ghost">Campaign</span></div>
+        <div class="grow" style="min-height:8px;"></div>
+        <h1 class="h-big">Hold the Line</h1>
+        <div class="row gap8 mt8 mono" style="font-size:var(--fs-meta);letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,0.78);text-shadow:0 1px 6px rgba(0,0,0,0.75);">
+          <span class="led ember"></span><span>La Ronge · Saskatchewan</span>
+        </div>
+      </div>
+    </article>
+
+    <!-- ============ INTEL ============ -->
+    <div class="sec rise d2"><span class="tag">Intel</span><span class="line"></span><span class="stamp">Dispatch</span></div>
+    <section class="card card--warm card--cut rise d2">
+      <p class="intel-p">A head fire is running the ridge above La Ronge and the wind is pushing it at the depot. Crews are cutting a break, but they need time. Knock the head down and hold it off the line until they finish.</p>
+    </section>
+
+    <!-- ============ CONDITIONS ============ -->
+    <div class="sec rise d3"><span class="tag">Conditions</span><span class="line"></span><span class="stamp">06:10 dawn</span></div>
+    <div class="ctx-row rise d3">
+      <span class="ctx hot"><span class="k">WIND</span> Rising ↑</span>
+      <span class="ctx"><span class="k">FUEL</span> Black spruce</span>
+      <span class="ctx hot"><span class="k">STRUCTURES</span> 4 at risk</span>
+      <span class="ctx"><span class="k">IGNITIONS</span> 3</span>
+    </div>
+
+    <!-- ============ OBJECTIVES ============ -->
+    <div class="sec rise d4"><span class="tag">Objectives</span><span class="line"></span><span class="stamp">3 total</span></div>
+    <section class="card card--warm card--cut rise d4">
+
+      <div class="obj">
+        <div class="obj__ic" style="color:var(--ember-hi);">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/></svg>
+        </div>
+        <div class="obj__body">
+          <div class="obj__t"><span class="o-dot" style="background:var(--ember-hi);box-shadow:0 0 8px rgba(255,194,74,0.6);"></span>Extinguish every fire</div>
+          <div class="obj__s">Primary. Every active fire must be out to clear the mission.</div>
+        </div>
+        <span class="obj__tag" style="color:var(--ember-hi);border-color:var(--warm-stroke);">Primary</span>
+      </div>
+
+      <div class="obj">
+        <div class="obj__ic" style="color:var(--warn);">
+          <svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/></svg>
+        </div>
+        <div class="obj__body">
+          <div class="obj__t"><span class="o-dot" style="background:var(--warn);box-shadow:0 0 8px rgba(255,93,77,0.55);"></span>Keep the depot standing</div>
+          <div class="obj__s">Fail. Lose the depot to the head fire and the sortie is over.</div>
+        </div>
+        <span class="obj__tag" style="color:var(--warn);border-color:rgba(255,93,77,0.4);">Fail</span>
+      </div>
+
+      <div class="obj">
+        <div class="obj__ic" style="color:var(--menu);">
+          <svg viewBox="0 0 24 24"><path d="M12 3l2.6 5.6 6.1.9-4.4 4.3 1 6.1-5.3-2.9-5.3 2.9 1-6.1L3.3 9.5l6.1-.9z"/></svg>
+        </div>
+        <div class="obj__body">
+          <div class="obj__t"><span class="o-dot" style="background:var(--menu);box-shadow:0 0 8px rgba(255,194,74,0.5);"></span>Clean run for 3 stars</div>
+          <div class="obj__s">Bonus. No structures lost, tight water use — earn the third star.</div>
+        </div>
+        <span class="obj__tag" style="color:var(--menu);border-color:var(--menu-soft);">Bonus</span>
+      </div>
+
+    </section>
+
+    <!-- ============ LOADOUT ============ -->
+    <div class="sec rise d5"><span class="tag">Loadout</span><span class="line"></span><span class="stamp">Hangar</span></div>
+    <section class="card card--warm card--cut rise d5">
+      <div class="row gap12 between">
+        <div class="row gap12">
+          <div class="load__glyph" aria-hidden="true">
+            <svg class="flame" viewBox="0 0 149.7 184.72"><polygon points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/><path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/><path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/></svg>
+          </div>
+          <div>
+            <div style="font-size:var(--fs-md);font-weight:var(--fw-bold);letter-spacing:.01em;">Bell 205A-1</div>
+            <div class="row gap8 mt8 mono" style="font-size:var(--fs-meta);color:var(--dim);">
+              <span><b style="color:var(--menu);font-weight:var(--fw-bold)">100 L</b> bucket</span>
+              <span class="dot"></span>
+              <span>The trainer</span>
+            </div>
+          </div>
+        </div>
+        <button class="btn btn--ghost sm" data-nav="hangar">Change</button>
+      </div>
+    </section>
+
+    <!-- ============ CTA ============ -->
+    <button class="btn btn--primary block lg mt20 rise d6" data-nav="debrief">
+      <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>Start mission
+    </button>
+
+  </div>
+</main>
+<script src="kit.js"></script>
+</body>
+</html>

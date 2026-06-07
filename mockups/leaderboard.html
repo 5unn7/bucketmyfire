@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>bucketmyfire — Standings</title>
+<link rel="stylesheet" href="kit.css">
+<style>
+  /* ── F1 timing-tower screen (mirrors src/three/ui/Leaderboard.ts) ─────────
+     Builds on the kit tokens; adds the tower-specific columns: a per-pilot team
+     colour bar, a ▲▼ movement column (position change since last visit), and a
+     gap-to-leader interval under each score. Warm "fight" register throughout. */
+  .tower{ border-radius:var(--r-lg); overflow:hidden; background:rgba(20,13,9,0.55);
+    border:1px solid var(--stroke); backdrop-filter:var(--blur); }
+  .thead{ display:flex; align-items:center; gap:10px; padding:9px 13px 8px;
+    border-bottom:1px solid var(--stroke); background:rgba(0,0,0,0.18);
+    font-family:var(--mono); font-size:var(--fs-tag); font-weight:var(--fw-heavy);
+    letter-spacing:.14em; color:var(--faint); text-transform:uppercase; }
+  .trow{ display:flex; align-items:center; gap:10px; padding:9px 13px; border-bottom:1px solid var(--hair);
+    position:relative; animation:rowin .3s ease both; }
+  .trow:last-child{ border-bottom:0; }
+  .trow.alt{ background:rgba(255,255,255,0.012); }
+  .trow.leader{ background:rgba(255,170,70,0.07); }
+  .trow.mine{ background:var(--rowmine); box-shadow:inset 0 0 0 1px rgba(255,106,44,0.6); }
+  @keyframes rowin{ from{opacity:0;transform:translateY(6px);} to{opacity:1;transform:none;} }
+
+  .c-bar{ width:4px; flex:0 0 auto; align-self:stretch; border-radius:var(--r-pill); }
+  .c-pos{ width:30px; flex:0 0 auto; text-align:center; font-family:var(--mono); font-weight:var(--fw-black);
+    font-size:var(--fs-lg); color:var(--dim); line-height:1; }
+  .c-pos.p1{ font-size:var(--fs-title); color:var(--gold);   text-shadow:0 0 12px rgba(255,214,107,0.35); }
+  .c-pos.p2{ font-size:var(--fs-title); color:var(--silver); text-shadow:0 0 12px rgba(207,224,238,0.3); }
+  .c-pos.p3{ font-size:var(--fs-title); color:var(--bronze); text-shadow:0 0 12px rgba(230,162,104,0.35); }
+
+  .c-move{ width:46px; flex:0 0 auto; display:flex; align-items:center; justify-content:center; gap:2px;
+    font-family:var(--mono); font-size:var(--fs-meta); font-weight:var(--fw-heavy); line-height:1; }
+  .c-move.up{ color:var(--ok); } .c-move.down{ color:var(--warn); } .c-move.flat{ color:var(--faint); }
+  .c-move .ar{ font-size:var(--fs-sm); }
+  .c-move.new{ color:var(--ember-hi); font-size:var(--fs-tag); letter-spacing:.05em; }
+
+  .c-av{ width:30px; height:30px; flex:0 0 auto; border-radius:var(--r-round); display:grid; place-items:center;
+    font-family:var(--font); font-size:var(--fs-sm); font-weight:var(--fw-heavy); color:#1a0f08; }
+  .c-who{ flex:1; min-width:0; }
+  .c-name{ font-size:var(--fs-lg); font-weight:var(--fw-bold); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .c-sub{ font-size:var(--fs-meta); color:var(--dim); margin-top:2px; }
+  .youpill{ display:inline-block; font-family:var(--font); font-size:var(--fs-tag); font-weight:var(--fw-heavy);
+    letter-spacing:.1em; color:var(--ink); background:var(--ember); border-radius:var(--r-pill); padding:2px 7px; vertical-align:middle; margin-left:7px; }
+
+  .c-right{ width:96px; flex:0 0 auto; text-align:right; }
+  .c-score{ font-family:var(--mono); font-size:var(--fs-title); font-weight:var(--fw-heavy); line-height:1.05; }
+  .c-score.mine{ color:var(--ember-hi); }
+  .c-gap{ font-family:var(--mono); font-size:var(--fs-tag); font-weight:var(--fw-bold); color:var(--faint); margin-top:3px; letter-spacing:.04em; }
+  .c-gap.lead{ color:var(--menu); }
+
+  /* context bar */
+  .ctxbar{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin:2px 2px 10px; flex-wrap:wrap; }
+  .ctxbar .count{ font-family:var(--mono); font-size:var(--fs-meta); font-weight:var(--fw-bold); letter-spacing:.16em; color:var(--faint); text-transform:uppercase; }
+  .ctxbar .me{ display:inline-flex; align-items:center; gap:7px; padding:5px 11px; border-radius:var(--r-pill);
+    background:var(--rowmine); border:1px solid rgba(255,106,44,0.47); font-size:var(--fs-meta); font-weight:var(--fw-heavy); letter-spacing:.03em; color:var(--ember-hi); }
+
+  /* sticky you row */
+  .youbar{ position:sticky; bottom:8px; margin-top:14px; display:flex; align-items:center; gap:10px; padding:11px 13px;
+    border-radius:var(--r-lg); background:rgba(22,12,8,0.92); border:1px solid rgba(255,106,44,0.6);
+    box-shadow:0 0 0 1px rgba(255,106,44,0.2), 0 -6px 26px rgba(0,0,0,0.55); backdrop-filter:var(--blur); }
+
+  /* caption + legend */
+  .lbcap{ display:flex; align-items:center; justify-content:center; gap:12px; margin-top:12px;
+    font-size:var(--fs-meta); color:var(--faint); letter-spacing:.03em; }
+  .lgnd{ display:inline-flex; align-items:center; gap:9px; font-family:var(--mono); }
+  .lgnd .chip{ display:inline-flex; align-items:center; gap:3px; }
+
+  /* daily strip */
+  .dburn{ display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap;
+    margin:2px 0 14px; padding:13px 16px; border-radius:var(--r-lg); background:rgba(28,16,11,0.6);
+    border:1px solid rgba(255,138,110,0.27); }
+  .dburn .t1{ font-family:var(--font); font-size:var(--fs-label); font-weight:var(--fw-heavy); letter-spacing:.16em; color:var(--fire); }
+  .dburn .t2{ font-size:var(--fs-title); font-weight:var(--fw-heavy); margin-top:2px; }
+  .dburn .t3{ font-size:var(--fs-meta); color:var(--dim); margin-top:2px; }
+  .dburn .tiles{ display:flex; gap:22px; flex:0 0 auto; }
+  .dburn .tile{ text-align:center; }
+  .dburn .tile .v{ font-family:var(--mono); font-size:var(--fs-hero); font-weight:var(--fw-bold); color:var(--menu); }
+  .dburn .tile .k{ font-family:var(--mono); font-size:var(--fs-micro); letter-spacing:.16em; text-transform:uppercase; color:var(--faint); margin-top:3px; }
+</style>
+</head>
+<body data-screen="board">
+<main class="app">
+  <div class="app__pad">
+
+    <!-- HEADER -->
+    <header class="rise d1 row between" style="align-items:flex-start;">
+      <div style="min-width:0;flex:1;">
+        <div class="row gap8" style="margin-bottom:3px;"><span class="led ember blink"></span>
+          <span class="mono" style="font-size:var(--fs-label);letter-spacing:.3em;color:var(--ember-hi);font-weight:var(--fw-heavy);">LIVE TIMING</span></div>
+        <h1 class="h-big">STANDINGS</h1>
+        <div class="muted" style="font-size:var(--fs-meta);margin-top:5px;">Global rankings — the pilots holding the line.</div>
+      </div>
+      <div class="grank" style="flex:0 0 auto;"><span class="grank__num">P7</span><span class="grank__lbl">Global</span></div>
+    </header>
+
+    <!-- TABS -->
+    <div class="tabs rise d2 mt16" data-panels="#lb">
+      <button class="active">Total</button>
+      <button>🔥 Daily Burn</button>
+    </div>
+
+    <div id="lb" class="mt16">
+      <!-- PANEL 1 · TOTAL -->
+      <div data-tabpanel class="rise d3">
+        <div class="ctxbar"><div class="count">312 pilots on the grid</div><div class="me">YOU · P7 · Top 3%</div></div>
+        <div class="tower" id="grid-total"></div>
+        <div class="lbcap">
+          <span>Top 14 of 312 pilots</span><span class="dot"></span>
+          <span class="lgnd">
+            <span class="chip" style="color:var(--ok)"><b>▲</b><span class="faint">up</span></span>
+            <span class="chip" style="color:var(--warn)"><b>▼</b><span class="faint">down</span></span>
+            <span class="chip" style="color:var(--ember-hi)"><b>NEW</b></span>
+          </span>
+        </div>
+        <div class="youbar" id="you-total"></div>
+      </div>
+
+      <!-- PANEL 2 · DAILY BURN -->
+      <div data-tabpanel class="rise d3" style="display:none;">
+        <div class="dburn">
+          <div style="min-width:0;">
+            <div class="t1">🔥 DAILY BURN</div>
+            <div class="t2">Fri, Jun 6</div>
+            <div class="t3">One shared map · ranked by score, then time</div>
+          </div>
+          <div class="tiles">
+            <div class="tile"><div class="v">4🔥</div><div class="k">Day streak</div></div>
+            <div class="tile"><div class="v">11</div><div class="k">Best</div></div>
+          </div>
+        </div>
+        <div class="ctxbar"><div class="count">88 pilots on the grid</div><div class="me">YOU · P3 · Top 4%</div></div>
+        <div class="tower" id="grid-daily"></div>
+        <div class="lbcap">
+          <span>Top 12 of 88 pilots</span><span class="dot"></span>
+          <span class="lgnd">
+            <span class="chip" style="color:var(--ok)"><b>▲</b><span class="faint">up</span></span>
+            <span class="chip" style="color:var(--warn)"><b>▼</b><span class="faint">down</span></span>
+            <span class="chip" style="color:var(--ember-hi)"><b>NEW</b></span>
+          </span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<script>
+  const TEAM = ['#ff6a2c','#ffc24a','#ff8f5c','#ffd66b','#63d68a','#56c4ee','#74d0bf','#9a8cff','#ff7aa8','#f4a13b'];
+  const teamColor = (k) => { let h=0; for (const c of k) h=(Math.imul(31,h)+c.charCodeAt(0))|0; return TEAM[Math.abs(h)%TEAM.length]; };
+  const initials = (n) => { const p=n.trim().split(/\s+/); return (p.length===1?p[0].slice(0,2):p[0][0]+p[p.length-1][0]).toUpperCase(); };
+  const fmt = (n) => n.toLocaleString();
+
+  function move(delta){
+    if (delta===null) return `<div class="c-move new" title="New on the board">NEW</div>`;
+    if (delta===0)    return `<div class="c-move flat" title="No change">–</div>`;
+    const up = delta>0;
+    return `<div class="c-move ${up?'up':'down'}" title="${up?'Up':'Down'} ${Math.abs(delta)} since your last visit"><span class="ar">${up?'▲':'▼'}</span><span>${Math.abs(delta)}</span></div>`;
+  }
+  function right(score, gap, mine, isTime){
+    const val = isTime ? score : fmt(score);
+    const g = gap===null ? 'LEADER' : (isTime ? '+'+gap : '+'+fmt(gap));
+    return `<div class="c-right"><div class="c-score ${mine?'mine':''}">${val}</div><div class="c-gap ${gap===null?'lead':''}">${g}</div></div>`;
+  }
+  function rowHTML(r, i, leader, isTime){
+    const team = teamColor(r.pilot.toLowerCase());
+    const cls = ['trow', r.mine?'mine':'', r.rank===1?'leader':'', (!r.mine && r.rank!==1 && i%2)?'alt':''].join(' ');
+    const pos = r.rank<=3 ? `c-pos p${r.rank}` : 'c-pos';
+    const gap = r.rank===1 ? null : (isTime ? r.gap : leader - r.score);
+    return `<div class="${cls}" style="animation-delay:${Math.min(i*22,280)}ms">
+      <div class="c-bar" style="background:${team}"></div>
+      <div class="${pos}">${r.rank}</div>
+      ${move(r.delta)}
+      <div class="c-av" style="background:linear-gradient(155deg,${team},${team}aa);border:1px solid ${r.mine?'var(--ember)':team};${r.mine?'box-shadow:0 0 0 2px rgba(255,106,44,0.4);':''}">${initials(r.pilot)}</div>
+      <div class="c-who"><div class="c-name">${r.pilot}${r.mine?'<span class="youpill">YOU</span>':''}</div><div class="c-sub">${r.sub}</div></div>
+      ${right(isTime?r.time:r.score, gap, r.mine, isTime)}
+    </div>`;
+  }
+  function header(metric){
+    return `<div class="thead">
+      <div style="width:4px;flex:0 0 auto"></div>
+      <div style="width:30px;flex:0 0 auto;text-align:center">POS</div>
+      <div style="width:46px;flex:0 0 auto;text-align:center">Δ</div>
+      <div style="width:30px;flex:0 0 auto"></div>
+      <div style="flex:1">PILOT</div>
+      <div style="width:96px;flex:0 0 auto;text-align:right">${metric}</div></div>`;
+  }
+  function render(el, data, metric, isTime){
+    const leader = isTime ? null : data[0].score;
+    el.innerHTML = header(metric) + data.map((r,i)=>rowHTML(r,i,leader,isTime)).join('');
+  }
+
+  // ── TOTAL (career) ──
+  const TOTAL = [
+    {rank:1, pilot:'Ashfall',     score:148200, sub:'41 sorties · 2h ago',  delta:2},
+    {rank:2, pilot:'Northpaw',    score:141050, sub:'38 sorties · 5h ago',  delta:-1},
+    {rank:3, pilot:'Emberwell',   score:139400, sub:'36 sorties · 1d ago',  delta:5},
+    {rank:4, pilot:'Candle Lake', score:134900, sub:'33 sorties · 3h ago',  delta:0},
+    {rank:5, pilot:'Smokejack',   score:129700, sub:'35 sorties · 8h ago',  delta:-2},
+    {rank:6, pilot:'Reindeer',    score:124300, sub:'29 sorties · 1d ago',  delta:null},
+    {rank:7, pilot:'Sunny',       score:121800, sub:'27 sorties · 12m ago', delta:1, mine:true},
+    {rank:8, pilot:'Foxtrot Nine',score:118600, sub:'31 sorties · 6h ago',  delta:-3},
+    {rank:9, pilot:'Dryden',      score:115200, sub:'24 sorties · 2d ago',  delta:3},
+    {rank:10,pilot:'Waskesiu',    score:111900, sub:'26 sorties · 1d ago',  delta:0},
+    {rank:11,pilot:'Cinderpaw',   score:108400, sub:'22 sorties · 4h ago',  delta:null},
+    {rank:12,pilot:'La Ronge',    score:104700, sub:'25 sorties · 9h ago',  delta:-1},
+    {rank:13,pilot:'Birchbark',   score:101200, sub:'20 sorties · 2d ago',  delta:4},
+    {rank:14,pilot:'Hollow Coal', score:98600,  sub:'19 sorties · 1d ago',  delta:-2},
+  ];
+  // ── DAILY (today's burn — ranked by score, gap shown as a time interval) ──
+  const DAILY = [
+    {rank:1, pilot:'Smokejack',   score:62400, time:'3:48', gap:null, sub:'⏱ 3:48 · 1h ago',  delta:3},
+    {rank:2, pilot:'Ashfall',     score:61050, time:'4:02', gap:'0:14',sub:'⏱ 4:02 · 2h ago', delta:-1},
+    {rank:3, pilot:'Sunny',       score:60200, time:'4:11', gap:'0:23',sub:'⏱ 4:11 · 22m ago',delta:4, mine:true},
+    {rank:4, pilot:'Northpaw',    score:58800, time:'4:26', gap:'0:38',sub:'⏱ 4:26 · 3h ago', delta:null},
+    {rank:5, pilot:'Emberwell',   score:57300, time:'4:40', gap:'0:52',sub:'⏱ 4:40 · 5h ago', delta:-2},
+    {rank:6, pilot:'Dryden',      score:55900, time:'4:55', gap:'1:07',sub:'⏱ 4:55 · 1h ago', delta:1},
+    {rank:7, pilot:'Birchbark',   score:54100, time:'5:12', gap:'1:24',sub:'⏱ 5:12 · 6h ago', delta:0},
+    {rank:8, pilot:'Cinderpaw',   score:52600, time:'5:29', gap:'1:41',sub:'⏱ 5:29 · 30m ago',delta:null},
+    {rank:9, pilot:'Waskesiu',    score:50800, time:'5:48', gap:'2:00',sub:'⏱ 5:48 · 7h ago', delta:-4},
+    {rank:10,pilot:'La Ronge',    score:48900, time:'6:09', gap:'2:21',sub:'⏱ 6:09 · 4h ago', delta:2},
+    {rank:11,pilot:'Foxtrot Nine',score:47200, time:'6:30', gap:'2:42',sub:'⏱ 6:30 · 8h ago', delta:-1},
+    {rank:12,pilot:'Hollow Coal', score:45600, time:'6:52', gap:'3:04',sub:'⏱ 6:52 · 9h ago', delta:0},
+  ];
+
+  function youbar(el, r, total, leader){
+    const team = teamColor(r.pilot.toLowerCase());
+    el.innerHTML = `
+      <div class="c-bar" style="background:${team}"></div>
+      <div class="c-pos" style="color:var(--ember-hi);font-size:var(--fs-title)">${r.rank}</div>
+      <div style="width:46px;flex:0 0 auto"></div>
+      <div class="c-av" style="background:linear-gradient(155deg,${team},${team}aa);border:1px solid var(--ember);box-shadow:0 0 0 2px rgba(255,106,44,0.4)">${initials(r.pilot)}</div>
+      <div class="c-who"><div class="c-name">${r.pilot}<span class="youpill">YOU</span></div><div class="c-sub">Top 3% of ${total} pilots</div></div>
+      ${right(r.score, leader-r.score, true, false)}`;
+  }
+
+  render(document.getElementById('grid-total'), TOTAL, 'CAREER', false);
+  render(document.getElementById('grid-daily'), DAILY, 'SCORE',  true);
+  youbar(document.getElementById('you-total'), TOTAL.find(r=>r.mine), 312, TOTAL[0].score);
+</script>
+<script src="kit.js"></script>
+</body>
+</html>

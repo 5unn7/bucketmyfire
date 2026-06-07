@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>bucketmyfire — Prototype</title>
+<link rel="stylesheet" href="kit.css">
+<style>
+  .pgrid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .ptile{ cursor:pointer; padding:14px; display:flex; flex-direction:column; gap:7px; min-height:104px; }
+  .ptile .no{ font-family:var(--mono); font-size:var(--fs-tag); letter-spacing:.2em; color:var(--menu); font-weight:var(--fw-bold); }
+  .ptile .nm{ font-size:var(--fs-lg); font-weight:var(--fw-heavy); letter-spacing:.01em; }
+  .ptile .ds{ font-size:var(--fs-meta); color:var(--dim); line-height:1.35; margin-top:auto; }
+  .ptile .tag{ align-self:flex-start; }
+</style>
+</head>
+<body data-screen="index" data-rail="false">
+<main class="app app--norail">
+  <div class="app__pad">
+
+    <header class="row gap12" style="align-items:center;">
+      <div class="brand__mark lg" aria-label="bucketmyfire">
+        <svg class="flame" viewBox="0 0 149.7 184.72"><polygon points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/><path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/><path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/></svg>
+      </div>
+      <div>
+        <div class="eyebrow">Prototype · screen set</div>
+        <div class="h-screen">BUCKET MY FIRE</div>
+      </div>
+    </header>
+
+    <div class="sec"><span class="tag">Entry</span><span class="line"></span></div>
+    <div class="pgrid">
+      <div class="card clickable ptile rise d1" data-nav="title"><span class="no">01</span><span class="nm">Title</span><span class="ds">Attract / PLAY entry</span></div>
+      <div class="card clickable ptile rise d1" data-nav="onboarding"><span class="no">02</span><span class="nm">Onboarding</span><span class="ds">First-run callsign</span></div>
+    </div>
+
+    <div class="sec"><span class="tag">Hub</span><span class="line"></span></div>
+    <div class="pgrid">
+      <div class="card clickable ptile rise d2" data-nav="home" style="grid-column:1 / -1;"><span class="chip tag">Start here</span><span class="nm">Home</span><span class="ds">Profile · Daily Burn · Continue mission · bottom rail</span></div>
+    </div>
+
+    <div class="sec"><span class="tag">Play</span><span class="line"></span></div>
+    <div class="pgrid">
+      <div class="card clickable ptile rise d2" data-nav="daily"><span class="no">04</span><span class="nm">Daily Burn</span><span class="ds">Generated daily · launch</span></div>
+      <div class="card clickable ptile rise d2" data-nav="campaign"><span class="no">05</span><span class="nm">Campaign</span><span class="ds">8-mission select</span></div>
+      <div class="card clickable ptile rise d3" data-nav="briefing"><span class="no">06</span><span class="nm">Briefing</span><span class="ds">Pre-flight intel</span></div>
+      <div class="card clickable ptile rise d3" data-nav="debrief"><span class="no">07</span><span class="nm">Debrief</span><span class="ds">Score / grade / stars</span></div>
+    </div>
+
+    <div class="sec"><span class="tag">Rail destinations</span><span class="line"></span></div>
+    <div class="pgrid">
+      <div class="card clickable ptile rise d3" data-nav="maps"><span class="no">08</span><span class="nm">Maps</span><span class="ds">Region / theatre</span></div>
+      <div class="card clickable ptile rise d3" data-nav="hangar"><span class="no">09</span><span class="nm">Hangar</span><span class="ds">Aircraft select</span></div>
+      <div class="card clickable ptile rise d4" data-nav="coop"><span class="no">10</span><span class="nm">Co-op</span><span class="ds">Coming soon</span></div>
+      <div class="card clickable ptile rise d4" data-nav="board"><span class="no">11</span><span class="nm">Leaderboard</span><span class="ds">Career / mission</span></div>
+      <div class="card clickable ptile rise d4" data-nav="settings"><span class="no">12</span><span class="nm">Settings</span><span class="ds">Audio · cloud · account</span></div>
+      <div class="card clickable ptile rise d4" data-nav="store"><span class="no">13</span><span class="nm">Store</span><span class="ds">BMF gear</span></div>
+    </div>
+
+    <div class="mt20 faint mono" style="text-align:center;font-size:var(--fs-micro);letter-spacing:.16em;text-transform:uppercase;">bucketmyfire prototype · Marakana · shared kit</div>
+
+  </div>
+</main>
+<script src="kit.js"></script>
+</body>
+</html>

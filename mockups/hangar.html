@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>bucketmyfire — Hangar</title>
+<link rel="stylesheet" href="kit.css">
+<style>
+  /* layout glue only */
+  .hangar-head{ margin-bottom:2px; }
+  .heli-card{ width:clamp(258px, 82vw, 308px); padding:14px 15px 16px; display:flex; flex-direction:column; }
+  .heli-card .silo{ position:relative; aspect-ratio:16/10; border-radius:var(--r-md); overflow:hidden;
+    border:1px solid var(--stroke); margin-bottom:13px; }
+  .heli-card .silo .poster__fallback{ aspect-ratio:auto; height:100%; }
+  .heli-card .silo .poster__scrim{ background:linear-gradient(180deg, transparent 44%, rgba(4,3,2,0.80) 100%); }
+  .heli-card .silo .badge-tl{ position:absolute; top:11px; left:11px; z-index:4; }
+  .heli-card .silo .badge-tr{ position:absolute; top:11px; right:11px; z-index:4; }
+  .heli-card .specs{ margin:2px 0 13px; }
+  .heli-card .foot{ margin-top:auto; }
+  .heli-card.is-locked{ filter:grayscale(.45) brightness(.78); }
+  .cap-chip .k{ color:var(--faint); }
+  /* top-down helicopter silhouette in the fallback tile */
+  .ghost-heli{ width:128px; height:auto; opacity:.13; }
+  .ghost-heli svg{ width:100%; height:auto; display:block; }
+  .ghost-heli svg path{ fill:#fff; }
+</style>
+</head>
+<body data-screen="hangar">
+<main class="app">
+  <div class="app__pad">
+
+    <!-- ============ HEADER ============ -->
+    <header class="row between hangar-head rise d1">
+      <div>
+        <div class="eyebrow">Hangar</div>
+        <h1 class="h-screen mt8">Your fleet</h1>
+      </div>
+      <div class="brand__mark" aria-label="bucketmyfire">
+        <svg class="flame" viewBox="0 0 149.7 184.72"><polygon points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/><path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/><path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/></svg>
+      </div>
+    </header>
+
+    <!-- ============ FLEET CAROUSEL ============ -->
+    <div class="sec rise d2"><span class="tag">Fleet</span><span class="line"></span><span class="stamp">1 of 3 ready</span></div>
+
+    <div class="hscroll rise d2" data-dots="#fleet-dots">
+
+      <!-- Bell 205A-1 — OWNED + EQUIPPED -->
+      <article class="card card--warm card--cut heli-card">
+        <div class="silo">
+          <div class="poster__fallback">
+            <div class="ghost-heli" aria-hidden="true">
+              <svg viewBox="0 0 200 120"><path d="M100 5c-2.8 0-5 2.2-5 5v40H8c-2.8 0-5 2.2-5 5s2.2 5 5 5h87v9c-7.2 1.8-12.5 8.3-12.5 16v3.5c0 2.5 2 4.5 4.5 4.5h36c2.5 0 4.5-2 4.5-4.5V90c0-7.7-5.3-14.2-12.5-16v-9h57c2.8 0 5-2.2 5-5l24 1.5c1.8.1 3.3-1.3 3.4-3.1.1-1.8-1.3-3.3-3.1-3.4L105 50V10c0-2.8-2.2-5-5-5zM92 70h16c4.4 0 8 3.6 8 8v2H84v-2c0-4.4 3.6-8 8-8z"/></svg>
+            </div>
+          </div>
+          <div class="poster__scrim"></div>
+          <span class="badge-tl"><span class="chip chip--ghost">Light</span></span>
+          <span class="badge-tr"><span class="chip--status ok">Equipped</span></span>
+        </div>
+
+        <div class="row between gap8">
+          <h2 style="font-size:var(--fs-hero);font-weight:var(--fw-black);line-height:1.02;">Bell 205A-1</h2>
+          <span class="ctx cap-chip"><span class="k">CAP</span> 100 L</span>
+        </div>
+        <p class="mono" style="font-size:var(--fs-meta);letter-spacing:.04em;color:var(--dim);margin-top:5px;">The trainer</p>
+
+        <div class="specs mt12">
+          <div class="spec"><span class="name">Speed</span><span class="track"><i style="width:55%"></i></span></div>
+          <div class="spec"><span class="name">Agility</span><span class="track"><i style="width:85%"></i></span></div>
+          <div class="spec"><span class="name">Bucket</span><span class="track"><i style="width:50%"></i></span></div>
+          <div class="spec"><span class="name">Airframe</span><span class="track"><i style="width:60%"></i></span></div>
+        </div>
+
+        <div class="foot">
+          <button class="btn btn--ghost block" aria-disabled="true">Equipped</button>
+        </div>
+      </article>
+
+      <!-- Bell 212 — UNLOCKED -->
+      <article class="card card--warm card--cut heli-card">
+        <div class="silo">
+          <div class="poster__fallback">
+            <div class="ghost-heli" aria-hidden="true">
+              <svg viewBox="0 0 200 120"><path d="M100 5c-2.8 0-5 2.2-5 5v40H8c-2.8 0-5 2.2-5 5s2.2 5 5 5h87v9c-7.2 1.8-12.5 8.3-12.5 16v3.5c0 2.5 2 4.5 4.5 4.5h36c2.5 0 4.5-2 4.5-4.5V90c0-7.7-5.3-14.2-12.5-16v-9h57c2.8 0 5-2.2 5-5l24 1.5c1.8.1 3.3-1.3 3.4-3.1.1-1.8-1.3-3.3-3.1-3.4L105 50V10c0-2.8-2.2-5-5-5zM92 70h16c4.4 0 8 3.6 8 8v2H84v-2c0-4.4 3.6-8 8-8z"/></svg>
+            </div>
+          </div>
+          <div class="poster__scrim"></div>
+          <span class="badge-tl"><span class="chip chip--ghost">Medium</span></span>
+          <span class="badge-tr"><span class="chip--status">Ready</span></span>
+        </div>
+
+        <div class="row between gap8">
+          <h2 style="font-size:var(--fs-hero);font-weight:var(--fw-black);line-height:1.02;">Bell 212</h2>
+          <span class="ctx cap-chip"><span class="k">CAP</span> 150 L</span>
+        </div>
+        <p class="mono" style="font-size:var(--fs-meta);letter-spacing:.04em;color:var(--dim);margin-top:5px;">Twin-engine medium</p>
+
+        <div class="specs mt12">
+          <div class="spec"><span class="name">Speed</span><span class="track"><i style="width:70%"></i></span></div>
+          <div class="spec"><span class="name">Agility</span><span class="track"><i style="width:70%"></i></span></div>
+          <div class="spec"><span class="name">Bucket</span><span class="track"><i style="width:70%"></i></span></div>
+          <div class="spec"><span class="name">Airframe</span><span class="track"><i style="width:75%"></i></span></div>
+        </div>
+
+        <div class="foot">
+          <button class="btn btn--primary block" data-nav="home"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>Select</button>
+        </div>
+      </article>
+
+      <!-- UH-60 Black Hawk — LOCKED -->
+      <article class="card card--warm card--cut heli-card is-locked">
+        <div class="silo">
+          <div class="poster__fallback">
+            <div class="ghost-heli" aria-hidden="true">
+              <svg viewBox="0 0 200 120"><path d="M100 5c-2.8 0-5 2.2-5 5v40H8c-2.8 0-5 2.2-5 5s2.2 5 5 5h87v9c-7.2 1.8-12.5 8.3-12.5 16v3.5c0 2.5 2 4.5 4.5 4.5h36c2.5 0 4.5-2 4.5-4.5V90c0-7.7-5.3-14.2-12.5-16v-9h57c2.8 0 5-2.2 5-5l24 1.5c1.8.1 3.3-1.3 3.4-3.1.1-1.8-1.3-3.3-3.1-3.4L105 50V10c0-2.8-2.2-5-5-5zM92 70h16c4.4 0 8 3.6 8 8v2H84v-2c0-4.4 3.6-8 8-8z"/></svg>
+            </div>
+          </div>
+          <div class="poster__scrim"></div>
+          <span class="badge-tl"><span class="chip chip--ghost">Heavy</span></span>
+          <span class="badge-tr"><span class="chip--status locked">Locked</span></span>
+        </div>
+
+        <div class="row between gap8">
+          <h2 style="font-size:var(--fs-hero);font-weight:var(--fw-black);line-height:1.02;">UH-60</h2>
+          <span class="ctx cap-chip"><span class="k">CAP</span> 200 L</span>
+        </div>
+        <p class="mono" style="font-size:var(--fs-meta);letter-spacing:.04em;color:var(--dim);margin-top:5px;">The handful</p>
+
+        <div class="specs mt12">
+          <div class="spec"><span class="name">Speed</span><span class="track"><i style="width:95%"></i></span></div>
+          <div class="spec"><span class="name">Agility</span><span class="track"><i style="width:60%"></i></span></div>
+          <div class="spec"><span class="name">Bucket</span><span class="track"><i style="width:100%"></i></span></div>
+          <div class="spec"><span class="name">Airframe</span><span class="track"><i style="width:90%"></i></span></div>
+        </div>
+
+        <div class="foot">
+          <button class="btn btn--ghost block" aria-disabled="true">Clear 5 missions</button>
+        </div>
+      </article>
+
+    </div>
+    <div class="dots" id="fleet-dots"><i class="on"></i><i></i><i></i></div>
+
+    <!-- ============ HOW UNLOCKS WORK ============ -->
+    <div class="sec rise d3"><span class="tag">Unlocks</span><span class="line"></span><span class="stamp">Earn airframes</span></div>
+    <section class="card card--cut-br rise d3">
+      <div class="row gap12">
+        <div class="glyph"><svg class="flame" viewBox="0 0 149.7 184.72"><path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/><path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/></svg></div>
+        <p style="font-size:var(--fs-body);line-height:1.5;color:rgba(255,255,255,0.84);">Clear campaign missions to earn heavier airframes. More bucket means fewer trips to the lake — but a full load flies heavy and bleeds your top speed.</p>
+      </div>
+      <div class="ctx-row mt16">
+        <span class="ctx hot"><span class="k">212</span> Cleared 3</span>
+        <span class="ctx"><span class="k">UH-60</span> Clear 5</span>
+        <span class="ctx"><span class="k">Physics</span> Shared</span>
+      </div>
+    </section>
+
+  </div>
+</main>
+<script src="kit.js"></script>
+</body>
+</html>
