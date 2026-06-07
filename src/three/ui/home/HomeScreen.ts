@@ -90,7 +90,7 @@ export class HomeScreen {
     // state; the brief stays readable, it just can't be re-flown until midnight.
     const dailyCleared = hasCompletedDaily();
 
-    const grank = isConfigured() ? `<div class="grank"><b>#–</b><span>Global</span></div>` : '';
+    const grank = isConfigured() ? `<div class="badge grank"><b>#–</b><span>Global</span></div>` : '';
 
     return `
 <div class="scene"></div><div class="embers"></div>
@@ -132,7 +132,7 @@ export class HomeScreen {
             <div style="font-size:var(--fs-title);font-weight:var(--fw-black);">Today's Burn</div>
             <div class="mono" style="font-size:var(--fs-tag);letter-spacing:.14em;color:var(--dim);margin-top:3px;">${dailyDateLabel(new Date()).toUpperCase()}</div>
           </div>
-          ${dailyCleared ? `<span class="done-badge">${ic('check')}Cleared</span>` : `<span class="streak">${FLAME_ONLY}${streak}-day</span>`}
+          ${dailyCleared ? `<span class="badge ok">${ic('check')}Cleared</span>` : `<span class="badge fire">${FLAME_ONLY}${streak}-day</span>`}
         </div>
         <p class="dbrief">${daily.brief}</p>
         <div class="row between" style="margin-top:11px;gap:10px;">

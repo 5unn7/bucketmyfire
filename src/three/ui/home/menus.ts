@@ -21,6 +21,7 @@ import { missionPoster } from '../missionArt';
 import { buildFreeForAll } from '../../missions/freeforall';
 import { openLeaderboard } from '../Leaderboard';
 import { injectHomeStyles, spawnEmbers } from './styles';
+import { posterCard } from './posterCard';
 import { railNav } from './rail';
 import { DEFS, FLAME, ic } from './icons';
 import { validateCallsign, MAX_CALLSIGN } from '../callsign';
@@ -204,29 +205,19 @@ export function openCampaign(): void {
   const slides = MAPS.map((m) => {
     const selected = m.id === pro.mapId && m.available;
     const count = m.available ? missionsForMap(m.id).length : 0;
-    const cover = m.imageUrl
+    const backdrop = m.imageUrl
       ? `<img class="img" src="${m.imageUrl}" alt="">`
       : `<div class="fallback"><b>${m.name.slice(0, 2).toUpperCase()}</b></div>`;
     const badge = m.available
       ? `<span class="badge ${selected ? 'ok' : ''}">${selected ? 'Selected' : 'Live'}</span>`
       : `<span class="badge">Soon</span>`;
-    const stats = m.available
-      ? `<div class="ctx-row" style="margin-top:11px;">${m.stats ? `<span class="ctx">${ic('map')}${m.stats.area}</span><span class="ctx">${ic('droplet')}${m.stats.lakes}</span>` : ''}<span class="ctx hot">${ic('fire')}${count} missions</span></div>`
+    const body = m.available
+      ? `<div class="ctx-row">${m.stats ? `<span class="ctx">${ic('map')}${m.stats.area}</span><span class="ctx">${ic('droplet')}${m.stats.lakes}</span>` : ''}<span class="ctx hot">${ic('fire')}${count} missions</span></div>`
       : '';
-    const cta = !m.available
-      ? `<button class="btn ghost block is-disabled" style="margin-top:15px;">${ic('lock')}Coming soon</button>`
-      : `<button class="btn primary block" style="margin-top:15px;" data-map="${m.id}">${ic('play')}${selected ? 'Choose a mission' : 'Deploy here'}</button>`;
-    return `<article class="cslide${m.available ? '' : ' locked'}">
-      <div class="artcard">
-        ${cover}<div class="scrim"></div><div class="brackets"><i></i><i></i><i></i></div>
-        <div class="inner">
-          <div class="row between"><span class="chip ghost">${m.tagline}</span>${badge}</div>
-          <div class="grow"></div>
-          <h2 class="h-big" style="font-size:var(--fs-display);">${m.name}</h2>
-          ${stats}
-          ${cta}
-        </div>
-      </div></article>`;
+    const footer = !m.available
+      ? `<button class="btn ghost block is-disabled">${ic('lock')}Coming soon</button>`
+      : `<button class="btn primary block" data-map="${m.id}">${ic('play')}${selected ? 'Choose a mission' : 'Deploy here'}</button>`;
+    return posterCard({ locked: !m.available, backdrop, tagline: m.tagline, badge, title: m.name, body, footer });
   });
 
   campaignView = 'region';
@@ -383,18 +374,18 @@ function heliSlide(h: CatalogItem, cleared: number): string {
     .map((s) => `<div class="spec"><span class="name">${s.label}</span><span class="track"><i style="width:${Math.round(s.value * 100)}%"></i></span></div>`)
     .join('');
   const badge = unlocked ? `<span class="badge ok">Flyable</span>` : `<span class="badge locked">Locked</span>`;
-  return `<article class="cslide${unlocked ? '' : ' locked'}">
-    <div class="artcard heli" data-heli="${h.id}" style="--accent:${h.accent};">
-      <div class="heli-art"><span class="grid"></span><span class="ring"></span><span class="mark">${ic('heli')}</span><span class="livery" aria-hidden="true">${FLAME}</span></div>
-      <div class="scrim"></div><div class="brackets"><i></i><i></i><i></i></div>
-      <div class="inner">
-        <div class="row between"><span class="chip ghost">${h.tagline}</span>${badge}</div>
-        <div class="grow"></div>
-        <h2 class="h-big" style="font-size:var(--fs-display);">${h.name}</h2>
-        <div class="specgrid">${specs}</div>
-        <div class="heli-foot" style="margin-top:14px;"></div>
-      </div>
-    </div></article>`;
+  const backdrop = `<div class="heli-art"><span class="grid"></span><span class="ring"></span><span class="mark">${ic('heli')}</span><span class="livery" aria-hidden="true">${FLAME}</span></div>`;
+  return posterCard({
+    locked: !unlocked,
+    cardClass: 'heli',
+    cardAttrs: `data-heli="${h.id}" style="--accent:${h.accent};"`,
+    backdrop,
+    tagline: h.tagline,
+    badge,
+    title: h.name,
+    body: `<div class="specgrid">${specs}</div>`,
+    footer: `<div class="heli-foot"></div>`,
+  });
 }
 
 // ===================== OPEN SKIES (free-for-all) =====================
@@ -410,37 +401,37 @@ export function openCoop(): void {
   const unlocked = (h: CatalogItem): boolean => isHeliUnlocked(h, cleared);
   let picked = currentProfile().heliId || HELIS[0].id;
   if (!unlocked(HELIS.find((h) => h.id === picked) ?? HELIS[0])) picked = (HELIS.find(unlocked) ?? HELIS[0]).id;
-  // Locked airframes render dimmed with their unlock requirement and carry data-locked, which the
-  // selection handlers below skip — is-disabled only greys the button, it does NOT block the click.
-  const heliBtn = (h: (typeof HELIS)[number]): string => {
+  // Each airframe is a compact card-button in a 3-up horizontal grid. Locked ones render dimmed with
+  // their unlock requirement + a lock corner, carry data-locked, and the click handler skips them.
+  const heliCard = (h: (typeof HELIS)[number]): string => {
     const ok = unlocked(h);
-    const sub = ok ? h.tagline : `Clear ${h.unlockAfter} missions`;
-    const tone = ok ? (h.id === picked ? 'ember' : 'ghost') : 'ghost is-disabled';
-    return `<button class="btn ${tone} sm block" style="margin-top:8px;border-radius:var(--r-sm);justify-content:flex-start;gap:10px;" data-heli="${h.id}"${ok ? '' : ' data-locked'}>${ic(ok ? 'heli' : 'lock')}<b>${h.name}</b><span class="muted" style="font-weight:var(--fw-regular);">${sub}</span></button>`;
+    const sel = ok && h.id === picked;
+    const sub = ok ? h.tagline : `Clear ${h.unlockAfter}`;
+    const flag = sel ? `<span class="hc-flag">${ic('check')}</span>` : ok ? '' : `<span class="hc-flag">${ic('lock')}</span>`;
+    return `<button class="helicard${sel ? ' sel' : ''}${ok ? '' : ' locked'}" style="--accent:${h.accent};" data-heli="${h.id}"${ok ? '' : ' data-locked'}>
+      <span class="hc-art"><span class="hc-ring"></span><span class="hc-mark">${ic('heli')}</span></span>
+      <span class="hc-name">${h.name}</span>
+      <span class="hc-sub">${sub}</span>${flag}
+    </button>`;
   };
-  const body = `<div style="margin-top:10px;">
-    <span class="chip">Free-for-all</span>
-    <h1 class="h-big" style="margin-top:14px;">Open Skies.</h1>
-    <p class="muted" style="margin-top:10px;font-size:var(--fs-body);line-height:1.5;max-width:34ch;">Same Saskatchewan, same fires, everyone at once. The fires never stop. Knock down all you can and climb the board.</p>
-    <div class="mono" style="margin-top:16px;font-size:var(--fs-tag);letter-spacing:.14em;text-transform:uppercase;color:var(--faint);font-weight:var(--fw-bold);">Your aircraft</div>
-    <div id="ffa-helis">${HELIS.map(heliBtn).join('')}</div>
-    <button class="btn ember block" style="margin-top:16px;border-radius:var(--r-sm);" data-ffa>${ic('play')}Fly Open Skies</button>
-    <button class="btn ghost block" style="margin-top:10px;border-radius:var(--r-sm);" data-ffa-board>${ic('trophy')}Today's board</button>
+  const body = `<div style="margin-top:8px;">
+    <span class="chip">${ic('fire')}Free-for-all</span>
+    <h1 class="h-big" style="margin-top:13px;">Open Skies</h1>
+    <p class="muted" style="margin-top:9px;font-size:var(--fs-body);line-height:1.5;max-width:34ch;">Same map, same fires, everyone at once. The fire never stops — knock down all you can and climb the board.</p>
+    <div class="sec" style="margin-top:17px;"><span class="tag">Your aircraft</span><span class="line"></span></div>
+    <div class="heligrid">${HELIS.map(heliCard).join('')}</div>
+    <button class="btn ember block" style="margin-top:16px;" data-ffa>${ic('play')}Join</button>
+    <button class="btn ghost block" style="margin-top:10px;" data-ffa-board>${ic('trophy')}Today's board</button>
   </div>`;
   const { root } = overlay('coop', 'Open Skies', body);
-  // Heli selection: highlight the chosen airframe (ember) vs the rest (ghost). Locked airframes are
-  // inert — you can't fly what you haven't earned, so skip them on both the click and the re-paint.
-  root.querySelectorAll<HTMLElement>('[data-heli]').forEach((b) => {
-    if (b.hasAttribute('data-locked')) return;
-    b.addEventListener('click', () => {
-      picked = b.dataset.heli || picked;
-      root.querySelectorAll<HTMLElement>('[data-heli]').forEach((x) => {
-        if (x.hasAttribute('data-locked')) return;
-        const on = x.dataset.heli === picked;
-        x.classList.toggle('ember', on);
-        x.classList.toggle('ghost', !on);
-      });
-    });
+  // Aircraft selection: one delegated handler repaints the grid so the chosen card lights up and the
+  // rest reset. Locked airframes are inert — you can't fly what you haven't earned, so they're skipped.
+  const grid = root.querySelector<HTMLElement>('.heligrid')!;
+  grid.addEventListener('click', (e) => {
+    const card = (e.target as HTMLElement).closest<HTMLElement>('.helicard');
+    if (!card || card.hasAttribute('data-locked')) return;
+    picked = card.dataset.heli || picked;
+    grid.innerHTML = HELIS.map(heliCard).join('');
   });
   root.querySelector('[data-ffa]')?.addEventListener('click', () => {
     const url = new URL(location.href);

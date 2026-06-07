@@ -8,6 +8,7 @@
  */
 
 import { div, setBlur, UI, FS, FW, R } from './theme';
+import { makeBadge } from './components/Badge';
 import { getProgress } from '../missions/progress';
 import type { MissionDef } from '../missions/types';
 
@@ -159,12 +160,7 @@ export function coopTeaserCard(number: number): HTMLDivElement {
 
   const top = div({ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' });
   top.appendChild(div({ fontSize: FS.label, fontWeight: FW.bold, letterSpacing: '2px', color: UI.faint }, `MISSION ${number}`));
-  top.appendChild(
-    div(
-      { fontSize: FS.tag, fontWeight: FW.heavy, letterSpacing: '1.5px', color: UI.accent, background: UI.accentFill, border: `1px solid ${UI.accent}55`, borderRadius: R.pill, padding: '2px 8px' },
-      'SOON',
-    ),
-  );
+  top.appendChild(makeBadge('SOON', 'accent'));
   card.appendChild(top);
 
   card.appendChild(div({ fontSize: FS.title, fontWeight: FW.bold, margin: '7px 0 6px' }, '🤝 Co-op'));

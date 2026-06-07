@@ -5,38 +5,31 @@
  */
 
 import { UI, FS, FW, R, GRADE, div } from '../theme';
+import { injectKitStyles } from './base';
 
 export type BadgeTone = 'accent' | 'fight' | 'warn' | 'ok' | 'neutral' | 'fire';
 
-const TONES: Record<BadgeTone, { fg: string; fill: string }> = {
-  accent: { fg: UI.accent, fill: UI.accentFill },
-  fight: { fg: UI.menu, fill: UI.menuFill },
-  warn: { fg: UI.warn, fill: `${UI.warn}1f` },
-  ok: { fg: UI.ok, fill: `${UI.ok}1f` },
-  neutral: { fg: UI.faint, fill: UI.track },
-  fire: { fg: UI.fire, fill: `${UI.fire}1f` }, // the Daily Burn streak chip
+// Tone → canonical `.badge` modifier class. 'fight' is the default look (no modifier rule needed).
+const TONE_CLASS: Record<BadgeTone, string> = {
+  accent: 'accent',
+  fight: 'fight',
+  warn: 'warn',
+  ok: 'ok',
+  neutral: 'neutral',
+  fire: 'fire',
 };
 
-/** A small uppercase status pill ("SOON", "NEXT", "LOCKED"). */
+/**
+ * A small uppercase status pill ("SOON", "NEXT", "LOCKED"). Emits the canonical `.badge` class —
+ * THE one status pill of record (styled once in base.ts, shared with the string-markup screens), so
+ * imperative and template UI render an identical, squared, uniform-height badge.
+ */
 export function makeBadge(label: string, badgeTone: BadgeTone = 'accent'): HTMLDivElement {
-  const t = TONES[badgeTone];
-  return div(
-    {
-      display: 'inline-flex',
-      alignItems: 'center',
-      fontSize: FS.tag,
-      fontWeight: FW.heavy,
-      letterSpacing: '1.5px',
-      textTransform: 'uppercase',
-      color: t.fg,
-      background: t.fill,
-      border: `1px solid ${t.fg}55`,
-      borderRadius: R.pill,
-      padding: '2px 8px',
-      lineHeight: '1.4',
-    },
-    label,
-  );
+  injectKitStyles();
+  const e = document.createElement('div');
+  e.className = `badge ${TONE_CLASS[badgeTone]}`;
+  e.textContent = label;
+  return e;
 }
 
 /** A grade chip ('S'..'D') painted from the shared GRADE map. */

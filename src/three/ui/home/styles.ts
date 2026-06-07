@@ -279,6 +279,34 @@ const CSS = `
 .bmf-app .specgrid .spec{ grid-template-columns:50px 1fr; gap:8px; margin:0; }
 .bmf-app .specgrid .spec .name{ color:rgba(255,255,255,0.62); }
 
+/* ===== Open Skies — aircraft picker as a 3-up grid of selectable card-buttons (warm "fight" register).
+   Each card is a real <button>: a tinted procedural hangar tile + name + tagline, with a selected
+   (ember) and a locked (dimmed + lock corner) state. All colour comes from the accent var + tokens. */
+.bmf-app .heligrid{ display:grid; grid-template-columns:repeat(3,1fr); gap:9px; margin-top:11px; }
+.bmf-app .helicard{ position:relative; display:flex; flex-direction:column; align-items:center; gap:7px;
+  padding:11px 7px 12px; border-radius:var(--r-lg); border:1px solid var(--stroke); background:var(--card-bg); color:var(--text);
+  font:inherit; cursor:pointer; text-align:center; overflow:hidden; -webkit-tap-highlight-color:transparent;
+  transition:border-color .16s ease, box-shadow .22s ease, transform .12s ease; }
+.bmf-app .helicard:hover{ border-color:var(--warm-stroke); transform:translateY(-2px); }
+.bmf-app .helicard.sel{ border-color:var(--menu-soft);
+  background:radial-gradient(120% 92% at 50% 0%, var(--ember-12), transparent 62%), var(--card-bg);
+  box-shadow:inset 0 0 0 1px var(--menu-soft), 0 0 22px var(--ember-22); }
+.bmf-app .helicard.locked{ cursor:default; filter:grayscale(.55) brightness(.66); }
+.bmf-app .helicard.locked:hover{ border-color:var(--stroke); transform:none; }
+.bmf-app .helicard .hc-art{ position:relative; width:100%; aspect-ratio:1.85/1; border-radius:var(--r-sm); overflow:hidden; display:grid; place-items:center;
+  background:radial-gradient(92% 84% at 50% 30%, color-mix(in srgb, var(--accent) 50%, transparent), transparent 70%), var(--metal); }
+.bmf-app .helicard .hc-ring{ position:absolute; top:50%; left:50%; width:62px; height:62px; transform:translate(-50%,-50%); border-radius:50%;
+  border:1px dashed color-mix(in srgb, var(--accent) 60%, transparent); opacity:.5; animation:bmf-rotor 9s linear infinite; }
+.bmf-app .helicard .hc-mark{ position:relative; display:grid; place-items:center; color:var(--text); }
+.bmf-app .helicard .hc-mark svg{ width:42px; height:42px; }
+.bmf-app .helicard .hc-name{ font-size:var(--fs-meta); font-weight:var(--fw-bold); line-height:1.16; color:var(--text);
+  min-height:calc(1.16em * 2); display:flex; align-items:center; justify-content:center; }
+.bmf-app .helicard .hc-sub{ font-family:var(--mono); font-size:var(--fs-micro); letter-spacing:.08em; text-transform:uppercase; color:var(--dim); }
+.bmf-app .helicard.locked .hc-sub{ color:var(--faint); }
+.bmf-app .helicard .hc-flag{ position:absolute; top:7px; right:7px; width:19px; height:19px; border-radius:50%; display:grid; place-items:center; color:var(--faint); }
+.bmf-app .helicard .hc-flag svg{ width:12px; height:12px; }
+.bmf-app .helicard.sel .hc-flag{ background:var(--menu); color:var(--cta-ink); box-shadow:0 0 10px var(--ember-35); }
+
 /* ===== mission card LIST (accordion) — copy on the left, art on the right, gradient fade left =====
    One vertical stack; the active mission expands (reveals its CTA), collapsed cards keep ALL their
    copy. The right-anchored poster reads through a left-to-right scrim so the left-hand text stays
