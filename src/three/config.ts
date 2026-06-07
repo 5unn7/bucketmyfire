@@ -659,7 +659,7 @@ export const BRIDGE = {
   // Where to build a bridge: span `river` (an authored RegionRiver name) at the point nearest `near`
   // (real lat/lon). `name` labels the clean-pass radio call. These are the road-crosses-river towns.
   sites: [
-    { name: 'Missinipe', river: 'Churchill River', near: { lat: 56.3156, lon: -105.1285 } },
+    { name: 'Missinipe', river: 'Churchill River', near: { lat: 56.3159, lon: -104.7577 } }, // a narrow Churchill reach E of Otter Lake — the old Missinipe coord snapped the span onto Otter Lake's RIM (piers in water, steep shore walls beside the deck). This reach gives dry banks within the span + a clean fly-under (see scripts probe).
     { name: 'Prince Albert', river: 'Saskatchewan River', near: { lat: 53.1266, lon: -105.7296 } },
     { name: 'Saskatoon', river: 'S Saskatchewan river', near: { lat: 52.133, lon: -106.67 } },
   ],
