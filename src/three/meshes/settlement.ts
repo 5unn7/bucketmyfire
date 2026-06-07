@@ -46,7 +46,10 @@ function pick<T>(arr: readonly T[], rng: () => number): T {
 
 /**
  * Triangular gable-roof prism for cabin-tier settlements — unique verts per face so
- * computeVertexNormals gives flat shading on every slope.
+ * computeVertexNormals gives flat shading on every slope. The ridge runs along X (at z=cz);
+ * every triangle is wound CCW so its outward normal points away from the cabin — otherwise
+ * the front slope + both gable ends get inward normals (back-face-culled or lit black, the
+ * "broken cabin" look). Six named corners keep the winding auditable.
  */
 function coloredPrism(
   span: number, rise: number, depth: number,
@@ -55,18 +58,16 @@ function coloredPrism(
 ): THREE.BufferGeometry {
   const hw = span / 2, hd = depth / 2;
   const r = color.r * mul, g = color.g * mul, b = color.b * mul;
+  // Eaves (y=cy) + ridge (y=cy+rise, z=cz). B=back (−Z), F=front (+Z), R=ridge.
+  const BL = [cx-hw, cy, cz-hd], BR = [cx+hw, cy, cz-hd];
+  const FL = [cx-hw, cy, cz+hd], FR = [cx+hw, cy, cz+hd];
+  const RL = [cx-hw, cy+rise, cz], RR = [cx+hw, cy+rise, cz];
   const pos: number[] = [];
-  const push = (...v: number[]) => pos.push(...v);
-  // Left gable end (−X normal)
-  push(cx-hw,cy,cz-hd,  cx-hw,cy+rise,cz,  cx-hw,cy,cz+hd);
-  // Right gable end (+X normal)
-  push(cx+hw,cy,cz-hd,  cx+hw,cy,cz+hd,    cx+hw,cy+rise,cz);
-  // Back slope
-  push(cx-hw,cy,cz-hd,  cx+hw,cy,cz-hd,    cx+hw,cy+rise,cz);
-  push(cx-hw,cy,cz-hd,  cx+hw,cy+rise,cz,  cx-hw,cy+rise,cz);
-  // Front slope
-  push(cx-hw,cy,cz+hd,  cx-hw,cy+rise,cz,  cx+hw,cy+rise,cz);
-  push(cx-hw,cy,cz+hd,  cx+hw,cy+rise,cz,  cx+hw,cy,cz+hd);
+  const tri = (a: number[], b2: number[], c: number[]) => pos.push(...a, ...b2, ...c);
+  tri(BL, FL, RL);          // left gable end  (−X)
+  tri(BR, RR, FR);          // right gable end (+X)
+  tri(BL, RL, RR); tri(BL, RR, BR); // back slope  (up + −Z)
+  tri(FL, RR, RL); tri(FL, FR, RR); // front slope (up + +Z)
   const positions = new Float32Array(pos);
   const geom = new THREE.BufferGeometry();
   geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
