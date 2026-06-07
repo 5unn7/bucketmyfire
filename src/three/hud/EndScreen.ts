@@ -45,7 +45,7 @@ export class EndScreen {
     this.missionIndex = def.index;
     this.missionPlace = def.places?.base ?? '';
     this.isCampaign = CAMPAIGN.some((m) => m.id === def.id);
-    this.prevBest = bestScore(def.id); // null for a first clear / Daily Burn (daily never records a best)
+    this.prevBest = bestScore(def.id); // null for a first clear; for a Daily Burn replay, the prior day-record to beat
   }
 
   /** True once the end screen has been built (the `!shown` guard in HUD.update keys off this). */
@@ -210,7 +210,7 @@ export class EndScreen {
       // Primary action row — the obvious next move (advance / retry) + back to the menu.
       const row = el('div', { display: 'flex', gap: '10px', justifyContent: 'center', marginTop: '20px', flexWrap: 'wrap' });
       if (s.won && this.end.hasNext) row.appendChild(bannerButton('NEXT ▸', 'primary', this.end.onNext));
-      if (!s.won) row.appendChild(bannerButton('↻ RETRY', 'primary', this.end.onRetry));
+      if (!s.won && !this.end.noRetry) row.appendChild(bannerButton('↻ RETRY', 'primary', this.end.onRetry));
       row.appendChild(bannerButton('MENU', 'ghost', this.end.onMenu));
       card.appendChild(row);
       // Secondary row — leaderboard + share (the free viral loop; OG tags already unfurl the link).

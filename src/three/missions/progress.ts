@@ -46,12 +46,12 @@ export function getProgress(): Progress {
  * sub-task completion breakdown (the ledger) when it's the best score so far.
  */
 export function recordWin(id: string, score: number, completion?: CompletionRecord): void {
-  // Daily Burn is isolated from campaign progression: its wins never enter `completed[]`, so they
-  // can't inflate the linear-unlock count that gates helicopters. Its record lives on the global
-  // per-day leaderboard instead (submitScore under the daily id). See missions/daily.ts.
-  if (isDailyId(id)) return;
   const p = load();
-  if (!p.completed.includes(id)) p.completed.push(id);
+  // Daily Burn is isolated from campaign UNLOCK progression: its wins never enter `completed[]`, so
+  // they can't inflate the linear-unlock count that gates helicopters. Its best score IS kept (under
+  // the date-stamped daily id) so every day's run counts toward career points / rank on the profile
+  // card — each day is its own id, so daily bests accumulate over time. See missions/daily.ts.
+  if (!isDailyId(id) && !p.completed.includes(id)) p.completed.push(id);
   const isBest = !(id in p.best) || score > p.best[id];
   if (isBest) p.best[id] = score;
   if (completion && (isBest || !(id in p.completions))) p.completions[id] = completion;
