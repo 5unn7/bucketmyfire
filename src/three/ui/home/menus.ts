@@ -14,6 +14,8 @@
 import type { MissionDef } from '../../missions/types';
 import { HELIS, MAPS, isHeliUnlocked, missionsCleared, loadProfile, saveProfile, type Profile, type CatalogItem } from '../profile';
 import { isConfigured } from '../../leaderboard/client';
+import { getCloudLink } from '../../leaderboard/cloudSave';
+import { openCloudSave } from '../CloudSave';
 import { resetProgress, getProgress, bestScore, bestStars, isUnlocked } from '../../missions/progress';
 import { missionPoster } from '../missionArt';
 import { buildFreeForAll } from '../../missions/freeforall';
@@ -206,8 +208,8 @@ export function openCampaign(): void {
       ? `<img class="img" src="${m.imageUrl}" alt="">`
       : `<div class="fallback"><b>${m.name.slice(0, 2).toUpperCase()}</b></div>`;
     const badge = m.available
-      ? `<span class="pill ${selected ? 'ok' : ''}">${selected ? 'Selected' : 'Live'}</span>`
-      : `<span class="pill soon">Soon</span>`;
+      ? `<span class="badge ${selected ? 'ok' : ''}">${selected ? 'Selected' : 'Live'}</span>`
+      : `<span class="badge">Soon</span>`;
     const stats = m.available
       ? `<div class="ctx-row" style="margin-top:11px;">${m.stats ? `<span class="ctx">${ic('map')}${m.stats.area}</span><span class="ctx">${ic('droplet')}${m.stats.lakes}</span>` : ''}<span class="ctx hot">${ic('fire')}${count} missions</span></div>`
       : '';
@@ -269,12 +271,12 @@ export function openMissions(mapId: string): void {
     const poster = missionPoster(m.id);
     const art = poster ? `<img class="img" src="${poster}" alt="">` : `<div class="fallback"><b>${num}</b></div>`;
     const badge = !unlocked
-      ? `<span class="pill locked">${ic('lock')}Locked</span>`
+      ? `<span class="badge locked">${ic('lock')}Locked</span>`
       : isNext
-        ? `<span class="pill">Next up</span>`
+        ? `<span class="badge">Next up</span>`
         : done
-          ? `<span class="pill ok">${ic('check')}Cleared</span>`
-          : `<span class="pill">Ready</span>`;
+          ? `<span class="badge ok">${ic('check')}Cleared</span>`
+          : `<span class="badge">Ready</span>`;
     const starRow = `<span class="stars">${star(stars >= 1)}${star(stars >= 2)}${star(stars >= 3)}</span>`;
     const scoreLine = best != null
       ? `<span class="mono" style="font-size:var(--fs-meta);color:rgba(255,255,255,0.78);">Best <b style="color:var(--menu);font-weight:var(--fw-bold)">${best.toLocaleString('en-US')}</b></span>`
@@ -380,7 +382,7 @@ function heliSlide(h: CatalogItem, cleared: number): string {
   const specs = (h.specs ?? [])
     .map((s) => `<div class="spec"><span class="name">${s.label}</span><span class="track"><i style="width:${Math.round(s.value * 100)}%"></i></span></div>`)
     .join('');
-  const badge = unlocked ? `<span class="pill ok">Flyable</span>` : `<span class="pill locked">Locked</span>`;
+  const badge = unlocked ? `<span class="badge ok">Flyable</span>` : `<span class="badge locked">Locked</span>`;
   return `<article class="cslide${unlocked ? '' : ' locked'}">
     <div class="artcard heli" data-heli="${h.id}" style="--accent:${h.accent};">
       <div class="heli-art"><span class="grid"></span><span class="ring"></span><span class="mark">${ic('heli')}</span><span class="livery" aria-hidden="true">${FLAME}</span></div>
@@ -457,7 +459,6 @@ export function openCoop(): void {
 export function openSettings(): void {
   const pro = currentProfile();
   const muted = localStorage.getItem(MUTE_KEY) === '1';
-  const online = isConfigured();
   const body = `<div class="card" style="margin-top:8px;">
     <div class="srow"><div class="ic">${ic('volume')}</div><div class="grow"><div class="t">Sound</div><div class="s">Rotor loop &amp; SFX</div></div>
       <div class="toggle ${muted ? '' : 'on'}" data-sound role="switch" tabindex="0"><span class="knob"></span></div></div>
@@ -467,8 +468,9 @@ export function openSettings(): void {
   <div class="card" style="margin-top:12px;">
     <div class="srow"><div class="ic">${ic('user')}</div><div class="grow"><div class="t">Pilot</div><div class="s" id="callsign">${pro.name || 'Unnamed'}</div></div>
       <button class="btn ghost sm" data-edit>${ic('edit')}Edit</button></div>
-    <div class="srow"><div class="ic">${ic('cloud')}</div><div class="grow"><div class="t">Cloud &amp; board</div><div class="s ${online ? 'ok' : ''}">${online ? 'Online ✓' : 'Offline'}</div></div></div>
-    <div class="srow"><div class="ic">${ic('pin')}</div><div class="grow"><div class="t">Region</div><div class="s">Map</div></div><span class="pill">Saskatchewan</span></div>
+    <div class="srow"><div class="ic">${ic('cloud')}</div><div class="grow" style="min-width:0;"><div class="t">Cloud save</div><div class="s" id="cloudsub" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">…</div></div>
+      <button class="btn ghost sm" data-cloud id="cloudbtn" style="display:none;"></button></div>
+    <div class="srow"><div class="ic">${ic('pin')}</div><div class="grow"><div class="t">Region</div><div class="s">Map</div></div><span class="badge">Saskatchewan</span></div>
   </div>
   <div class="card" style="margin-top:12px;">
     <div class="srow danger"><div class="ic">${ic('trash')}</div><div class="grow"><div class="t">Reset progress</div><div class="s">Wipe ranks, stars &amp; unlocks</div></div>
@@ -476,6 +478,29 @@ export function openSettings(): void {
   </div>`;
 
   const { root } = overlay('settings', 'Settings', body);
+
+  // Cloud-save row: show the email this device is LINKED to (the lookup key the pilot saved under) and
+  // open Cloud Save to manage it. Email goes in via textContent — never interpolated into innerHTML —
+  // so a tampered local link can't inject markup. Cloud save needs Supabase, so the action hides when
+  // unconfigured. Re-runs after the modal closes (save / unlink) so the row never goes stale.
+  const renderCloud = (): void => {
+    const link = getCloudLink();
+    const online = isConfigured();
+    const sub = root.querySelector<HTMLElement>('#cloudsub');
+    const btn = root.querySelector<HTMLButtonElement>('#cloudbtn');
+    if (sub) {
+      sub.textContent = link ? link.email : online ? 'Not saved yet' : 'Offline';
+      sub.classList.toggle('ok', !!link);
+      if (link) sub.title = link.email;
+      else sub.removeAttribute('title');
+    }
+    if (btn) {
+      btn.style.display = online ? '' : 'none';
+      btn.innerHTML = `${ic(link ? 'edit' : 'cloud')}${link ? 'Manage' : 'Save'}`;
+    }
+  };
+  renderCloud();
+  root.querySelector('[data-cloud]')?.addEventListener('click', () => openCloudSave(renderCloud));
 
   root.querySelector('[data-sound]')?.addEventListener('click', (e) => {
     const t = e.currentTarget as HTMLElement;

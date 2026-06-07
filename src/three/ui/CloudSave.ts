@@ -26,9 +26,11 @@ import { makeButton } from './components';
 // Visual tokens (UI) + `div`/`setBlur` come from ./theme — the one cockpit palette.
 // `good` → `UI.ok` (shared success green), `glass` → `UI.cardGlass`, `shadow` → `UI.shadowCard`.
 
-/** Open the cloud save/restore modal. */
-export function openCloudSave(): void {
-  new CloudSave();
+/** Open the cloud save/restore modal. `onClose` fires when the modal is dismissed (X / backdrop /
+ *  Esc), letting a caller re-read the cloud link — e.g. Settings refreshing the linked-email row
+ *  after a save or unlink. (A successful RESTORE reloads the page instead, so it never fires.) */
+export function openCloudSave(onClose?: () => void): void {
+  new CloudSave(onClose);
 }
 
 class CloudSave {
@@ -41,7 +43,7 @@ class CloudSave {
   private readonly linkNote: HTMLDivElement;
   private busy = false;
 
-  constructor() {
+  constructor(private readonly onClose?: () => void) {
     this.root = div({
       position: 'fixed',
       inset: '0',
@@ -262,6 +264,7 @@ class CloudSave {
   private close(): void {
     window.removeEventListener('keydown', this.onKey);
     this.root.remove();
+    this.onClose?.();
   }
 
   private onKey(e: KeyboardEvent): void {
