@@ -430,7 +430,9 @@ export class Game {
     const builtSites: { name: string; x: number; z: number }[] = settlements.map((s) => ({ name: s.name, x: s.x, z: s.z }));
     // Forest-clearing + dirt-yard per settlement, sized by tier (a city clears a wide pad, a hamlet a small one);
     // crew LZs get a NARROW cleared patch so the heli can set its skids down without the canopy in the way.
-    const lzClearings = this.crewZones.map((z) => ({ x: z.x, z: z.z, radius: MISSIONS.lzClearRadius }));
+    // A landing LZ clears a WIDE patch (no trees beside the skids); a LOW-HOVER drill spot clears only a
+    // TIGHT hole (`lowHoverClearRadius`) so the conifer ring stands close — drifting into it strikes the rotor.
+    const lzClearings = this.crewZones.map((z) => ({ x: z.x, z: z.z, radius: z.lowHover ? MISSIONS.lowHoverClearRadius : MISSIONS.lzClearRadius }));
     this.world.setClearings([...settlements.map((s) => ({ x: s.x, z: s.z, radius: s.clearRadius })), ...lzClearings]);
 
     // Atmosphere (B2): a gradient sky dome + aerial-perspective fog + sun/hemisphere

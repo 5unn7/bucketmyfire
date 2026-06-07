@@ -14,7 +14,9 @@ export const WORLD3D = {
   // to scoop" is identical everywhere (the Phase-1 keystone). All in world units,
   // measured relative to the lake's flat water surface.
   lakeBedDepth: 5, // deepest lakebed below the water surface (at the center)
-  lakeShoreDrop: 0.4, // ground at the waterline sits this far below the surface (water meets land)
+  lakeShoreDrop: 0.9, // ground at the waterline sits this far below the surface (water meets land). Deeper = the
+  // shoreline is unambiguously SUBMERGED, so no land sliver pokes through the disc edge where terrain undulates.
+  // (Scoop reads the water SURFACE, not the bed, so a deeper edge never affects filling.)
   lakeBankHeight: 1.6, // raised lip above the water just outside the shore
   lakeBankWidth: 10, // radial width of that raised bank ring
   lakeBlendWidth: 22, // radial width over which the bank blends back into base terrain
@@ -112,8 +114,9 @@ export const LAKE_SHAPE = {
 export const STREAM = {
   width: 3.4, // half-width of a mini-river water ribbon (units)
   tinyWidth: 2.0, // half-width of a tiny tributary
-  depth: 1.8, // channel bed below the water surface (shallow — bucket still reaches)
-  shoreDrop: 0.3, // bank-edge ground sits this far below the surface (water meets land)
+  depth: 2.6, // channel bed below the water surface (the bucket scoops off the SURFACE, so a deeper bed is free)
+  shoreDrop: 0.8, // bank-edge ground sits this far below the surface (water meets land). Raised so the channel
+  // EDGE is clearly submerged under the ribbon — kills the land slivers that showed through a too-shallow channel.
   bankHeight: 0.7, // low raised lip just outside the channel
   bankWidth: 3.5, // width of that bank ring
   blendWidth: 9, // blend the bank back into base terrain
@@ -1118,14 +1121,18 @@ export const MISSIONS = {
   hoverSec: 5, // seconds of held hover over a hover-zone to complete the drop (the "5-second hover" drill)
   hoverAglMax: 12, // ceiling (units above the eased floor) for a valid hover — above landAgl, below this
   hoverSpeed: 3.5, // airspeed (units/s) below which the hover counts as "holding station" (a touch looser than landSpeed)
-  // LOW HOVER DRILL: nap-of-the-earth precision hover, low and steady over the dirt. AGL is measured from
-  // the flight floor (groundHeight + skid clearance ≈ 3 ft), so the band is GROUND-relative. The drill
-  // counts from the settled rest on the floor up to the ceiling — the skill is holding it LOW and STILL,
-  // not threading a knife-edge above the rest point (which was unholdable). Keep `lowHoverAglMax` modest so
-  // a high hover doesn't count.
-  lowHoverSec: 12, // seconds to hold the precision low hover at each spot
-  lowHoverAglMax: 2.2, // ceiling for a valid low hover (≈10 ft above the ground at 4.5 ft/unit)
-  lowHoverSpeed: 2.5, // max airspeed (units/s) — must be near-stationary (a touch forgiving for the drill)
+  // LOW HOVER DRILL: drop into a TIGHT clearing ringed by trees and hold a low, steady hover. The skill
+  // is now LATERAL precision, not knife-edge altitude: the HOLD is forgiving (a generous low band, a brief
+  // wobble PAUSES the timer instead of zeroing it — `lowHoverGraceSec`), but the clearing is small
+  // (`lowHoverClearRadius`, far tighter than a landing LZ) so the conifer ring stands close — drift into it
+  // and the rotor strikes the canopy (the normal CRASH path → mission lost). AGL is GROUND-relative (rides
+  // the flight floor); keep the ceiling LOW so the belly sits down among the treetops where the ring bites.
+  lowHoverSec: 8, // seconds to hold the low hover at each spot (was 12 — shortened; the tree ring is the challenge now)
+  lowHoverAglMax: 3.5, // ceiling for a valid low hover (≈16 ft) — low enough the surrounding treetops poke above the belly
+  lowHoverSpeed: 3.0, // max airspeed (units/s) — near-stationary, a touch forgiving for the drill
+  lowHoverGraceSec: 1.2, // a brief breach (drift/climb/overspeed) shorter than this PAUSES the dwell instead of resetting it
+  lowHoverRadius: 11, // horizontal acceptance radius (units) for a low-hover spot — tighter than lzRadius (the hole is small)
+  lowHoverClearRadius: 19, // forest cleared within this of a low-hover spot — much TIGHTER than lzClearRadius so trees ring close
   zoneSmoke: 0x39d0ff, // marker-smoke / ring tint for an ACTIVE (next) zone (cyan)
   zoneSmokeDone: 0x5a6b72, // tint once a zone is satisfied (greyed out)
   zoneHome: 0x5fe0a0, // persistent tint for the reusable HOME base zone — always lit, distinct green from the cyan LZs

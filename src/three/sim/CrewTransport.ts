@@ -47,6 +47,7 @@ export class CrewTransport {
   private _carrying = false;
   private _delivered = 0;
   private _dwell = 0; // seconds held on the current zone
+  private _breach = 0; // seconds since a low-hover hold lapsed (drift/climb/overspeed) — within grace it only PAUSES the dwell
   private active = -1; // index of the zone currently being worked, or -1
   private _total: number; // single-use endpoint count — grows if a pop-up rescue zone is added
 
@@ -172,13 +173,13 @@ export class CrewTransport {
   hint(): string | null {
     if (this._delivered >= this._total) return null;
     if (this.active >= 0) {
-      if (this.zones[this.active].lowHover) return 'Hold it low and steady — about 3 ft off the ground';
+      if (this.zones[this.active].lowHover) return 'Hold it low and steady — mind the treeline';
       if (this.zones[this.active].hover) return 'Hold the hover steady — crew on the line';
       return this._carrying ? 'Crew disembarking — hold it on the deck' : 'Crew boarding — hold it on the deck';
     }
     // nav hint toward next low-hover spot (no crew carry state)
     const nextLH = this.zones.find((z, i) => z.lowHover && z.single && !(this.done[i] || this.lost[i]));
-    if (nextLH) return `Hover low over ${nextLH.label} — settle to ~3 ft, hold it steady`;
+    if (nextLH) return `Drop into ${nextLH.label} — settle low and hold it steady, off the trees`;
     if (this._carrying) {
       const tgt = this.zones.find((z, i) => z.role === 'unload' && !(z.single && (this.done[i] || this.lost[i])));
       if (!tgt) return null;
@@ -197,13 +198,15 @@ export class CrewTransport {
   update(dt: number, x: number, z: number, agl: number, speed: number): void {
     if (!Number.isFinite(dt) || dt <= 0) return;
 
-    // Find the nearest zone we can act on given the carry state.
+    // Find the nearest zone we can act on given the carry state. A low-hover spot has a TIGHTER acceptance
+    // radius than a landing LZ (the hole you drop into is small), so the capture radius is per-zone.
     let target = -1;
-    let bestD: number = MISSIONS.lzRadius;
+    let bestD = Infinity;
     for (let i = 0; i < this.zones.length; i++) {
       if (!this.isTargetable(i)) continue;
+      const cap = this.zones[i].lowHover ? MISSIONS.lowHoverRadius : MISSIONS.lzRadius;
       const d = Math.hypot(this.zones[i].x - x, this.zones[i].z - z);
-      if (d <= bestD) {
+      if (d <= cap && d < bestD) {
         bestD = d;
         target = i;
       }
@@ -212,10 +215,19 @@ export class CrewTransport {
     // The "holding" gate depends on the zone: a HOVER zone wants a held stationary hover (airborne, under the
     // ceiling, near-still); a normal zone wants skids-down-and-stopped. Either way you must be ON the zone.
     if (target < 0 || !this.holding(target, agl, speed)) {
+      // LOW-HOVER GRACE: a brief lapse (a wobble out of the band or a nudge off the spot) shouldn't zero a
+      // long hold. While working a low-hover spot, a breach shorter than `lowHoverGraceSec` only PAUSES the
+      // dwell — the timer freezes and resumes on recovery. Past the grace (or any non-drill zone) it resets.
+      if (this.active >= 0 && this.zones[this.active].lowHover) {
+        this._breach += dt;
+        if (this._breach < MISSIONS.lowHoverGraceSec) return; // pause: keep `active` + `_dwell`, wait for recovery
+      }
       this.active = -1;
       this._dwell = 0;
+      this._breach = 0;
       return;
     }
+    this._breach = 0; // holding again — clear any paused-breach grace
 
     if (target !== this.active) {
       this.active = target;
@@ -237,16 +249,17 @@ export class CrewTransport {
       }
       this.active = -1;
       this._dwell = 0;
+      this._breach = 0;
     }
   }
 
   /** Is the heli holding zone `i`? A LOW HOVER zone needs near-ground AGL; a HOVER zone needs an
    *  airborne mid-altitude hover; a normal zone needs skids down and stopped. */
   private holding(i: number, agl: number, speed: number): boolean {
-    // LOW HOVER: be LOW (within the ground-relative ceiling) and STEADY. `agl` already rides the
-    // flight floor (groundHeight + skid clearance), so this is measured from the GROUND. We accept the
-    // settled-on-the-floor rest (agl ≈ 0 ≈ skid height ≈ 3 ft off the dirt) up to the ceiling — no strict
-    // "must stay airborne" lower bound, which was unholdable since the heli naturally rests at the floor.
+    // LOW HOVER: be LOW (within the ground-relative ceiling) and STEADY. `agl` already rides the flight
+    // floor, so this is measured from the GROUND — from the settled rest up to a forgiving low ceiling (no
+    // strict airborne lower bound, which was unholdable). The hold is deliberately easy; the DIFFICULTY is
+    // lateral — the tight tree ring (lowHoverClearRadius) means drifting off-centre strikes the canopy.
     if (this.zones[i].lowHover) return agl <= MISSIONS.lowHoverAglMax && speed <= MISSIONS.lowHoverSpeed;
     if (this.zones[i].hover) return agl > MISSIONS.landAgl && agl <= MISSIONS.hoverAglMax && speed <= MISSIONS.hoverSpeed;
     return agl <= MISSIONS.landAgl && speed <= MISSIONS.landSpeed;

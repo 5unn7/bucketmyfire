@@ -65,10 +65,10 @@ export const SASKATCHEWAN_MISSIONS: MissionDef[] = [
     id: 'hover-training',
     index: 1,
     name: 'Low Hover Drill',
-    brief: 'Precision low-hover certification. Fly to five marked clearings on land and hold a low, steady hover just off the ground — about three feet — for twelve seconds at each. Settle in, hold it still, don\'t climb away.',
-    tagline: 'Low and steady, three feet off the ground. Five clearings.',
+    brief: 'Precision low-hover certification. Drop into five tight clearings ringed by timber and hold a low, steady hover for eight seconds at each. Settle dead-centre — clip the treeline and you go down.',
+    tagline: 'Five tight holes in the trees. Drop in, hold it, don\'t clip the timber.',
     intel:
-      "No bucket today, Water-1 — fundamentals. A precision low hover is the hardest thing you can do with this aircraft: three feet off the dirt, ground effect pushing back, every control input amplified. We've marked five clearings across the sector — La Ronge first, then the four corners: Buffalo Narrows, Southend, Denare Beach, Cypress Hills. Fly to each, descend low, and HOLD it steady for twelve seconds. Keep it down, keep it still, don't climb away. When the timer clears, move on.",
+      "No bucket today, Water-1 — fundamentals. Five clearings across the sector, each a tight hole in the timber: La Ronge first, then the four corners — Buffalo Narrows, Southend, Denare Beach, Cypress Hills. Drop straight down into each one, settle dead-centre, and HOLD a low, steady hover for eight seconds. Drift into the treeline and the rotor's done. Hold it clean, then on to the next.",
     difficulty: 1,
     seed: 987,
     map: 'saskatchewan',
@@ -76,8 +76,9 @@ export const SASKATCHEWAN_MISSIONS: MissionDef[] = [
     timeOfDay: 'day',
     wind: { strengthScale: 0.3 }, // light air — fair test without punishing drift
     payload: 'crew', // activates CrewTransport for the low-hover zone mechanic (no actual crew/bucket)
-    // LOW HOVER DRILL: five clearings on land, each requiring a 12-second steady 3-ft hover.
-    // All zones are `lowHover:true` — no load/carry cycle, just fly to each spot, descend, and hold.
+    // LOW HOVER DRILL: five TIGHT tree-ringed clearings, each requiring an 8-second steady low hover held
+    // dead-centre — the surrounding conifers (lowHoverClearRadius) are a strike hazard, so drift = crash.
+    // All zones are `lowHover:true` — no load/carry cycle, just fly to each spot, drop in, and hold.
     // The land-guarantee in resolveCrewZone snaps any water-adjacent point to nearby dry ground.
     fires: [],
     structures: { depot: true },
@@ -91,8 +92,8 @@ export const SASKATCHEWAN_MISSIONS: MissionDef[] = [
     objectives: [{ kind: 'deliver', n: 5, label: 'Complete all five low-hover drills' }],
     fails: [],
     script: [
-      { id: 'start', trigger: { at: 'start' }, actions: [{ do: 'comms', speaker: 'dispatch', text: "Water-1, low-hover certification today. Fly to each marked clearing, settle into a low, steady hover just off the ground, and hold it for twelve seconds. La Ronge first — the four corners after." }] },
-      { id: 'leg1', trigger: { at: 'crewDelivered', n: 1 }, actions: [{ do: 'comms', speaker: 'dispatch', text: "Twelve seconds clean — good hold. Northwest to Buffalo Narrows next." }] },
+      { id: 'start', trigger: { at: 'start' }, actions: [{ do: 'comms', speaker: 'dispatch', text: "Water-1, low-hover certification today. Five tight clearings in the timber — drop into each one, settle dead-centre, and hold a low, steady hover for eight seconds. Mind the treeline. La Ronge first — the four corners after." }] },
+      { id: 'leg1', trigger: { at: 'crewDelivered', n: 1 }, actions: [{ do: 'comms', speaker: 'dispatch', text: "Clean hold, no timber — good. Northwest to Buffalo Narrows next." }] },
       { id: 'leg2', trigger: { at: 'crewDelivered', n: 2 }, actions: [{ do: 'comms', speaker: 'dispatch', text: "Buffalo Narrows. Across the top to Southend in the northeast." }] },
       { id: 'leg3', trigger: { at: 'crewDelivered', n: 3 }, actions: [{ do: 'comms', speaker: 'dispatch', text: "Southend. Swing east to Denare Beach." }] },
       { id: 'leg4', trigger: { at: 'crewDelivered', n: 4 }, actions: [{ do: 'comms', speaker: 'dispatch', text: "One left — the run southwest to Cypress Hills." }] },
