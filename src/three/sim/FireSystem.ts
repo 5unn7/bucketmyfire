@@ -118,6 +118,11 @@ export interface FireTuning {
    *  capacity. Shrinks the ACTIVE subset only (the mesh pool stays sized at FIRE3D.maxActive → no realloc /
    *  shader recompile). Omit → the full pool. */
   maxActive?: number;
+  /** CONTAINMENT — the "tide turns" completability guarantee for `extinguishAll` score races. Once the pilot
+   *  has DOUSED this many fires (the `doused` counter), the blaze is contained: spotting stops entirely and
+   *  the front's creep is throttled to `FIRE3D.containedSpreadScale`, so the remaining fire can only shrink
+   *  (doused cells scorch → no new head out-breeds one bucket). Omit / 0 → no containment (byte-identical). */
+  containAfter?: number;
 }
 
 /**
@@ -188,10 +193,14 @@ export class FireSystem {
   private readonly spotScale: number;
   // Per-mission ACTIVE-fire ceiling, clamped ≤ the load-time FIRE3D.maxActive pool capacity (mesh pool stays full).
   private readonly activeCap: number;
+  // CONTAINMENT threshold: # of fires the pilot must douse before the front stops spotting + creeps slowly
+  // (the "tide turns" completability rule). 0 = disabled (existing missions byte-identical).
+  private readonly containAfter: number;
 
   constructor(private readonly deps: FireDeps, tuning: FireTuning = {}) {
     this.spreadScale = Math.max(0, tuning.spreadScale ?? 1);
     this.spotScale = Math.max(0, tuning.spotScale ?? 1);
+    this.containAfter = Math.max(0, tuning.containAfter ?? 0);
     // Clamp the per-mission ceiling into [1, FIRE3D.maxActive] — never above the fixed mesh pool.
     this.activeCap = Math.max(1, Math.min(FIRE3D.maxActive, tuning.maxActive ?? FIRE3D.maxActive));
     // Resolve the rectangular grid from the playfield extents (default = the legacy square world).
@@ -330,9 +339,14 @@ export class FireSystem {
     const gnx = this.nx;
     const gnz = this.nz;
     const N = gnx * gnz;
+    // CONTAINMENT (the "tide turns" rule): once the pilot has doused `containAfter` fires, the front is
+    // contained — stop throwing NEW spot fires (spotChance → 0) and throttle the creep to a slow residual
+    // (containedSpreadScale). Doused cells already scorch permanently, so with no new heads the remaining
+    // fire can only shrink → an `extinguishAll` score race (Daily Burn) is always finishable, never a treadmill.
+    const contained = this.containAfter > 0 && this.doused >= this.containAfter;
     // Mission-scaled spread levers (the calm FIRE3D baseline × this mission's spreadScale).
-    const spreadRate = FIRE3D.spreadRate * this.spreadScale;
-    const spotChance = FIRE3D.spotChance * this.spreadScale * this.spotScale;
+    const spreadRate = FIRE3D.spreadRate * this.spreadScale * (contained ? FIRE3D.containedSpreadScale : 1);
+    const spotChance = contained ? 0 : FIRE3D.spotChance * this.spreadScale * this.spotScale;
     const wlen = Math.hypot(wind.vx, wind.vz);
     const wnx = wlen > 1e-4 ? wind.vx / wlen : 0;
     const wnz = wlen > 1e-4 ? wind.vz / wlen : 0;

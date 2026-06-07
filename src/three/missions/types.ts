@@ -232,7 +232,10 @@ export interface MissionDef {
   // lively while it stops throwing NEW spot fires faster than one bucket can clear (the solo balance lever).
   // `maxActive` caps the simultaneously-COUNTED fires below the FIRE3D pool capacity (a solo ceiling); the
   // flame-mesh pool is still sized at FIRE3D.maxActive, so this only shrinks the active subset — no realloc.
-  fire?: { spreadScale?: number; spotScale?: number; maxActive?: number };
+  // `containAfter` is the "tide turns" completability rule: once the pilot has doused this many fires the
+  // front is CONTAINED (stops spotting, creep throttled to FIRE3D.containedSpreadScale), so an `extinguishAll`
+  // score race (Daily Burn) can always be finished instead of refilling to the cap forever. Omit → no containment.
+  fire?: { spreadScale?: number; spotScale?: number; maxActive?: number; containAfter?: number };
   bucket?: 'bambi' | 'valve';
   // The slung loadout. `water` = the Bambi/valve bucket (scoop + drop). `crew` = no bucket/longline;
   // the heli LANDS at zones to board/unload crew. `torch` = a helitorch ignition rig: no scoop/drop,

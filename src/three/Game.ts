@@ -711,6 +711,7 @@ export class Game {
         spreadScale: this.mission.fire?.spreadScale, // per-mission spread pacing (FIRE3D baseline × this)
         spotScale: this.mission.fire?.spotScale, // throttle ember-spotting WITHOUT slowing the front (solo balance)
         maxActive: this.mission.fire?.maxActive, // cap simultaneous fires below the pool (solo ceiling)
+        containAfter: this.mission.fire?.containAfter, // "tide turns": after N fires out, stop spotting + slow creep (completability)
       },
     );
     for (let i = 0; i < FIRE3D.maxActive; i++) {

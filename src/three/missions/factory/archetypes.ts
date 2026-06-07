@@ -24,7 +24,7 @@ export interface ArchetypeOutput {
   payload?: 'water' | 'crew' | 'torch';
   bucket?: 'bambi' | 'valve';
   fuel?: boolean;
-  fire: { spreadScale: number; spotScale?: number; maxActive?: number };
+  fire: { spreadScale: number; spotScale?: number; maxActive?: number; containAfter?: number };
   wind: { angle?: number; strengthScale: number };
   difficulty: 1 | 2 | 3 | 4 | 5;
   /** The in-game voice for this generated sortie (the factory uses these for the briefing/tagline). */
@@ -47,6 +47,10 @@ const extinguish: Archetype = {
     const clusters = 2 + Math.floor(rng() * 2); // 2..3 lake-anchored complexes (a scoop source on hand)
     const spots = 2 + Math.floor(rng() * 4); // 2..5 scattered spot fires
     const size: SizeClass = intensity > 0.66 ? 'medium' : 'small';
+    // CONTAINMENT: knock out ~HALF the authored fire load and the front is contained (stops spotting, creep
+    // slows) — so the back half is a guaranteed mop-up, never a windy treadmill. Keyed off the day's fire
+    // count so a heavy day asks for more knockdowns before the tide turns, a light one fewer.
+    const containAfter = Math.max(2, Math.ceil((clusters + spots) / 2)); // ~2..4 fires out → contained
     return {
       fires: [
         { at: 'cluster', anchor: 'lake', spread: 60, count: clusters, size },
@@ -61,7 +65,7 @@ const extinguish: Archetype = {
       // sustained drops instead of refilling: cut ember-spotting harder on hotter days (spotScale, which
       // counters the higher spreadScale), and cap simultaneous fires at 8 (below the 14-fire pool) so the
       // pilot is never swarmed past what's winnable solo. Co-op's big-fire archetype omits these (full burn).
-      fire: { spreadScale: lerp(0.55, 1.15, intensity), spotScale: lerp(0.6, 0.35, intensity), maxActive: 8 },
+      fire: { spreadScale: lerp(0.55, 1.15, intensity), spotScale: lerp(0.6, 0.35, intensity), maxActive: 8, containAfter },
       wind: { angle: rng() * Math.PI * 2, strengthScale: lerp(0.4, 1.3, rng()) }, // deterministic heading → the shared daily is the SAME fight for everyone (Wind seeds from Math.random without an angle)
       difficulty: clampDiff(1 + intensity * 4),
       flavor: {

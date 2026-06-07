@@ -823,6 +823,15 @@ export const FIRE3D = {
   // 0.0018, and scaled by the mission's spreadScale). Gated in code on wind + a very hot source — stops "fireworks".
   spotDist: 34, // how far downwind (units) a spotting ember lands — ~3 cells: stays VISUALLY
   // ATTACHED to the head (reads as the front advancing, not a new fire teleporting across the map)
+  // CONTAINMENT (the "tide turns" rule — completability guarantee for `extinguishAll` score races like
+  // Daily Burn). A mission may set `fire.containAfter` (FireTuning) = the number of fires the pilot must
+  // knock out before the blaze is CONTAINED: from that moment the front stops throwing NEW spot fires and
+  // its creep is throttled to `containedSpreadScale`, so the remaining fire can only SHRINK (doused cells
+  // scorch permanently → no new heads can out-breed one bucket). Without this, a windy "clear every fire"
+  // day can refill to the cap faster than a solo pilot clears it — a never-ending treadmill. Omit
+  // `containAfter` (or 0) → no containment, existing missions byte-identical.
+  containedSpreadScale: 0.2, // spread-rate multiplier once a mission's `containAfter` fires are out (spotting → 0
+  // entirely). 0.2 = a slow residual creep the bucket trivially outpaces; raise toward 1 to keep more pressure.
   litresToClear: 35, // water litres that fully zero a cell's heat. A full 100L bambi dump (knockRef≈2.9) DECISIVELY
   // clears the cells it lands on — every cell in the ~27u disc is driven to 0, SCORCHES to mud, and locks out
   // (can't re-light). So actively bucketing a fire puts it OUT (was 135 > the 100L tank → impossible to clear a hot
