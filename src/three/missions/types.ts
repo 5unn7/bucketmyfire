@@ -206,7 +206,7 @@ export interface MissionDef {
   name: string;
   brief: string; // 1–2 line briefing shown in the start/briefing card (the in-game voice)
   tagline?: string; // ONE punchy line for the mission-select CARD (marketing voice); falls back to brief
-  intel?: string; // longer pre-flight briefing paragraph (the briefing card body; falls back to brief)
+  situation?: string; // the dispatch-slip SITUATION line — one terse, dry dispatcher sentence (≤~12 words); falls back to tagline → brief
   difficulty: 1 | 2 | 3 | 4 | 5;
   seed: number; // world seed — each mission grows its own boreal map
   // Which MAP/region this mission is set in (see maps/<region>/region.ts anchors; shares ids with the

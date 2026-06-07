@@ -36,8 +36,7 @@ export const SASKATCHEWAN_MISSIONS: MissionDef[] = [
     name: 'First Light',
     brief: 'Your first flight out of Weyakwin. Fill from the lake and knock down the ground fire creeping at the cabins. Calm air — learn the aircraft.',
     tagline: 'Dawn over Weyakwin. Learn to fly, and save the cabins.',
-    intel:
-      'Welcome aboard, Water-1. Bring the rotors up and ease her off the deck. A slow ground fire is working out of the bush toward the cabins at Weyakwin, on the lake’s south shore. Fly low over open water to fill the bucket, then pour it on the flames. Winds are light — a good morning to get the feel of her. Remember: a fire only dies when you put water on it.',
+    situation: 'A slow ground fire is creeping at the Weyakwin cabins, south shore.',
     difficulty: 1,
     seed: 34,
     map: 'saskatchewan',
@@ -67,8 +66,7 @@ export const SASKATCHEWAN_MISSIONS: MissionDef[] = [
     name: 'Low Hover Drill',
     brief: 'Precision low-hover certification. Drop into five tight clearings ringed by timber and hold a low, steady hover for eight seconds at each. Settle dead-centre — clip the treeline and you go down.',
     tagline: 'Five tight holes in the trees. Drop in, hold it, don\'t clip the timber.',
-    intel:
-      "No bucket today, Water-1 — fundamentals. Five clearings across the sector, each a tight hole in the timber: La Ronge first, then the four corners — Buffalo Narrows, Southend, Denare Beach, Cypress Hills. Drop straight down into each one, settle dead-centre, and HOLD a low, steady hover for eight seconds. Drift into the treeline and the rotor's done. Hold it clean, then on to the next.",
+    situation: 'Low-hover certification. Five tight clearings ringed by timber.',
     difficulty: 1,
     seed: 987,
     map: 'saskatchewan',
@@ -107,8 +105,7 @@ export const SASKATCHEWAN_MISSIONS: MissionDef[] = [
     name: 'Hold the Line',
     brief: 'Heavy wind, extreme risk. Ground crews are 3 minutes out — keep this fire off Denare Beach until they arrive. Your valve bucket splits a load across passes.',
     tagline: 'Screaming wind. Hold the front off Denare Beach till the crews land.',
-    intel:
-      'Ground crews are three minutes out. Until they land, you are the only thing between an advancing front and the town of Denare Beach, on the shore of Amisk Lake. Hold the line — the wind is screaming and the fire keeps flanking you, so triage which head threatens a home and split your valve load across passes. You cannot win by clearing it; you win by ENDURING until the crews are down.',
+    situation: 'An advancing front is on Denare Beach. Ground crews are three minutes out.',
     difficulty: 3,
     seed: 233,
     map: 'saskatchewan',
@@ -152,8 +149,7 @@ export const SASKATCHEWAN_MISSIONS: MissionDef[] = [
     name: 'Backburn',
     brief: "You can't out-bomb this head — it's too big, running downwind on Missinipe. Stop it with fire: fly the torch and lay a backburn along the control line, starving the wildfire before it reaches the homes. Fly the markers low, IGNITE held.",
     tagline: 'Fight fire with fire. Lay a backburn and starve the head before it reaches town.',
-    intel:
-      "Water won't hold this one, Water-1 — the head's too big and the wind's behind it, driving it onto Missinipe. So we starve it. You're rigged with the helitorch today: fly the marked control line between the fire and the town and lay a backburn — a deliberate fire that burns the fuel out ahead of the wildfire. When the head arrives, it hits your black and lies down with nothing left to eat. Fly each marker LOW with IGNITE held to light it; walk the whole line before the head gets there. This is the tactic the ground crews respect most — fire against fire. Don't leave a gap.",
+    situation: "The head's too big to bomb — wind-driven, running onto Missinipe.",
     difficulty: 3,
     seed: 89,
     map: 'saskatchewan',
@@ -188,8 +184,7 @@ export const SASKATCHEWAN_MISSIONS: MissionDef[] = [
     name: 'Doorstep',
     brief: 'The fire is at the doorsteps of Stanley Mission. Fight the heads near town — and when families are cut off, re-rig to the sling and pull them out while ember spot-fires light behind you.',
     tagline: "Fire at Stanley Mission's doors. Beat it back, lift the families clear.",
-    intel:
-      'The fire is at the doorsteps of Stanley Mission and Missinipe. Open on the heads near the homes with the bucket and keep them off the cabins. Dispatch is hearing of families getting cut off as the front passes — when that call comes, set down at base, re-rig to the crew sling, and pull them out before the flames reach the last door. Embers are throwing spot fires behind you, and the heavy wind should ease as the front goes through.',
+    situation: "The fire is at Stanley Mission's doors. Families are getting cut off.",
     difficulty: 4,
     seed: 55,
     map: 'saskatchewan',
@@ -247,8 +242,7 @@ export const SASKATCHEWAN_MISSIONS: MissionDef[] = [
     name: 'Three Towns',
     brief: 'Two fires near Beauval and Île-à-la-Crosse grow toward each other, MERGE, and the joined front runs at Buffalo Narrows. Triage all three — and pull out two families that get cut off.',
     tagline: 'Two fronts merge into one monster, running at Buffalo Narrows.',
-    intel:
-      'Two separate fires, two towns — Beauval and Île-à-la-Crosse — and a strong, steady wind carrying them toward each other. They will MERGE into one front, and that front is pointed straight at Buffalo Narrows downwind. You cannot be everywhere: triage the two original heads, then chase the merged monster off Buffalo Narrows. When families get cut off mid-fight, re-rig to the sling and bring them out. This is the widest fight yet.',
+    situation: 'Two fires near Beauval and Île-à-la-Crosse, merging downwind onto Buffalo Narrows.',
     difficulty: 4,
     seed: 377,
     map: 'saskatchewan',
@@ -313,8 +307,7 @@ export const SASKATCHEWAN_MISSIONS: MissionDef[] = [
     name: 'After Burn',
     brief: 'The front has passed Denare Beach — now the long work. Grid the black for smouldering hotspots and drown every one before a holdover re-flares out of the duff and runs again. Finite fuel: patrol smart, refuel at base.',
     tagline: "The fire isn't out when the flames die. Mop up the black before it wakes.",
-    intel:
-      'You held the line at Denare Beach, Water-1 — but a fire is never out when the flames die down. The front has passed and left a smoking black, and somewhere in it root systems and stumps are still burning underground. Those are holdovers: leave one and the noon wind will fan it back into a running fire on the town. Grid the burn scar, find every hotspot, and drown it cold. Use the valve to split a load across several spots — you don’t need a full dump on a smouldering stump. Watch your fuel and refuel at base; mop-up is a long patrol. Don’t call it out until every last one is dead.',
+    situation: 'The front has passed Denare Beach. Holdovers smoulder in the black.',
     difficulty: 3,
     seed: 144,
     map: 'saskatchewan',
@@ -362,8 +355,7 @@ export const SASKATCHEWAN_MISSIONS: MissionDef[] = [
     name: 'Everything at Once',
     brief: 'The finale. A Class-F head on La Ronge, the depot itself threatened, a re-flaring monster, a finite tank — and a family to pull out. Everything you have learned, at once.',
     tagline: 'The finale. A firestorm on La Ronge, the depot burning, the tank near dry.',
-    intel:
-      'This is the big one, Water-1. A Class-F head is sitting on La Ronge and reaching for the depot — the air-attack base is your only fuel and water for the whole sector. It re-flares out of the duff pass after pass under a screaming, shifting wind. Manage your tank, defend the depot, walk the monster down — and when a family gets trapped, re-rig and bring them out. Lose a single structure or run the tank dry and the run is over. Bring it home.',
+    situation: 'A Class-F head is on La Ronge, reaching for the depot itself.',
     difficulty: 5,
     seed: 1597,
     map: 'saskatchewan',
