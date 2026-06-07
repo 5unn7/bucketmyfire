@@ -7,28 +7,14 @@
  * SINGLE-VIEWPORT, NO-SCROLL (CLAUDE.md hard rule): `.bmf-app` is a fixed full-viewport flex column;
  * its content area fits above the fixed rail and only scrolls internally as a safety net.
  */
-import { UI, HOME, FS, FW, R } from '../theme';
+import { tokenDecls } from '../tokens';
+import { injectKitStyles } from '../components/base';
 
+// Brand tokens come from the ONE source (ui/tokens.ts), shared verbatim with the generated
+// mockups/tokens.css. Only the home-local instrument cosmetics (--metal*, --bevel-top, --rail-h)
+// live here — they are screen decoration, not brand tokens.
 const VARS = `.bmf-app{
-  --ember:${UI.ember};--ember-hi:${UI.emberHi};--fire:${UI.fire};
-  --menu:${UI.menu};--menu-soft:${UI.menuSoft};--menu-fill:${UI.menuFill};
-  --cta:${UI.cta};--cta-hi:${UI.ctaHi};--cta-ink:${UI.ctaInk};--cta-glow:${UI.ctaGlow};
-  --warn:${UI.warn};--ok:${UI.ok};--gold:${UI.gold};--silver:${UI.silver};--bronze:${UI.bronze};
-  --text:${UI.text};--ink:${UI.ink};--dim:${UI.dim};--faint:${UI.faint};
-  --card-glass:${UI.cardGlass};--card-soft:${UI.cardSoft};--warm-glass:${UI.warmGlass};
-  --track:${UI.track};--recess:${UI.recess};--field:${UI.field};--rowmine:${UI.rowMine};
-  --stroke:${UI.stroke};--stroke-strong:${UI.strokeStrong};--warm-stroke:${UI.warmStroke};--hair:${UI.hair};
-  --shadow-card:${UI.shadowCard};--blur:${UI.blur};
-  --ember-05:${HOME.ember05};--ember-10:${HOME.ember10};--ember-12:${HOME.ember12};--ember-14:${HOME.ember14};--ember-18:${HOME.ember18};--ember-20:${HOME.ember20};--ember-22:${HOME.ember22};--ember-30:${HOME.ember30};--ember-32:${HOME.ember32};--ember-35:${HOME.ember35};--ember-40:${HOME.ember40};--ember-42:${HOME.ember42};--ember-50:${HOME.ember50};
-  --fire-06:${HOME.fire06};--fire-12:${HOME.fire12};--fire-16:${HOME.fire16};--fire-28:${HOME.fire28};--fire-55:${HOME.fire55};
-  --glow-50:${HOME.glow50};--glow-60:${HOME.glow60};--glow-80:${HOME.glow80};--glow-90:${HOME.glow90};--warm-26:${HOME.warm26};--warm-38:${HOME.warm38};
-  --gold-32:${HOME.gold32};--gold-70:${HOME.gold70};--ok-12:${HOME.ok12};--ok-50:${HOME.ok50};
-  --warn-10:${HOME.warn10};--warn-16:${HOME.warn16};--warn-18:${HOME.warn18};--warn-22:${HOME.warn22};--warn-50:${HOME.warn50};
-  --rank:${HOME.rank};--card-bg:${HOME.cardBg};
-  --font:${UI.font};--mono:ui-monospace,"SF Mono","SFMono-Regular",Menlo,Consolas,monospace;
-  --fs-micro:${FS.micro};--fs-tag:${FS.tag};--fs-label:${FS.label};--fs-meta:${FS.meta};--fs-sm:${FS.sm};--fs-body:${FS.body};--fs-md:${FS.md};--fs-lg:${FS.lg};--fs-title:${FS.title};--fs-hero:${FS.hero};--fs-display:${FS.display};--fs-banner:${FS.banner};
-  --fw-medium:${FW.medium};--fw-semibold:${FW.semibold};--fw-bold:${FW.bold};--fw-heavy:${FW.heavy};--fw-black:${FW.black};
-  --r-sm:${R.sm};--r-md:${R.md};--r-lg:${R.lg};--r-xl:${R.xl};--r-pill:${R.pill};--r-round:${R.round};
+  ${tokenDecls()}
   --metal:linear-gradient(160deg,#22262a 0%,#15191d 40%,#0d1013 100%);
   --metal-hi:linear-gradient(160deg,#2c3137 0%,#1a1e23 55%,#101317 100%);
   --bevel-top:rgba(255,255,255,0.14); --rail-h:72px;
@@ -97,10 +83,12 @@ const CSS = `
 .bmf-app .appbar .sub{ font-family:var(--mono); font-size:var(--fs-micro); letter-spacing:.18em; text-transform:uppercase; color:var(--faint); margin-top:2px; }
 
 .bmf-app .flame path,.bmf-app .flame polygon{ fill:url(#flameGrad); }
-.bmf-app .brand{ width:34px; height:34px; flex:0 0 auto; display:grid; place-items:center; border-radius:var(--r-sm);
-  background:radial-gradient(circle at 40% 30%, var(--warm-26), rgba(10,12,14,0.6)); border:1px solid var(--warm-stroke);
-  box-shadow:inset 0 0 12px var(--ember-30), 0 0 14px var(--ember-18); }
-.bmf-app .brand svg{ width:17px; height:21px; filter:drop-shadow(0 0 4px var(--glow-60)); }
+/* Brand mark badge — the SAME treatment as the daily glyph (sibling logos down the board), but
+   calm (no flicker) + a soft outer ember halo that reads as the pilot's identity crest. */
+.bmf-app .brand{ width:36px; height:36px; flex:0 0 auto; display:grid; place-items:center; border-radius:var(--r-sm);
+  background:radial-gradient(circle at 40% 30%, var(--warm-38), rgba(10,12,14,0.9)); border:1px solid var(--warm-stroke);
+  box-shadow:inset 0 0 10px var(--ember-35), 0 0 14px var(--ember-18); }
+.bmf-app .brand svg{ width:17px; height:21px; filter:drop-shadow(0 0 4px var(--glow-80)); }
 .bmf-app .brand.lg{ width:62px; height:62px; border-radius:var(--r-md); } .bmf-app .brand.lg svg{ width:31px; height:39px; }
 
 .bmf-app .helmet{ position:relative; width:54px; height:54px; flex:0 0 auto; border-radius:var(--r-round);
@@ -132,6 +120,17 @@ const CSS = `
 
 .bmf-app .artcard{ position:relative; border-radius:var(--r-xl); overflow:hidden; border:1px solid var(--stroke-strong); background:var(--card-bg);
   box-shadow:var(--shadow-card), 0 0 26px var(--ember-12); clip-path:polygon(0 0,100% 0,100% calc(100% - 22px),calc(100% - 22px) 100%,0 100%); }
+/* The Continue hero is a single tap target — give it tactile lift on hover + a press response so it
+   reads as the primary action (transform/shadow only; home-scoped so the menu carousels are untouched). */
+.bmf-app.home .artcard[data-act]{ cursor:pointer; transition:transform .16s cubic-bezier(.16,.84,.3,1), box-shadow .25s ease, border-color .16s ease; }
+.bmf-app.home .artcard[data-act]:hover{ transform:translateY(-3px); box-shadow:var(--shadow-card), 0 0 34px var(--ember-22); border-color:var(--warm-stroke); }
+.bmf-app.home .artcard[data-act]:active{ transform:translateY(-1px) scale(.995); }
+/* Hover deepens the moment: the poster pushes in slightly (cinematic, Forza/GTA energy) and the corner
+   reticle snaps to full accent — "target locked". Both motivated feedback, transform/token only. */
+.bmf-app.home .artcard[data-act] .img{ transition:transform .6s cubic-bezier(.16,.84,.3,1); }
+.bmf-app.home .artcard[data-act] .brackets i{ transition:border-color .2s ease, opacity .2s ease; }
+.bmf-app.home .artcard[data-act]:hover .img{ transform:scale(1.05); }
+.bmf-app.home .artcard[data-act]:hover .brackets i{ border-color:var(--menu); opacity:1; }
 .bmf-app .artcard .img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:50% 34%; z-index:0; }
 .bmf-app .artcard .fallback{ position:absolute; inset:0; z-index:0; background:radial-gradient(120% 90% at 50% 120%, var(--ember-50), transparent 60%), linear-gradient(160deg,#2a2030,#160d12 70%); display:grid; place-items:center; }
 .bmf-app .artcard .fallback b{ font-family:var(--mono); font-weight:var(--fw-black); font-size:64px; color:rgba(255,255,255,0.07); }
@@ -179,15 +178,22 @@ const CSS = `
 .bmf-app .streak svg{ width:11px; height:13px; } .bmf-app .streak svg path{ fill:var(--fire); }
 
 /* Daily Burn card: a COMPACT dispatch slip — brand-mark glyph at left (same logo as the dossier),
-   dossier-style content at right, and a "played today" locked state. No collapse: it always fits
-   the single-viewport home, so there's nothing to expand. */
-.bmf-app .daily .drow{ display:flex; align-items:flex-start; gap:12px; }
-.bmf-app .dbrief{ margin-top:10px; font-size:var(--fs-body); line-height:1.45; color:rgba(255,255,255,0.86);
+   collapsible. The whole header row is the toggle; the body holds the brief + resets/Fly. Default
+   collapsed on phone/tablet (single-viewport), expanded on the desktop dashboard (set in markup). */
+.bmf-app .daily-head{ display:flex; align-items:center; gap:12px; width:100%; background:none; border:0; padding:0; margin:0; font:inherit; color:inherit; text-align:left; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.bmf-app .daily-head .dhead-id{ display:flex; flex-direction:column; gap:3px; flex:1; min-width:0; }
+.bmf-app .daily-head .glyph{ flex:0 0 auto; }
+.bmf-app .chev{ display:inline-grid; place-items:center; width:24px; height:24px; flex:0 0 auto; color:var(--dim); transition:transform .22s ease, color .2s; }
+.bmf-app .chev svg{ width:16px; height:16px; }
+.bmf-app .daily-head:hover .chev{ color:var(--ember-hi); }
+.bmf-app .daily.collapsed .chev{ transform:rotate(-90deg); }
+.bmf-app .daily-body{ overflow:hidden; }
+.bmf-app .daily.collapsed .daily-body{ display:none; }
+.bmf-app .dbrief{ margin-top:13px; font-size:var(--fs-body); line-height:1.45; color:rgba(255,255,255,0.86);
   padding-left:11px; border-left:3px solid var(--fire);
   display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
 .bmf-app .done-badge{ display:inline-flex; align-items:center; gap:5px; font-family:var(--mono); font-size:var(--fs-tag); font-weight:var(--fw-bold); letter-spacing:.1em; text-transform:uppercase; color:var(--ok); padding:6px 10px; border-radius:var(--r-pill); background:var(--ok-12); border:1px solid var(--ok-50); white-space:nowrap; }
 .bmf-app .done-badge svg{ width:12px; height:12px; }
-.bmf-app .btn.locked{ opacity:.55; cursor:default; pointer-events:none; }
 
 .bmf-app .stars{ display:inline-flex; gap:3px; } .bmf-app .stars svg{ width:15px; height:15px; }
 .bmf-app .stars .on{ fill:var(--menu); stroke:none; filter:drop-shadow(0 0 5px var(--gold-70)); }
@@ -198,23 +204,18 @@ const CSS = `
 .bmf-app .barrow{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:5px; }
 .bmf-app .barrow .l{ font-family:var(--mono); font-size:var(--fs-micro); letter-spacing:.18em; text-transform:uppercase; color:var(--dim); }
 .bmf-app .barrow .r{ font-family:var(--mono); font-size:var(--fs-tag); color:var(--ember-hi); font-weight:var(--fw-bold); }
+/* Home bars sweep to their fill on load — premium entrance that complements the staggered .rise. */
+.bmf-app.home .bar > i{ animation:bmf-bar-grow .9s .3s cubic-bezier(.2,.8,.2,1) backwards; }
+@keyframes bmf-bar-grow{ from{ width:0; } }
 .bmf-app .spec{ display:grid; grid-template-columns:64px 1fr; align-items:center; gap:10px; margin:7px 0; }
 .bmf-app .spec .name{ font-family:var(--mono); font-size:var(--fs-micro); letter-spacing:.12em; text-transform:uppercase; color:var(--dim); }
 .bmf-app .spec .track{ height:7px; border-radius:var(--r-pill); background:var(--recess); border:1px solid var(--hair); overflow:hidden; }
 .bmf-app .spec .track > i{ display:block; height:100%; background:linear-gradient(90deg,var(--fire),var(--ember-hi)); border-radius:var(--r-pill); }
 
-.bmf-app .btn{ display:inline-flex; align-items:center; justify-content:center; gap:9px; cursor:pointer; font-family:var(--font); font-size:var(--fs-md); font-weight:var(--fw-heavy); letter-spacing:.06em; text-transform:uppercase; border:none; border-radius:var(--r-sm); padding:13px 22px; min-height:48px; transition:transform .12s, background .12s, box-shadow .12s; }
-.bmf-app .btn svg{ width:16px; height:16px; }
-.bmf-app .btn.block{ width:100%; } .bmf-app .btn.sm{ padding:9px 15px; min-height:38px; font-size:var(--fs-sm); } .bmf-app .btn.lg{ padding:16px 26px; min-height:54px; font-size:var(--fs-lg); }
-.bmf-app .btn.primary{ background:var(--cta); color:var(--cta-ink); box-shadow:0 1px 0 rgba(255,255,255,0.5) inset, 0 -2px 0 rgba(0,0,0,0.18) inset, 0 8px 20px var(--cta-glow); }
-.bmf-app .btn.primary svg{ fill:var(--cta-ink); } .bmf-app .btn.primary:hover{ background:var(--cta-hi); transform:translateY(-2px); }
-.bmf-app .btn.ember{ color:var(--ember-hi); background:linear-gradient(180deg, var(--fire-16), var(--fire-06)); border:1.5px solid var(--warm-stroke); border-radius:var(--r-pill); box-shadow:inset 0 1px 0 rgba(255,255,255,0.06), 0 4px 14px var(--ember-14); }
-.bmf-app .btn.ember svg{ fill:var(--ember-hi); } .bmf-app .btn.ember:hover{ background:linear-gradient(180deg, var(--fire-28), var(--fire-12)); transform:translateY(-1px); }
-.bmf-app .btn.secondary{ background:var(--warm-glass); color:var(--text); border:1.5px solid var(--warm-stroke); box-shadow:inset 0 1px 0 rgba(255,255,255,0.06); }
-.bmf-app .btn.secondary svg{ fill:var(--ember-hi); } .bmf-app .btn.secondary:hover{ background:rgba(60,24,18,0.6); transform:translateY(-2px); }
-.bmf-app .btn.ghost{ background:transparent; color:var(--dim); border:1px solid var(--stroke); } .bmf-app .btn.ghost:hover{ color:var(--text); border-color:var(--stroke-strong); }
-.bmf-app .btn.danger{ color:var(--warn); background:var(--warn-10); border:1px solid var(--warn-50); font-family:var(--mono); letter-spacing:.1em; } .bmf-app .btn.danger:hover{ background:var(--warn-18); }
-.bmf-app .btn[disabled],.bmf-app .btn.is-disabled{ opacity:.45; filter:grayscale(.4); cursor:not-allowed; }
+/* The canonical .btn now lives globally in components/base.ts (injectKitStyles) — ONE button of record,
+   shared by makeButton() and this hub's class="btn …" markup (injectHomeStyles pulls the kit in).
+   Removed from here: the duplicate that had drifted (8px vs the kit's rugged 10px radius, and a
+   round-pill .ember). No round pills now. */
 
 .bmf-app .listrow{ display:flex; align-items:center; gap:12px; padding:11px 12px; border-radius:var(--r-md); background:var(--card-soft); border:1px solid var(--hair); }
 .bmf-app .listrow + .listrow{ margin-top:7px; }
@@ -440,8 +441,9 @@ const CSS = `
 
 @media (prefers-reduced-motion: reduce){
   .bmf-app .rise{ opacity:1 !important; transform:none !important; animation:none !important; }
-  .bmf-app .helmet .sheen,.bmf-app .mote,.bmf-app .glyph.flicker svg path,.bmf-app .crt-streak,.bmf-app .artcard.heli .heli-art .ring{ animation:none !important; }
+  .bmf-app .helmet .sheen,.bmf-app .mote,.bmf-app .glyph.flicker svg path,.bmf-app .crt-streak,.bmf-app .artcard.heli .heli-art .ring,.bmf-app.home .bar > i{ animation:none !important; }
   .bmf-app .cslide{ opacity:1 !important; transform:none !important; }
+  .bmf-app.home .artcard[data-act]:hover .img{ transform:none !important; } /* no cinematic zoom under reduced-motion */
   .bmf-app .embers{ display:none; }
 }
 
@@ -459,13 +461,15 @@ const CSS = `
 }
 /* ===== desktop: 2-column home dashboard · flanked-hero carousels · floating dock rail ===== */
 @media (min-width:1040px){
-  .bmf-app.home .pad{ max-width:1000px; display:grid; grid-template-columns:380px 1fr; column-gap:24px; align-items:start; align-content:start;
-    overflow-y:auto; padding-top:calc(env(safe-area-inset-top) + 32px); padding-bottom:116px; }
-  .bmf-app.home .pad > header{ grid-column:1 / -1; margin-bottom:4px; }
-  .bmf-app.home .z-daily{ grid-column:1; }
-  .bmf-app.home .z-cont{ grid-column:2; }
-  .bmf-app.home .z-cont .artcard .inner{ min-height:460px; }
-  .bmf-app.home .sec{ margin-top:6px; }
+  /* Single-viewport dashboard: profile spans the top (auto row), daily + continue fill the rest
+     (1fr row). overflow:hidden + a padding-bottom that clears the floating dock rail = the Continue
+     card's Fly button never sits under the rail. */
+  .bmf-app.home .pad{ max-width:1000px; display:grid; grid-template-columns:380px 1fr; grid-template-rows:auto minmax(0,1fr);
+    column-gap:24px; row-gap:8px; overflow:hidden; padding-top:calc(env(safe-area-inset-top) + 28px); padding-bottom:120px; }
+  .bmf-app.home .pad > header{ grid-column:1 / -1; grid-row:1; }
+  .bmf-app.home .z-daily{ grid-column:1; grid-row:2; align-self:start; }
+  .bmf-app.home .z-cont{ grid-column:2; grid-row:2; min-height:0; }
+  .bmf-app.home .sec{ margin-top:0; }
   /* Menu overlays: a wide centred column; the carousel becomes a chevron-flanked hero. */
   .bmf-app:not(.home):not(.newpilot) .pad{ max-width:760px;
     padding-top:calc(env(safe-area-inset-top) + 30px); padding-bottom:120px; }
@@ -492,6 +496,7 @@ const CSS = `
 let injected = false;
 /** Inject the Home/menus stylesheet once. */
 export function injectHomeStyles(): void {
+  injectKitStyles(); // the canonical .btn + global :root tokens live in the kit; pull them in for class="btn" markup
   if (injected || document.getElementById('bmf-home-css')) {
     injected = true;
     return;
