@@ -19,7 +19,6 @@ function pick<T>(arr: readonly T[], rng: () => number): T {
   return arr[Math.floor(rng() * arr.length) % arr.length];
 }
 
-/** Scale an RGB hex toward black by `f` (0..1) — for corner logs / ridge caps a shade off the base. */
 function darken(hex: number, f: number): number {
   const r = Math.round(((hex >> 16) & 255) * f);
   const g = Math.round(((hex >> 8) & 255) * f);
@@ -28,34 +27,32 @@ function darken(hex: number, f: number): number {
 }
 
 /**
- * Procedural buildings to defend (Track C3 — stakes). A log cabin (box body + gable
- * roof + stone chimney) or a larger lakeside depot (wide body + flat roof + a helipad
- * pad with an "H"), all from primitive geometry — ZERO binary assets.
+ * Procedural buildings to defend (Track C3 — stakes). A log cabin with stacked
+ * horizontal log courses and notched corners, wide asymmetric gable roof with large
+ * front overhang sheltering a porch with diagonal knee braces, and a stone chimney
+ * on one gable end. Depot is a larger lakeside base. All from primitive geometry.
  *
  * Driven by two signals from sim/Structures.ts via `Game.ts`:
- *   - `setDamage(d)` 0→1 chars the timber darker and, past the threshold, collapses the
- *     building into a slumped, blackened ruin.
+ *   - `setDamage(d)` 0→1 chars the timber darker and collapses the building into a ruin.
  *   - `setBurning(b)` adds a hot emissive ember glow while a fire is eating at it.
  *
- * Y is up; the group origin sits on the ground (everything is built above y=0) so the
- * caller just sets `group.position` to a terrain point.
+ * Y is up; the group origin sits on the ground so the caller just sets `group.position`.
  */
 
 export interface StructureMesh {
   group: THREE.Group;
-  setDamage(d: number): void; // 0 pristine → 1 destroyed
-  setBurning(b: number | boolean): void; // flames + HDR glow while threatened
-  flicker(elapsedSeconds: number): void; // advance the building's flame animation (call each frame)
+  setDamage(d: number): void;
+  setBurning(b: number | boolean): void;
+  flicker(elapsedSeconds: number): void;
 }
 
-// Charred target the timber lerps toward as damage rises.
 const CHAR = new THREE.Color(0x14100c);
 const EMBER = new THREE.Color(0xff5a1e);
 
 interface Part {
   mesh: THREE.Mesh;
   material: THREE.MeshStandardMaterial;
-  base: THREE.Color; // pristine albedo, kept so setDamage can re-lerp from scratch
+  base: THREE.Color;
 }
 
 export function createStructure(kind: StructureKind, seed = 0): StructureMesh {
@@ -71,71 +68,118 @@ function buildCabin(seed: number): StructureMesh {
   group.name = 'cabin';
   const parts: Part[] = [];
 
-  // Per-cabin variety (deterministic): footprint/height jitter + a log + roof tint drawn
-  // from the boreal palette, so a hamlet reads as distinct dwellings rather than clones.
   const j = STRUCTURES.sizeJitter;
-  const wf = 1 + (rng() - 0.5) * 2 * j; // body width factor
-  const df = 1 + (rng() - 0.5) * 2 * j; // body depth factor
-  const hf = 1 + (rng() - 0.5) * 2 * j; // wall height factor
+  const wf = 1 + (rng() - 0.5) * 2 * j;
+  const df = 1 + (rng() - 0.5) * 2 * j;
   const logTint = pick(STRUCTURES.logTints, rng);
   const roofTint = pick(STRUCTURES.roofTints, rng);
 
-  const bw = s * 2 * wf; // body width (X)
-  const bd = s * 1.5 * df; // body depth (Z)
-  const wallH = s * 1.1 * hf;
+  const bw = s * 2.2 * wf;   // cabin width (X — the long axis)
+  const bd = s * 1.8 * df;   // cabin depth (Z — front to back)
+  const logR = s * 0.065;    // log radius — thin enough for 8+ courses
+  const logPitch = logR * 2.08;
+  const wallH = s * 1.1;
+  const numLogs = Math.max(5, Math.round(wallH / logPitch));
+  const wallTop = numLogs * logPitch + logR;
+  const ext = logR * 1.6;    // how far logs extend past the corner notch
+
+  // === STACKED LOG COURSES ===
+  // Alternating X/Z logs create the classic notched-corner read: even courses
+  // run front+back (X axis, extend past the side walls); odd courses run the
+  // sides (Z axis, extend past the front/back walls). Both sets extend by `ext`.
+  for (let i = 0; i < numLogs; i++) {
+    const y = logR + i * logPitch;
+    const shade = 0.80 + rng() * 0.18;
+    const c = darken(logTint, shade);
+    if (i % 2 === 0) {
+      addCylinder(group, parts, c, logR, bw + ext * 2, 0, y, -bd / 2, 'x', 8);
+      addCylinder(group, parts, c, logR, bw + ext * 2, 0, y,  bd / 2, 'x', 8);
+    } else {
+      addCylinder(group, parts, c, logR, bd + ext * 2, -bw / 2, y, 0, 'z', 8);
+      addCylinder(group, parts, c, logR, bd + ext * 2,  bw / 2, y, 0, 'z', 8);
+    }
+  }
+
+  // === GABLE END FILLS ===
+  // Flat triangles sitting on top of the log wall at each gable end (±X).
+  // Span only the cabin depth (bd) — the roof eaves overhang beyond these.
+  const rise = s * STRUCTURES.roofRiseFactor * 1.2;
+  const roofSpan = bw + ext * 2; // ridge length in X — matches log wall extents
+  addGableEnd(group, parts, darken(logTint, 0.88), bd, rise, wallTop, -roofSpan / 2,  1);
+  addGableEnd(group, parts, darken(logTint, 0.88), bd, rise, wallTop,  roofSpan / 2, -1);
+
+  // === GABLE ROOF (asymmetric — more overhang in front for porch shelter) ===
   const ov = STRUCTURES.roofOverhang;
+  const porchExt = s * 0.80; // extra front eave extension beyond normal overhang
+  const backOv  = bd / 2 + ov * s;             // back eave distance from cabin center
+  const frontOv = bd / 2 + ov * s + porchExt;  // front eave distance (larger)
+  addRoofAsym(group, parts, roofTint, roofSpan, rise, backOv, frontOv, wallTop);
+  // Ridge cap beam along the peak
+  addBox(group, parts, darken(roofTint, 0.72), roofSpan * 1.02, s * 0.1, s * 0.14,
+         0, wallTop + rise, 0);
 
-  // Stone/earth footing skirt — a short, slightly wider course that grounds the cabin from the air.
-  const foundH = s * 0.18;
-  addBox(group, parts, STRUCTURES.foundationTint, bw * 1.06, foundH, bd * 1.06, 0, foundH / 2, 0);
+  // === CHIMNEY (stone stack on one gable end, centered depth-wise) ===
+  const cSide = rng() < 0.5 ? 1 : -1;
+  const chimW = s * 0.38;
+  const chimH = wallTop + rise * 0.52 + s * 0.22; // pokes above the ridge
+  const chimX = cSide * (bw / 2 - s * 0.05);     // at the gable end wall
+  addBox(group, parts, 0x6e6860, chimW, chimH, chimW * 0.88, chimX, chimH / 2, 0);
+  // Cap (slightly wider, darker)
+  addBox(group, parts, 0x524e49, chimW * 1.18, s * 0.09, chimW, chimX, chimH, 0);
 
-  // Log body, sitting on the footing.
-  const body = addBox(group, parts, logTint, bw, wallH, bd, 0, foundH + wallH / 2, 0);
-  body.mesh.castShadow = true;
-  body.mesh.receiveShadow = true;
-  const wallTop = foundH + wallH;
+  // === DOOR (front face = +Z) ===
+  const doorH = wallTop * 0.68;
+  addBox(group, parts, 0x2c1a0a, s * 0.42, doorH, s * 0.05, 0, doorH / 2, bd / 2 + 0.02);
 
-  // Corner logs: a darker post poking proud at each corner — the notched-corner log-cabin read.
-  const cr = s * 0.16;
-  const cornerTint = darken(logTint, 0.82);
-  for (const sx of [-1, 1])
-    for (const sz of [-1, 1])
-      addCylinder(group, parts, cornerTint, cr, wallH, (sx * bw) / 2, foundH + wallH / 2, (sz * bd) / 2);
-
-  // Door + two small windows on the front (+Z) wall: dark glazing in a light frame.
-  const doorH = wallH * 0.6;
-  addBox(group, parts, 0x2c2018, s * 0.45, doorH, s * 0.08, 0, foundH + doorH / 2, bd / 2);
-  const winY = foundH + wallH * 0.58;
-  for (const wx of [-bw * 0.28, bw * 0.28]) {
-    addBox(group, parts, STRUCTURES.trimTint, s * 0.42, s * 0.4, s * 0.06, wx, winY, bd / 2);
-    addBox(group, parts, STRUCTURES.windowTint, s * 0.3, s * 0.28, s * 0.1, wx, winY, bd / 2 + 0.01);
+  // === WINDOWS (two on the front face, flanking the door) ===
+  const winY = wallTop * 0.50;
+  for (const wx of [-bw * 0.29, bw * 0.29]) {
+    addBox(group, parts, STRUCTURES.trimTint, s * 0.36, s * 0.28, s * 0.05, wx, winY, bd / 2 + 0.01);
+    addBox(group, parts, STRUCTURES.windowTint, s * 0.26, s * 0.19, s * 0.07, wx, winY, bd / 2 + 0.02);
   }
 
-  // Gable roof with real eaves on all four sides, plus a ridge cap beam along the peak.
-  const rise = s * STRUCTURES.roofRiseFactor;
-  addRoof(group, parts, roofTint, bw * (1 + ov), rise, bd * (1 + ov * 1.3), wallTop);
-  addBox(group, parts, darken(roofTint, 0.8), bw * (1 + ov) * 1.02, s * 0.12, s * 0.16, 0, wallTop + rise, 0);
+  // === FRONT PORCH — diagonal knee braces under the extended front eave (not every cabin) ===
+  if (rng() < STRUCTURES.porchChance) addLogPorch(group, parts, logTint, bw, bd, wallTop, porchExt, s);
 
-  // Chimney up one (randomly chosen) gable end: a stone stack, or a thin metal stovepipe (variety).
-  const cside = rng() < 0.5 ? 1 : -1;
-  if (rng() < STRUCTURES.stovepipeChance) {
-    addCylinder(group, parts, 0x3a3d40, s * 0.12, wallH * 1.15, bw * 0.34, wallTop + wallH * 0.25, cside * bd * 0.28);
-  } else {
-    const chimH = wallH + s * 0.8; // founded on the footing, poking above the eave like a real stack
-    addBox(group, parts, 0x6f7176, s * 0.4, chimH, s * 0.4, bw * 0.34, foundH + chimH / 2, cside * bd * 0.28);
-  }
+  // Optional outbuildings
+  if (rng() < STRUCTURES.woodpileChance) addWoodpile(group, parts, rng, bw * 0.5 + s * 0.45, -bd * 0.2, s);
+  if (rng() < STRUCTURES.shedChance) addShed(group, parts, logTint, roofTint, -bw * 0.5 - s * 0.75, bd * 0.15, s);
 
-  // Optional covered front porch (posts + a low shed roof) — a strong homestead read.
-  if (rng() < STRUCTURES.porchChance) addPorch(group, parts, roofTint, logTint, bw, bd, foundH, wallH, s);
-
-  // Optional outbuildings beside the cabin (seeded), set off to +X so they clear the body.
-  if (rng() < STRUCTURES.woodpileChance) addWoodpile(group, parts, rng, bw * 0.5 + s * 0.5, -bd * 0.2, s);
-  if (rng() < STRUCTURES.shedChance) addShed(group, parts, logTint, roofTint, -bw * 0.5 - s * 0.7, bd * 0.15, s);
-
-  return finalize(group, parts, 0.78, 'cabin'); // a burnt cabin slumps to a low ruin (keeps some height)
+  return finalize(group, parts, 0.78, 'cabin');
 }
 
-/** A stacked-log woodpile: a few horizontal logs in two short rows beside the cabin. */
+/** Two diagonal knee braces under the wide front eave — the homestead porch read. */
+function addLogPorch(
+  group: THREE.Group,
+  parts: Part[],
+  logTint: number,
+  bw: number,
+  bd: number,
+  wallTop: number,
+  porchExt: number,
+  s: number,
+): void {
+  const braceThick = s * 0.085;
+  const topY = wallTop * 0.88;     // where the brace meets the front wall (near eave)
+  const botY = s * 0.10;           // where the brace foot rests
+  const fwd  = porchExt * 0.82;   // how far forward the foot reaches
+
+  const dY = topY - botY;
+  const braceLen = Math.sqrt(dY * dY + fwd * fwd);
+  // Negative rotation.x tilts the top of the standing box toward -Z (into the wall)
+  const angle = -Math.atan2(fwd, dY);
+
+  const midY = (topY + botY) / 2;
+  const midZ = bd / 2 + fwd / 2;
+
+  for (const bx of [-bw * 0.28, bw * 0.28]) {
+    const brace = addBox(group, parts, darken(logTint, 0.80), braceThick, braceLen, braceThick,
+                         bx, midY, midZ);
+    brace.mesh.rotation.x = angle;
+  }
+}
+
+/** Stacked-log woodpile beside the cabin. */
 function addWoodpile(group: THREE.Group, parts: Part[], rng: () => number, x: number, z: number, s: number): void {
   const logR = s * 0.12;
   const logL = s * 1.1;
@@ -144,44 +188,19 @@ function addWoodpile(group: THREE.Group, parts: Part[], rng: () => number, x: nu
   for (let r = 0; r < rows; r++) {
     for (let i = 0; i < perRow; i++) {
       const tint = 0x6a4a2c + Math.floor(rng() * 0x0a0a06);
-      addCylinder(group, parts, tint, logR, logL, x, logR + r * logR * 2.05, z + (i - 1) * logR * 2.1, 'x');
+      addCylinder(group, parts, tint, logR, logL, x, logR + r * logR * 2.05, z + (i - 1) * logR * 2.1, 'x', 6);
     }
   }
 }
 
-/** A small lean-to shed: a low box body with a single-slope roof slab. */
+/** Small lean-to shed with a single-slope roof slab. */
 function addShed(group: THREE.Group, parts: Part[], wallTint: number, roofTint: number, x: number, z: number, s: number): void {
   const w = s * 1.1;
   const h = s * 0.8;
   const d = s * 0.9;
   addBox(group, parts, wallTint, w, h, d, x, h / 2, z);
-  // Slanted roof slab (tilt about Z so it sheds toward +X).
   const roof = addBox(group, parts, roofTint, w * 1.25, s * 0.12, d * 1.2, x, h + s * 0.1, z);
   roof.mesh.rotation.z = 0.22;
-}
-
-/** A covered front porch on the +Z wall: two posts carrying a low, slightly-sloped shed roof. */
-function addPorch(
-  group: THREE.Group,
-  parts: Part[],
-  roofTint: number,
-  postTint: number,
-  bw: number,
-  bd: number,
-  foundH: number,
-  wallH: number,
-  s: number,
-): void {
-  const depth = s * 0.9; // how far the porch reaches out past the front wall (+Z)
-  const z0 = bd / 2; // the front wall line
-  const postH = wallH * 0.82;
-  const pz = z0 + depth;
-  for (const px of [-bw * 0.4, bw * 0.4]) {
-    addCylinder(group, parts, darken(postTint, 0.9), s * 0.1, postH, px, foundH + postH / 2, pz);
-  }
-  // Low shed roof from the wall out over the posts, sloped down toward the front.
-  const roof = addBox(group, parts, roofTint, bw * 0.95, s * 0.1, depth + s * 0.25, 0, foundH + postH + s * 0.05, z0 + depth / 2);
-  roof.mesh.rotation.x = -0.12;
 }
 
 // --- Depot ------------------------------------------------------------------
@@ -197,31 +216,25 @@ function buildDepot(): StructureMesh {
   body.mesh.castShadow = true;
   body.mesh.receiveShadow = true;
 
-  // Flat roof slab with a slight overhang.
   addBox(group, parts, 0x55585c, s * 2.4, s * 0.18, s * 1.8, 0, wallH + s * 0.09, 0);
 
-  // Helipad: a dark disc beside the building with a painted "H" (two bars + crossbar).
   const padR = s * 0.95;
   const padX = s * 1.9;
-  addCylinder(group, parts, 0x2b2e33, padR, 0.12, padX, 0.06, 0);
+  addCylinder(group, parts, 0x2b2e33, padR, 0.12, padX, 0.06, 0, 'y', 24);
   const markH = 0.14;
   addBox(group, parts, 0xe8eef2, padR * 0.18, markH, padR * 0.9, padX - padR * 0.35, 0.14, 0);
   addBox(group, parts, 0xe8eef2, padR * 0.18, markH, padR * 0.9, padX + padR * 0.35, 0.14, 0);
-  addBox(group, parts, 0xe8eef2, padR * 0.7, markH, padR * 0.2, padX, 0.14, 0);
+  addBox(group, parts, 0xe8eef2, padR * 0.7,  markH, padR * 0.2, padX, 0.14, 0);
 
-  return finalize(group, parts, 0.55, 'depot'); // depot collapses less (concrete) — slumps gently
+  return finalize(group, parts, 0.55, 'depot');
 }
 
 // --- Shared damage behavior -------------------------------------------------
 
 function finalize(group: THREE.Group, parts: Part[], collapseDrop: number, kind: StructureKind): StructureMesh {
-  let burn = 0; // 0..1 from setBurning (a fire is within threatRadius)
-  let dmg = 0; // 0..1 from setDamage (1 − health)
+  let burn = 0;
+  let dmg = 0;
 
-  // Reuse the wildfire flame, scaled to the building (a cabin burns modestly; the base goes up big).
-  // DROP its point light so a burning structure never changes the scene's light count (a shader
-  // recompile hazard) — the HeroFireLights pool lights burning structures on the ground instead. The
-  // flame is built once and hidden until the building catches, so it costs nothing while it's intact.
   const flameSize = kind === 'depot' ? STRUCT_FIRE.depotFlameSize : STRUCT_FIRE.cabinFlameSize;
   const flame = createFire();
   flame.group.remove(flame.light);
@@ -230,24 +243,19 @@ function finalize(group: THREE.Group, parts: Part[], collapseDrop: number, kind:
   flame.group.visible = false;
   group.add(flame.group);
 
-  // Flame intensity flares in the instant a building catches and roars as it chars to destruction.
   function flameIntensity(): number {
     return burn <= 0 ? 0 : clamp01(STRUCT_FIRE.flameBase + dmg * STRUCT_FIRE.flameGain);
   }
 
-  // Re-apply flame + glow from the current (burn, dmg, collapse) state. Cheap; called by both setters.
   function refresh(): void {
     const fi = flameIntensity();
     const lit = fi > 0.001;
     flame.group.visible = lit;
     if (lit) {
       flame.setIntensity(fi);
-      // Counter the collapse scale so the flame stays full-height + upright while the building slumps.
       flame.group.scale.set(1 / Math.max(0.1, group.scale.x), 1 / Math.max(0.1, group.scale.y), 1 / Math.max(0.1, group.scale.z));
     }
     for (const p of parts) {
-      // Char the timber toward black with damage; while burning, glow it HOT in HDR so the building
-      // blooms into a beacon at night (was a dull LDR tint that barely read).
       p.material.color.copy(p.base).lerp(CHAR, dmg * 0.85);
       p.material.emissive.copy(EMBER).multiplyScalar(lit ? STRUCT_FIRE.glowHDR * fi : 0);
     }
@@ -255,8 +263,6 @@ function finalize(group: THREE.Group, parts: Part[], collapseDrop: number, kind:
 
   function setDamage(d: number): void {
     dmg = clamp01(d);
-    // Progressive collapse: char + sag from collapseStart all the way to destruction (no longer a
-    // last-instant snap), so you can SEE a structure losing the fight and racing to save it matters.
     const sag = smoothstep01((dmg - STRUCT_FIRE.collapseStart) / Math.max(0.001, 1 - STRUCT_FIRE.collapseStart));
     group.scale.set(1 - 0.14 * sag, 1 - collapseDrop * sag, 1 - 0.14 * sag);
     group.rotation.z = 0.13 * sag;
@@ -285,7 +291,7 @@ function smoothstep01(x: number): number {
 // --- Geometry helpers -------------------------------------------------------
 
 function mat(color: number): THREE.MeshStandardMaterial {
-  return new THREE.MeshStandardMaterial({ color, roughness: 0.92, metalness: 0.0 });
+  return new THREE.MeshStandardMaterial({ color, roughness: 0.92, metalness: 0.0, flatShading: true });
 }
 
 function addBox(
@@ -320,10 +326,11 @@ function addCylinder(
   y: number,
   z: number,
   axis: 'y' | 'x' | 'z' = 'y',
+  segs = 14,
 ): Part {
   const material = mat(color);
-  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 14), material);
-  if (axis === 'x') mesh.rotation.z = Math.PI / 2; // lay the cylinder along X (a horizontal log)
+  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, segs), material);
+  if (axis === 'x') mesh.rotation.z = Math.PI / 2;
   else if (axis === 'z') mesh.rotation.x = Math.PI / 2;
   mesh.position.set(x, y, z);
   mesh.castShadow = true;
@@ -334,25 +341,67 @@ function addCylinder(
   return part;
 }
 
-/** A gable (triangular-prism) roof centered on the body, ridge running along X. */
-function addRoof(
+/**
+ * Flat triangular gable-end fill sitting on top of the log wall at each ±X end.
+ * DoubleSide so it reads correctly from any camera angle.
+ */
+function addGableEnd(
   group: THREE.Group,
   parts: Part[],
   color: number,
-  span: number,
+  depth: number,    // cabin depth (bd) — the triangle base in Z
   rise: number,
-  depth: number,
+  baseY: number,
+  x: number,        // world X position of this gable face
+  normalSign: 1 | -1,
+): Part {
+  const hd = depth / 2;
+  const pos = new Float32Array([
+    0, 0, -hd,   // back eave corner
+    0, 0,  hd,   // front eave corner
+    0, rise, 0,  // ridge peak (centered in Z)
+  ]);
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  // CCW winding when viewed from the outward normal direction (±X)
+  geom.setIndex(normalSign > 0 ? [0, 2, 1] : [0, 1, 2]);
+  geom.computeVertexNormals();
+  const material = new THREE.MeshStandardMaterial({
+    color, roughness: 0.92, metalness: 0.0, flatShading: true, side: THREE.DoubleSide,
+  });
+  const mesh = new THREE.Mesh(geom, material);
+  mesh.position.set(x, baseY, 0);
+  mesh.castShadow = true;
+  group.add(mesh);
+  const part: Part = { mesh, material, base: material.color.clone() };
+  parts.push(part);
+  return part;
+}
+
+/**
+ * Asymmetric gable roof: more overhang in front (+Z) than back to shelter the porch.
+ * The ridge sits at z=0 (cabin wall center) so the gable fills align with the peak.
+ */
+function addRoofAsym(
+  group: THREE.Group,
+  parts: Part[],
+  color: number,
+  span: number,       // ridge length (X extent)
+  rise: number,       // peak height above baseY
+  depthBack: number,  // eave distance from cabin center toward -Z
+  depthFront: number, // eave distance from cabin center toward +Z (larger for porch)
   baseY: number,
 ): Part {
-  // Triangle cross-section in the ZY plane, extruded along X.
+  // Cross-section triangle in the shape's XY plane (maps to world ZY after rotation).
+  // shape.x = world Z, shape.y = world Y.
   const shape = new THREE.Shape();
-  shape.moveTo(-depth / 2, 0);
-  shape.lineTo(depth / 2, 0);
-  shape.lineTo(0, rise);
+  shape.moveTo(-depthBack, 0);   // back eave
+  shape.lineTo(depthFront, 0);   // front eave
+  shape.lineTo(0, rise);         // ridge (at z=0 in world space)
   shape.closePath();
   const geom = new THREE.ExtrudeGeometry(shape, { depth: span, bevelEnabled: false });
-  geom.translate(0, 0, -span / 2); // center the extrusion on X
-  geom.rotateY(Math.PI / 2); // ridge now runs along X
+  geom.translate(0, 0, -span / 2);  // center extrusion on X
+  geom.rotateY(Math.PI / 2);         // ridge now runs along X
   const material = mat(color);
   const mesh = new THREE.Mesh(geom, material);
   mesh.position.set(0, baseY, 0);

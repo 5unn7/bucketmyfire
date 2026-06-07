@@ -44,6 +44,40 @@ function pick<T>(arr: readonly T[], rng: () => number): T {
   return arr[Math.floor(rng() * arr.length) % arr.length];
 }
 
+/**
+ * Triangular gable-roof prism for cabin-tier settlements — unique verts per face so
+ * computeVertexNormals gives flat shading on every slope.
+ */
+function coloredPrism(
+  span: number, rise: number, depth: number,
+  cx: number, cy: number, cz: number,
+  color: THREE.Color, mul: number,
+): THREE.BufferGeometry {
+  const hw = span / 2, hd = depth / 2;
+  const r = color.r * mul, g = color.g * mul, b = color.b * mul;
+  const pos: number[] = [];
+  const push = (...v: number[]) => pos.push(...v);
+  // Left gable end (−X normal)
+  push(cx-hw,cy,cz-hd,  cx-hw,cy+rise,cz,  cx-hw,cy,cz+hd);
+  // Right gable end (+X normal)
+  push(cx+hw,cy,cz-hd,  cx+hw,cy,cz+hd,    cx+hw,cy+rise,cz);
+  // Back slope
+  push(cx-hw,cy,cz-hd,  cx+hw,cy,cz-hd,    cx+hw,cy+rise,cz);
+  push(cx-hw,cy,cz-hd,  cx+hw,cy+rise,cz,  cx-hw,cy+rise,cz);
+  // Front slope
+  push(cx-hw,cy,cz+hd,  cx-hw,cy+rise,cz,  cx+hw,cy+rise,cz);
+  push(cx-hw,cy,cz+hd,  cx+hw,cy+rise,cz,  cx+hw,cy,cz+hd);
+  const positions = new Float32Array(pos);
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geom.computeVertexNormals();
+  const n = positions.length / 3;
+  const col = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { col[i*3]=r; col[i*3+1]=g; col[i*3+2]=b; }
+  geom.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return geom;
+}
+
 /** A box geometry (position/normal/uv + a flat per-box vertex colour) ready to merge with the others. */
 function coloredBox(w: number, h: number, d: number, cx: number, cy: number, cz: number, color: THREE.Color, mul: number): THREE.BufferGeometry {
   const g = new THREE.BoxGeometry(w, h, d);
@@ -116,9 +150,13 @@ export function createSettlement(opts: SettlementOpts, material: THREE.Material)
         geos.push(coloredBox(pw, ph, pw, bx + (rng() - 0.5) * fw * 0.35, gy + h - SETTLEMENT3D.sink + ph / 2, bz + (rng() - 0.5) * fd * 0.35, roofCity, speck));
       }
     } else {
-      // A wider, darker "roof" block on top reads as a pitched cabin roof from the air.
-      const rh = Math.max(1.1, h * 0.45);
-      geos.push(coloredBox(fw * 1.12, rh, fd * 1.12, bx, gy + h - SETTLEMENT3D.sink + rh / 2, bz, pick(roofPalette, rng), speck * 0.92));
+      // Gabled log-cabin roof: a peaked prism with eave overhang + a ridge cap beam.
+      const rise = Math.max(0.9, fw * 0.44);
+      const ov = 0.20; // eave overhang fraction
+      const roofColor = pick(roofPalette, rng);
+      geos.push(coloredPrism(fw * (1 + ov), rise, fd * (1 + ov), bx, gy + h - SETTLEMENT3D.sink, bz, roofColor, speck * 0.90));
+      // Ridge cap
+      geos.push(coloredBox(fw * (1 + ov) * 1.01, rise * 0.14, fw * 0.14, bx, gy + h - SETTLEMENT3D.sink + rise, bz, roofColor, speck * 0.72));
     }
   }
   if (!geos.length) return null;
