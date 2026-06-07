@@ -9,7 +9,7 @@
  * `available: false` placeholders ("Coming soon"). All THREE helicopters are
  * playable, but the campaign GATES them — they are not all unlocked at the start:
  * the Bell 205A-1 is open from mission one, the Bell 212 unlocks once you've cleared
- * `unlockAfter` missions, and the UH-60 unlocks for the last two. `isHeliUnlocked()`
+ * `unlockAfter` missions, and the UH-60 unlocks for the last three. `isHeliUnlocked()`
  * resolves that gate against `missions/progress`; the pickers (Onboarding +
  * MissionSelect) render a locked card with the requirement until it's met.
  */
@@ -65,7 +65,7 @@ export const MAPS: CatalogItem[] = mapCards().map((c) => ({
 //
 // They are GATED by campaign progress (`unlockAfter` = missions to clear), so a new pilot
 // starts on the trainer and earns the heavier ships: the 205 is open, the 212 unlocks after
-// the first two missions (in time for the first real wall), and the Black Hawk for the last two
+// the first two missions (in time for the first real wall), and the Black Hawk for the last three
 // (the set-piece + finale). (Additive — clearing a tier never takes an earlier airframe away.)
 export const HELIS: CatalogItem[] = [
   {

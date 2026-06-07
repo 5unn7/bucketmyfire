@@ -310,6 +310,9 @@ function bootMission(mission: MissionDef): void {
   // dt is derived from the rAF timestamp Three hands the loop. The first frame only seeds the
   // clock and bails: dt must be > 0 or the sim's acceleration term (Δvel / dt) divides by zero.
   let prevTime = 0;
+  let loopErrorReported = false; // surface a frame-throw to the beacon ONCE, then keep going
+  let consecutiveThrows = 0; // a PERSISTENT throw (NaN-poisoned sim / broken pass) → recover screen
+  const LOOP_FATAL_AFTER = 60; // ~1s of solid throwing = unrecoverable; reload beats a silent 60fps spin
   renderer.setAnimationLoop((time: number) => {
     if (hidden) {
       prevTime = 0; // tab backgrounded — skip stepping; reseed the clock so resume doesn't lurch
@@ -321,17 +324,42 @@ function bootMission(mission: MissionDef): void {
     }
     const dt = Math.min((time - prevTime) / 1000, 1 / 20); // clamp big stalls so physics stays sane
     prevTime = time;
-    tier.sample(dt); // adaptive frame-time watchdog (scales DPR down under load, up under headroom)
-    game.update(dt);
-    composer.render(renderer, game.scene, game.camera, game.sunDir, game.hazeSources);
-    if (params.has('qa') && !firstFrameLogged) {
-      firstFrameLogged = true;
-      console.log('[boot] first frame at', Math.round(performance.now() - tBoot), 'ms (since Game ctor start)');
+    // GUARD THE LOOP. A throw escaping this rAF callback kills setAnimationLoop forever — the scene
+    // freezes, audio keeps playing, controls go dead (the prod-freeze class: a bad mesh merge, a NaN,
+    // a streamed builder regression). Swallow a TRANSIENT throw so rAF keeps scheduling: a bad frame
+    // degrades to a dropped frame, not a permanent freeze. Re-surface it ONCE on a macrotask so the
+    // global 'error' listener (→ console + error beacon) records it without re-killing the loop. But
+    // a PERSISTENT throw (every frame — a corrupt sim or a broken pass) would otherwise spin silently
+    // at 60fps on a black canvas, which is no better than the old freeze — so after ~1s of solid
+    // throwing, stop the loop and show a tap-to-reload screen (mirrors the context-loss recovery).
+    try {
+      tier.sample(dt); // adaptive frame-time watchdog (scales DPR down under load, up under headroom)
+      game.update(dt);
+      composer.render(renderer, game.scene, game.camera, game.sunDir, game.hazeSources);
+      if (params.has('qa') && !firstFrameLogged) {
+        firstFrameLogged = true;
+        console.log('[boot] first frame at', Math.round(performance.now() - tBoot), 'ms (since Game ctor start)');
+      }
+      signalFirstFrame(); // first mission frame is on screen — fade out the cold-start splash
+      // Stream the deferred scene build (lakes/rivers/roads/yards) in a few ms/frame now that the
+      // first frame is up — it fills in under the cold-start spool instead of having frozen the boot.
+      if (!buildComplete) buildComplete = game.pumpBuild(6);
+      consecutiveThrows = 0; // a clean frame clears the persistent-throw count
+    } catch (err) {
+      if (!loopErrorReported) {
+        loopErrorReported = true;
+        console.error('[bmf:loop] frame threw — recovering (subsequent frames continue):', err);
+        setTimeout(() => {
+          throw err; // re-throw off the rAF stack → caught by window 'error' → beacon, loop survives
+        });
+      }
+      if (++consecutiveThrows >= LOOP_FATAL_AFTER) {
+        renderer.setAnimationLoop(null); // every frame is throwing — stop the silent spin
+        signalFirstFrame(); // tear down the cold-start splash so the recover screen is visible
+        showFatalMessage(container, 'Something went wrong', 'The game hit an unexpected error. Tap to reload.');
+        container.addEventListener('pointerdown', () => location.reload(), { once: true });
+      }
     }
-    signalFirstFrame(); // first mission frame is on screen — fade out the cold-start splash
-    // Stream the deferred scene build (lakes/rivers/roads/yards) in a few ms/frame now that the first
-    // frame is up — it fills in under the cold-start spool instead of having frozen the boot.
-    if (!buildComplete) buildComplete = game.pumpBuild(6);
   });
 
   /** Construct a Game for `m` with its end-hooks + (dev/QA) debug handle. The renderer/composer/tier

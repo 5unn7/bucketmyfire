@@ -47,7 +47,7 @@ The game is **live at [bucketmyfire.com](https://bucketmyfire.com)**.
 - **Drop** on a fire's leading edge. A swinging bucket that wasn't steady on approach will miss.
 - **Manage** fuel, crew rescues, structural protection, and a growing fire that spreads with wind and
   topography.
-- **Progress** through a 6-mission linear campaign across different scenarios — from a first training
+- **Progress** through an 8-mission linear campaign across different scenarios — from a first training
   scoop to a night siege on a burning community.
 
 The aesthetic is a **Forza/GTA chase-cam sensibility** with procedural boreal visuals:

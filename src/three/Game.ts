@@ -907,7 +907,20 @@ export class Game {
     while (this.deferredIdx < this.deferredBuild.length) {
       const remaining = budgetMs - (performance.now() - t0);
       if (remaining <= 0) break;
-      const itemDone = this.deferredBuild[this.deferredIdx](remaining);
+      let itemDone = false;
+      try {
+        itemDone = this.deferredBuild[this.deferredIdx](remaining);
+      } catch (err) {
+        // A throwing deferred builder must NOT be retried forever (it would wedge the whole queue and
+        // silently truncate the streamed map — the settlement-merge prod-freeze class). Skip the bad
+        // layer and continue; surface it once to the beacon without escaping into the render loop.
+        this.deferredIdx++;
+        console.error('[bmf:pumpBuild] deferred builder threw — skipped its layer:', err);
+        setTimeout(() => {
+          throw err; // → window 'error' → error beacon; queue keeps draining
+        });
+        continue;
+      }
       if (itemDone) this.deferredIdx++; // one-shot item built (or the forest finished) — advance
       else break; // a multi-frame stepper (the forest) isn't done yet — resume it next frame
     }

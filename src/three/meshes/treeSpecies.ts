@@ -45,7 +45,10 @@ function deciduousCrown(): THREE.BufferGeometry {
   ];
   const geo = mergeGeometries(parts);
   parts.forEach((p) => p.dispose());
-  return geo;
+  // Defense-in-depth: a null merge (mismatched attributes) would propagate to new Mesh(null) and
+  // throw at render — and this runs on EVERY load (forest gen). Fall back to an empty geometry so a
+  // bad species can never brick the build (the settlement/bridge null-merge freeze class).
+  return geo ?? new THREE.BufferGeometry();
 }
 
 function blob(r: number, y: number, sx = 1, sy = 1, sz = 1): THREE.BufferGeometry {
@@ -84,7 +87,10 @@ function snagBranches(): THREE.BufferGeometry {
   ];
   const geo = mergeGeometries(parts);
   parts.forEach((p) => p.dispose());
-  return geo;
+  // Defense-in-depth: a null merge (mismatched attributes) would propagate to new Mesh(null) and
+  // throw at render — and this runs on EVERY load (forest gen). Fall back to an empty geometry so a
+  // bad species can never brick the build (the settlement/bridge null-merge freeze class).
+  return geo ?? new THREE.BufferGeometry();
 }
 
 /** One thin branch stub, angled out from the trunk at height `y`, around the pole by `ang`. */

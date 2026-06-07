@@ -52,7 +52,7 @@ New surface? Ask: is the player being **briefed / rewarded / sold** (warm), or *
 - **What this is:** a mobile-browser helicopter wildfire game. You fly over northern
   Saskatchewan, scoop from the lakes, and fight a fire that's running at the cabins.
 - **Who it's for:** a phone-first player who wants a real flight *feel* in a browser, plus a
-  6-mission campaign and a global leaderboard.
+  8-mission campaign and a global leaderboard.
 - **Project type:** real-3D Three.js game with a DOM heads-up display and full-screen menus.
 - **The one thing to remember:** *fight the fire* (see Brand Platform). The in-flight UI sells
   the cockpit — instruments, not chrome; the brand surfaces sell the fight. If an in-game screen

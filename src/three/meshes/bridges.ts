@@ -292,25 +292,30 @@ export function createBridge(site: BridgeSite): Bridge {
   });
   const steelGeo = mergeGeometries(steel);
   steel.forEach((g) => g.dispose());
-  // Bake a vertical weathering tint: rust-streaked + darker near the deck, cleaner steel up at the
-  // crown. One-time, multiplies the base rust colour — no texture, no shader recompile.
-  if (BRIDGE.weathering) {
-    const pos = steelGeo.attributes.position;
-    const rise = BRIDGE.trussHeight + BRIDGE.trussPeakRise || 1;
-    const col = new Float32Array(pos.count * 3);
-    for (let i = 0; i < pos.count; i++) {
-      const f = Math.min(1, Math.max(0, (pos.getY(i) - deckTopY) / rise));
-      const v = 0.62 + 0.4 * f; // brightness: dark/rusty low → near-full at the crown
-      col[i * 3] = v;
-      col[i * 3 + 1] = v * 0.93; // warm (rust) bias
-      col[i * 3 + 2] = v * 0.84;
+  // Defense-in-depth: mergeGeometries returns null on mismatched attributes; reading `.attributes`
+  // or `new Mesh(null)` then throws — the same class as the settlement freeze. Skip the sub-mesh
+  // rather than crash the whole bridge build.
+  if (steelGeo) {
+    // Bake a vertical weathering tint: rust-streaked + darker near the deck, cleaner steel up at the
+    // crown. One-time, multiplies the base rust colour — no texture, no shader recompile.
+    if (BRIDGE.weathering) {
+      const pos = steelGeo.attributes.position;
+      const rise = BRIDGE.trussHeight + BRIDGE.trussPeakRise || 1;
+      const col = new Float32Array(pos.count * 3);
+      for (let i = 0; i < pos.count; i++) {
+        const f = Math.min(1, Math.max(0, (pos.getY(i) - deckTopY) / rise));
+        const v = 0.62 + 0.4 * f; // brightness: dark/rusty low → near-full at the crown
+        col[i * 3] = v;
+        col[i * 3 + 1] = v * 0.93; // warm (rust) bias
+        col[i * 3 + 2] = v * 0.84;
+      }
+      steelGeo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      steelMat.vertexColors = true;
     }
-    steelGeo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    steelMat.vertexColors = true;
+    const steelMesh = new THREE.Mesh(steelGeo, steelMat);
+    steelMesh.castShadow = true;
+    group.add(steelMesh);
   }
-  const steelMesh = new THREE.Mesh(steelGeo, steelMat);
-  steelMesh.castShadow = true;
-  group.add(steelMesh);
 
   // --- Concrete deck slab + two bank piers (merged into one mesh) ---
   const concrete: THREE.BufferGeometry[] = [];
@@ -328,10 +333,12 @@ export function createBridge(site: BridgeSite): Bridge {
   const concreteMat = new THREE.MeshStandardMaterial({ color: 0x8c857a, metalness: 0, roughness: 0.92 });
   const concreteGeo = mergeGeometries(concrete);
   concrete.forEach((g) => g.dispose());
-  const concreteMesh = new THREE.Mesh(concreteGeo, concreteMat);
-  concreteMesh.castShadow = true;
-  concreteMesh.receiveShadow = true;
-  group.add(concreteMesh);
+  if (concreteGeo) {
+    const concreteMesh = new THREE.Mesh(concreteGeo, concreteMat);
+    concreteMesh.castShadow = true;
+    concreteMesh.receiveShadow = true;
+    group.add(concreteMesh);
+  }
 
   // Pose the whole structure at the site: local +X → across the span, local +Z → along the flow.
   group.position.set(site.x, site.surfaceY, site.z);
