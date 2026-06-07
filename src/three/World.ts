@@ -98,6 +98,12 @@ export interface RiverRuntime {
   surfEnd: number; // water-surface Y at the last point
   cum: number[]; // cumulative length at each point (for surface interpolation)
   total: number; // total polyline length
+  // Per-vertex water-surface Y aligned to `pts` (overrides the linear surfStart→surfEnd interpolation when
+  // present). Authored rivers use this so a long run's surface FOLLOWS the terrain downhill in one continuous,
+  // monotonically-descending profile — without it a multi-segment river clips through mid-segment rises and
+  // breaks into disconnected puddles. Mini-rivers/tributaries leave it undefined (their straight A→B run is fine
+  // with the linear model).
+  surf?: number[];
   minX: number; // bounding box (for cheap query rejection)
   maxX: number;
   minZ: number;
@@ -618,43 +624,83 @@ export class World {
 
   /**
    * Resolve every configured scenic bridge against this world: for each `BRIDGE.sites` entry, project its real
-   * lat/lon, find the nearest point on its named river polyline, take the segment direction as the flow tangent,
-   * and sample the water surface there. Mirrors `meshes/bridges.computeBridgeSites` but runs DURING construction
-   * (pure math, no THREE) so `makeRoads` can route a crossing onto the result. Sites whose river isn't on this
-   * map are skipped (empty off-SK / when disabled). No rng → determinism untouched.
+   * lat/lon and find the best CROSSING on its named river — not just the nearest point, but the one near there
+   * where the span's two bank piers actually land on DRY ground (and the deck crosses water). Takes the segment
+   * direction as the flow tangent and samples the water surface there. Mirrors `meshes/bridges.computeBridgeSites`
+   * but runs DURING construction (pure math, no THREE) so `makeRoads` can route a crossing onto the result, and
+   * the dry-bank search means a hand-typed coord no longer strands a pier in the water. Sites whose river isn't
+   * on this map are skipped (empty off-SK / when disabled). No rng → determinism untouched.
    */
   private resolveBridgeSites(): BridgeSite[] {
     if (!BRIDGE.enabled) return [];
     const out: BridgeSite[] = [];
+    const pierC = BRIDGE.span / 2 - BRIDGE.pierWidth / 2; // |offset| of each pier from the deck centre, across the span
     for (const spec of BRIDGE.sites) {
       const path = this.namedRiverPath(spec.river);
       if (!path) continue; // that river isn't on this map
       const near = this.project(spec.near.lat, spec.near.lon);
-      let best: { x: number; z: number; ax: number; az: number } | null = null;
-      let bestD = Infinity;
-      for (let i = 0; i < path.length - 1; i++) {
-        const a = path[i];
-        const b = path[i + 1];
-        const dx = b.x - a.x;
-        const dz = b.z - a.z;
-        const l2 = dx * dx + dz * dz || 1;
-        let t = ((near.x - a.x) * dx + (near.z - a.z) * dz) / l2;
-        t = t < 0 ? 0 : t > 1 ? 1 : t;
-        const px = a.x + dx * t;
-        const pz = a.z + dz * t;
-        const d = (px - near.x) ** 2 + (pz - near.z) ** 2;
-        if (d < bestD) {
-          bestD = d;
-          const l = Math.hypot(dx, dz) || 1;
-          best = { x: px, z: pz, ax: dx / l, az: dz / l };
-        }
-      }
+      const best = this.bestBridgeCrossing(path, near, pierC);
       if (!best) continue;
       const wl = this.waterLevelAt(best.x, best.z);
       const surfaceY = wl ?? this.groundHeightAt(best.x, best.z);
       out.push({ name: spec.name, x: best.x, z: best.z, surfaceY, ax: best.ax, az: best.az });
     }
     return out;
+  }
+
+  /**
+   * Pick the bridge CROSSING on a river polyline near `near`: walk the spine at a fine step and score each
+   * candidate so a span there lands its two bank piers (at ±`pierC` across the flow) on DRY ground while the
+   * deck crosses water. Score = (deck-over-water) + (left pier dry) + (right pier dry), tie-broken toward the
+   * point closest to `near`; only candidates within `BRIDGE.crossingSearch` of `near` are considered. Returns the
+   * crossing point + unit flow tangent, or the plain nearest point if the river never offers a dry-bank span.
+   */
+  private bestBridgeCrossing(
+    path: readonly { x: number; z: number }[],
+    near: { x: number; z: number },
+    pierC: number,
+  ): { x: number; z: number; ax: number; az: number } | null {
+    const search = BRIDGE.crossingSearch;
+    const search2 = search * search;
+    const step = BRIDGE.crossingStep;
+    let best: { x: number; z: number; ax: number; az: number } | null = null;
+    let bestScore = -Infinity;
+    let bestNearD = Infinity;
+    let fallback: { x: number; z: number; ax: number; az: number } | null = null;
+    let fallbackD = Infinity;
+    for (let i = 0; i < path.length - 1; i++) {
+      const a = path[i];
+      const b = path[i + 1];
+      const segLen = Math.hypot(b.x - a.x, b.z - a.z) || 1;
+      const ax = (b.x - a.x) / segLen; // flow tangent
+      const az = (b.z - a.z) / segLen;
+      const px = -az; // perpendicular = the span axis (bank to bank)
+      const pz = ax;
+      const steps = Math.max(1, Math.ceil(segLen / step));
+      for (let k = 0; k <= steps; k++) {
+        const t = k / steps;
+        const cx = a.x + (b.x - a.x) * t;
+        const cz = a.z + (b.z - a.z) * t;
+        const nd = (cx - near.x) ** 2 + (cz - near.z) ** 2;
+        // The plain nearest point — used only if no candidate in range offers a clean span.
+        if (nd < fallbackD) {
+          fallbackD = nd;
+          fallback = { x: cx, z: cz, ax, az };
+        }
+        if (nd > search2) continue;
+        const deckWet = this.isOverWater(cx, cz) ? 1 : 0;
+        const leftDry = this.isOverWater(cx + px * pierC, cz + pz * pierC) ? 0 : 1;
+        const rightDry = this.isOverWater(cx - px * pierC, cz - pz * pierC) ? 0 : 1;
+        const score = deckWet + leftDry + rightDry;
+        if (score > bestScore || (score === bestScore && nd < bestNearD)) {
+          bestScore = score;
+          bestNearD = nd;
+          best = { x: cx, z: cz, ax, az };
+        }
+      }
+    }
+    // Require a genuine crossing (deck over water + at least one dry bank); otherwise fall back to nearest.
+    return best && bestScore >= 2 ? best : fallback;
   }
 
   /**
@@ -991,12 +1037,75 @@ export class World {
       const verts = def.points.map((p) => this.project(p.lat, p.lon));
       if (verts.length < 2) continue;
       const half = (def.width ?? STREAM.width * 2) / 2;
-      for (let i = 0; i < verts.length - 1; i++) {
-        const a = verts[i];
-        const b = verts[i + 1];
-        rivers.push(this.buildRiver(a.x, a.z, b.x, b.z, this.baseHeight(a.x, a.z), this.baseHeight(b.x, b.z), half, STREAM.meanderAmp * 0.5));
-      }
+      rivers.push(this.buildAuthoredRiver(verts, half, STREAM.meanderAmp * 0.5));
     }
+  }
+
+  /**
+   * Build ONE continuous river from an authored lat/lon polyline: resample the whole run into a dense, gently
+   * meandering point list, then give it a per-vertex water surface that FOLLOWS the terrain DOWNHILL — a
+   * monotonic-descending lower envelope of the natural ground along the path (flowing from the higher end). That
+   * keeps the surface at or below ground everywhere, so the carved channel stays submerged in one continuous
+   * ribbon instead of breaking into puddles where the old per-segment straight-line surface poked above a
+   * mid-segment rise. RNG-free (so it can't perturb the seeded world); `baseHeight` here is pre-carve terrain.
+   */
+  private buildAuthoredRiver(verts: { x: number; z: number }[], half: number, meanderAmp: number): RiverRuntime {
+    // Resample the full polyline at ~STREAM.resample spacing into one continuous list; the meander envelope
+    // tapers to 0 only at the two TRUE ends (not at every authored vertex) so the river curves smoothly through.
+    const segLen: number[] = [];
+    let totalIn = 0;
+    for (let i = 0; i < verts.length - 1; i++) {
+      const l = Math.hypot(verts[i + 1].x - verts[i].x, verts[i + 1].z - verts[i].z);
+      segLen.push(l);
+      totalIn += l;
+    }
+    totalIn = totalIn || 1;
+    const pts: { x: number; z: number }[] = [];
+    let acc = 0;
+    for (let i = 0; i < verts.length - 1; i++) {
+      const a = verts[i];
+      const b = verts[i + 1];
+      const L = segLen[i] || 1;
+      const nx = -(b.z - a.z) / L; // unit perpendicular (lateral meander)
+      const nz = (b.x - a.x) / L;
+      const segs = Math.max(1, Math.ceil(L / STREAM.resample));
+      for (let k = i === 0 ? 0 : 1; k <= segs; k++) {
+        const tt = k / segs;
+        const bx = a.x + (b.x - a.x) * tt;
+        const bz = a.z + (b.z - a.z) * tt;
+        const gt = (acc + L * tt) / totalIn; // global 0..1 along the whole river
+        const off = this.noise.simplex(bx * 0.02 + 13, bz * 0.02 - 7) * meanderAmp * Math.sin(Math.PI * gt);
+        pts.push({ x: bx + nx * off, z: bz + nz * off });
+      }
+      acc += L;
+    }
+
+    // Terrain-following monotonic surface: sample the natural ground, then take a running minimum from the
+    // higher end so the surface never rises (water flows downhill) and never sits above ground (no puddles).
+    const n = pts.length;
+    const terr = pts.map((p) => this.baseHeight(p.x, p.z));
+    const surf = new Array<number>(n);
+    if (terr[0] >= terr[n - 1]) {
+      surf[0] = terr[0];
+      for (let i = 1; i < n; i++) surf[i] = Math.min(terr[i], surf[i - 1]);
+    } else {
+      surf[n - 1] = terr[n - 1];
+      for (let i = n - 2; i >= 0; i--) surf[i] = Math.min(terr[i], surf[i + 1]);
+    }
+
+    const cum = [0];
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minZ = Infinity;
+    let maxZ = -Infinity;
+    for (let i = 0; i < n; i++) {
+      if (i > 0) cum[i] = cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z);
+      minX = Math.min(minX, pts[i].x);
+      maxX = Math.max(maxX, pts[i].x);
+      minZ = Math.min(minZ, pts[i].z);
+      maxZ = Math.max(maxZ, pts[i].z);
+    }
+    return { pts, width: half, surf, surfStart: surf[0], surfEnd: surf[n - 1], cum, total: cum[cum.length - 1] || 1, minX, maxX, minZ, maxZ };
   }
 
   /** Resample a straight A→B run into a meandering polyline + cached lengths/bbox. */
@@ -2103,7 +2212,30 @@ function buildLakeLUT(cx: number, cz: number, verts: { x: number; z: number }[],
       }
     }
   }
+  // Relax the sharp radial notches a long/lobed (non-star-convex) shore casts so the waterline reads as a
+  // smooth, uniform shape rather than a shimmering sliver-triangle edge. Wrap-around 3-tap binomial, applied
+  // N times — the same LUT feeds the mesh, the carved basin and isOverWater, so the silhouette stays in lock-step.
+  smoothLakeLUT(lut, LAKE_SHAPE.outlineSmoothPasses);
   return lut;
+}
+
+/**
+ * Smooth a closed boundary-radius LUT in place: `passes` of a wrap-around [1,2,1]/4 binomial blur. Each pass
+ * widens the effective Gaussian, so a few passes turn a notched cast into a gently varying ring without
+ * collapsing the overall silhouette. No-op for `passes <= 0`.
+ */
+function smoothLakeLUT(lut: number[], passes: number): void {
+  const n = lut.length;
+  if (passes <= 0 || n < 3) return;
+  for (let p = 0; p < passes; p++) {
+    const src = lut.slice();
+    for (let s = 0; s < n; s++) {
+      const a = src[(s - 1 + n) % n];
+      const b = src[s];
+      const c = src[(s + 1) % n];
+      lut[s] = (a + 2 * b + c) * 0.25;
+    }
+  }
 }
 
 /**
@@ -2314,6 +2446,8 @@ function channelProfile(d: number, w: number, surf: number): number {
 function pointToRiver(x: number, z: number, r: RiverRuntime): { d: number; surf: number } {
   let bestD = Infinity;
   let bestLen = 0;
+  let bestI = 0; // segment index of the nearest approach
+  let bestU = 0; // fractional position along that segment
   for (let i = 0; i < r.pts.length - 1; i++) {
     const p0 = r.pts[i];
     const p1 = r.pts[i + 1];
@@ -2329,8 +2463,13 @@ function pointToRiver(x: number, z: number, r: RiverRuntime): { d: number; surf:
     if (dd < bestD) {
       bestD = dd;
       bestLen = r.cum[i] + u * Math.sqrt(len2);
+      bestI = i;
+      bestU = u;
     }
   }
+  // Per-vertex surface (authored rivers): interpolate along the nearest segment so the carve/water query read
+  // the terrain-following profile. Else fall back to the linear surfStart→surfEnd model (mini-rivers).
+  if (r.surf) return { d: bestD, surf: r.surf[bestI] + (r.surf[bestI + 1] - r.surf[bestI]) * bestU };
   const t = bestLen / r.total;
   return { d: bestD, surf: r.surfStart + (r.surfEnd - r.surfStart) * t };
 }

@@ -1,6 +1,6 @@
 // Saskatchewan region data — moved VERBATIM from world/regions.ts (the real fire bases, named lakes,
 // landmarks, highway corridors, uplands, rivers, geo frame + name pools). Pure data; types only.
-import type { Region, MapAnchor, GeoFrame, RegionLake, RegionPlace, HighwayRoute, RegionHeightPatch, RegionRiver } from '../types';
+import type { Region, MapAnchor, GeoFrame, RegionLake, RegionPlace, HighwayRoute, RegionHeightPatch, RegionRiver, RegionRoad, TerrainDab, FoliageDab, AuthoredBuilding } from '../types';
 import { CYPRESS_HEIGHTMAP } from './cypressHeightmap';
 
 // --- saskatchewan ANCHORS — the real fire bases + protected towns at their REAL lat/lon ------------
@@ -144,6 +144,17 @@ const SASKATCHEWAN_RIVERS: readonly RegionRiver[] = [
   { name: 'Clearwater River', width: 10, points: [{ lat: 57.1317, lon: -108.6039 }, { lat: 57.5313, lon: -109.1641 }, { lat: 57.931, lon: -109.3971 }, { lat: 58.2983, lon: -109.1412 }] },
   { name: 'S Saskatchewan river', width: 15, points: [{ lat: 50.8843, lon: -109.997 }, { lat: 51.1486, lon: -109.3641 }, { lat: 51.2517, lon: -108.6413 }, { lat: 51.2001, lon: -107.8253 }, { lat: 51.9155, lon: -107.0757 }, { lat: 52.2185, lon: -106.8222 }, { lat: 52.1798, lon: -105.9697 }, { lat: 52.7406, lon: -105.1324 }, { lat: 53.3335, lon: -104.8658 }, { lat: 53.5011, lon: -104.6784 }] },
 ];
+// Map-editor (?editor) round-trip slots — paste the matching export const body in HERE. They start EMPTY
+// and are already attached to the Region below, so an editor change lands with a SINGLE paste (no need to
+// touch the Region object or its imports). terrain = raise/lower brush dabs (baked into World.baseHeight),
+// foliage = tree-density bias, buildings = decorative structures, roads = hand-painted gravel ribbons. The
+// editor also exports the FULL rivers/namedLakes lists (existing + new) → replace SASKATCHEWAN_RIVERS / the
+// lakes const with those.
+const SASKATCHEWAN_TERRAIN: readonly TerrainDab[] = [];
+const SASKATCHEWAN_FOLIAGE: readonly FoliageDab[] = [];
+const SASKATCHEWAN_BUILDINGS: readonly AuthoredBuilding[] = [];
+const SASKATCHEWAN_ROADS: readonly RegionRoad[] = [];
+
 // --- saskatchewan — the live campaign map (holds all 8 missions) -------------------------------
 // Real northern-SK places: the Churchill River chain, the Lac La Ronge country, the Athabasca
 // basin. Communities are the real northern villages, hamlets, and First Nations the campaign
@@ -224,6 +235,11 @@ const SASKATCHEWAN: Region = {
   heightPatches: SASKATCHEWAN_HEIGHTPATCHES,
   rivers: SASKATCHEWAN_RIVERS,
   geo: SASKATCHEWAN_GEO,
+  // Map-editor round-trip slots (empty until you paste an export over the consts above).
+  terrain: SASKATCHEWAN_TERRAIN,
+  foliage: SASKATCHEWAN_FOLIAGE,
+  buildings: SASKATCHEWAN_BUILDINGS,
+  roads: SASKATCHEWAN_ROADS,
 };
 
 export { SASKATCHEWAN };

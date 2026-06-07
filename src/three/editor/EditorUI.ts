@@ -31,6 +31,8 @@ export interface EditorUIOptions {
   onBuildingKind(k: 'cabin' | 'depot'): void;
   onBuildingDensity(v: number): void;
   onToggleLabels(on: boolean): void;
+  onToggleFlood(on: boolean): void;
+  onFloodLevel(deltaM: number): void;
   onExport(): string;
   onDeleteSelected(): void;
   onClearLayers(): void;
@@ -81,6 +83,8 @@ export function buildEditorUI(container: HTMLElement, opts: EditorUIOptions): Ed
     </label>
     <label class="me-row me-bd"><span>Density</span><input class="me-dens" type="range" min="1" max="10" step="1" value="3"><b class="me-dens-v">3</b></label>
     <label class="me-row"><span>Labels</span><input class="me-labels" type="checkbox" checked></label>
+    <label class="me-row"><span>Water</span><input class="me-flood" type="checkbox"></label>
+    <label class="me-row me-fl"><span>Water ±m</span><input class="me-flevel" type="range" min="-80" max="80" step="2" value="0"><b class="me-flevel-v">0</b></label>
     <div class="me-sel"></div>
     <div class="me-counts"></div>
     <div class="me-actions">
@@ -91,7 +95,8 @@ export function buildEditorUI(container: HTMLElement, opts: EditorUIOptions): Ed
       <b>Left-drag</b> uses the active tool · <b>Right-drag</b> or <b>Space+drag</b> pans · <b>wheel</b> zoom.<br>
       Keys <b>1–9 / R L S</b> tools · <b>[ ]</b> brush size · <b>Del</b> remove selected.<br>
       <b>Bldg +</b>: drag to scatter (density). <b>Erase</b>: drag over buildings/roads. <b>Road</b>: drag to paint, release to lay.<br>
-      <b>River</b>: click points, dbl-click/Enter finish. <b>Lake</b>: click to dig (brush = size).
+      <b>River</b>: click points, dbl-click/Enter finish. <b>Lake</b>: click to dig (brush = size).<br>
+      <b>Water</b>: shows a flat waterline — sculpt below it to preview water (a guide; place a Lake/River for real water).
     </div>`;
   container.appendChild(panel);
 
@@ -143,6 +148,17 @@ export function buildEditorUI(container: HTMLElement, opts: EditorUIOptions): Ed
   };
   const labelsCb = $<HTMLInputElement>('.me-labels');
   labelsCb.onchange = () => opts.onToggleLabels(labelsCb.checked);
+  const floodCb = $<HTMLInputElement>('.me-flood');
+  const flevel = $<HTMLInputElement>('.me-flevel');
+  const flevelV = $<HTMLElement>('.me-flevel-v');
+  floodCb.onchange = () => {
+    panel.classList.toggle('me-show-flood', floodCb.checked);
+    opts.onToggleFlood(floodCb.checked);
+  };
+  flevel.oninput = () => {
+    flevelV.textContent = flevel.value;
+    opts.onFloodLevel(+flevel.value);
+  };
   $<HTMLButtonElement>('.me-clear').onclick = opts.onClearLayers;
   $<HTMLButtonElement>('.me-export').onclick = () => openExport(opts.onExport());
 
@@ -231,6 +247,7 @@ function injectStyles(): void {
   .me-tool:hover{background:#25323b}.me-tool.on{background:#4ea3ff;color:#05121d;border-color:#4ea3ff;font-weight:600}
   .me-bk{display:none}.me-show-kind .me-bk{display:flex}
   .me-bd{display:none}.me-show-dens .me-bd{display:flex}
+  .me-fl{display:none}.me-show-flood .me-fl{display:flex}
   .me-sel{color:#9fd9a0;font-size:12px;margin:4px 0;min-height:0}
   .me-sel .me-del,.me-clear{background:#3a1f1f;color:#ff9b9b;border:1px solid #6b2a2a;border-radius:5px;
     padding:3px 8px;cursor:pointer;font:inherit;font-size:12px;margin-left:6px}

@@ -667,10 +667,14 @@ export const BRIDGE = {
   // Where to build a bridge: span `river` (an authored RegionRiver name) at the point nearest `near`
   // (real lat/lon). `name` labels the clean-pass radio call. These are the road-crosses-river towns.
   sites: [
-    { name: 'Missinipe', river: 'Churchill River', near: { lat: 56.3159, lon: -104.7577 } }, // a narrow Churchill reach E of Otter Lake — the old Missinipe coord snapped the span onto Otter Lake's RIM (piers in water, steep shore walls beside the deck). This reach gives dry banks within the span + a clean fly-under (see scripts probe).
-    { name: 'Prince Albert', river: 'Saskatchewan River', near: { lat: 53.1266, lon: -105.7296 } },
+    { name: 'Churchill Crossing', river: 'Churchill River', near: { lat: 56.7, lon: -106.21 } }, // a remote Churchill reach ~50 km NW of Missinipe, well clear of Otter Lake. Scenic span (no road runs out here); the dry-bank search lands both piers on dry banks with the deck over the river + a clean fly-under.
     { name: 'Saskatoon', river: 'S Saskatchewan river', near: { lat: 52.133, lon: -106.67 } },
+    // (Prince Albert bridge removed by request — two bridges total. The PA road crossing now fords the
+    //  Saskatchewan River as a plain causeway instead of a truss span.)
   ],
+  // --- Crossing search: land the piers on DRY banks instead of snapping to the raw nearest point ---
+  crossingSearch: 70, // how far (units) along the river from the authored `near` coord to hunt for a clean dry-bank crossing
+  crossingStep: 3, // sampling step (units) along the spine while scoring candidates — finer = a tighter fit, cheap (load-time only)
   // --- Road integration: the carriageway runs OVER the deck (not a causeway under it) ---
   roadSnapDist: 90, // pull a road's river crossing onto a bridge centre when it passes within this (units); 0 = off. Widened to cover ROADS.bridgeAttract so a crossing the router funnelled toward the bridge is pinned exactly onto the deck
   deckRideMargin: 3, // extend the on-deck footprint by this (units) when draping the road so it fully rides the deck

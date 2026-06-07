@@ -19,7 +19,7 @@ import { createRiverMesh } from '../meshes/river';
 import { createRoadMesh } from '../meshes/road';
 import { Lake } from '../Lake';
 import { createStructure, type StructureMesh } from '../meshes/cabin';
-import { createBridge, computeBridgeSites } from '../meshes/bridges';
+import { createBridge } from '../meshes/bridges';
 import { createSettlement, createSettlementMaterial, type SettlementTier } from '../meshes/settlement';
 import { createWaterMaterial } from '../water/WaterMaterial';
 import { Ripples } from '../water/Ripples';
@@ -122,6 +122,15 @@ export class MapEditor {
   private riverDraft: { lat: number; lon: number }[] = []; // points of the river being drawn
   private riverPreview: THREE.Line | null = null;
 
+  // --- flood guide: a flat "waterline" plane (editor-only) at an adjustable datum. Terrain pokes through
+  // where it's above the datum, so anywhere you sculpt BELOW the line reads as water live — the "below a
+  // point = water" view. A GUIDE for sculpting, distinct from the real per-lake/river water (which is what
+  // actually ships); to make a dug basin real water in-game, place a Lake/River there.
+  private floodPlane: THREE.Mesh | null = null;
+  private showFlood = false;
+  private floodDeltaM = 0; // user offset (m) from the auto datum
+  private floodBase = 0; // auto datum (world Y) — the home base's lake level, set per map
+
   private prevTime = 0;
   private readonly ground = new THREE.Vector3(); // scratch for raycast hits
 
@@ -185,6 +194,8 @@ export class MapEditor {
       onBuildingKind: (k) => (this.buildingKind = k),
       onBuildingDensity: (v) => (this.buildingDensity = v),
       onToggleLabels: (on) => this.setLabelsVisible(on),
+      onToggleFlood: (on) => this.setFloodVisible(on),
+      onFloodLevel: (deltaM) => this.setFloodLevel(deltaM),
       onExport: () => this.buildExport(),
       onDeleteSelected: () => this.deleteSelected(),
       onClearLayers: () => this.clearLayers(),
@@ -236,10 +247,11 @@ export class MapEditor {
       regionId: this.mapId,
       region: { ...this.base, terrain: [], foliage: [], buildings: [], rivers: this.rivers, namedLakes: this.namedLakes, roads: this.roads },
     });
-    // Bridges shape river valleys into the terrain — compute + register BEFORE the terrain mesh so the
-    // banks are raised under each deck (same order as Game), then build the bridge meshes below.
-    const bridgeSites = computeBridgeSites(this.world);
-    this.world.setBridgeValleys(bridgeSites);
+    // Bridges: read the sites World already resolved in its ctor (with the dry-bank crossing search) — the
+    // valleys are likewise already shaped into the ground there, so we just read the list to build the meshes
+    // + drape roads onto the decks. Same source the game uses (Game reads world.bridgeSites()), so the editor
+    // shows the bridges exactly where they ship — and the duplicate nearest-point resolver can't drift again.
+    const bridgeSites = this.world.bridgeSites();
     this.terrainField = this.fieldFrom(this.terrainDabs, (d) => d.deltaM / MAPGEO.metresPerUnit);
     this.foliageField = this.fieldFrom(this.foliageDabs, (d) => d.density);
 
@@ -337,6 +349,66 @@ export class MapEditor {
     }
 
     this.buildLabels();
+    this.buildFloodPlane();
+  }
+
+  // --- flood guide ------------------------------------------------------------
+
+  /** The flood datum (world Y): the auto home-lake level + the user's ±metre offset. */
+  private floodLevel(): number {
+    return this.floodBase + this.floodDeltaM / MAPGEO.metresPerUnit;
+  }
+
+  /** Auto flood datum for the current map — the water level of the lake nearest the home base (else the first
+   *  lake, else 0). Picks a level that lines the flood plane up with the map's real water out of the box. */
+  private computeFloodBase(): number {
+    const lakes = this.world.lakes;
+    if (!lakes.length) return 0;
+    const base = this.world.communities.find((c) => c.kind === 'base') ?? this.world.communities[0];
+    if (!base) return lakes[0].waterLevel;
+    let best = lakes[0];
+    let bestD = Infinity;
+    for (const l of lakes) {
+      const d = (l.x - base.x) ** 2 + (l.z - base.z) ** 2;
+      if (d < bestD) {
+        bestD = d;
+        best = l;
+      }
+    }
+    return best.waterLevel;
+  }
+
+  /** (Re)build the flat translucent waterline plane sized to the current map, at the flood datum. */
+  private buildFloodPlane(): void {
+    this.floodBase = this.computeFloodBase();
+    const geo = new THREE.PlaneGeometry(this.world.sizeX, this.world.sizeZ);
+    geo.rotateX(-Math.PI / 2); // lie flat in XZ
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0x2f6f8f,
+      transparent: true,
+      opacity: 0.42,
+      roughness: 0.35,
+      metalness: 0,
+      depthWrite: false, // a guide overlay — terrain still occludes it where it's higher (depthTest stays on)
+    });
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(0, this.floodLevel(), 0);
+    m.renderOrder = 2; // after opaque terrain + the real lake water
+    m.visible = this.showFlood;
+    this.floodPlane = m;
+    this.add(m); // transient → disposed/rebuilt on map switch
+  }
+
+  setFloodVisible(on: boolean): void {
+    this.showFlood = on;
+    if (this.floodPlane) this.floodPlane.visible = on;
+    this.ui.setNotice(on ? 'Water level guide ON — terrain below the line reads as water. Dig a Lake/River to make it real in-game.' : '');
+  }
+
+  /** Move the flood datum by the user's ±metre offset (live). */
+  setFloodLevel(deltaM: number): void {
+    this.floodDeltaM = deltaM;
+    if (this.floodPlane) this.floodPlane.position.y = this.floodLevel();
   }
 
   /** Place a non-selectable context structure (existing community/base building) on the ground. */

@@ -33,7 +33,8 @@ export function createRiverMesh(
     tz /= tl;
     const nx = -tz; // perpendicular to the tangent
     const nz = tx;
-    const surf = river.surfStart + (river.surfEnd - river.surfStart) * (river.cum[i] / river.total);
+    // Per-vertex surface (authored rivers follow the terrain downhill) when present; else the linear model.
+    const surf = river.surf ? river.surf[i] : river.surfStart + (river.surfEnd - river.surfStart) * (river.cum[i] / river.total);
 
     const lx = p.x + nx * w;
     const lz = p.z + nz * w;
