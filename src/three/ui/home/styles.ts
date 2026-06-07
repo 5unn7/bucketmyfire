@@ -128,6 +128,16 @@ const CSS = `
 .bmf-app.home .artcard[data-act]:hover .img{ transform:scale(1.05); }
 .bmf-app.home .artcard[data-act]:hover .brackets i{ border-color:var(--menu); opacity:1; }
 .bmf-app .artcard .img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:50% 34%; z-index:0; }
+/* Region cards: the map art is a 3D terrain SLAB rendered on transparency — built to FLOAT, not to
+   fill. So show the WHOLE slab (contain), parked in the upper card over a faint spotlight, casting a
+   true silhouette shadow, with a slow idle bob on the focused slide — and let it sink into the scrim
+   under the title/stats/CTA. (cover-cropping it threw the floating-object read away entirely.) */
+.bmf-app .artcard.map{ background:radial-gradient(116% 76% at 50% 30%, #251b27, var(--card-bg) 70%); }
+.bmf-app .artcard.map .img{ inset:0 0 auto 0; height:72%; padding:18px 16px 0; box-sizing:border-box;
+  object-fit:contain; object-position:50% 44%; filter:drop-shadow(0 18px 20px rgba(0,0,0,0.5)); }
+.bmf-app .artcard.map .scrim{ background:linear-gradient(180deg, transparent 0%, transparent 50%, rgba(6,4,3,0.72) 80%, rgba(4,3,2,0.95) 100%); }
+.bmf-app .cslide.active .artcard.map .img{ animation:bmf-map-float 7s ease-in-out infinite; }
+@keyframes bmf-map-float{ 0%,100%{ transform:translateY(0); } 50%{ transform:translateY(-7px); } }
 .bmf-app .artcard .fallback{ position:absolute; inset:0; z-index:0; background:radial-gradient(120% 90% at 50% 120%, var(--ember-50), transparent 60%), linear-gradient(160deg,#2a2030,#160d12 70%); display:grid; place-items:center; }
 .bmf-app .artcard .fallback b{ font-family:var(--mono); font-weight:var(--fw-black); font-size:64px; color:rgba(255,255,255,0.07); }
 .bmf-app .artcard .scrim{ position:absolute; inset:0; z-index:1; pointer-events:none;
@@ -189,6 +199,27 @@ const CSS = `
 .bmf-app .dbrief{ margin-top:13px; font-size:var(--fs-body); line-height:1.45; color:rgba(255,255,255,0.86);
   padding-left:11px; border-left:3px solid var(--fire);
   display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+
+/* ===== BMF Gear banner — a DESKTOP-ONLY promo card in the home's LEFT column, sitting under Today's
+   Burn and pinned to the BOTTOM of that cell so its base lines up with the Continue mission card (the
+   "aligned" goal — see the desktop grid block below). Hidden on phone/tablet, where the single-viewport
+   stack has no spare room. The whole card is ONE tap target → the /shop.html merch site. Same warm
+   "fight"-register .card shell as the daily slip; built from tokens only (no new colour literals). ===== */
+.bmf-app.home .shop-sec, .bmf-app.home .shopbanner{ display:none; }
+.bmf-app .shopbanner{ width:100%; align-items:center; gap:13px; text-align:left; font:inherit; color:var(--text);
+  cursor:pointer; -webkit-tap-highlight-color:transparent; transition:transform .14s ease, border-color .14s ease, box-shadow .22s ease; }
+.bmf-app .shopbanner:hover{ transform:translateY(-2px); border-color:var(--warm-stroke); box-shadow:var(--shadow-card), 0 0 24px var(--ember-18); }
+.bmf-app .shopbanner:active{ transform:translateY(-1px); }
+.bmf-app .sb-ic{ width:40px; height:40px; flex:0 0 auto; display:grid; place-items:center; border-radius:var(--r-sm);
+  border:1px solid var(--warm-stroke); background:radial-gradient(circle at 40% 30%, var(--warm-38), var(--card-bg));
+  box-shadow:inset 0 0 10px var(--ember-35); color:var(--ember-hi); }
+.bmf-app .sb-ic svg{ width:19px; height:19px; }
+.bmf-app .sb-copy{ flex:1; min-width:0; display:flex; flex-direction:column; gap:3px; }
+.bmf-app .sb-title{ font-size:var(--fs-md); font-weight:var(--fw-black); line-height:1.08; color:var(--text); }
+.bmf-app .sb-sub{ font-size:var(--fs-meta); line-height:1.36; color:var(--dim); }
+.bmf-app .sb-go{ flex:0 0 auto; display:grid; place-items:center; width:26px; height:26px; color:var(--faint); transition:color .14s ease, transform .14s ease; }
+.bmf-app .sb-go svg{ width:18px; height:18px; }
+.bmf-app .shopbanner:hover .sb-go{ color:var(--ember-hi); transform:translateX(2px); }
 
 .bmf-app .stars{ display:inline-flex; gap:3px; } .bmf-app .stars svg{ width:15px; height:15px; }
 .bmf-app .stars .on{ fill:var(--menu); stroke:none; filter:drop-shadow(0 0 5px var(--gold-70)); }
@@ -300,8 +331,9 @@ const CSS = `
    so the portrait key-art render reads at full size instead of a thin letterbox crop. */
 .bmf-app .helicard .hc-art{ position:relative; width:100%; flex:1 1 auto; min-height:72px; border-radius:var(--r-md); overflow:hidden; display:grid; place-items:center;
   background:radial-gradient(92% 84% at 50% 28%, color-mix(in srgb, var(--accent) 50%, transparent), transparent 70%), var(--metal); }
-/* Key-art render fills the tile (portrait crop through the fuselage); else the procedural ring + mark. */
-.bmf-app .helicard .hc-art .img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:50% 32%; }
+/* Key-art render fills the tile; the subject (heli + slung bucket) sits mid-frame, so centre the crop
+   slightly above middle to keep the airframe prominent when the tile shrinks to a band. */
+.bmf-app .helicard .hc-art .img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:50% 44%; }
 .bmf-app .helicard .hc-ring{ position:absolute; top:50%; left:50%; width:50%; aspect-ratio:1; max-width:120px; transform:translate(-50%,-50%); border-radius:50%;
   border:1px dashed color-mix(in srgb, var(--accent) 60%, transparent); opacity:.5; animation:bmf-rotor 9s linear infinite; }
 .bmf-app .helicard .hc-mark{ position:relative; display:grid; place-items:center; color:var(--text); }
@@ -315,35 +347,29 @@ const CSS = `
 .bmf-app .helicard.sel .hc-flag{ background:var(--menu); color:var(--cta-ink); box-shadow:0 0 10px var(--ember-35); }
 
 /* Open Skies — single-viewport, NO PAGE SCROLL (CLAUDE.md hard rule). The pad becomes a flex column
-   locked to the viewport (overflow:hidden); the .osky column flows top-down, and the short-height
-   tiers below compress the title / subtitle / hangar tiles so the Join button always stays in view —
-   the content never overruns into a scroll. */
+   locked to the viewport (overflow:hidden); the .osky column flows top-down with the aircraft grid as
+   the flexible hero, and the short-height tier below sheds the subtitle so the Join button always
+   stays in view — the content never overruns into a scroll. */
 .bmf-app .pad:has(> .osky){ display:flex; flex-direction:column; overflow:hidden; }
 .bmf-app .osky{ flex:1 1 auto; min-height:0; display:flex; flex-direction:column; padding-top:6px; }
-.bmf-app .osky .osky-title{ margin-top:13px; }
-.bmf-app .osky .osky-sub{ margin-top:9px; font-size:var(--fs-body); line-height:1.5; max-width:34ch;
-  display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+.bmf-app .osky .osky-sub{ margin-top:9px; font-size:var(--fs-body); line-height:1.5; max-width:36ch;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
 .bmf-app .osky .sec{ margin:15px 2px 0; }
-.bmf-app .osky .heligrid{ margin-top:10px; }
+/* The aircraft grid is the HERO: it flexes to fill all height between the "Your aircraft" header and
+   the Join button, so the cards (and their portrait key-art) grow as large as the viewport allows.
+   No-scroll is then guaranteed by construction — short phones just shrink the cards, never overflow. */
+.bmf-app .osky .heligrid{ margin-top:11px; flex:1 1 auto; min-height:0; grid-template-rows:1fr; }
 .bmf-app .osky .osky-cta{ padding-top:16px; }
-@media (max-height:800px){
-  .bmf-app .osky .osky-title{ font-size:var(--fs-display); margin-top:11px; }
-  .bmf-app .osky .hc-art{ aspect-ratio:2.2/1; }
-  .bmf-app .osky .osky-cta{ padding-top:11px; }
-}
+/* Short phones: tighten the rhythm + shed the subtitle so the cards keep as much height as possible. */
 @media (max-height:680px){
   .bmf-app .osky{ padding-top:2px; }
-  .bmf-app .osky .osky-sub{ -webkit-line-clamp:2; margin-top:7px; }
-  .bmf-app .osky .sec{ margin:11px 2px 0; }
-  .bmf-app .osky .hc-art{ aspect-ratio:2.7/1; }
-  .bmf-app .osky .hc-mark svg{ width:34px; height:34px; }
-  .bmf-app .osky .hc-ring{ width:52px; height:52px; }
+  .bmf-app .osky .osky-sub{ -webkit-line-clamp:1; margin-top:6px; }
+  .bmf-app .osky .sec{ margin:10px 2px 0; }
+  .bmf-app .osky .osky-cta{ padding-top:11px; }
   .bmf-app .osky .hc-name{ min-height:0; }
 }
-@media (max-height:600px){
+@media (max-height:560px){
   .bmf-app .osky .osky-sub{ display:none; }
-  .bmf-app .osky .hc-art{ aspect-ratio:3.2/1; }
-  .bmf-app .osky .hc-ring{ display:none; }
 }
 
 /* ===== mission card LIST (accordion) — copy on the left, art on the right, gradient fade left =====
@@ -510,7 +536,7 @@ const CSS = `
 
 @media (prefers-reduced-motion: reduce){
   .bmf-app .rise{ opacity:1 !important; transform:none !important; animation:none !important; }
-  .bmf-app .helmet .sheen,.bmf-app .mote,.bmf-app .glyph.flicker svg path,.bmf-app .crt-streak,.bmf-app .artcard.heli .heli-art .ring,.bmf-app.home .bar > i{ animation:none !important; }
+  .bmf-app .helmet .sheen,.bmf-app .mote,.bmf-app .glyph.flicker svg path,.bmf-app .crt-streak,.bmf-app .artcard.heli .heli-art .ring,.bmf-app .cslide.active .artcard.map .img,.bmf-app.home .bar > i{ animation:none !important; }
   .bmf-app .cslide{ opacity:1 !important; transform:none !important; }
   .bmf-app.home .artcard[data-act]:hover .img{ transform:none !important; } /* no cinematic zoom under reduced-motion */
   .bmf-app .embers{ display:none; }
@@ -528,11 +554,6 @@ const CSS = `
   .bmf-app .cslide .artcard.heli .inner{ min-height:396px; }
   .bmf-app .cnav{ width:46px; height:46px; } .bmf-app .cnav svg{ width:22px; height:22px; }
 }
-/* Open Skies feature rows — desktop-only fill for the lobby's left column (hidden on phone so the
-   single-viewport stack the other layout assumes stays tight). Shown via the desktop .osky grid. */
-.bmf-app .osky-feats{ display:none; }
-.bmf-app .osky-feat{ display:flex; align-items:center; gap:11px; font-size:var(--fs-sm); color:var(--dim); }
-.bmf-app .osky-feat svg{ width:18px; height:18px; flex:0 0 auto; color:var(--ember-hi); }
 
 /* ===== desktop: 2-column home dashboard · flanked-hero carousels · floating dock rail ===== */
 @media (min-width:1040px){
@@ -542,9 +563,14 @@ const CSS = `
   .bmf-app.home .pad{ max-width:1000px; display:grid; grid-template-columns:380px 1fr; grid-template-rows:auto minmax(0,1fr);
     column-gap:24px; row-gap:8px; overflow:hidden; padding-top:calc(env(safe-area-inset-top) + 28px); padding-bottom:120px; }
   .bmf-app.home .pad > header{ grid-column:1 / -1; grid-row:1; }
-  .bmf-app.home .z-daily{ grid-column:1; grid-row:2; align-self:start; }
+  /* Stretch the Today's Burn cell to the FULL row height so its trailing BMF Gear banner can bottom-
+     align with the Continue card. The daily slip stays content-sized at the top (no flex-grow); the
+     shop section's margin-top:auto absorbs the slack and drops the banner onto the row's base line. */
+  .bmf-app.home .z-daily{ grid-column:1; grid-row:2; align-self:stretch; }
   .bmf-app.home .z-cont{ grid-column:2; grid-row:2; min-height:0; }
   .bmf-app.home .sec{ margin-top:0; }
+  .bmf-app.home .shop-sec{ display:flex; margin-top:auto; }
+  .bmf-app.home .shopbanner{ display:flex; }
   /* Menu overlays (Settings · Open Skies): a wide centred column. */
   .bmf-app:not(.home):not(.newpilot) .pad{ max-width:760px;
     padding-top:calc(env(safe-area-inset-top) + 30px); padding-bottom:120px; }
@@ -573,21 +599,16 @@ const CSS = `
   .bmf-app .mlist{ display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:16px; align-content:start; margin-top:16px; }
   .bmf-app .mcard .mexpand{ grid-template-rows:1fr; }
   .bmf-app .mcard .mbody{ max-width:80%; }
-  /* Open Skies — a 2-column desktop LOBBY (pitch left · aircraft picker + Join right) built from the
-     SAME flat .osky markup the phone stacks: grid-template-areas place each child by name, so no
-     markup change is needed. The pitch's desktop-only feature rows (.osky-feats) fill the left column. */
-  .bmf-app:not(.home):not(.newpilot) .pad:has(> .osky){ max-width:1020px; overflow-y:auto; }
-  .bmf-app .osky{ flex:initial; margin:auto 0; display:grid; align-content:center; column-gap:46px; row-gap:0;
-    grid-template-columns:1fr 1.08fr;
-    grid-template-areas:"chip sec" "title grid" "sub grid" "feats cta"; }
-  .bmf-app .osky > .chip{ grid-area:chip; align-self:center; }
-  .bmf-app .osky > .osky-title{ grid-area:title; font-size:var(--fs-mega); margin-top:12px; }
-  .bmf-app .osky > .osky-sub{ grid-area:sub; max-width:42ch; margin-top:14px; font-size:var(--fs-md); -webkit-line-clamp:unset; }
-  .bmf-app .osky > .osky-feats{ grid-area:feats; align-self:start; display:flex; flex-direction:column; gap:13px; margin-top:24px; }
-  .bmf-app .osky > .sec{ grid-area:sec; margin:0; align-self:center; }
-  .bmf-app .osky > .heligrid{ grid-area:grid; margin-top:16px; align-self:start; gap:14px; }
-  .bmf-app .osky > .osky-cta{ grid-area:cta; display:flex; gap:12px; padding-top:20px; align-self:end; }
-  .bmf-app .osky > .osky-cta .btn{ flex:1; margin-top:0; }
+  /* Open Skies — a wide centred single-column lobby (the old 2-col split is gone now the pitch is just
+     the chip + tagline). The aircraft cards take a fixed portrait aspect here — the desktop column is
+     far taller than a phone viewport, so the phone's flex-fill would over-stretch them — and the stack
+     centres vertically; the pad may scroll as a desktop-only safety net. */
+  .bmf-app:not(.home):not(.newpilot) .pad:has(> .osky){ max-width:680px; overflow-y:auto; }
+  .bmf-app .osky{ justify-content:center; }
+  .bmf-app .osky .osky-sub{ font-size:var(--fs-md); max-width:46ch; -webkit-line-clamp:2; }
+  .bmf-app .osky .heligrid{ flex:0 0 auto; gap:16px; grid-template-rows:auto; }
+  .bmf-app .osky .hc-art{ flex:0 0 auto; aspect-ratio:3/4; min-height:0; }
+  .bmf-app .osky .osky-cta .btn{ margin-top:0; }
   /* Floating dock rail — shared by the hub AND every menu overlay so it reads the same everywhere. */
   .bmf-app .rail{ left:50%; right:auto; transform:translateX(-50%); bottom:18px; width:auto; min-width:540px; height:auto; padding-bottom:0;
     border:1px solid var(--bevel-top); border-radius:var(--r-xl); box-shadow:0 14px 44px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.06); }

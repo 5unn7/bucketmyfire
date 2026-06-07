@@ -22,7 +22,8 @@ export type IconName =
   | 'play'          // ▶ filled triangle — start / resume
   | 'refresh'       // circular arrows — retry / restart
   | 'volume'        // speaker + wave — audio on
-  | 'volume-off';   // speaker + × — audio off
+  | 'volume-off'    // speaker + × — audio off
+  | 'bucket-release'; // Bambi bucket on its bail + a down arrow — jettison / RELEASE BUCKET
 
 // Inner SVG markup (24×24 viewBox, no fill attribute, stroke=currentColor inherited)
 const ICONS: Record<IconName, string> = {
@@ -89,6 +90,14 @@ const ICONS: Record<IconName, string> = {
     '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>' +
     '<line x1="23" y1="9" x2="17" y2="15"/>' +
     '<line x1="17" y1="9" x2="23" y2="15"/>',
+
+  // A slung Bambi bucket (bail handle over a truncated-cone pail) with a down arrow under it —
+  // the "jettison the bucket" glyph for the RELEASE BUCKET control.
+  'bucket-release':
+    '<path d="M8 7q4 -3 8 0"/>' +                      // bail handle (bows up over the rim)
+    '<path d="M6.8 7.5 8.4 15 15.6 15 17.2 7.5Z"/>' + // bucket body (wide rim → narrow base)
+    '<path d="M12 17.5v4"/>' +                          // release stem
+    '<path d="m9.7 19.5 2.3 2.5 2.3-2.5"/>',           // down chevron — it drops away
 };
 
 const NS = 'http://www.w3.org/2000/svg';

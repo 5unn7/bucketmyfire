@@ -216,7 +216,7 @@ export function openCampaign(): void {
     const footer = !m.available
       ? `<button class="btn ghost block is-disabled">${ic('lock')}Coming soon</button>`
       : `<button class="btn primary block" data-map="${m.id}">${ic('play')}${selected ? 'Choose a mission' : 'Deploy here'}</button>`;
-    return posterCard({ locked: !m.available, backdrop, tagline: m.tagline, badge, title: m.name, body, footer });
+    return posterCard({ locked: !m.available, cardClass: 'map', backdrop, tagline: m.tagline, badge, title: m.name, body, footer });
   });
 
   campaignView = 'region';

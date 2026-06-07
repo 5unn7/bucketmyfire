@@ -144,6 +144,18 @@ export class HomeScreen {
       </div>
     </div>
   </section>
+  <!-- shop banner — DESKTOP-ONLY promo, pinned to the BOTTOM of the Today's Burn column so its base
+       lines up with the Continue mission card. The whole card opens the /shop.html merch site; hidden
+       on phone/tablet, where the single-viewport stack has no spare room. -->
+  <div class="sec shop-sec rise d3"><span class="tag">BMF Gear</span><span class="line"></span><span class="stamp">Coming soon</span></div>
+  <button class="shopbanner card warm cut rise d3" data-act="shop" aria-label="Open the BMF Gear store">
+    <span class="sb-ic">${ic('shop')}</span>
+    <span class="sb-copy">
+      <span class="sb-title">Wear the fight.</span>
+      <span class="sb-sub">Crew-grade gear, printed on demand.</span>
+    </span>
+    <span class="sb-go">${ic('chevron-right')}</span>
+  </button>
   </div>
 
   <div class="zone z-cont">
@@ -202,6 +214,8 @@ ${railNav('home')}`;
         return this.nav.onDaily();
       case 'campaign':
         return navigateRail('campaign'); // region → mission drilldown (the rail's Campaign tab)
+      case 'shop':
+        return navigateRail('shop'); // leaves the game for the standalone /shop.html merch site
       case 'board':
         return openBoard();
       case 'settings':
