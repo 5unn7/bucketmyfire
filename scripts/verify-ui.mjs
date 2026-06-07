@@ -36,13 +36,15 @@ const ART_ALLOWLIST = new Set(['icons.ts', 'shareCard.ts', 'GridTitle.ts']);
 const COLOR_RE = /#[0-9a-fA-F]{3,8}\b|\brgba?\(|\bblur\(/g;
 const UI_OBJ_RE = /export const UI\s*=\s*\{/g;
 
-/** All `.ts` files under `dir`, recursively, as absolute paths. */
+/** All `.ts` and `.css` files under `dir`, recursively (so styling MOVED into a .css file still
+ *  counts — otherwise migrating a screen from inline styles to a stylesheet would silently drop
+ *  literals out of the ratchet's view and hide drift). */
 function walk(dir) {
   const out = [];
   for (const name of readdirSync(dir)) {
     const p = join(dir, name);
     if (statSync(p).isDirectory()) out.push(...walk(p));
-    else if (name.endsWith('.ts')) out.push(p);
+    else if (name.endsWith('.ts') || name.endsWith('.css')) out.push(p);
   }
   return out;
 }

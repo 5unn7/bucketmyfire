@@ -16,6 +16,7 @@
 
 import { getProgress } from '../missions/progress';
 import { mapCards } from '../maps/registry';
+import { cleanCallsign } from './callsign';
 
 export interface Profile {
   /** Pilot callsign — display only (shown on the end banner). */
@@ -172,12 +173,16 @@ export function loadProfile(): Profile | null {
   if (!raw) return null;
   try {
     const data = JSON.parse(raw) as Partial<Profile>;
-    const name = typeof data.name === 'string' ? data.name.trim() : '';
+    // Sanitize on the way OUT, not just on save: cleanCallsign runs in the editor, but a hand-tampered
+    // localStorage value or a restored cloud-save could carry raw markup that would reach an innerHTML
+    // sink (HomeScreen/TitleScreen render the name). loadProfile is the single chokepoint every screen
+    // reads through, so cleaning here closes that hole for all of them (also NFC-normalizes + clamps to 24).
+    const name = typeof data.name === 'string' ? cleanCallsign(data.name) : '';
     if (!name) return null;
     const map = findItem(MAPS, data.mapId);
     const heli = findItem(HELIS, data.heliId);
     return {
-      name: name.slice(0, 24),
+      name,
       mapId: map?.available ? map.id : firstAvailable(MAPS).id,
       // Clamp a still-locked heli (e.g. progress was cleared/restored under the saved pick)
       // back to the always-open trainer, so the boot path can never fly an un-earned airframe.
