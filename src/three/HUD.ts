@@ -72,6 +72,16 @@ function briefTaskPhrase(o: Objective): string {
   }
 }
 
+/** PROTECT row — only present when the mission has a `protect` lose-condition. Label-first (authored),
+ *  else derived from the structures-min so the slip never invents the stake. */
+function briefProtectPhrase(def: MissionDef): string | undefined {
+  const p = def.fails?.find((f) => f.kind === 'protect');
+  if (!p) return undefined;
+  if (p.label) return /[.!?]$/.test(p.label) ? p.label : `${p.label}.`;
+  if (p.all) return 'Keep every structure standing.';
+  return `Keep ${p.min ?? 1} structures standing.`;
+}
+
 /** WINDS row from the mission's wind-strength scale (1 = the config baseline when unset). */
 function briefWindPhrase(scale: number | undefined): string {
   const s = scale ?? 1;
@@ -892,6 +902,8 @@ export class HUD {
     body.appendChild(rule());
     body.appendChild(field('SITUATION', this.personalize(def.situation ?? def.tagline ?? def.brief)));
     body.appendChild(field('TASK', def.objectives.map(briefTaskPhrase).join('  ·  ')));
+    const protect = briefProtectPhrase(def);
+    if (protect) body.appendChild(field('PROTECT', protect));
     body.appendChild(field('WINDS', briefWindPhrase(def.wind?.strengthScale)));
     body.appendChild(rule());
 
