@@ -9,7 +9,10 @@
  *     Push the stick further for more speed; ease off to creep in precisely.
  *   - Altitude (collective): on-screen ▲/▼, or I (climb) / J (descend).
  *   - Drop water: the DROP button, or Space. A 'bambi' bucket dumps fully on a
- *     single tap; a 'valve' bucket pours while held and pauses on release.
+ *     single tap; a 'valve' bucket pours while held and pauses on release. The DROP
+ *     button doubles as the BUCKET gauge — water rises inside it as you scoop.
+ *   - Look around: press-and-drag ANYWHERE on the empty flight view (touch or mouse)
+ *     to orbit the chase camera; release eases it back. (No dedicated button.)
  *
  * A "?" help icon toggles the quick-start modal (`ui/HelpModal`) — a how-to-play
  * tutorial plus the controls reference. It auto-opens once for a first-time pilot.
@@ -51,6 +54,9 @@ const STICK_EXPO = 2.2;
 const KEY_THROTTLE = 0.6; // forward/back gain for W/S / ↑↓
 const KEY_TURN = 0.7; // turn-rate gain for A/D / ←→
 
+/** Drop shadow under the bucket % readout — keeps the digits legible over the cyan water fill. */
+const PCT_SHADOW = '0 1px 2px rgba(0,0,0,0.55)';
+
 export class Input {
   private readonly held = new Set<string>();
 
@@ -67,10 +73,11 @@ export class Input {
   private btnDetach = false;
   private prevDetach = false; // last frame's detach level, for press-edge detection
 
-  // Free-look ("eye" button): drag sets orbit VELOCITY, release eases back.
+  // Free-look: drag ANYWHERE on the flight view to orbit the camera 1:1 (the eye button was retired).
+  // The deltas are ACCUMULATED across pointermoves and consumed (zeroed) once per frame by `look`.
   private lookActive = false;
-  private lookYawRate = 0;
-  private lookPitchRate = 0;
+  private lookYawAccum = 0; // horizontal orbit drag (rad) banked since the last `look` read
+  private lookPitchAccum = 0; // vertical orbit drag (rad) banked since the last `look` read
 
   // Live joystick base radius (max thumb travel) — recomputed per breakpoint so the
   // pointer math below tracks the on-screen size.
@@ -83,11 +90,16 @@ export class Input {
   private climbBtn!: HTMLDivElement;
   private descendBtn!: HTMLDivElement;
   private dropBtn!: HTMLDivElement;
+  // The DROP hero IS the bucket: a cool water layer rises inside it as you scoop and drains as you
+  // drop (carry + spend fused into one element). These three refs drive that fill + its % readout.
+  private dropLabel!: HTMLDivElement; // the action word ("DROP" / "IGNITE") — relabelled by setActionLabel
+  private dropPct!: HTMLDivElement; // the water % readout under the word
+  private dropWater!: HTMLDivElement; // the rising water fill layer (clipped to the round button)
+  private dropWaterActive = true; // false on crew/torch loadouts (no bucket) → fill hidden, button is just the action
+  private flashBucketTimer = 0; // setTimeout id: restore the % readout after a drop-result tint
   private swapBtn!: HTMLDivElement;
   private detachBtn!: HTMLDivElement;
   private clusterRow!: HTMLDivElement;
-  private eyeBtn!: HTMLDivElement;
-  private eyeSvg!: SVGElement;
   private helpBtn!: HTMLDivElement;
   private help!: HelpModal;
   /** The control currently spotlit by the coach (so a change clears the previous one). */
@@ -124,6 +136,7 @@ export class Input {
     window.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('keyup', this.onKeyUp);
     window.removeEventListener('blur', this.onBlur);
+    window.clearTimeout(this.flashBucketTimer);
     this.unsubLayout();
     this.help?.dispose();
     this.setHighlight(null); // drop any coach spotlight class before the elements go
@@ -189,7 +202,58 @@ export class Input {
   /** Relabel the primary action (DROP) button — Game sets it to "IGNITE" on a torch (helitorch) mission,
    *  where the same button lays a backburn instead of dropping water. Keyboard Space is unchanged. */
   setActionLabel(label: string): void {
-    if (this.dropBtn) this.dropBtn.textContent = label;
+    if (this.dropLabel) this.dropLabel.textContent = label;
+  }
+
+  /**
+   * Drive the DROP "bucket": the water LEVEL `frac` (0..1) rising inside the button, the % readout, the
+   * scooping glow, and the detached / inactive states. Game calls this each frame. `active` is false on
+   * crew / torch loadouts (no bucket on the line) — the water fill hides and the button is just the
+   * action word. While a drop-result flash owns the readout, the level keeps animating but the % text
+   * is left alone until the flash clears.
+   */
+  setBucket(frac: number, opts: { active: boolean; scooping?: boolean; detached?: boolean }): void {
+    if (!this.dropWater) return;
+    if (opts.active !== this.dropWaterActive) {
+      this.dropWaterActive = opts.active;
+      this.dropWater.style.display = opts.active ? 'block' : 'none';
+      this.dropPct.style.display = opts.active ? 'block' : 'none';
+    }
+    if (!opts.active) return;
+    if (opts.detached) {
+      // No bucket on the line — empty, dimmed, "NO" in warn-amber (RTB to a base to rig a fresh one).
+      this.dropWater.style.height = '0%';
+      this.dropWater.style.boxShadow = 'none';
+      this.dropBtn.style.opacity = '0.6';
+      if (!this.flashBucketTimer) {
+        this.dropPct.textContent = 'NO';
+        this.dropPct.style.color = UI.warn;
+      }
+      return;
+    }
+    this.dropBtn.style.opacity = '1';
+    const f = frac < 0 ? 0 : frac > 1 ? 1 : frac;
+    this.dropWater.style.height = `${Math.round(f * 100)}%`;
+    this.dropWater.style.boxShadow = opts.scooping ? `inset 0 0 16px ${UI.accent}` : 'none'; // glow while filling → "keep dipping"
+    if (this.flashBucketTimer) return; // a drop-result tint owns the % readout — don't fight it
+    this.dropPct.textContent = `${Math.round(f * 100)}`;
+    this.dropPct.style.color = opts.scooping ? UI.accentHi : UI.water;
+  }
+
+  /**
+   * Flash the bucket % readout a drop-RESULT colour (green direct / amber too-high / red miss) for `ms`,
+   * then restore — the quick confirmation of where the water landed (this was `HUD.flashGauge` before the
+   * water gauge moved into the DROP button). Event-driven (one call per committed drop), so no per-frame cost.
+   */
+  flashBucket(color: string, ms: number): void {
+    if (!this.dropPct) return;
+    window.clearTimeout(this.flashBucketTimer);
+    this.dropPct.style.color = color;
+    this.dropPct.style.textShadow = `0 0 8px ${color}`;
+    this.flashBucketTimer = window.setTimeout(() => {
+      this.dropPct.style.textShadow = PCT_SHADOW;
+      this.flashBucketTimer = 0;
+    }, ms);
   }
 
   /** Show/hide the DETACH (jettison-bucket) button. Game shows it on a water mission while a bucket is
@@ -204,11 +268,16 @@ export class Input {
     if (this.swapBtn) this.swapBtn.style.display = on ? 'flex' : 'none';
   }
 
-  /** Free-look orbit for the chase camera, driven by the "eye" button drag.
-   *  Returns orbit RATES (rad/sec); `active` is false once released, so the camera
-   *  eases back to the default pose. */
+  /** Free-look orbit for the chase camera, driven by a drag ANYWHERE on the empty flight view (the
+   *  dedicated eye button was retired). Returns the orbit DELTA banked since the last read, then ZEROES
+   *  it — so this MUST be read exactly once per frame (Game does, in chase.update). `active` stays true
+   *  while dragging; on release ChaseCamera eases the view back to the default chase pose. */
   get look(): LookOffset {
-    return { active: this.lookActive, yawRate: this.lookYawRate, pitchRate: this.lookPitchRate };
+    const yawDelta = this.lookYawAccum;
+    const pitchDelta = this.lookPitchAccum;
+    this.lookYawAccum = 0;
+    this.lookPitchAccum = 0;
+    return { active: this.lookActive, yawDelta, pitchDelta };
   }
 
   /** The "?" help button. Game mounts it under the radar (HUD.mountUnderRadar) so it lives in
@@ -246,21 +315,12 @@ export class Input {
       Object.assign(el.style, { width: `${cb}px`, height: `${cb}px`, fontSize: `${Math.round(cb * 0.29)}px` });
     }
     const drop = Math.round(set.dropSize * k);
-    Object.assign(this.dropBtn.style, { width: `${drop}px`, height: `${drop}px`, fontSize: `${Math.round(drop * 0.16)}px` });
+    Object.assign(this.dropBtn.style, { width: `${drop}px`, height: `${drop}px` });
+    this.dropLabel.style.fontSize = `${Math.round(drop * 0.18)}px`; // the action word
+    this.dropPct.style.fontSize = `${Math.round(drop * 0.15)}px`; // the water % readout (a touch smaller)
     this.clusterRow.style.gap = `${Math.round(set.gap * 1.7)}px`;
 
-    // Free-look eye — sits in the lower-right, lifted above the collective/DROP cluster.
-    const eye = Math.round(set.eyeSize * k);
-    // The cluster's footprint above the bottom edge: the taller of the climb+descend
-    // column (2 buttons + their gap) vs the DROP hero. Float the eye that far up plus a
-    // separation gap, so it lands in the lower half and clears the buttons on any screen.
-    const colH = cb * 2 + set.gap;
-    const clusterH = Math.max(colH, drop);
-    const lift = clusterH + Math.round(set.gap * 2.5);
-    Object.assign(this.eyeBtn.style, { width: `${eye}px`, height: `${eye}px`, marginBottom: `${lift}px` });
-    const glyph = Math.round(eye * 0.52);
-    this.eyeSvg.setAttribute('width', `${glyph}`);
-    this.eyeSvg.setAttribute('height', `${glyph}`);
+    // (Free-look is now a full-screen drag layer — no sized element to lay out here.)
 
     // Help.
     const help = Math.round(set.helpSize * k);
@@ -278,11 +338,11 @@ export class Input {
       zIndex: '10',
     });
 
+    this.buildLookLayer(root); // first → sits BENEATH the controls; drags on empty space orbit the camera
     this.buildStick(root);
     this.buildCluster(root);
     this.buildDetachUI(root);
     this.buildSwapUI(root);
-    this.buildLookUI(root);
     this.buildHelpUI(root);
 
     this.root = root; // stored so dispose() can pull the whole overlay (and its listeners) at once
@@ -438,12 +498,14 @@ export class Input {
   }
 
   /** Right-hand cluster: a vertical collective pair (climb / descend) sitting just
-   *  left of the DROP hero, all sharing one baseline so they read as one group. */
+   *  left of the DROP hero, all sharing one baseline so they read as one group. The DROP
+   *  hero doubles as the BUCKET — a rising cyan water fill (carry) over the warm action (spend). */
   private buildCluster(root: HTMLElement): void {
     const climb = button('▲', { position: 'relative' });
     const descend = button('▼', { position: 'relative' });
-    const drop = button('DROP', {
+    const drop = button('', {
       position: 'relative',
+      overflow: 'hidden', // clip the rising water fill to the round button — the "bucket"
       background: UI.warmGlass,
       borderColor: UI.warmStroke,
       color: '#ffe7df',
@@ -451,9 +513,41 @@ export class Input {
       letterSpacing: '1.5px',
       boxShadow: `0 0 18px rgba(255,90,60,0.28), ${UI.shadowBtn}`,
     });
+    // Bucket water — a cool layer that rises from the base with the bucket's fill and drains as you
+    // drop, sitting BEHIND the label. Cool water under the warm action tells the fight story in one
+    // place; the crest line reads as the surface. Driven by setBucket() each frame.
+    const water = div({
+      position: 'absolute',
+      left: '0',
+      right: '0',
+      bottom: '0',
+      height: '0%',
+      background: `linear-gradient(to top, ${UI.waterBody}, rgba(86,196,238,0.10))`,
+      borderTop: `1.5px solid ${UI.waterCrest}`,
+      boxSizing: 'border-box',
+      transition: 'height 0.16s ease, box-shadow 0.2s ease, opacity 0.2s ease',
+      pointerEvents: 'none',
+    });
+    const content = div({
+      position: 'relative', // paints above the absolutely-positioned water layer
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      lineHeight: '1',
+      pointerEvents: 'none',
+    });
+    const lbl = div({}, 'DROP');
+    const pct = div({ marginTop: '3px', fontWeight: FW.semibold, color: UI.water, textShadow: PCT_SHADOW }, '');
+    pct.style.setProperty('font-variant-numeric', 'tabular-nums');
+    content.append(lbl, pct);
+    drop.append(water, content);
     this.climbBtn = climb;
     this.descendBtn = descend;
     this.dropBtn = drop;
+    this.dropLabel = lbl;
+    this.dropPct = pct;
+    this.dropWater = water;
     holdButton(climb, (on) => (this.btnUp = on));
     holdButton(descend, (on) => (this.btnDown = on));
     holdButton(drop, (on) => (this.btnDrop = on), UI.warm);
@@ -472,63 +566,56 @@ export class Input {
     root.appendChild(a);
   }
 
-  // --- Free-look "eye" button -----------------------------------------------
+  // --- Free-look: drag anywhere to orbit ------------------------------------
 
-  /** An eye icon (right edge, mid-screen) you press-and-drag to orbit the camera.
-   *  Drag = orbit SPEED, not distance: a small push held in any direction spins the
-   *  view continuously (a full 360° either way), so the button can sit near the edge
-   *  and you never run out of room. Release returns to the default chase pose. */
-  private buildLookUI(root: HTMLElement): void {
-    const icon = button('', { position: 'relative', cursor: 'grab' });
-    icon.innerHTML = EYE_SVG;
-    this.eyeBtn = icon;
-    this.eyeSvg = icon.querySelector('svg') as SVGElement;
-
-    const R = CAMERA.lookPadRadius;
+  /**
+   * A transparent full-screen layer behind every control: a press-and-drag on the empty flight view
+   * orbits the chase camera 1:1 with the drag (the dedicated eye button was retired). It sits at a low
+   * z-index so the joystick, the collective/DROP cluster and the HUD's radar/help all intercept their
+   * own touches first — only drags on "nothing" reach this. Each pointermove banks its delta (scaled by
+   * the CAMERA.lookDrag* sensitivity); `look` drains that once per frame; release eases the view back.
+   */
+  private buildLookLayer(root: HTMLElement): void {
+    const layer = div({
+      position: 'fixed',
+      inset: '0',
+      pointerEvents: 'auto',
+      touchAction: 'none',
+      cursor: 'grab',
+      zIndex: '1', // BELOW the controls (anchors are z 10) — empty space orbits, controls win where they sit
+    });
     let pid = -1;
-    let startX = 0;
-    let startY = 0;
+    let lastX = 0;
+    let lastY = 0;
 
     const begin = (e: PointerEvent) => {
-      e.stopPropagation();
       pid = e.pointerId;
-      startX = e.clientX;
-      startY = e.clientY;
+      lastX = e.clientX;
+      lastY = e.clientY;
       this.lookActive = true;
-      this.lookYawRate = 0;
-      this.lookPitchRate = 0;
-      icon.setPointerCapture(e.pointerId);
-      icon.style.filter = 'brightness(1.6)';
-      icon.style.cursor = 'grabbing';
+      layer.setPointerCapture(e.pointerId);
+      layer.style.cursor = 'grabbing';
     };
     const move = (e: PointerEvent) => {
       if (e.pointerId !== pid) return;
-      // Displacement from the press point → orbit speed (deadzoned + clamped to ±1).
-      // Drag right → orbit right; drag down → raise the cam and look down on the heli.
-      const nx = deadzone(clamp((e.clientX - startX) / R, -1, 1));
-      const ny = deadzone(clamp((e.clientY - startY) / R, -1, 1));
-      this.lookYawRate = -nx * CAMERA.lookYawRate;
-      this.lookPitchRate = ny * CAMERA.lookPitchRate;
+      // Bank the drag DELTA since the last move (consumed 1:1 by ChaseCamera). Drag right → orbit right;
+      // drag down → raise the cam and look down on the heli (matches the retired eye's mapping).
+      this.lookYawAccum += -(e.clientX - lastX) * CAMERA.lookDragYaw;
+      this.lookPitchAccum += (e.clientY - lastY) * CAMERA.lookDragPitch;
+      lastX = e.clientX;
+      lastY = e.clientY;
     };
     const end = () => {
       pid = -1;
-      this.lookActive = false; // ChaseCamera eases the view back to the default pose
-      this.lookYawRate = 0;
-      this.lookPitchRate = 0;
-      icon.style.filter = 'none';
-      icon.style.cursor = 'grab';
+      this.lookActive = false; // ChaseCamera eases the view back to the default chase pose
+      layer.style.cursor = 'grab';
     };
-    icon.addEventListener('pointerdown', begin);
-    icon.addEventListener('pointermove', move);
-    icon.addEventListener('pointerup', end);
-    icon.addEventListener('pointercancel', end);
+    layer.addEventListener('pointerdown', begin);
+    layer.addEventListener('pointermove', move);
+    layer.addEventListener('pointerup', end);
+    layer.addEventListener('pointercancel', end);
 
-    // Lower-right, floated a clear gap ABOVE the collective/DROP cluster (the lift is
-    // computed per-breakpoint in applyLayout from the cluster's footprint, so it sits
-    // in the lower half on every screen without overlapping the buttons below it).
-    const a = anchor('bottom-right');
-    a.appendChild(icon);
-    root.appendChild(a);
+    root.appendChild(layer);
   }
 
   // --- Help / quick-start ---------------------------------------------------
@@ -561,10 +648,6 @@ export class Input {
   }
 }
 
-function clamp(v: number, lo: number, hi: number): number {
-  return v < lo ? lo : v > hi ? hi : v;
-}
-
 // Coach spotlight — a soft cyan glow ring the interactive tutorial pulses onto a control. box-shadow
 // only (follows each element's own border-radius), injected once; reduced-motion gets a static ring.
 let pulseStylesInjected = false;
@@ -584,13 +667,6 @@ function injectPulseStyles(): void {
   `;
   document.head.appendChild(tag);
 }
-
-/** Eye glyph for the free-look button (stroked SVG, scales crisply at any size). */
-const EYE_SVG =
-  '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#eaf6ff" ' +
-  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-  '<path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/>' +
-  '<circle cx="12" cy="12" r="3"/></svg>';
 
 /** Drop tiny stick jitter, rescale [DEADZONE..1] → [0..1], then apply expo shaping
  *  so small pushes produce proportionally less output — full deflection still reachable

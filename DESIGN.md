@@ -225,8 +225,8 @@ thumb, skeleton-shimmer gradient) keep their tuned alphas. Those are rendering d
 - **Content column:** full-screen overlays centre a `max-width` column (mission select uses
   `980px`; leaderboard `640px`) so everything aligns to one left edge.
 - **Radii (`R`):** `R.round` 50% (LEDs, avatars, round buttons) · `R.pill` 99px (chips, tabs,
-  badges, fill tracks) · `R.xs` 2 · `R.sm` 8 · `R.md` 12 (cards, buttons, chips — the default) ·
-  `R.lg` 14 (panels) · `R.xl` 18 (modals, hero cards). One scale; pick the nearest step.
+  badges, fill tracks) · `R.xs` 2 · `R.sm` 8 · `R.md` 12 (cards, chips — the default) ·
+  `R.lg` 10 (buttons + panels — tighter/rugged) · `R.xl` 18 (modals, hero cards). One scale; pick the nearest step.
 - **Density:** comfortable. Pods/cells size from `layout.ts` breakpoints (`podSize`), shrinking
   ~8% on compact. The instrument strip wraps to a second row on a narrow phone, capped so it never
   collides with the radar.

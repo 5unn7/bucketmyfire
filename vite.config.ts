@@ -1,6 +1,10 @@
 import { defineConfig, type Plugin } from 'vite';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// Project root (where index.html + shop.html live) — resolved for the multi-page build input.
+const ROOT = path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * Dev-only: cache the (large, never-changing) model packs so reloads don't re-download
@@ -128,7 +132,10 @@ const STRUCTURED_DATA = {
 function injectStructuredData(): Plugin {
   return {
     name: 'bmf-structured-data',
-    transformIndexHtml() {
+    // In a multi-page build transformIndexHtml runs for EVERY entry — scope the game's
+    // VideoGame/FAQ JSON-LD to index.html only (ctx.path is '/index.html' vs '/shop.html').
+    transformIndexHtml(_html, ctx) {
+      if (!ctx.path.endsWith('/index.html')) return;
       return [
         { tag: 'script', attrs: { type: 'application/ld+json' }, children: JSON.stringify(STRUCTURED_DATA), injectTo: 'head' },
       ];
@@ -149,5 +156,14 @@ export default defineConfig({
     target: 'es2020',
     sourcemap: false, // don't ship 3.9 MB of source maps (or full source) to prod
     chunkSizeWarningLimit: 1500,
+    rollupOptions: {
+      // Multi-page: build ONLY these two. Vite does not auto-discover other root *.html, so the
+      // dev-only heli-preview.html / icons-preview.html stay out of dist/. `shop` is the standalone
+      // merch landing page (src/shop/) — it shares no graph with the game beyond the tiny lead client.
+      input: {
+        main: path.resolve(ROOT, 'index.html'),
+        shop: path.resolve(ROOT, 'shop.html'),
+      },
+    },
   },
 });

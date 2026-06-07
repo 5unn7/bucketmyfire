@@ -9,7 +9,6 @@
 
 import { UI, FS, FW, R, GRADE, el, frosted, scrim, prefersReducedMotion } from '../ui/theme';
 import { shareScoreCard } from '../ui/shareCard';
-import { openShop } from '../ui/ShopScreen';
 import { dailyStreak } from '../missions/streak';
 import { bestScore } from '../missions/progress';
 import { CAMPAIGN } from '../missions/catalog';
@@ -218,11 +217,10 @@ export class EndScreen {
       if (this.end.onLeaderboard) row2.appendChild(bannerButton('🏆 LEADERBOARD', 'secondary', this.end.onLeaderboard));
       row2.appendChild(this.shareButton(s));
       card.appendChild(row2);
-      // Win-only merch hook — surfaced at the highest-intent moment (just won, grade glowing). Opens
-      // the Squadron Store screen (a placeholder "fire in progress" + Notify-me email capture for now;
-      // the email both backs up the player's progress and lands us the lead). Real store drops in later.
+      // Win-only merch hook — surfaced at the highest-intent moment (just won, grade glowing). Leaves
+      // the game for the standalone BMF Gear website (/shop.html) where the waitlist capture lives.
       if (s.won) {
-        const store = bannerButton('🪧 SQUADRON STORE', 'store', () => openShop());
+        const store = bannerButton('🪧 SQUADRON STORE', 'store', () => { window.location.href = '/shop.html'; });
         const storeRow = el('div', { display: 'flex', justifyContent: 'center', marginTop: '12px' });
         storeRow.appendChild(store);
         card.appendChild(storeRow);

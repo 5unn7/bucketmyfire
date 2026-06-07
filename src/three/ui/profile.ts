@@ -11,7 +11,7 @@
  * the Bell 205A-1 is open from mission one, the Bell 212 unlocks once you've cleared
  * `unlockAfter` missions, and the UH-60 unlocks for the last three. `isHeliUnlocked()`
  * resolves that gate against `missions/progress`; the pickers (Onboarding +
- * MissionSelect) render a locked card with the requirement until it's met.
+ * the hangar) render a locked card with the requirement until it's met.
  */
 
 import { getProgress } from '../missions/progress';

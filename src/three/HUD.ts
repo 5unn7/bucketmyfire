@@ -66,7 +66,8 @@ function briefTaskPhrase(o: Objective): string {
     case 'evacuate':
       return o.label ?? `Lift ${o.n ?? 0} families clear.`;
     case 'survive':
-      return o.seconds ? `Hold the line ${Math.round(o.seconds)}s.` : 'Hold the line.';
+      // Authored label wins (Open Skies' "Fly free…" reads better than a 1e9-second hold). Else the timer.
+      return o.label ?? (o.seconds ? `Hold the line ${Math.round(o.seconds)}s.` : 'Hold the line.');
     case 'backburn':
       return 'Lay the backburn line.';
   }
@@ -113,10 +114,8 @@ export class HUD {
   // wind) — the mobile-portrait "all info in the top band, no bars" layout. Pods are
   // transparent — only the capsule carries glass, so it's a single backdrop-blur layer.
   private readonly spine: HTMLDivElement;
-  private readonly waterPod: Pod;
-  private waterNumBg = ''; // baseline water-readout color (captured at build), restored after a drop-result flash
-  private waterIconStroke = '#eaf6ff'; // baseline water-icon stroke (captured at build), restored when a bucket is re-rigged
-  private gaugeFlashTimer = 0; // setTimeout id: restore the water readout after a result tint
+  // NB: WATER moved out of the strip into the DROP "bucket" (Input.setBucket / flashBucket) — carry +
+  // spend fused into one element — so there is no longer a water pod here.
   private readonly airframePod: Pod;
   private readonly fuelPod: Pod;
   private readonly firesPod: Pod;
@@ -272,18 +271,14 @@ export class HUD {
     // Resource gauges (water / airframe / fuel / threat) carry a thin animated fill BAR at the cell's
     // base — the glanceable "how full / how healthy" cue the bare number didn't convey. Count + units
     // cells (fires / compass / wind) stay number-only.
-    this.waterPod = makePod(WATER_SVG, true); // % of bucket capacity
-    this.waterNumBg = this.waterPod.num.style.color; // baseline readout color, restored after a drop-result flash
-    this.waterIconStroke = this.waterPod.svg.getAttribute('stroke') ?? '#eaf6ff'; // restored when a bucket is re-rigged
     this.airframePod = makePod(HEALTH_SVG, true); // airframe %
     this.fuelPod = makePod(FUEL_SVG, true); // tank %
-    this.firesPod = makePod(FIRES_SVG); // fires remaining (count)
+    this.firesPod = makePod(FIRES_SVG); // fires remaining (count) — the mission HERO number
     this.threatPod = makePod(THREAT_SVG, true); // most-endangered structure %
     this.crewPod = makePod(CREW_SVG, true); // crew aboard (0/1) — bar reads as a filled/empty seat
-    this.compassPod = makePod(COMPASS_SVG); // heading °
+    this.compassPod = makePod(COMPASS_SVG); // heading ° (parked hidden — redundant with the heading-up radar)
     this.windPod = makePod(WIND_SVG); // wind kt (icon rotates to the heading-relative gust)
     this.pods = [
-      this.waterPod,
       this.airframePod,
       this.fuelPod,
       this.firesPod,
@@ -292,12 +287,23 @@ export class HUD {
       this.compassPod,
       this.windPod,
     ];
-    for (const p of this.pods) this.spine.append(p.cell);
-    if (!this.menuCell) this.waterPod.cell.style.boxShadow = 'none'; // no menu → no leading hairline
+    // Fires is the mission HERO — heaviest weight so "how many are left" reads first in the FIRE chamber.
+    this.firesPod.num.style.fontWeight = FW.heavy;
+    // Bezelled instrument CHAMBERS: the old flat pod row becomes grouped clusters inside the single
+    // frosted pill — AIRCRAFT (the systems that can down you: airframe / fuel) and FIRE (the fight:
+    // fires / threat / crew), plus a small WIND chamber. Each chamber is one recessed well; the
+    // (hidden) compass is parked after so its heading readout stays live without showing. Water moved
+    // into the DROP bucket, so the strip is leaner and stops crowding the radar.
+    this.spine.append(
+      makeGroup([this.airframePod, this.fuelPod]),
+      makeGroup([this.firesPod, this.threatPod, this.crewPod]),
+      makeGroup([this.windPod]),
+    );
+    this.spine.append(this.compassPod.cell);
     setPodHidden(this.fuelPod, true); // hidden until a mission supplies fuel
     setPodHidden(this.threatPod, true); // hidden until there are structures to defend
     setPodHidden(this.crewPod, true); // hidden until a crew-transport mission supplies a count
-    setPodHidden(this.compassPod, true); // #10 density: numeric heading is redundant with the heading-up radar — hidden to thin the in-flight strip (flip to false to restore)
+    setPodHidden(this.compassPod, true); // #10 density: numeric heading is redundant with the heading-up radar — parked hidden (flip to false to restore)
     leftCol.appendChild(this.spine);
 
     // Objective checklist (campaign — populated each frame from the mission tracker).
@@ -445,6 +451,12 @@ export class HUD {
       p.num.style.fontSize = `${numFs}px`;
       p.num.style.minWidth = `${Math.round(pod * 0.5)}px`; // stable as a digit count changes (e.g. fires 9 → 10)
     }
+    // FIRE hero: the fires count + icon read a step larger than the other gauges, so the eye lands on
+    // "how many are left" first (set after the uniform loop so it overrides just this pod).
+    const fic = Math.round(ic * 1.18);
+    this.firesPod.svg.setAttribute('width', `${fic}`);
+    this.firesPod.svg.setAttribute('height', `${fic}`);
+    this.firesPod.num.style.fontSize = `${Math.round(numFs * 1.28)}px`;
     if (this.menuCell) {
       this.menuCell.style.padding = `${padV}px ${Math.round(padH * 1.05)}px`;
       this.menuCell.style.fontSize = `${Math.round(pod * 0.5)}px`;
@@ -539,21 +551,8 @@ export class HUD {
 
   update(s: HudState): void {
     // --- Instrument strip: one text write per cell (O(1)); colour flips/glows only when flagged. ---
-    // Gauges read as whole-percent numbers (no bars); fires is a raw count; compass/wind are units.
-    if (s.bucketDetached) {
-      // No bucket on the line — read "NO" with a warn-amber droplet + empty bar + a dimmed cell, so the
-      // gauge says "you have nothing to scoop or drop" rather than a misleading 0% (RTB to a base to re-rig).
-      this.waterPod.num.textContent = 'NO';
-      this.waterPod.svg.setAttribute('stroke', UI.warn);
-      this.waterPod.cell.style.opacity = '0.6';
-      setPodBar(this.waterPod, 0, UI.warn, false);
-    } else {
-      const waterFrac = clamp01(s.water / s.waterMax);
-      this.waterPod.num.textContent = `${Math.round(waterFrac * 100)}`;
-      this.waterPod.svg.setAttribute('stroke', this.waterIconStroke);
-      this.waterPod.cell.style.opacity = '1';
-      setPodBar(this.waterPod, waterFrac, UI.accent, !!s.scooping); // glow while actively filling → "keep dipping"
-    }
+    // Water now lives in the DROP "bucket" (driven from Game via Input.setBucket / flashBucket), so the
+    // strip is just the AIRCRAFT + FIRE chambers: whole-percent gauges, a raw fires count, units for wind.
     const hp = clamp01(s.health ?? 1);
     this.airframePod.num.textContent = `${Math.round(hp * 100)}`;
     setNumWarn(this.airframePod, !!s.healthLow); // critical → red + pulse (sin only runs when low)
@@ -723,22 +722,6 @@ export class HUD {
     this.crewBarLabel.style.color = col;
     this.crewBarFill.style.background = col;
     this.crewBarFill.style.transform = `scaleX(${clamp01(crew.progress)})`;
-  }
-
-  /**
-   * Flash the WATER readout a result color for `ms`, then restore its baseline — the quick visual
-   * confirmation of a drop's result (green direct / amber too-high / red miss), paired with the
-   * Dispatch readout. Event-driven (called once per committed drop), so no per-frame cost.
-   */
-  flashGauge(color: string, ms: number): void {
-    if (this.gaugeFlashTimer) window.clearTimeout(this.gaugeFlashTimer); // re-flash: restart cleanly
-    this.waterPod.num.style.color = color;
-    this.waterPod.num.style.textShadow = `0 0 8px ${color}`;
-    this.gaugeFlashTimer = window.setTimeout(() => {
-      this.waterPod.num.style.color = this.waterNumBg;
-      this.waterPod.num.style.textShadow = 'none';
-      this.gaugeFlashTimer = 0;
-    }, ms);
   }
 
   /**
@@ -985,7 +968,6 @@ export class HUD {
    * under the root, so they're harmless once it's gone.) Idempotent.
    */
   dispose(): void {
-    window.clearTimeout(this.gaugeFlashTimer);
     window.clearTimeout(this.hintHideTimer);
     window.clearTimeout(this.hintFadeTimer);
     window.clearTimeout(this.hitFlashTimer);
@@ -1144,9 +1126,7 @@ function label(text: string): HTMLDivElement {
 // --- Instrument-strip cells -------------------------------------------------
 // Compact icon + NUMBER cells inside the single frosted capsule. Stroked 24x24
 // glyphs (same idiom as the eye icon); icon size + number font are set per breakpoint.
-const WATER_SVG =
-  '<svg viewBox="0 0 24 24" fill="none" stroke="#67e8ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-  '<path d="M12 3.2C12 3.2 5.5 10.3 5.5 14.5a6.5 6.5 0 0 0 13 0C18.5 10.3 12 3.2 12 3.2Z"/></svg>';
+// (The water droplet glyph retired with the water pod — water now lives in the DROP bucket.)
 const HEALTH_SVG =
   '<svg viewBox="0 0 24 24" fill="none" stroke="#eaf6ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
   '<path d="M12 3 19 6V11c0 5-3.4 8.3-7 10-3.6-1.7-7-5-7-10V6Z"/><path d="M9 12 11 14 15 9.5"/></svg>';
@@ -1233,6 +1213,28 @@ function makePod(iconSvg: string, withBar = false): Pod {
     cell.appendChild(track);
   }
   return { cell, svg, num, barFill };
+}
+
+/** Wrap a run of pods into one bezelled instrument CHAMBER — a recessed well inside the frosted strip
+ *  that visually groups the gauges (AIRCRAFT / FIRE / WIND). The first pod loses its left hairline so
+ *  the chamber edge does the separating; inner pods keep theirs as cell dividers. One backdrop-blur
+ *  layer stays on the pill; the chamber is just a tinted fill, so this adds no extra blur. */
+function makeGroup(pods: Pod[]): HTMLDivElement {
+  const group = el('div', {
+    display: 'flex',
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    background: UI.bezel,
+    border: `1px solid ${UI.hair}`,
+    borderRadius: R.sm,
+    margin: '3px',
+    overflow: 'hidden', // clip the inner cell corners to the chamber radius
+  });
+  pods.forEach((p, i) => {
+    if (i === 0) p.cell.style.boxShadow = 'none'; // the chamber edge separates the first cell
+    group.appendChild(p.cell);
+  });
+  return group;
 }
 
 /** Drive a gauge pod's base fill bar: `frac` 0..1 (scaleX), `color`, and an optional glow that

@@ -2,13 +2,13 @@ import * as THREE from 'three';
 import { CAMERA } from './config';
 import { World } from './World';
 
-/** Free-look orbit input fed in from Input's "eye" button. When `active`, the
- *  rates spin the camera around the heli (held = continuous, so a full 360°);
- *  on release it eases back to the default trail. */
+/** Free-look orbit input fed in from a drag ANYWHERE on the flight view (the eye button was retired).
+ *  While `active`, the per-frame deltas orbit the camera 1:1 with the drag (consumed directly — Input
+ *  already accumulated them between frames); on release it eases back to the default trail. */
 export interface LookOffset {
   active: boolean;
-  yawRate: number; // horizontal orbit speed, rad/sec (sign = direction)
-  pitchRate: number; // vertical orbit speed, rad/sec (+ = rise & look down)
+  yawDelta: number; // horizontal orbit increment this frame, rad (sign = direction)
+  pitchDelta: number; // vertical orbit increment this frame, rad (+ = rise & look down)
 }
 
 /**
@@ -86,13 +86,13 @@ export class ChaseCamera {
    * ignored while free-looking and — when `bombingPortraitOnly` — in landscape, and always eases in/out.
    */
   update(dt: number, pos: THREE.Vector3, yaw: number, look?: LookOffset, arm = 0, spool = 1): void {
-    // Free-look: while active, INTEGRATE the drag rate so a held stick spins the
-    // camera continuously (a full 360° and beyond — yaw is unbounded, trig wraps it).
-    // On release, fold any accumulated spins into (-π, π] so the ease takes the SHORT
-    // way home, then lerp both offsets back to 0 (the default trailing pose).
+    // Free-look: while active, add the drag DELTA directly so the camera orbits 1:1 with the finger /
+    // mouse (Input accumulated the movement between frames). Yaw is unbounded (trig wraps it), so a
+    // long drag can swing a full 360°. On release, fold any accumulated spins into (-π, π] so the ease
+    // takes the SHORT way home, then lerp both offsets back to 0 (the default trailing pose).
     if (look?.active) {
-      this.curYaw += look.yawRate * dt;
-      this.curPitch = clampN(this.curPitch + look.pitchRate * dt, CAMERA.lookPitchMin, CAMERA.lookPitchMax);
+      this.curYaw += look.yawDelta;
+      this.curPitch = clampN(this.curPitch + look.pitchDelta, CAMERA.lookPitchMin, CAMERA.lookPitchMax);
     } else {
       if (this.wasLooking) this.curYaw = wrapPi(this.curYaw);
       const lookA = 1 - Math.pow(1 - CAMERA.lookReturnLerp, dt * 60);

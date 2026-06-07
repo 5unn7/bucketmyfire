@@ -32,6 +32,11 @@ export function makeBrandIcon(ink: BrandInk = 'white', label = 'Bucket My Fire')
   return makeImg(ICON[ink], label);
 }
 
+/** The raw icon-SVG URL — for using the mark's SHAPE as a CSS mask (e.g. the title's burn fill). */
+export function brandIconUrl(ink: BrandInk = 'white'): string {
+  return ICON[ink];
+}
+
 /** The "BUCKET MY FIRE" wordmark (aspect ~1.87:1). */
 export function makeBrandWordmark(ink: BrandInk = 'white', label = 'Bucket My Fire'): HTMLImageElement {
   return makeImg(WORDMARK[ink], label);

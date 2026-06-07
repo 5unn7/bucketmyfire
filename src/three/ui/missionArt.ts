@@ -1,6 +1,6 @@
 /**
  * Per-mission POSTER art — the data-only seam for the Screen 4 mission carousel. Empty today; the
- * user supplies mission images later (drop a file in public/missions/ and add one line here).
+ * user supplies mission images later (drop a file in public/images/missions/<region>/ and add one line here).
  *
  * Kept in the UI layer (not missions/) on purpose: `MissionDef` stays pure SCENARIO data (CLAUDE.md),
  * and the missions/ tree is partly esbuild-bundled for `verify:campaign`, which must not see
@@ -11,10 +11,10 @@
 
 /** Mission id → poster path RELATIVE to public/ (BASE_URL is applied by `missionPoster`). */
 export const MISSION_POSTERS: Record<string, string> = {
-  'first-light': 'images/Saskatchewan/FirstLight.webp',
-  'hover-training': 'images/Saskatchewan/HoverDrill.webp',
-  'backburn': 'images/Saskatchewan/Backburn.webp',
-  'three-towns': 'images/Saskatchewan/ThreeTown.webp',
+  'first-light': 'images/missions/saskatchewan/FirstLight.webp',
+  'hover-training': 'images/missions/saskatchewan/HoverDrill.webp',
+  'backburn': 'images/missions/saskatchewan/Backburn.webp',
+  'three-towns': 'images/missions/saskatchewan/ThreeTown.webp',
   // …add the rest as art lands.
 };
 

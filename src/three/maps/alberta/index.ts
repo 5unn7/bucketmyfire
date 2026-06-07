@@ -9,7 +9,7 @@ const card: MapCard = {
   available: false,
   accent: '#c2702f',
   glyph: '🏕️',
-  imageUrl: 'maps/Alberta.webp',
+  imageUrl: 'images/maps/Alberta.webp',
   stats: { area: '661,190 km²', lakes: '100,000+ lakes' },
 };
 

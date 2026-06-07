@@ -9,7 +9,7 @@ const card: MapCard = {
   available: false,
   accent: '#2f8f7a',
   glyph: '🛶',
-  imageUrl: 'maps/Ontario.webp',
+  imageUrl: 'images/maps/Ontario.webp',
   stats: { area: '1,076,395 km²', lakes: '250,000+ lakes' },
 };
 

@@ -79,7 +79,7 @@ const CONTROLS: Ctrl[] = [
   { action: 'Drop water', touch: 'DROP', keys: ['Space'] },
   { action: 'Re-rig load (water ⇄ crew)', touch: 'SWAP', keys: ['G'] },
   { action: 'Release bucket', touch: 'DETACH', keys: ['B'] },
-  { action: 'Look around', touch: '👁 drag', keys: [] },
+  { action: 'Look around', touch: 'Drag the view', keys: [] },
 ];
 
 /** HUD legend rows — number badge → what that region of the screen is. */

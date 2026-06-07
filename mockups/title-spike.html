@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>bucketmyfire - Title (ember-glow horizon spike)</title>
+<!--
+  TITLE SCREEN SPIKE - "Ember-glow horizon"
+  ----------------------------------------------------------------------------------
+  Self-contained: no server, no kit.css, no JS framework. Open the file in a browser.
+  In the live game this overlay sits over a 3D attract scene; here the 3D is FAKED with a
+  dark gradient + vignette. The CSS custom properties below are seeded FROM theme.ts (the
+  single token source) exactly the way src/three/ui/home/styles.ts seeds .bmf-app - so the
+  hex/px are the real UI / HOME / FS / FW / R values, not invented colours.
+
+  THREE-SIGNAL RULE (one of each, no doubling):
+    FIGHT  = the tagline "Fight the fire."
+    PLACE  = the eyebrow "Northern Saskatchewan"
+    THREAT = carried by LIGHT + MOTION only (ember glow rising from the bottom edge + rising
+             ember motes + the burning flame in the wordmark icon). Never stated in words.
+
+  Warm "fight" register ONLY (ember / fire / gold / the gold CTA gradient). No cockpit cyan.
+-->
+<style>
+  /* ---- Tokens, seeded from theme.ts (mirrors home/styles.ts VARS) ----------------- */
+  :root{
+    /* UI palette (theme.ts → UI) */
+    --ember:#ff6a2c;          /* UI.ember  - brand hero ember */
+    --ember-hi:#ffc24a;       /* UI.emberHi - bright top stop */
+    --fire:#ff7a45;           /* UI.fire   - fire / DROP accent */
+    --menu:#ffc24a;           /* UI.menu   - warm gold accent */
+    --menu-soft:rgba(255,194,74,0.55); /* UI.menuSoft */
+    --cta:linear-gradient(180deg, #ffd45e 0%, #efaa2b 100%);   /* UI.cta */
+    --cta-hi:linear-gradient(180deg, #ffdd76 0%, #f4b441 100%);/* UI.ctaHi */
+    --cta-ink:#3a2406;        /* UI.ctaInk - dark ink ON the gold */
+    --cta-glow:rgba(239,170,43,0.42); /* UI.ctaGlow */
+    --text:rgba(255,255,255,0.94);    /* UI.text */
+    --dim:rgba(255,255,255,0.45);     /* UI.dim */
+    --faint:rgba(255,255,255,0.34);   /* UI.faint */
+    --warm-glass:rgba(44,17,13,0.46); /* UI.warmGlass - secondary fill */
+    --warm-stroke:rgba(255,138,110,0.85); /* UI.warmStroke */
+    --stroke:rgba(255,255,255,0.12);  /* UI.stroke */
+    --emberGlow:0 0 16px rgba(255,106,44,0.5); /* UI.emberGlow */
+    --font:ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; /* UI.font */
+    --mono:ui-monospace,"SF Mono","SFMono-Regular",Menlo,Consolas,monospace;
+
+    /* HOME ember/fire/glow ramp (theme.ts → HOME) - fixed-alpha stops */
+    --ember-05:rgba(255,106,44,0.05);
+    --ember-12:rgba(255,106,44,0.12);
+    --ember-18:rgba(255,106,44,0.18);
+    --ember-20:rgba(255,106,44,0.20);
+    --ember-30:rgba(255,106,44,0.30);
+    --ember-50:rgba(255,106,44,0.50);
+    --fire-06:rgba(255,122,69,0.06);
+    --fire-12:rgba(255,122,69,0.12);
+    --fire-16:rgba(255,122,69,0.16);
+    --fire-28:rgba(255,122,69,0.28);
+    --glow-50:rgba(255,140,50,0.5);
+    --glow-60:rgba(255,140,50,0.6);
+    --glow-80:rgba(255,140,50,0.8);
+    --warm-26:rgba(255,140,60,0.26);
+    --warm-38:rgba(255,140,60,0.38);
+
+    /* Type scale (theme.ts → FS) */
+    --fs-micro:8px; --fs-tag:9px; --fs-label:10px; --fs-meta:11px;
+    --fs-md:14px; --fs-title:18px; --fs-mega:42px;
+    /* Weights (theme.ts → FW) */
+    --fw-medium:500; --fw-semibold:600; --fw-bold:700; --fw-heavy:800; --fw-black:900;
+    /* Radii (theme.ts → R) */
+    --r-sm:8px; --r-md:12px; --r-lg:10px; --r-xl:18px; --r-pill:99px; --r-round:50%;
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+
+  /* ---- Stage: single viewport, NO PAGE SCROLL (CLAUDE.md hard rule) -------------- */
+  .ts{
+    position:fixed; inset:0;
+    height:100vh; height:100svh; height:100dvh;
+    overflow:hidden;
+    font-family:var(--font); color:var(--text);
+    background:#05080b;
+    -webkit-font-smoothing:antialiased;
+    -webkit-tap-highlight-color:transparent;
+    /* honour notches/indicators */
+    padding:
+      env(safe-area-inset-top)
+      env(safe-area-inset-right)
+      env(safe-area-inset-bottom)
+      env(safe-area-inset-left);
+  }
+
+  /* FAKE 3D attract scene - dark cinematic gradient standing in for the live render.
+     A low warm ember glow BLEEDS UP from the bottom edge: the fire is off-screen below,
+     advancing toward the lockup. (THREAT signal - light, not words.) */
+  .ts .scene{
+    position:absolute; inset:0; z-index:0;
+    background:
+      radial-gradient(160% 90% at 50% 122%, var(--ember-50) 0%, var(--ember-20) 26%, transparent 56%),
+      radial-gradient(120% 60% at 50% 116%, rgba(255,120,40,0.18) 0%, transparent 50%),
+      radial-gradient(130% 55% at 50% -10%, var(--ember-12) 0%, transparent 52%),
+      linear-gradient(180deg, #090c10 0%, #0a0d11 44%, #0c0a0b 78%, #140a08 100%);
+  }
+  /* Cinematic vignette - darken the corners so the centre lockup carries the eye. */
+  .ts .scene::after{
+    content:""; position:absolute; inset:0; pointer-events:none;
+    box-shadow:inset 0 0 200px 64px rgba(0,0,0,0.72);
+  }
+  /* A brighter "horizon line" of heat right at the bottom edge - the advancing front's crown. */
+  .ts .horizon{
+    position:absolute; left:0; right:0; bottom:0; height:34%; z-index:1; pointer-events:none;
+    background:linear-gradient(0deg, var(--ember-30) 0%, var(--fire-12) 30%, transparent 100%);
+    -webkit-mask:linear-gradient(0deg, #000 0%, transparent 100%);
+            mask:linear-gradient(0deg, #000 0%, transparent 100%);
+    animation:ts-breathe 5.6s ease-in-out infinite;
+  }
+  @keyframes ts-breathe{ 0%,100%{ opacity:.82; } 50%{ opacity:1; } }
+
+  /* ---- Rising ember motes (mirrors styles.ts .mote / bmf-rise-mote) -------------- */
+  .ts .embers{ position:absolute; inset:0; z-index:2; pointer-events:none; overflow:hidden; }
+  .ts .mote{
+    position:absolute; bottom:-12px; width:3px; height:3px; border-radius:50%;
+    background:radial-gradient(circle, #ffd27a 0%, #ff7a2c 55%, transparent 75%);
+    box-shadow:0 0 6px var(--glow-80);
+    animation:ts-rise-mote linear infinite; opacity:0;
+  }
+  @keyframes ts-rise-mote{
+    0%{ transform:translateY(0); opacity:0; }
+    12%{ opacity:.9; }
+    80%{ opacity:.7; }
+    100%{ transform:translateY(-100vh) translateX(var(--drift,16px)); opacity:0; }
+  }
+
+  /* ---- Lockup layout: centred column, fits the viewport, sensible desktop width -- */
+  .ts .stage{
+    position:absolute; inset:0; z-index:3;
+    display:flex; flex-direction:column; align-items:center;
+    text-align:center;
+    padding:clamp(20px,5vh,40px) 22px;
+  }
+  .ts .spacer{ flex:1 1 auto; min-height:8px; }
+  .ts .lockup{ display:flex; flex-direction:column; align-items:center; gap:14px; max-width:520px; width:100%; }
+
+  /* Eyebrow - PLACE signal. Quiet mono kicker above the wordmark. */
+  .ts .eyebrow{
+    font-family:var(--mono); font-size:var(--fs-label); letter-spacing:.34em;
+    text-transform:uppercase; color:var(--menu); font-weight:var(--fw-bold);
+    text-shadow:0 1px 14px rgba(0,0,0,0.7);
+  }
+
+  /* Brand lockup: BURNING flame icon + the BUCKET MY FIRE wordmark. */
+  .ts .word{
+    display:flex; align-items:center; justify-content:center; gap:clamp(12px,2.4vw,18px);
+    filter:drop-shadow(0 3px 12px rgba(0,0,0,0.7)) drop-shadow(0 2px 20px rgba(255,106,44,0.4));
+  }
+  /* The icon mark BURNS (THREAT signal in the lockup): a fire gradient masked to the flame
+     shape, drifting up, under a flickering ember glow. Mirrors TitleScreen.addBurn(). */
+  .ts .mark{ position:relative; height:clamp(56px,11vw,84px); aspect-ratio:149.7 / 184.72; flex:none;
+    animation:ts-burn-glow 2.6s ease-in-out infinite; }
+  .ts .mark .base{ position:absolute; inset:0; }
+  .ts .mark .base svg{ width:100%; height:100%; display:block; }
+  .ts .mark .base svg path,.ts .mark .base svg polygon{ fill:#fff; }
+  .ts .mark .burn{ position:absolute; inset:0; pointer-events:none;
+    background:linear-gradient(0deg, var(--ember) 0%, var(--fire) 30%, var(--ember-hi) 55%, var(--fire) 80%, var(--ember) 100%);
+    background-size:100% 220%; background-position:50% 0%;
+    -webkit-mask:var(--flame-mask); mask:var(--flame-mask);
+    animation:ts-burn-shimmer 3.2s ease-in-out infinite; }
+
+  .ts .wordmark{
+    font-size:var(--fs-mega); font-weight:var(--fw-black);
+    letter-spacing:.03em; line-height:.9; margin:0;
+    background:linear-gradient(180deg,#fff 0%, #ffe7b0 52%, var(--ember-hi) 100%);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    filter:drop-shadow(0 4px 22px rgba(255,106,44,0.28));
+  }
+
+  /* Tagline - FIGHT signal. Sits in the warm glow rising from below. */
+  .ts .tagline{
+    font-size:var(--fs-title); font-weight:var(--fw-semibold); letter-spacing:.01em;
+    color:var(--text); text-shadow:0 1px 18px rgba(0,0,0,0.85);
+  }
+
+  /* Quiet "welcome back" line - the callsign is user-controlled in the live port
+     and MUST be escapeHtml()'d before injection (see NOTES). Static text here. */
+  .ts .welcome{
+    font-family:var(--mono); font-size:var(--fs-meta); letter-spacing:.06em;
+    color:var(--dim); text-shadow:0 1px 12px rgba(0,0,0,0.8);
+  }
+  .ts .welcome b{ color:var(--text); font-weight:var(--fw-bold); }
+
+  /* Action stack: ONE hero (PLAY) + ONE secondary (Resume). Nothing else on this screen. */
+  .ts .actions{ display:flex; flex-direction:column; align-items:center; gap:12px; margin-top:6px; width:100%;
+    max-width:300px; }
+
+  /* PLAY - the hero. Warm gold gradient, dark ink. Fight register. */
+  .ts .play{
+    width:100%; min-height:54px;
+    display:inline-flex; align-items:center; justify-content:center; gap:12px;
+    padding:17px 44px; border:none; border-radius:var(--r-lg);
+    font-family:var(--font); font-size:var(--fs-title); font-weight:var(--fw-heavy);
+    letter-spacing:.16em; text-transform:uppercase; color:var(--cta-ink);
+    background:var(--cta);
+    box-shadow:0 1px 0 rgba(255,255,255,0.5) inset, 0 -2px 0 rgba(0,0,0,0.18) inset, 0 14px 40px var(--cta-glow);
+    cursor:pointer; transition:transform .14s ease, box-shadow .22s ease, background .14s ease;
+  }
+  .ts .play:hover{ background:var(--cta-hi); transform:translateY(-2px) scale(1.02);
+    box-shadow:0 1px 0 rgba(255,255,255,0.5) inset, 0 -2px 0 rgba(0,0,0,0.18) inset, 0 18px 54px var(--cta-glow); }
+  .ts .play:active{ transform:translateY(1px) scale(0.99); }
+  .ts .play .tri{ font-size:.78em; transform:translateY(1px); }
+
+  /* Resume - the single secondary action. Warm-glass, ember stroke. Never gold (PLAY owns gold). */
+  .ts .resume{
+    width:100%; min-height:48px;
+    display:inline-flex; align-items:center; justify-content:center; gap:9px;
+    padding:13px 22px; border-radius:var(--r-pill);
+    background:var(--warm-glass); color:var(--text);
+    border:1.5px solid var(--warm-stroke);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,0.06), 0 4px 14px var(--ember-12);
+    font-family:var(--font); font-size:var(--fs-md); font-weight:var(--fw-heavy);
+    letter-spacing:.08em; text-transform:uppercase;
+    cursor:pointer; transition:transform .12s ease, background .12s ease, border-color .12s ease;
+  }
+  .ts .resume:hover{ background:rgba(60,24,18,0.6); transform:translateY(-1px); border-color:var(--ember-hi); }
+  .ts .resume svg{ width:14px; height:14px; fill:var(--ember-hi); }
+
+  /* Faint footer. */
+  .ts .foot{
+    margin-top:18px;
+    font-family:var(--mono); font-size:var(--fs-micro); letter-spacing:.2em;
+    text-transform:uppercase; color:var(--faint);
+  }
+  .ts .foot .dot{ opacity:.6; margin:0 6px; }
+
+  /* ---- Entrance rises (staggered, like styles.ts .rise / bmf-rise) -------------- */
+  .ts .rise{ opacity:0; transform:translateY(16px); animation:ts-rise .6s cubic-bezier(.16,.84,.3,1) forwards; }
+  .ts .d1{ animation-delay:.06s; } .ts .d2{ animation-delay:.16s; }
+  .ts .d3{ animation-delay:.26s; } .ts .d4{ animation-delay:.36s; } .ts .d5{ animation-delay:.46s; }
+  @keyframes ts-rise{ to{ opacity:1; transform:none; } }
+
+  @keyframes ts-burn-shimmer{
+    0%{ background-position:50% 0%; opacity:.9; }
+    50%{ background-position:50% 100%; opacity:1; }
+    100%{ background-position:50% 0%; opacity:.9; }
+  }
+  @keyframes ts-burn-glow{
+    0%,100%{ filter:drop-shadow(0 0 6px var(--ember)) drop-shadow(0 2px 14px var(--glow-50)); }
+    40%{ filter:drop-shadow(0 0 13px var(--ember-hi)) drop-shadow(0 3px 22px var(--glow-80)); }
+    68%{ filter:drop-shadow(0 0 8px var(--fire)) drop-shadow(0 2px 18px var(--glow-60)); }
+  }
+
+  /* ---- Short viewports (iPhone SE 375x667, short landscape): compress, never scroll */
+  @media (max-height:680px){
+    .ts .lockup{ gap:11px; }
+    .ts .wordmark{ font-size:clamp(30px, 8vh, var(--fs-mega)); }
+    .ts .mark{ height:clamp(48px, 9vh, 72px); }
+    .ts .foot{ margin-top:12px; }
+  }
+  /* ---- Desktop: keep it centred and contained, don't sprawl --------------------- */
+  @media (min-width:740px){
+    .ts .lockup{ max-width:560px; gap:16px; }
+  }
+
+  /* ---- Respect reduced motion: kill non-essential animation (THREAT stays via glow) */
+  @media (prefers-reduced-motion: reduce){
+    .ts .rise{ opacity:1 !important; transform:none !important; animation:none !important; }
+    .ts .mote,.ts .horizon,.ts .mark,.ts .mark .burn{ animation:none !important; }
+    .ts .embers{ display:none; }
+    /* keep a static burning fill + glow so the THREAT read survives without motion */
+    .ts .mark{ filter:drop-shadow(0 0 8px var(--ember)) drop-shadow(0 3px 18px var(--glow-80)); }
+  }
+</style>
+</head>
+<body>
+
+<!-- Hidden SVG defs: the flame mask URL reused by .mark .burn (mask = the flame shape). -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <!-- the flame mask is applied via CSS var; we render the burn mask from an inline data-URI below -->
+  </defs>
+</svg>
+
+<main class="ts" data-screen="title" aria-label="bucketmyfire title screen">
+
+  <!-- faked 3D attract scene + threat glow -->
+  <div class="scene"></div>
+  <div class="horizon"></div>
+
+  <!-- rising ember motes (THREAT) -->
+  <div class="embers" id="embers" aria-hidden="true"></div>
+
+  <!-- centred lockup -->
+  <div class="stage">
+    <div class="spacer"></div>
+
+    <div class="lockup">
+      <!-- PLACE signal -->
+      <div class="eyebrow rise d1">Northern Saskatchewan</div>
+
+      <!-- brand lockup: burning flame icon + wordmark -->
+      <div class="word rise d2" role="img" aria-label="Bucket My Fire">
+        <div class="mark">
+          <div class="base">
+            <svg class="flame" viewBox="0 0 149.7 184.72" aria-hidden="true">
+              <polygon points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/>
+              <path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/>
+              <path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/>
+            </svg>
+          </div>
+          <div class="burn"></div>
+        </div>
+        <h1 class="wordmark">BUCKET<br>MY FIRE</h1>
+      </div>
+
+      <!-- FIGHT signal -->
+      <div class="tagline rise d3">Fight the fire.</div>
+
+      <!-- quiet welcome (callsign is user-controlled → escapeHtml in the live port) -->
+      <div class="welcome rise d3">Welcome back, <b>DUSTOFF</b></div>
+
+      <!-- ONE hero + ONE secondary -->
+      <div class="actions">
+        <button type="button" class="play rise d4" aria-label="Play">
+          <span class="tri">&#9658;</span><span>PLAY</span>
+        </button>
+        <button type="button" class="resume rise d5" aria-label="Resume">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+          <span>Resume</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="spacer"></div>
+
+    <!-- faint footer -->
+    <div class="foot rise d5">v1.0<span class="dot">&middot;</span>Marakana</div>
+  </div>
+
+</main>
+
+<script>
+  // Build the flame mask data-URI once and hand it to the .burn layer via a CSS var.
+  // (Mirrors TitleScreen.addBurn(), which masks the burn gradient to the icon's shape.)
+  (function () {
+    var svg =
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 149.7 184.72">' +
+      '<polygon points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/>' +
+      '<path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/>' +
+      '<path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/>' +
+      '</svg>';
+    var mask = 'url("data:image/svg+xml;utf8,' + encodeURIComponent(svg) + '") center / contain no-repeat';
+    document.documentElement.style.setProperty('--flame-mask', mask);
+  })();
+
+  // Spawn rising ember motes (mirrors styles.ts spawnEmbers()). Skipped under reduced motion.
+  (function () {
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    var host = document.getElementById('embers');
+    if (!host) return;
+    var n = 14;
+    for (var i = 0; i < n; i++) {
+      var e = document.createElement('span');
+      e.className = 'mote';
+      e.style.left = ((i * 83) % 97) + '%';
+      e.style.animationDuration = (6 + (i % 5)) + 's';
+      e.style.animationDelay = -(i * 0.7) + 's';
+      e.style.transform = 'scale(' + (0.6 + (i % 4) * 0.3).toFixed(2) + ')';
+      e.style.setProperty('--drift', (i % 2 ? 1 : -1) * (8 + (i % 3) * 9) + 'px');
+      host.appendChild(e);
+    }
+  })();
+</script>
+</body>
+</html>

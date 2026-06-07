@@ -36,6 +36,13 @@ export class HealthSim {
     this.toughness = Number.isFinite(toughness) && toughness > 0 ? toughness : 1;
   }
 
+  /** Restore the airframe to pristine — used by the free-for-all in-flight respawn after a crash. */
+  reset(): void {
+    this._health = 1;
+    this._dead = false;
+    this._fatalImpact = false;
+  }
+
   get health(): number {
     return this._health;
   }

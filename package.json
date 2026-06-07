@@ -25,6 +25,7 @@
     "bake:heightmap": "node scripts/bake-heightmap.mjs"
   },
   "dependencies": {
+    "@supabase/realtime-js": "^2.107.0",
     "three": "0.184.0"
   },
   "devDependencies": {

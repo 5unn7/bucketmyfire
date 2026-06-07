@@ -39,10 +39,11 @@ export class SmokePlume {
   private readonly baseY: Float32Array; // the crown Y the puff left (for height-zoned color)
   private cursor = 0;
   // Live-puff budget. The ring buffer holds SMOKE.max slots, but a hot fire emitting at full rate over
-  // the long puff lifetime can want MORE live puffs than the pool holds — the cursor then recycles a
-  // puff that is still rising, which reads as a mid-air "teleport pop" on busy stages. We refuse to
-  // emit once the pool is full (drop the puff rather than stomp a live one), so the column tops out at
-  // its true capacity and never pops. Recounted authoritatively each update(); bumped per fresh emit.
+  // the long puff lifetime can want MORE live puffs than the pool holds. Two-layer anti-pop: (1) emit()
+  // refuses once the pool is FULL (aliveCount >= max) — drop the puff, never stomp a live one; (2) below
+  // the cap, emit() scans SMOKE.recycleScan slots for a genuinely DEAD slot before reusing one (and only
+  // ever recycles the most-FADED puff if the window is all-alive) — so it never teleports a still-rising
+  // puff while free slots exist. Recounted authoritatively each update(); bumped per fresh emit.
   private aliveCount = 0;
 
   private readonly posAttr: THREE.BufferAttribute;
@@ -257,9 +258,33 @@ export class SmokePlume {
   emit(x: number, y: number, z: number, heat: number): void {
     if (this.aliveCount >= SMOKE.max) return; // pool full — drop the puff, never recycle a live one
     const h = heat < 0 ? 0 : heat > 1 ? 1 : heat;
-    const i = this.cursor;
-    this.cursor = (this.cursor + 1) % SMOKE.max;
-    const wasAlive = this.life[i] > 0; // stomping the (rare) oldest live puff leaves the count flat
+
+    // Pick a slot WITHOUT stomping a still-rising puff. The blind ring cursor would happily land on a
+    // live slot while dead slots exist elsewhere (long-lived puffs cluster, so the cursor laps them) —
+    // that recycled live puff teleports to the new emitter = the mid-distance "pop". Instead scan a
+    // FIXED window forward from the cursor for the first DEAD slot. If the whole window is alive
+    // (locally saturated), recycle the MOST-FADED puff seen (lowest aLife — a nearly-gone puff blinking
+    // out is invisible, a fresh one is the pop). O(SMOKE.recycleScan) = O(1), no allocation, fixed pool.
+    let i = this.cursor;
+    let found = -1;
+    let fadedIdx = i;
+    let fadedLife = Infinity;
+    const scan = SMOKE.recycleScan;
+    for (let s = 0; s < scan; s++) {
+      const c = (this.cursor + s) % SMOKE.max;
+      if (this.life[c] <= 0) {
+        found = c; // a genuinely dead slot — reuse it, no live puff harmed
+        break;
+      }
+      const al = this.aLife[c];
+      if (al < fadedLife) {
+        fadedLife = al;
+        fadedIdx = c;
+      }
+    }
+    i = found >= 0 ? found : fadedIdx; // dead slot if any, else the most-faded victim
+    this.cursor = (i + 1) % SMOKE.max;
+    const wasAlive = this.life[i] > 0; // stomping the (rare) most-faded live puff leaves the count flat
     const p = i * 3;
     const jitter = 3 + 20 * h; // base spans the flame wall — a big blaze has a broad column foot
     this.positions[p] = x + (Math.random() - 0.5) * jitter;

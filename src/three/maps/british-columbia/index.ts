@@ -10,7 +10,7 @@ const card: MapCard = {
   available: false,
   accent: '#4f86a8',
   glyph: '🏔️',
-  imageUrl: 'maps/BritishColumbia.webp',
+  imageUrl: 'images/maps/BritishColumbia.webp',
   stats: { area: '944,735 km²', lakes: '100,000+ lakes' },
 };
 

@@ -1,6 +1,6 @@
 /**
  * Modal — the shared overlay every full-screen dialog should use. Folds the per-overlay scrim +
- * card + close plumbing re-implemented in `openLeaderboard` / `openShop` / `openCloudSave` /
+ * card + close plumbing re-implemented in `openLeaderboard` / `openCloudSave` /
  * `HelpModal`. Owns: blurred scrim, titlebar + close (✕), ESC-to-close, click-scrim-to-close,
  * a Tab focus-trap, and focus restore on close. Mounts itself to `document.body`.
  *

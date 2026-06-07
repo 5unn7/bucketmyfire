@@ -19,6 +19,15 @@ import { loadAlbedo } from './pbrTextures';
 
 export interface Terrain {
   mesh: THREE.Mesh; // the ground, in the XZ plane, Y up
+  /**
+   * Budget-aware chunked colourer (load-perf): the heavy per-vertex BIOME colour + relief pass
+   * (loop 2) is split off the synchronous boot path. The mesh ships at the first frame with a flat
+   * neutral fallback colour (solid, correctly-shaped ground under the camera); `colorStep` then
+   * streams the real biome colours in over the next few frames via Game's deferredBuild/pumpBuild —
+   * exactly like the deferred lakes/forest. Returns true when every row-band is coloured. Same
+   * `richerColor × reliefShadeGrid` maths, same order, no rng → determinism is untouched.
+   */
+  colorStep(budgetMs: number): boolean;
 }
 
 /**
@@ -80,18 +89,47 @@ export function createTerrain(
   // left the 3D map reading flat next to the crisp radar; baking the SAME directional hillshade
   // the minimap uses (over a wide baseline so it tracks landforms, not micro-noise) gives
   // ridges/valleys readable depth. Read from `heights` so it's resolution-stable across tiers.
+  //
+  // LOAD-PERF: this is the heaviest per-vertex pass (biomes.sample ≈ 5 noise reads/vertex), so it's
+  // streamed off the synchronous boot path. Seed the colour buffer with a flat NEUTRAL fallback now
+  // (the mesh ships looking like plausible ground, not black, at the first frame), then `colorStep`
+  // walks it in row-bands a few ms/frame under the cold-start spool. Deterministic — same maths/order.
+  const [fr, fg, fb] = world.biomes.sample(0, 0).color; // a representative biome colour, sampled once
   for (let i = 0; i < pos.count; i++) {
-    const [r, g, b] = richerColor(world.biomes.sample(pos.getX(i), pos.getZ(i)).color, pos.getX(i), pos.getZ(i));
-    const shade = reliefShadeGrid(heights, i, N, stepX, stepZ);
-    colors[i * 3] = r * shade;
-    colors[i * 3 + 1] = g * shade;
-    colors[i * 3 + 2] = b * shade;
+    colors[i * 3] = fr * SHADE_BASE;
+    colors[i * 3 + 1] = fg * SHADE_BASE;
+    colors[i * 3 + 2] = fb * SHADE_BASE;
   }
 
   pos.needsUpdate = true;
-  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  // Recompute normals after displacement so the sun lights the hills + basins.
+  const colorAttr = new THREE.BufferAttribute(colors, 3);
+  geometry.setAttribute('color', colorAttr);
+  // Recompute normals after displacement so the sun lights the hills + basins. (Positions are final;
+  // the streamed colour pass below only writes the `color` attribute, never geometry/normals.)
   geometry.computeVertexNormals();
+
+  // Chunked colourer: write the real biome colour for `i` in [cursor, cursor+band) each call, flush
+  // that slice's `needsUpdate`, advance, return true when the whole grid is coloured. Budget-checked
+  // every BAND rows so one call honours its ms budget on a slow device without per-vertex timing.
+  let cursor = 0;
+  const BAND = N; // one grid ROW per band (N verts) — a natural slice + a cheap needsUpdate flush unit
+  const colorStep = (budgetMs: number): boolean => {
+    const t0 = performance.now();
+    while (cursor < pos.count) {
+      const end = Math.min(pos.count, cursor + BAND);
+      for (let i = cursor; i < end; i++) {
+        const [r, g, b] = richerColor(world.biomes.sample(pos.getX(i), pos.getZ(i)).color, pos.getX(i), pos.getZ(i));
+        const shade = reliefShadeGrid(heights, i, N, stepX, stepZ);
+        colors[i * 3] = r * shade;
+        colors[i * 3 + 1] = g * shade;
+        colors[i * 3 + 2] = b * shade;
+      }
+      cursor = end;
+      colorAttr.needsUpdate = true; // re-upload the (now partially-real) colour buffer to the GPU
+      if (performance.now() - t0 >= budgetMs) break; // out of budget — resume next frame
+    }
+    return cursor >= pos.count;
+  };
 
   const material = new THREE.MeshStandardMaterial({
     vertexColors: true,
@@ -104,7 +142,7 @@ export function createTerrain(
   mesh.name = 'terrain';
   mesh.receiveShadow = true;
 
-  return { mesh };
+  return { mesh, colorStep };
 }
 
 // --- Baked broad-relief hillshade (B5.1) -------------------------------------

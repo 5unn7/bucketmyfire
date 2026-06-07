@@ -10,7 +10,8 @@ import { NewPilotScreen } from './ui/home/NewPilot';
 import { TitleScreen } from './ui/title/TitleScreen';
 import { CAMPAIGN, missionById } from './missions/catalog';
 import { buildDailyMission, isDailyId } from './missions/daily';
-import { hasPlayedDaily, markDailyPlayed } from './missions/dailyPlay';
+import { buildFreeForAll, isFfaId } from './missions/freeforall';
+import { hasCompletedDaily } from './missions/dailyPlay';
 import { HELI_MODELS } from './meshes/heliModels';
 import { coldStartSeen, hasNamedProfile } from './ui/profile';
 import { openLeaderboard } from './ui/Leaderboard';
@@ -22,8 +23,10 @@ import type { MissionDef } from './missions/types';
 import type { EndScreenHooks } from './HUD';
 
 /**
- * 3D entry point + campaign router. The home screen (the HomeScreen hub) is the DEFAULT
- * landing for everyone — new and returning. A mission runs only when the URL carries `?m=<id>`: picking a
+ * 3D entry point + campaign router. The home screen (the HomeScreen hub) is the DEFAULT landing for
+ * RETURNING pilots (a saved callsign skips the title cinematic and lands on the hub); a brand-new
+ * pilot still gets the cinematic TitleScreen → registration gate, which lands on the SAME hub once a
+ * callsign is set. A mission runs only when the URL carries `?m=<id>`: picking a
  * mission, advancing (next), and retrying all navigate via `?m=` and reload, so a refresh resumes
  * the current mission with no Three.js teardown, while a fresh visit to the bare URL always lands
  * on the home screen (we deliberately do NOT persist a "resume into last mission" across sessions —
@@ -108,14 +111,23 @@ function routeMission(): void {
   // Daily Burn: ?daily boots today's procedurally-seeded "clear every fire" challenge (FIX #1/#8) —
   // a fresh shared map each day with its own per-day leaderboard. Bypasses the campaign router.
   if (params.has('daily')) {
-    // One play per day: a consumed daily bounces straight back to the hub (the card shows the locked
-    // "played — resets in Xh" state). ?qa is exempt so headless verification can always boot it.
-    if (!params.has('qa') && hasPlayedDaily()) {
+    // Retry until cleared, then locked: an already-CLEARED daily bounces straight back to the hub (the
+    // card shows the locked "cleared — resets in Xh" state). A loss/quit leaves it open to retry. The
+    // lock is set on the WIN (see Game.latchOutcome), not at boot. ?qa is exempt so headless
+    // verification can always boot it.
+    if (!params.has('qa') && hasCompletedDaily()) {
       openHome();
       return;
     }
-    if (!params.has('qa')) markDailyPlayed(); // spend today's shot at boot — quitting early can't dodge it
     bootMission(buildDailyMission(new Date()));
+    return;
+  }
+
+  // Open Skies (?ffa): the endless FREE-FOR-ALL — the same daily-seeded Saskatchewan for everyone, fires
+  // never stop, rack up a personal score. Bypasses the campaign router. No once-per-day lock (unlike the
+  // daily): it's a sandbox you can re-enter anytime.
+  if (params.has('ffa')) {
+    bootMission(buildFreeForAll(new Date()));
     return;
   }
 
@@ -124,14 +136,16 @@ function routeMission(): void {
 
   if (selectedId) {
     bootMission(missionById(selectedId) ?? CAMPAIGN[0]);
-  } else {
-    // TitleScreen is always the first screen. PLAY routes based on pilot status: returning pilot
-    // (saved callsign) → HomeScreen hub; new pilot → the branded registration gate (NewPilotScreen),
-    // which lands on the SAME hub once a callsign is set.
+  } else if (hasNamedProfile()) {
+    // Returning pilot (saved callsign) → straight to the HomeScreen hub, no title cinematic in the way.
+    // The home hub is the DEFAULT landing for everyone who's already played.
     // Headless/deep-link (?m= / ?autostart / ?qa) bypasses this branch and boots the game directly.
+    openHome();
+  } else {
+    // New pilot → the cinematic TitleScreen first; PLAY routes into the branded registration gate
+    // (NewPilotScreen), which lands on the SAME hub once a callsign is set.
     new TitleScreen(container, CAMPAIGN, () => {
-      if (hasNamedProfile()) openHome();
-      else new NewPilotScreen(container, openHome);
+      new NewPilotScreen(container, openHome);
     });
   }
 }
@@ -180,12 +194,36 @@ function showFatalMessage(host: HTMLElement, title: string, body: string): void 
 function gotoCampaign(missionId: string | null): void {
   const url = new URL(location.href);
   url.searchParams.delete('daily'); // leaving Daily Burn → never carry ?daily into a campaign/menu nav
+  url.searchParams.delete('ffa'); // leaving Open Skies → never carry ?ffa into a campaign/menu nav
   if (missionId) {
     url.searchParams.set('m', missionId);
   } else {
     url.searchParams.delete('m');
     url.searchParams.delete('autostart');
   }
+  location.assign(url.toString());
+}
+
+/** Re-boot today's Daily Burn via `?daily` — the retry path after a loss. A reload is fine here (it
+ *  mirrors the Open Skies restart); the `?daily` guard re-checks `hasCompletedDaily`, so this only ever
+ *  re-boots while today's burn is still UNcleared (a win never reaches a RETRY button). */
+function gotoDaily(): void {
+  const url = new URL(location.href);
+  url.searchParams.delete('m');
+  url.searchParams.delete('autostart');
+  url.searchParams.delete('ffa');
+  url.searchParams.set('daily', '1');
+  location.assign(url.toString());
+}
+
+/** Boot (or re-boot) Open Skies via `?ffa`, dropping any campaign/daily params. A reload is fine here —
+ *  it's the free-for-all's restart (after a crash) and re-entry path, mirroring the Daily Burn nav. */
+function gotoFfa(): void {
+  const url = new URL(location.href);
+  url.searchParams.delete('m');
+  url.searchParams.delete('autostart');
+  url.searchParams.delete('daily');
+  url.searchParams.set('ffa', '1');
   location.assign(url.toString());
 }
 
@@ -229,7 +267,9 @@ function bootMission(mission: MissionDef): void {
   // ritual — the autopilot/teleport/screenshot flows expect a running, airborne aircraft.
   // Skip the hold-to-spool ritual for headless QA/autostart, AND once the pilot has completed it once
   // before (#9) — after the first time it's a speed bump, so later missions boot engine-running.
-  const skipColdStart = params.has('qa') || params.has('autostart') || coldStartSeen();
+  // Open Skies (free-for-all) ALWAYS boots in flight — "no start cycle" (it's a drop-in sandbox, and a
+  // respawn is in-flight too). Campaign/daily keep the cold-start ritual for a first-time pilot.
+  const skipColdStart = params.has('qa') || params.has('autostart') || coldStartSeen() || isFfaId(mission.id);
   // The interactive first-flight coach must be OFF under headless QA — it would interfere with the
   // verify:render scoop→drop autopilot (a hard CI deploy gate). Real boots leave it on; the Game
   // gates it further to a new pilot's first campaign mission.
@@ -413,14 +453,26 @@ function bootMission(mission: MissionDef): void {
   /** End-banner + in-game buttons. RETRY and NEXT rebuild in place (instant — no reload); MENU still
    *  navigates back to the home screen via a reload (it crosses into the TitleScreen's own renderer). */
   function makeEndHooks(m: MissionDef): EndScreenHooks {
-    // Daily Burn: no campaign NEXT and no RETRY (one play per day — the shot was spent at boot). Every
-    // exit just returns to the hub, where the card now shows the locked "resets in Xh" state.
+    // Daily Burn: no campaign NEXT, but RETRY is allowed until it's CLEARED — the end screen only shows
+    // RETRY on a loss (it gates on !won), and a win locks the daily for the day (see Game.latchOutcome),
+    // so this re-boots today's burn only while it's still unbeaten. Every other exit returns to the hub.
     if (isDailyId(m.id)) {
       return {
         hasNext: false,
-        noRetry: true, // one play per day — no replay of today's burn (the shot was spent at boot)
         onNext: () => gotoCampaign(null),
-        onRetry: () => gotoCampaign(null),
+        onRetry: () => gotoDaily(), // re-fly today's burn after a loss (guard blocks it once cleared)
+        onMenu: () => gotoCampaign(null),
+        onLeaderboard: () => openLeaderboard([...CAMPAIGN, m], m.id),
+      };
+    }
+    // Open Skies (free-for-all): the run is endless, so the end screen is only ever reached by a CRASH.
+    // RETRY restarts a fresh Open Skies (recovers from the wreck); MENU returns to the hub; the board is
+    // this session's per-day FFA board. No campaign NEXT.
+    if (isFfaId(m.id)) {
+      return {
+        hasNext: false,
+        onNext: () => gotoCampaign(null),
+        onRetry: () => gotoFfa(), // restart the free-for-all
         onMenu: () => gotoCampaign(null),
         onLeaderboard: () => openLeaderboard([...CAMPAIGN, m], m.id),
       };

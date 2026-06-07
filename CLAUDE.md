@@ -110,7 +110,7 @@ main.ts (renderer + loop + QualityTier + Composer + campaign router)
        ├─ render/ ............ FrameContext (shared uniforms) + QualityTier + FireFieldTexture
        ├─ missions/ .......... MissionDef catalog (thin assembler) + factory/ + oracle + runtime + director + progress
        ├─ leaderboard/ ....... env-gated Supabase PostgREST client (plain fetch, RLS)
-       ├─ ui/ ................ HUD, MissionSelect menu, onboarding, leaderboard, profile/picker
+       ├─ ui/ ................ HUD, home-hub menus (mission/map pickers), onboarding, leaderboard, profile/picker
        ├─ audio/ ............. HeliAudio (recorded rotor loop + procedural SFX)
        ├─ ChaseCamera.ts ..... trailing follow-cam with ground-clearance guard + free-look
        ├─ Input.ts ........... keyboard + touch merged behind read(): ControlState
@@ -258,7 +258,7 @@ resolves a def's specs against the seeded `World` (`missions/scenario.ts`) and f
 `MissionSignals` snapshot to `missions/MissionRuntime.ts`, which latches objectives (`extinguishAll`/
 `extinguishCount`/`deliver`/`evacuate`/`survive`/`backburn`) and fails (`protect`/`timeout`/`fuelOut`/`rescue`).
 `missions/MissionDirector.ts` runs the reactive radio-comms/ignite/wind **beats**. `main.ts` routes
-`?m=<id>` / the `MissionSelect` menu; **switching a mission is a page reload** (no Three.js
+`?m=<id>` / the home-hub menus (`ui/home/menus.ts`); **switching a mission is a page reload** (no Three.js
 teardown). `missions/progress.ts` persists unlock + best score to localStorage and is authoritative
 for unlocks.
 

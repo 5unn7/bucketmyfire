@@ -1495,6 +1495,16 @@ export const SMOKE = {
   tex: 'textures/smoke-puff.png', // soft smoke-puff sprite billboarded per particle (real asset, see CREDITS.md)
   max: 2400, // pooled particle cap (ring buffer — recycles oldest, never grows). High so the dense,
   // near-opaque column sustains its full height without recycling the base out from under it.
+  // Anti-POP recycle window (heavy stages): emit() scans this many slots forward from the cursor for a
+  // genuinely DEAD slot before reusing one — so it never stomps a still-rising puff while free slots
+  // exist (the cause of the mid-distance teleport pop). If the whole window is alive it recycles the
+  // MOST-FADED puff in it (a near-gone puff blinking out is invisible). FIXED → O(1)/emit, no growth.
+  recycleScan: 24, // slots scanned per emit for a free/faded victim (8 fires × ~6 puffs/burst worst case)
+  // Distance-gated spawn budget (heavy stages can demand ~16× the pool): a fire this far from the eye
+  // emits FEWER puffs (its column is small on-screen anyway), so the pool's budget is spent on the
+  // columns the player can actually see instead of starving every column to flicker. 0 = no culling.
+  spawnNearDist: 700, // within this (world units) a fire emits its full per-burst puff count
+  spawnFarDist: 2600, // by this distance it emits the FLOOR count; beyond, still the floor (never 0)
   emitInterval: 0.07, // seconds between puff bursts (shorter → a denser, more continuous, occluding column)
   rise: 17, // initial upward speed (units/s) — the column SHOOTS up into a tall pillar
   riseDamp: 0.1, // per-second cooling that bleeds the rise (very low → it keeps climbing, towers)
@@ -1628,14 +1638,13 @@ export const CAMERA = {
   introHeight: 6, // how far above at full close-up (vs `height` 15) — a low, close, cinematic angle
   introLookAhead: 3, // aim point ahead of the nose at full close-up (vs `lookAhead` 10) — frames the airframe, not past it
   introPullStart: 0.55, // spool fraction (0..1) at which the pull-out BEGINS — the transition lands exactly at full RPM
-  // Free-look ("eye" button): drag = orbit VELOCITY (not distance), so holding it
-  // spins the camera continuously — a full 360° either way — and a tiny drag is
-  // enough (the button can sit near the screen edge). Release eases back to default.
-  lookYawRate: 2.4, // rad/sec orbit speed at full deflection (~360° in 2.6s), unbounded
-  lookPitchRate: 1.6, // rad/sec vertical orbit speed at full deflection
+  // Free-look (drag ANYWHERE on the flight view — the eye button was retired): the camera orbits the
+  // heli 1:1 with the drag. Each dragged pixel adds this many radians of orbit; release eases the view
+  // back to the default chase pose. Tune these for drag sensitivity (bigger = the view swings faster).
+  lookDragYaw: 0.009, // rad of horizontal orbit per px dragged (~a 200px swipe ≈ 100°)
+  lookDragPitch: 0.006, // rad of vertical orbit per px dragged (lower = gentler tilt; clamped by lookPitch*)
   lookPitchMin: -0.45, // lowest the cam tilts (below the heli, looking up) — radians
   lookPitchMax: 1.15, // highest the cam tilts (overhead, looking down) — radians
-  lookPadRadius: 46, // px of drag from the eye button that maps to full orbit speed
   lookReturnLerp: 0.1, // how fast the view eases back to default on release (per 60fps frame)
   // --- Mobile-portrait readability (concern 6). `fov` is VERTICAL; a tall narrow viewport CROPS the
   // horizontal world, so the ground under the bucket vanishes. Hor+ derives a wider vertical fov in
@@ -1693,6 +1702,32 @@ export const TITLE = {
   wind: { x: 0.35, z: 0.12 }, // gentle ambient wind fed to the shared uniform bus (drives foliage/smoke in later phases)
 } as const;
 
+// Free-for-all "Open Skies" — the endless, shared-map score race the planned co-op became. Everyone
+// flies the SAME daily-seeded Saskatchewan; the fires never stop coming; each pilot racks up a personal
+// score from the fires they knock down (no win, no lose — fly until you leave). This block is PACING
+// only; the scenario (seed, opening fires, "endless" flag) lives in missions/freeforall.ts.
+export const FFA = {
+  targetActive: 8, // keep roughly this many fires burning — the spawner tops up toward it while below
+  spawnEverySec: 5, // cadence (s) at which the spawner tries to add one fire while under targetActive
+  pointsPerFire: 100, // score awarded per fire knocked down with water
+  pointsPerHit: 6, // small bonus per EFFECTIVE drop (rewards steady, accurate work between kills)
+  fireMilestone: 10, // in-flight "fires out  N/M" readout rounds the target up to the next multiple of this
+  scoreMilestone: 500, // ditto for the live "score  N/M" readout — keeps the counters always chasing
+  boardEverySec: 45, // push the running score to the shared per-day board this often (so others see you climb)
+  // Live presence (Slice 3): broadcast your heli pose over a Supabase Realtime channel so OTHER pilots
+  // appear as ghosts in your sky (code-split; degrades to solo when Supabase is unconfigured).
+  netSendHz: 12, // own-pose broadcast rate to the shared channel
+  netInterpMs: 160, // remote-pilot smoothing time constant — rides through 12Hz jitter without lag
+  netStaleMs: 6000, // drop a remote pilot not heard from in this long (left / disconnected)
+  netMaxRemotes: 8, // hard cap on simultaneously-rendered ghost pilots (perf)
+  // Pilot-vs-pilot: a mid-air collision blows BOTH ships out of the sky (each client detects it locally
+  // against the ghost it renders → no host needed), then they respawn in flight.
+  collideRadius: 9, // world units — centre-to-centre distance that counts as a collision (~an airframe length)
+  collideMinAgl: 6, // both ships must be at least this high → helis parked at a base don't "collide"
+  respawnSec: 1.6, // how long the wreck burns before respawning airborne (the free-for-all death hold)
+  respawnInvulnSec: 2.5, // collision immunity right after a respawn → can't be re-killed instantly by a ship camping the pad
+} as const;
+
 // --- Live tuning registry (dev tooling) -------------------------------------
 // Every tunable block, by name. The dev slider panel (`dev/ConfigPanel.ts`, toggled with the
 // backtick key under `import.meta.env.DEV || ?qa || ?tune`) walks this to auto-generate a control
@@ -1703,7 +1738,7 @@ export const CONFIG_REGISTRY: Record<string, Record<string, unknown>> = {
   WORLD3D, MAPGEO, TERRAIN, LAKE_SHAPE, STREAM, BIOMES, FOREST,
   FLIGHT, STARTUP, WASH, INSTRUMENTS, BUCKET3D, DROP_PHYSICS, DROP_FX, FIREHEAD,
   HELI_CLASSES, HEALTH, CRASH, BRIDGE,
-  FIRE3D, STRUCTURES, STRUCT_FIRE, COMMUNITIES, SETTLEMENT3D, ROADS, SCORE, MISSIONS, FAUNA, HELIPAD, TERRAIN_TEX, TREE_TEX,
+  FIRE3D, STRUCTURES, STRUCT_FIRE, COMMUNITIES, SETTLEMENT3D, ROADS, SCORE, MISSIONS, FFA, FAUNA, HELIPAD, TERRAIN_TEX, TREE_TEX,
   QUALITY, POSTFX, ENV, GODRAYS, GRADE, FIRELIGHT, EMBERS, AMBIENT_EMBERS,
   WATER, CLOUDS, SPRAY, SMOKE, HAZE, AUDIO, CAMERA, TITLE,
 };

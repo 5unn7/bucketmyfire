@@ -1,7 +1,7 @@
 /**
  * Shared cockpit theme — THE single source of the glass-cockpit visual language and
  * the DOM helpers that build it. The whole DOM UI layer reads from here: the in-flight
- * `HUD.ts`, the touch `Input.ts`, and the full-screen overlays (`MissionSelect.ts`,
+ * `HUD.ts`, the touch `Input.ts`, and the full-screen overlays (the home-hub menus,
  * `Leaderboard.ts`, `CloudSave.ts`) — which used to each carry their own near-duplicate
  * `UI` token object that had quietly drifted (different text alpha, blur, shadow, and
  * three separate "success greens"). Those copies were folded in here so there is now
@@ -44,6 +44,8 @@ export const UI = {
   ember: '#ff6a2c', // deeper brand ember — warm CTA gradient base + brand accents
   emberHi: '#ffc24a', // bright top stop for a warm CTA gradient / ember highlight
   water: '#56c4ee', // scoop water
+  waterBody: 'rgba(86,196,238,0.34)', // translucent water FILL inside the DROP "bucket" button — rises as you scoop, drains as you drop
+  waterCrest: 'rgba(120,224,255,0.9)', // the bright crest line atop that fill — reads as the water surface
   ok: '#63d68a', // success / "cleared" green (unified the menus' two greens; the in-world AIRFRAME gauge
   // keeps a deeper #46d17a tuned to read against bright terrain — a documented exception, see DESIGN.md)
   caution: '#ffc861', // amber "heads up" — the middle state between ok (green) and warn (red): low fuel, a
@@ -82,6 +84,7 @@ export const UI = {
   rowMine: 'rgba(103,232,255,0.14)', // accent-tinted row: "this one is you"
   field: 'rgba(8,13,18,0.60)', // recessed input / text-field fill
   track: 'rgba(255,255,255,0.10)', // recessed track / subtle white fill (progress bars, avatar bg)
+  bezel: 'rgba(0,0,0,0.18)', // a recessed instrument-CHAMBER well inside the HUD strip — groups gauge pods into bezelled clusters
   recess: 'rgba(5,9,13,0.55)', // a DEEPER inset well than `field` — score-tally rows, stat readouts, any
   // sunken panel that should read as carved into the card rather than floating on it.
   // Strokes
@@ -97,6 +100,52 @@ export const UI = {
   glow: '0 0 10px rgba(103,232,255,0.45)', // ambient cyan accent glow (cockpit register)
   emberGlow: '0 0 16px rgba(255,106,44,0.5)', // warm brand glow — the fight-register analog of `glow`
   font: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+};
+
+// Home-hub (.bmf-app) WARM "fight"-register ramp — fixed-alpha stops of the brand ember (#ff6a2c),
+// fire (#ff7a45 / the 255,122,69 secondary), warm glow (255,140,50/60), gold (#ffc24a), the shared
+// success-green (UI.ok #63d68a) and danger-red (UI.warn #ff5d4d), plus the card backplate + rank ember.
+// These live HERE (the single token source) so home/styles.ts references them via CSS vars instead of
+// re-hard-coding the same oranges/greens/reds in its injected stylesheet (DESIGN.md → one design
+// system; Two registers → the hub is WARM, never cockpit cyan). Alpha-suffixed so each stop has exactly
+// ONE home. Excluded from the verify:ui ratchet (theme.ts is not scanned), so this is the legal sink for
+// the values styles.ts used to hard-code. NOT a second `UI` object — keeps the structural check green.
+export const HOME = {
+  ember05: 'rgba(255,106,44,0.05)',
+  ember10: 'rgba(255,106,44,0.10)',
+  ember12: 'rgba(255,106,44,0.12)',
+  ember14: 'rgba(255,106,44,0.14)',
+  ember18: 'rgba(255,106,44,0.18)',
+  ember20: 'rgba(255,106,44,0.20)',
+  ember22: 'rgba(255,106,44,0.22)',
+  ember30: 'rgba(255,106,44,0.30)',
+  ember32: 'rgba(255,106,44,0.32)',
+  ember35: 'rgba(255,106,44,0.35)',
+  ember40: 'rgba(255,106,44,0.40)',
+  ember42: 'rgba(255,106,44,0.42)',
+  ember50: 'rgba(255,106,44,0.50)',
+  fire06: 'rgba(255,122,69,0.06)',
+  fire12: 'rgba(255,122,69,0.12)',
+  fire16: 'rgba(255,122,69,0.16)',
+  fire28: 'rgba(255,122,69,0.28)',
+  fire55: 'rgba(255,122,69,0.55)',
+  glow50: 'rgba(255,140,50,0.5)',
+  glow60: 'rgba(255,140,50,0.6)',
+  glow80: 'rgba(255,140,50,0.8)',
+  glow90: 'rgba(255,140,50,0.9)',
+  warm26: 'rgba(255,140,60,0.26)', // the .brand/.glyph radial-highlight warm
+  warm38: 'rgba(255,140,60,0.38)',
+  gold32: 'rgba(255,194,74,0.32)', // section-rule gradient + star glow (UI.menu channels)
+  gold70: 'rgba(255,194,74,0.7)',
+  ok12: 'rgba(99,214,138,0.12)', // UI.ok wash
+  ok50: 'rgba(99,214,138,0.5)', // UI.ok edge
+  warn10: 'rgba(255,93,77,0.1)', // UI.warn wash (danger button)
+  warn16: 'rgba(255,93,77,0.16)', // danger modal glow
+  warn18: 'rgba(255,93,77,0.18)',
+  warn22: 'rgba(255,93,77,0.22)', // danger glyph fill
+  warn50: 'rgba(255,93,77,0.5)', // UI.warn edge
+  rank: '#ffa033', // the `--rk` rank-chip default ember
+  cardBg: '#0a0e12', // the mission/art card backplate
 };
 
 // Leaderboard "timing-tower" surfaces — the warm (fight-register) fills the global board paints, kept

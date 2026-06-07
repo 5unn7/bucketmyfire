@@ -1,11 +1,12 @@
 /**
- * Rail-menu overlays opened from the Home bottom rail. Shop → openShop reuses the existing page;
- * this file supplies the rest as focused, branded full-screen panels on the shared `.bmf-app`
+ * Rail-menu overlays opened from the Home bottom rail. Shop NAVIGATES to the standalone /shop.html
+ * merch website (a real context switch, not an overlay); this file supplies the rest as focused,
+ * branded full-screen panels on the shared `.bmf-app`
  * stylesheet:
  *   - Campaign — region picker (Saskatchewan live + coming-soon) that DRILLS INTO that map's
  *                missions (openMissions): pick a mission, fly it. Missions now live inside the map.
  *   - Hangar   — aircraft picker (3 helis, specs, unlock gates), saves profile.heliId
- *   - Co-op    — coming-soon teaser (stub)
+ *   - Open Skies — the endless free-for-all (openCoop): routes to ?ffa, a same-map score race
  *   - Settings — sound + reduced-motion toggles, callsign, region, reset progress (off the rail
  *                now; opened from the Home profile card). Board (leaderboard) likewise.
  * Each is a back-to-Home overlay (Home stays mounted underneath). No-scroll / single-viewport.
@@ -15,11 +16,12 @@ import { HELIS, MAPS, isHeliUnlocked, missionsCleared, loadProfile, saveProfile,
 import { isConfigured } from '../../leaderboard/client';
 import { resetProgress, getProgress, bestScore, bestStars, isUnlocked } from '../../missions/progress';
 import { missionPoster } from '../missionArt';
+import { buildFreeForAll } from '../../missions/freeforall';
 import { openLeaderboard } from '../Leaderboard';
-import { openShop } from '../ShopScreen';
 import { injectHomeStyles, spawnEmbers } from './styles';
 import { railNav } from './rail';
 import { DEFS, FLAME, ic } from './icons';
+import { validateCallsign, MAX_CALLSIGN } from '../callsign';
 
 const MUTE_KEY = 'bmf.audio.muted.v1';
 
@@ -43,7 +45,7 @@ export function setMenuCatalog(catalog: MissionDef[], onFly?: (id: string) => vo
 }
 
 /** Route a rail tap: close the current panel (if any), then open the target. `home` just falls back
- *  to the hub mounted underneath. Shop is its own immersive screen (no rail of its own). */
+ *  to the hub mounted underneath. Shop LEAVES the game for the standalone /shop.html website. */
 export function navigateRail(key: string): void {
   if (activeOverlay && activeOverlay.key === key) return; // already on this panel
   const prev = activeOverlay;
@@ -58,7 +60,8 @@ export function navigateRail(key: string): void {
     case 'coop':
       return openCoop();
     case 'shop':
-      return openShop();
+      window.location.href = '/shop.html'; // a real context switch to the merch website
+      return;
   }
 }
 
@@ -396,25 +399,48 @@ function heliSlide(h: CatalogItem, cleared: number): string {
     </div></article>`;
 }
 
-// ============================ CO-OP (stub) ============================
+// ===================== OPEN SKIES (free-for-all) =====================
+/** Open Skies — the endless FREE-FOR-ALL (the planned co-op, reimagined as a same-map score race).
+ *  Everyone flies the same daily-seeded Saskatchewan, the fires never stop, you build a personal score.
+ *  Routes to `?ffa` (a reload boot owned by main.ts), mirroring the Daily Burn nav. */
 export function openCoop(): void {
+  // Free-for-all: every airframe is available (it's a sandbox, not the campaign ladder). Default the
+  // pick to the pilot's saved heli, else the trainer.
+  let picked = currentProfile().heliId || HELIS[0].id;
+  const heliBtn = (h: (typeof HELIS)[number]): string =>
+    `<button class="btn ${h.id === picked ? 'ember' : 'ghost'} sm block" style="margin-top:8px;border-radius:var(--r-sm);justify-content:flex-start;gap:10px;" data-heli="${h.id}">${ic('heli')}<b>${h.name}</b><span class="muted" style="font-weight:var(--fw-regular);">${h.tagline}</span></button>`;
   const body = `<div style="margin-top:10px;">
-    <span class="pill soon">Coming soon</span>
-    <h1 class="h-big" style="margin-top:14px;">Fly it together.</h1>
-    <p class="muted" style="margin-top:10px;font-size:var(--fs-body);line-height:1.5;max-width:34ch;">Host or join by code. One fire, one team.</p>
-    <div class="card metal" style="margin-top:18px;">
-      <div class="row between"><div class="row" style="gap:12px;"><div class="glyph">${ic('users')}</div>
-      <div><div style="font-size:var(--fs-md);font-weight:var(--fw-semibold);">Get notified</div>
-      <div class="muted" style="font-size:var(--fs-meta);margin-top:2px;">One email when co-op goes live.</div></div></div></div>
-      <button class="btn ember block" style="margin-top:14px;border-radius:var(--r-sm);" data-soon>${ic('check')}Notify me</button>
-    </div>
+    <span class="chip">Free-for-all</span>
+    <h1 class="h-big" style="margin-top:14px;">Open Skies.</h1>
+    <p class="muted" style="margin-top:10px;font-size:var(--fs-body);line-height:1.5;max-width:34ch;">Same Saskatchewan, same fires, everyone at once. The fires never stop. Knock down all you can and climb the board.</p>
+    <div class="mono" style="margin-top:16px;font-size:var(--fs-tag);letter-spacing:.14em;text-transform:uppercase;color:var(--faint);font-weight:var(--fw-bold);">Your aircraft</div>
+    <div id="ffa-helis">${HELIS.map(heliBtn).join('')}</div>
+    <button class="btn ember block" style="margin-top:16px;border-radius:var(--r-sm);" data-ffa>${ic('play')}Fly Open Skies</button>
+    <button class="btn ghost block" style="margin-top:10px;border-radius:var(--r-sm);" data-ffa-board>${ic('trophy')}Today's board</button>
   </div>`;
-  const { root } = overlay('coop', 'Co-op', 'Multiplayer', body);
-  root.querySelector('[data-soon]')?.addEventListener('click', (e) => {
-    const b = e.currentTarget as HTMLButtonElement;
-    b.textContent = "You're on the list";
-    b.classList.add('is-disabled');
+  const { root } = overlay('coop', 'Open Skies', 'Free-for-all', body);
+  // Heli selection: highlight the chosen airframe (ember) vs the rest (ghost).
+  root.querySelectorAll<HTMLElement>('[data-heli]').forEach((b) => {
+    b.addEventListener('click', () => {
+      picked = b.dataset.heli || picked;
+      root.querySelectorAll<HTMLElement>('[data-heli]').forEach((x) => {
+        const on = x.dataset.heli === picked;
+        x.classList.toggle('ember', on);
+        x.classList.toggle('ghost', !on);
+      });
+    });
   });
+  root.querySelector('[data-ffa]')?.addEventListener('click', () => {
+    const url = new URL(location.href);
+    url.searchParams.delete('m');
+    url.searchParams.delete('daily');
+    url.searchParams.set('ffa', '1');
+    url.searchParams.set('heli', picked); // fly the chosen airframe (main.ts honours ?heli=)
+    location.assign(url.toString());
+  });
+  // Live standings for today's shared free-for-all (its own per-day board, keyed by the ffa session id).
+  const ffa = buildFreeForAll(new Date());
+  root.querySelector('[data-ffa-board]')?.addEventListener('click', () => openLeaderboard([...menuCatalog, ffa], ffa.id));
 }
 
 // ============================ SETTINGS (minimal) ============================
@@ -451,17 +477,118 @@ export function openSettings(): void {
     (e.currentTarget as HTMLElement).classList.toggle('on');
   });
   root.querySelector('[data-edit]')?.addEventListener('click', () => {
-    const v = window.prompt('Callsign', currentProfile().name || '');
-    if (v && v.trim()) {
-      saveProfile({ ...currentProfile(), name: v.trim() });
+    editCallsign(root, currentProfile().name || '', (name) => {
+      saveProfile({ ...currentProfile(), name });
       const el = root.querySelector('#callsign');
-      if (el) el.textContent = v.trim();
-    }
+      if (el) el.textContent = name;
+    });
   });
   root.querySelector('[data-reset]')?.addEventListener('click', () => {
-    if (window.confirm('Reset all progress? This wipes your ranks, scores and unlocks.')) {
+    confirmReset(root, () => {
       resetProgress();
       location.reload();
+    });
+  });
+}
+
+// ============================ THEMED MODALS (confirm / prompt) ============================
+// The home hub uses NO native window.prompt/confirm — those render off-brand OS chrome, vary across
+// mobile browsers, are blocked in some embeds, and break the no-scroll single-viewport feel. This is
+// a tiny token-pure dialog built from the SAME `.bmf-app` classes the rest of the menus use, mounted
+// INSIDE the active overlay surface so it inherits the stylesheet. Dismissible: backdrop tap, Esc,
+// or the returned close(). `danger` tints it on the --warn (destructive) register.
+function bmfModal(
+  host: HTMLElement,
+  opts: { title: string; sub?: string; glyph?: string; danger?: boolean; body: string },
+): { card: HTMLElement; close: () => void } {
+  const node = document.createElement('div');
+  node.className = `modal${opts.danger ? ' danger' : ''}`;
+  node.innerHTML =
+    `<div class="modal-card" role="dialog" aria-modal="true" aria-label="${opts.title}">` +
+    `<div class="modal-head">${opts.glyph ? `<span class="mglyph">${opts.glyph}</span>` : ''}` +
+    `<div class="grow"><div class="mtitle">${opts.title}</div>${opts.sub ? `<div class="msub">${opts.sub}</div>` : ''}</div>` +
+    `<button class="mclose" data-mx aria-label="Close">${ic('close')}</button></div>` +
+    `<div class="modal-body">${opts.body}</div></div>`;
+  host.appendChild(node);
+  const close = (): void => {
+    window.removeEventListener('keydown', onKey, true);
+    node.remove();
+  };
+  function onKey(e: KeyboardEvent): void {
+    if (e.key === 'Escape') {
+      e.stopPropagation(); // swallow Esc so it dismisses the modal, not the parent overlay
+      close();
+    }
+  }
+  // Capture-phase so the modal's Esc wins over the overlay's own keydown listener.
+  window.addEventListener('keydown', onKey, true);
+  node.addEventListener('pointerdown', (e) => {
+    if (e.target === node) close(); // backdrop tap only (not a click inside the card)
+  });
+  node.querySelector('[data-mx]')?.addEventListener('click', close);
+  return { card: node.querySelector('.modal-card') as HTMLElement, close };
+}
+
+/** Destructive-progress-wipe confirm — reads clearly as danger (warn register + explicit actions). */
+function confirmReset(host: HTMLElement, onConfirm: () => void): void {
+  const { card, close } = bmfModal(host, {
+    title: 'Reset progress?',
+    sub: 'This cannot be undone',
+    glyph: ic('trash'),
+    danger: true,
+    body:
+      `<p class="mtext">Wipes your ranks, best scores, stars and aircraft unlocks. You'll start the campaign from the first sortie.</p>` +
+      `<div class="modal-actions"><button class="btn ghost" data-cancel>Keep my progress</button>` +
+      `<button class="btn danger" data-confirm>Reset everything</button></div>`,
+  });
+  card.querySelector('[data-cancel]')?.addEventListener('click', close);
+  card.querySelector('[data-confirm]')?.addEventListener('click', () => {
+    close();
+    onConfirm();
+  });
+}
+
+/** Themed callsign editor — reuses the `.field` input + the shared validateCallsign gate (same as
+ *  NewPilot), so reserved/profane/too-short names are rejected inline instead of silently saved. */
+function editCallsign(host: HTMLElement, current: string, onSave: (name: string) => void): void {
+  const { card, close } = bmfModal(host, {
+    title: 'Pilot callsign',
+    sub: 'The name your runs fly under',
+    glyph: ic('user'),
+    body:
+      `<label class="field"><span class="pfx">${ic('user')}</span>` +
+      `<input id="cs-edit" type="text" maxlength="${MAX_CALLSIGN}" placeholder="Enter your callsign" ` +
+      `autocomplete="off" spellcheck="false" enterkeyhint="done" aria-label="Callsign" /></label>` +
+      `<div id="cs-msg" class="fmsg"></div>` +
+      `<div class="modal-actions"><button class="btn ghost" data-cancel>Cancel</button>` +
+      `<button class="btn primary" data-save>${ic('check')}Save</button></div>`,
+  });
+  const input = card.querySelector<HTMLInputElement>('#cs-edit')!;
+  const msg = card.querySelector<HTMLElement>('#cs-msg')!;
+  input.value = current;
+  const commit = (): void => {
+    const res = validateCallsign(input.value);
+    if (!res.ok) {
+      msg.textContent = res.reason ?? 'Pick a different callsign.';
+      msg.className = 'fmsg bad';
+      return;
+    }
+    close();
+    onSave(res.value);
+  };
+  input.addEventListener('input', () => {
+    msg.textContent = '';
+    msg.className = 'fmsg';
+  });
+  input.addEventListener('keydown', (e) => {
+    e.stopPropagation(); // keep typing out of any game/overlay key handlers
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commit();
     }
   });
+  card.querySelector('[data-cancel]')?.addEventListener('click', close);
+  card.querySelector('[data-save]')?.addEventListener('click', commit);
+  // Desktop only — autofocusing on touch pops the keyboard over the layout.
+  if (!('ontouchstart' in window)) requestAnimationFrame(() => input.focus());
 }

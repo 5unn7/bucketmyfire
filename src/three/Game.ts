@@ -57,18 +57,21 @@ import { MissionDirector } from './missions/MissionDirector';
 import { recordWin, getProgress } from './missions/progress';
 import { isDailyId } from './missions/daily';
 import { recordDailyClear } from './missions/streak';
+import { markDailyCompleted } from './missions/dailyPlay';
 import { newlyUnlockedHelis, markColdStartSeen } from './ui/profile';
-import { submitScore } from './leaderboard/client';
+import { submitScore, getClientId } from './leaderboard/client';
+import type { OpenSkiesNet } from './net/openSkies';
+import type { RemotePilots } from './net/RemotePilots';
 import { cloudAutoSave } from './leaderboard/cloudSave';
 import { button, UI, FW } from './ui/theme';
 import { coached, coachBump } from './ui/hints';
 import { CoachDirector } from './ui/coach/CoachDirector';
 import { tutorialDone, markTutorialDone } from './ui/coach/coachStore';
 import { CAMPAIGN } from './missions/catalog';
-import type { MissionDef, MissionSignals, MissionAction, ZonePlacement, ScoreTally } from './missions/types';
+import type { MissionDef, MissionSignals, MissionAction, ZonePlacement, ScoreTally, TrackerItem } from './missions/types';
 import type { EndScreenHooks } from './HUD';
 import { seedFires, structurePlan, crewZones, resolveCrewZone, igniteFromPlacement, backburnLine } from './missions/scenario';
-import { WORLD3D, FLIGHT, STARTUP, BUCKET3D, DROP_PHYSICS, DROP_FX, FIREHEAD, CAMERA, FIRE3D, WATER, WASH, SPRAY, SMOKE, EMBERS, INSTRUMENTS, ROADS, MISSIONS, COMMUNITIES, SETTLEMENT3D, HELIPAD, SCORE, FOREST, TREE_TEX, STRUCT_FIRE, CRASH, BRIDGE, resolveHeliClass } from './config';
+import { WORLD3D, FLIGHT, STARTUP, BUCKET3D, DROP_PHYSICS, DROP_FX, FIREHEAD, CAMERA, FIRE3D, WATER, WASH, SPRAY, SMOKE, EMBERS, INSTRUMENTS, ROADS, MISSIONS, FFA, COMMUNITIES, SETTLEMENT3D, HELIPAD, SCORE, FOREST, TREE_TEX, STRUCT_FIRE, CRASH, BRIDGE, resolveHeliClass } from './config';
 
 // Instrument calibration factors (world units → real-world HUD units). Derived from
 // the FLIGHT caps so the gauges stay consistent if those are retuned.
@@ -188,7 +191,7 @@ export class Game {
   private won = false;
   private lost = false; // C3: every structure destroyed → mission failed (latches the sim off)
   private crashed = false; // airframe destroyed (a Game-level loss, any mission) — explosion has fired
-  private crashCause: 'tree' | 'impact' | 'airframe' | 'bridge' | null = null; // why the wreck — picks the mayday copy
+  private crashCause: 'tree' | 'impact' | 'airframe' | 'bridge' | 'collision' | null = null; // why the wreck — picks the mayday copy
   /** The scenic bridges on this map (empty on maps without any / when BRIDGE.enabled is false). Public for QA via __game. */
   bridges: Bridge[] = [];
   // Per-bridge clean-pass tracking (indices align with `bridges`): are we under it, which side we
@@ -275,6 +278,17 @@ export class Game {
   private readonly baseSites: { x: number; z: number }[] = []; // ALL lakeside bases (home + forward refuel pads) — drives nearest-base refuel + RTB
   private readonly helipadXZ: { x: number; z: number; yaw: number } | null; // home cold-start landing pad (off the home depot)
   private firesInitial = 0; // active fire count captured once the scenario is seeded
+  // ENDLESS free-for-all ("Open Skies"): the never-ending spawner + live score. Set from mission.endless.
+  private readonly endless: boolean = false;
+  private ffaSpawnTimer = 0; // seconds since the last ambient fire top-up (vs FFA.spawnEverySec)
+  private ffaBoardTimer = 0; // seconds since the last shared-board score push (vs FFA.boardEverySec)
+  private ffaScore = 0; // live cumulative free-for-all score (fires knocked down + accurate-drop bonus)
+  // Open Skies live presence (Slice 3): the realtime transport + ghost-pilot view (both code-split,
+  // lazily created when endless AND Supabase is configured; null otherwise → solo, no ghosts).
+  private openSkies: OpenSkiesNet | null = null;
+  private remotePilots: RemotePilots | null = null;
+  private ffaNetSendTimer = 0; // seconds since the last own-pose broadcast (vs 1/FFA.netSendHz)
+  private ffaInvuln = 0; // post-respawn collision immunity (s) — can't be re-killed by a ship camping the pad
   private missionElapsed = 0; // seconds the mission has been active (stops on win/lose)
   private readonly end?: EndScreenHooks;
 
@@ -484,6 +498,12 @@ export class Game {
       sizeZ: this.fireField.worldSizeZ,
     }, tier.current.name !== 'low'); // real PBR ground grain on med/high; low stays fully procedural
     this.scene.add(terrain.mesh);
+    // LOAD-PERF: the heavy per-vertex BIOME colour pass is streamed off the boot critical path (the mesh
+    // ships at frame 1 with a flat neutral fallback colour; the real biome colours fill in over the next
+    // few frames under the cold-start spool). Queued FIRST so the ground colours in before the cosmetic
+    // lake/river/road discs. Geometry + normals are already final and synchronous, so the ground is solid
+    // and correctly shaped immediately — only the colour is deferred (like the lakes/forest below).
+    this.deferredBuild.push((budgetMs) => terrain.colorStep(budgetMs));
 
     // One shared animated water material across every lake (B1), wired to the shared
     // FrameContext (time/wind) + ripple pool. Disc tessellation scales with the tier.
@@ -845,6 +865,13 @@ export class Game {
 
     this.runtime = new MissionRuntime(this.mission);
     this.director = new MissionDirector(this.mission); // reactive arc (briefing/beats/debrief)
+    // Open Skies: a never-met `survive` objective + no `fails` means the runtime never ends — Game's
+    // endless driver (stepEndless) keeps fires coming and tallies the live free-for-all score.
+    this.endless = !!this.mission.endless;
+    // Live presence (Slice 3): lazily connect the realtime channel + ghost-pilot view so OTHER players
+    // appear in your sky. Dynamic-imported (the realtime client is code-split off the solo bundle) and a
+    // no-op when Supabase is unconfigured — the free-for-all stays fully playable solo either way.
+    if (this.endless) void this.initOpenSkies();
 
     this.chase = new ChaseCamera(aspect, this.world);
     this.input = new Input(container);
@@ -1063,6 +1090,9 @@ export class Game {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    if (this.endless) this.postFfaScore(); // capture the final free-for-all score before tearing down
+    this.openSkies?.close(); // leave the presence channel (others see us drop on staleness)
+    this.remotePilots?.dispose(); // detach ghost helis from the scene
     if (this.accentFoliageTimer) clearTimeout(this.accentFoliageTimer);
     this.audio.dispose(); // CLOSE the AudioContext — browsers cap ~6/page, so retries would go silent
     this.input.dispose(); // window key listeners + the touch overlay (+ help modal scrim)
@@ -1388,6 +1418,7 @@ export class Game {
     // structures they reach. The MISSION decides win/lose (below), not these directly. ---
     if (!frozen) {
       this.fireSystem.update(dtMs, this.wind);
+      if (this.endless) this.stepEndless(dt); // Open Skies: top up fires + tally the live score
       this.structures.update(dtMs, this.fireSystem.active());
       const sig = this.missionSignals();
       this.runtime.update(sig);
@@ -1515,13 +1546,25 @@ export class Game {
     const puff = this.smokeAccum >= SMOKE.emitInterval;
     if (puff) this.smokeAccum -= SMOKE.emitInterval;
     if (puff) {
+      const scx = this.chase.camera.position.x;
+      const scz = this.chase.camera.position.z;
       for (const f of activeFires) {
         const heat = fireHeat(f);
         if (heat <= SMOKE.minIntensity) continue;
         const crown = f.y + SMOKE.crownBase + SMOKE.crownPerSize * f.size;
         // Floor of 2 so even a small spot fire throws a readable column, scaling up to a dense
         // wall of puffs for a big blaze (which then obscures its own seat).
-        const puffs = 2 + Math.round(heat * (SMOKE.maxPuffsPerBurst - 2));
+        let puffs = 2 + Math.round(heat * (SMOKE.maxPuffsPerBurst - 2));
+        // Distance-gate the spawn budget: a far fire (small on-screen) emits toward the FLOOR, so the
+        // fixed pool isn't drained by columns the player can't see (which would starve near columns to
+        // flicker on heavy stages). Floor of 2 keeps every fire's column present, never zero. O(1).
+        const dist = Math.hypot(f.x - scx, f.z - scz);
+        const near = THREE.MathUtils.clamp(
+          1 - (dist - SMOKE.spawnNearDist) / (SMOKE.spawnFarDist - SMOKE.spawnNearDist),
+          0,
+          1,
+        );
+        puffs = 2 + Math.round((puffs - 2) * near);
         for (let k = 0; k < puffs; k++) this.smoke.emit(f.x, crown, f.z, heat);
       }
       // Burning structures throw their own column off the rooftop — the base belches a heavy one.
@@ -1782,6 +1825,20 @@ export class Game {
             ? 'Bucket dragging — climb! (spilling water)'
             : 'Bucket dragging — climb!'
           : this.scoopHint(overWater, scooping));
+
+    // Open Skies live presence: broadcast our pose + render ghost pilots. Outside the frozen guard so
+    // remote pilots keep flying even while our own sim is paused (cold start / crash). No-op when solo.
+    if (this.endless) this.stepPresence(dt);
+
+    // Drive the DROP "bucket": the water level rises/drains inside the action button (carry + spend
+    // fused into one element). Inactive on crew/torch loadouts (no bucket on the line); "detached"
+    // reads NO until a fresh bucket is rigged at a base.
+    this.input.setBucket(this.capacity > 0 ? this.water / this.capacity : 0, {
+      active: this.payloadMode === 'water',
+      scooping,
+      detached: this.payloadMode === 'water' && !this.bucketAttached,
+    });
+
     this.hud.update({
       water: this.water,
       waterMax: this.capacity,
@@ -1824,7 +1881,8 @@ export class Game {
       lost: this.lost,
       score: this.finalScore,
       // Campaign layer: live objective checklist, fuel gauge, crew landing-zone radar blips.
-      objectives: this.runtime.tracker,
+      // Open Skies swaps the goal/fail checklist for its live "fires out / score" readout.
+      objectives: this.endless ? this.ffaTracker() : this.runtime.tracker,
       fuel: this.fuelSim ? this.fuelSim.fuel : undefined,
       fuelLow: this.fuelSim ? this.fuelSim.low : undefined,
       zones: this.crew ? this.crew.views.map((v) => ({ x: v.x, z: v.z, active: v.active, done: v.done, home: v.home, lost: v.lost })) : undefined,
@@ -1982,6 +2040,115 @@ export class Game {
     };
   }
 
+  /**
+   * Endless free-for-all driver (Open Skies). Two jobs, both O(1)/frame: keep the sky lit by topping
+   * fires up toward `FFA.targetActive` on a cadence (reusing the same `random` placement + fuel-snapping
+   * the opening fires use, so a spawned fire always catches on real in-province land), and tally a LIVE
+   * cumulative score from fires knocked down + accurate drops. Runs only when `mission.endless`.
+   */
+  private stepEndless(dt: number): void {
+    this.ffaSpawnTimer += dt;
+    if (this.ffaSpawnTimer >= FFA.spawnEverySec) {
+      this.ffaSpawnTimer = 0;
+      if (this.fireSystem.activeCount < FFA.targetActive) {
+        igniteFromPlacement(
+          this.world,
+          this.fireSystem,
+          { at: 'random', count: 1, size: 'small' },
+          { vx: this.wind.vx, vz: this.wind.vz },
+          this.fireBoundX,
+          this.fireBoundZ,
+        );
+      }
+    }
+    this.ffaScore = this.fireSystem.doused * FFA.pointsPerFire + this.scoreDropsEffective * FFA.pointsPerHit;
+
+    // Push the running score to the shared per-day board on a cadence so others see you climb live.
+    // submitScore is fire-and-forget + no-ops when Supabase is unconfigured (board reads "offline").
+    // The board view (mission_best) takes each pilot's MAX, and ffaScore only grows → the latest push
+    // IS the live standing. Row cost is bounded by the cadence; an upsert RPC is a clean follow-up.
+    this.ffaBoardTimer += dt;
+    if (this.ffaBoardTimer >= FFA.boardEverySec) {
+      this.ffaBoardTimer = 0;
+      this.postFfaScore();
+    }
+  }
+
+  /** Post the live free-for-all score to today's shared Open Skies board (fire-and-forget). */
+  private postFfaScore(): void {
+    if (!this.endless || this.ffaScore <= 0) return;
+    void submitScore({ pilot: this.pilotName ?? 'Pilot', missionId: this.mission.id, score: this.ffaScore, timeS: this.missionElapsed });
+  }
+
+  /** Lazily wire the live-presence layer: dynamic-import the (code-split) transport + ghost view,
+   *  connect the shared channel, and stash both. Best-effort — any failure (offline / unconfigured /
+   *  load error) just leaves Open Skies as a solo round with no ghosts. */
+  private async initOpenSkies(): Promise<void> {
+    try {
+      const [{ connectOpenSkies }, { RemotePilots }] = await Promise.all([import('./net/openSkies'), import('./net/RemotePilots')]);
+      if (this.disposed) return; // Game torn down while the chunks loaded
+      const net = connectOpenSkies(this.mission.id, { id: getClientId(), name: this.pilotName ?? 'Pilot', heli: this.heliId ?? '' }, FFA.netStaleMs);
+      if (!net) return; // Supabase unconfigured → solo
+      if (this.disposed) {
+        net.close();
+        return;
+      }
+      this.openSkies = net;
+      this.remotePilots = new RemotePilots(this.scene);
+    } catch {
+      /* presence is optional — the free-for-all plays fine solo */
+    }
+  }
+
+  /** Per-frame presence step (Open Skies): broadcast our own pose on a cadence and render the ghosts.
+   *  Runs regardless of `frozen` so remote pilots keep flying even while our own sim is paused (cold
+   *  start / crash). No-op until the presence layer has connected (or forever, when solo). */
+  private stepPresence(dt: number): void {
+    if (!this.openSkies || !this.remotePilots) return;
+    this.ffaNetSendTimer += dt;
+    if (this.ffaNetSendTimer >= 1 / FFA.netSendHz) {
+      this.ffaNetSendTimer = 0;
+      const p = this.heliSim.position;
+      this.openSkies.sendPose({
+        x: p.x,
+        y: p.y,
+        z: p.z,
+        yaw: this.heliSim.yaw,
+        bank: this.heliSim.bank,
+        pitch: this.heliSim.pitch,
+        agl: this.heliSim.agl,
+        fill: this.capacity > 0 ? this.water / this.capacity : 0,
+        flags: 0,
+        score: this.ffaScore,
+      });
+    }
+    this.remotePilots.sync(this.openSkies.remotes(), dt);
+
+    if (this.ffaInvuln > 0) this.ffaInvuln -= dt; // tick down the post-respawn collision immunity
+
+    // Pilot-vs-pilot: a mid-air collision with another ship blows us out of the sky. Detected LOCALLY
+    // against the ghost we render, so both pilots independently explode (no host / authority needed).
+    // Gated to actual flight — engine up, airborne, not already going down, past the respawn-immunity
+    // window — so helis parked at a base (or just-respawned over the pad) don't "collide".
+    if (this.ffaInvuln <= 0 && this.engineStarted && !this.crashed && !this.heliSim.crashing && !this.inBriefing && this.heliSim.agl >= FFA.collideMinAgl) {
+      const p = this.heliSim.position;
+      if (this.remotePilots.collides(p.x, p.y, p.z, FFA.collideRadius, FFA.collideMinAgl)) this.detonate('collision');
+    }
+  }
+
+  /** The live in-flight readout for Open Skies — reuses the objective checklist (it climbs + flashes on
+   *  each douse). STABLE labels (no objPrev leak over a long session); milestone targets keep both
+   *  counters always "chasing" so they never latch done and the run stays endless. */
+  private ffaTracker(): TrackerItem[] {
+    const out = this.fireSystem.doused;
+    const fireTarget = (Math.floor(out / FFA.fireMilestone) + 1) * FFA.fireMilestone;
+    const scoreTarget = (Math.floor(this.ffaScore / FFA.scoreMilestone) + 1) * FFA.scoreMilestone;
+    return [
+      { label: 'Fires knocked down', current: out, target: fireTarget, done: false, failed: false, kind: 'goal' },
+      { label: 'Score', current: this.ffaScore, target: scoreTarget, done: false, failed: false, kind: 'goal' },
+    ];
+  }
+
   /** Build the on-screen mute toggle (mounted under the radar). A round glass button that flips the
    *  rotor audio + reflects state; subscribes to HeliAudio so the 'M' key keeps the glyph in sync. */
   private buildMuteButton(): HTMLDivElement {
@@ -2032,7 +2199,13 @@ export class Game {
       // Daily Burn streak (audit VISION-3): a clear today extends the consecutive-UTC-day chain. The
       // streak store is idempotent per UTC day, so a same-day replay (or a per-frame outcome latch)
       // never double-counts. Gated to daily ids so a campaign clear can't bump the daily streak.
-      if (isDailyId(this.mission.id)) recordDailyClear();
+      // Daily Burn is retry-until-cleared: the WIN both extends the streak AND locks today's burn so it
+      // can't be re-flown until the next UTC midnight (the home card + ?daily route gate on this). A loss
+      // never reaches here, so retries stay open until the clear.
+      if (isDailyId(this.mission.id)) {
+        recordDailyClear();
+        markDailyCompleted();
+      }
       const clearedAfter = getProgress().completed.length;
       this.newlyUnlocked = newlyUnlockedHelis(clearedBefore, clearedAfter).map((h) => ({ name: h.name, tagline: h.tagline }));
       // Global leaderboard (optional): fire-and-forget — submitScore never throws and no-ops
@@ -2073,7 +2246,7 @@ export class Game {
    * catch-all (e.g. a timeout, or a structures-min loss with everything still standing).
    */
   private failCause(): 'tree' | 'impact' | 'airframe' | 'bridge' | 'fuel' | 'casualty' | 'timeout' | 'structures' | 'fire' {
-    if (this.crashed) return this.crashCause ?? 'airframe'; // a crash isn't a mission-rule loss
+    if (this.crashed) return this.crashCause === 'collision' ? 'impact' : (this.crashCause ?? 'airframe'); // a crash isn't a mission-rule loss
     if (this.fuelLost) return 'fuel'; // universal dry-tank loss (latched Game-level, runtime may not have failed)
     // Otherwise map the constraint that actually latched (precise — not a re-guess from signals).
     switch (this.runtime.failedKind) {
@@ -2098,8 +2271,67 @@ export class Game {
    */
   private finishCrash(): void {
     if (this.won || this.lost) return;
+    // Free-for-all: a crash is NOT a game over — pop back into the sky and keep flying (score persists).
+    if (this.endless) {
+      this.respawnInFlight();
+      return;
+    }
     this.lost = true;
     this.finalScore = this.runtime.score;
+  }
+
+  /**
+   * Free-for-all respawn: once the brief death hold elapses, put the airframe back in the AIR over home
+   * with the engine already running (NO cold-start ritual) and a fresh, pristine airframe — the endless
+   * round continues and the accumulated score is kept. Reuses the airborne-spawn pose and snaps the slung
+   * bucket directly under the heli so the rope doesn't streak across the map from the crash site.
+   */
+  private respawnInFlight(): void {
+    // Clear the crash state.
+    this.crashed = false;
+    this.crashHold = 0;
+    this.crashCause = null;
+    this.heliSim.crashing = false;
+    this.heliSim.crashLanded = false;
+    // Back in the air over home, engine running (no spool), level attitude. The home pad is the SAME
+    // deterministic XZ for every pilot, so offset each player by a stable per-client angle around it —
+    // two pilots who died together then don't respawn exactly overlapped (which would re-collide the
+    // instant immunity ends).
+    const pad = this.helipadXZ ?? { x: 0, z: 0, yaw: 0 };
+    let h = 0;
+    const cid = getClientId();
+    for (let i = 0; i < cid.length; i++) h = (Math.imul(31, h) + cid.charCodeAt(i)) | 0;
+    const ang = (((h % 360) + 360) % 360) * (Math.PI / 180);
+    const off = FFA.collideRadius * 2;
+    const rx = pad.x + Math.cos(ang) * off;
+    const rz = pad.z + Math.sin(ang) * off;
+    const floorY = this.landingFloorAt(rx, rz);
+    this.heliSim.hoverAt(rx, rz, floorY);
+    this.heliSim.yaw = pad.yaw;
+    this.heliSim.bank = 0;
+    this.heliSim.pitch = 0;
+    this.engineStarted = true;
+    this.rotorRpm = 1;
+    // Fresh airframe; clear lingering warnings (score is NOT reset — the free-for-all tally carries over).
+    this.healthSim.reset();
+    this.airframeHitCd = 0;
+    this.ffaInvuln = FFA.respawnInvulnSec; // brief collision immunity so a camped pad can't insta-kill us
+    this.lowFuelAlert = null;
+    this.hud.setAlert(null);
+    // Re-rig a fresh, empty bucket snapped under the heli (water mode) — no map-spanning rope snap.
+    if (this.payloadMode === 'water') {
+      this.bucketAttached = true;
+      this.water = 0;
+      this.bucketFull = false;
+      this.dumping = false;
+      this.dropActive = false;
+      this.bucket.group.visible = true;
+      this.rope.visible = true;
+      const hp = this.heliSim.position;
+      this.bucketSim.parkAt(hp.x, hp.y - BUCKET3D.ropeLength, hp.z);
+    }
+    this.hud.pushComms('dispatch', 'Back in the air. Get after it.', 'info');
+    this.audio.playSquelch('info');
   }
 
   /**
@@ -2126,10 +2358,12 @@ export class Game {
    * — then starts the death hold (`crashed` freezes gameplay; the modal waits CRASH.deathHold so the
    * player SEES the crash). Fires ONCE (guarded on `crashed`). `cause` picks the radio line.
    */
-  private detonate(cause: 'tree' | 'impact' | 'airframe' | 'bridge'): void {
+  private detonate(cause: 'tree' | 'impact' | 'airframe' | 'bridge' | 'collision'): void {
     if (this.crashed) return; // the wreck only blows once
     this.crashed = true;
-    this.crashHold = CRASH.deathHold;
+    // Free-for-all: linger only briefly on the fireball, then respawn in flight (finishCrash). A normal
+    // mission holds longer before the MISSION FAILED modal.
+    this.crashHold = this.endless ? FFA.respawnSec : CRASH.deathHold;
     const p = this.heliSim.position;
     // Explosion: a fountain of sparks + a few dense smoke puffs off the impact point (reuses the
     // fire VFX pools — no new scene objects, no recompiles), plus a hard red screen flash + boom.
@@ -2145,7 +2379,9 @@ export class Game {
           ? 'Heavy impact — she’s gone. Mayday.'
           : cause === 'bridge'
             ? 'She’s in the river by the bridge — mayday.'
-            : 'Mayday — airframe down!';
+            : cause === 'collision'
+              ? 'Mid-air! We tangled with another ship — going down!'
+              : 'Mayday — airframe down!';
     this.hud.pushComms('warning', message, 'alert');
     this.audio.playSquelch('alert');
   }
@@ -2824,7 +3060,7 @@ export class Game {
     if (wasted) this.scoreDropsWasted++;
     else this.scoreDropsEffective++;
     this.hud.pushComms('dispatch', text, urgency);
-    this.hud.flashGauge(cssHex(color), DROP_FX.resultGaugeTintMs);
+    this.input.flashBucket(cssHex(color), DROP_FX.resultGaugeTintMs); // tint the DROP bucket's % readout with the result
   }
 }
 

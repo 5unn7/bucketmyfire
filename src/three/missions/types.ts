@@ -248,6 +248,11 @@ export interface MissionDef {
   // = backburn the line, then re-rig to the bucket to guard.)
   loadouts?: ('water' | 'crew' | 'torch')[];
   startLoaded?: boolean; // crew payload: spawn with the FIRST crew already aboard (skip the opening base pickup → fly straight to the first LZ)
+  // ENDLESS free-for-all ("Open Skies", missions/freeforall.ts): no win, no lose — Game keeps the fires
+  // coming (config FFA spawner) and tallies a LIVE cumulative score instead of an end-of-run one. The def
+  // pairs this with a never-met `survive` objective + no `fails` so the runtime never ends. Omit → a normal
+  // mission (byte-identical for the 8 campaign + daily defs, which never set it).
+  endless?: boolean;
   fuel?: boolean; // enable the FuelSim range model
   fires: FirePlacement[];
   structures?: StructureSpec;

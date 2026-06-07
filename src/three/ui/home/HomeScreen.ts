@@ -10,11 +10,11 @@
  * → ?daily, a mission's Fly) comes in via the `HomeNav` callbacks so main.ts stays the routing authority.
  */
 import type { MissionDef } from '../../missions/types';
-import { loadProfile } from '../profile';
+import { loadProfile, MAPS } from '../profile';
 import { getProgress, bestScore, bestStars, isUnlocked } from '../../missions/progress';
 import { buildDailyMission, dailyDateLabel } from '../../missions/daily';
 import { dailyStreak } from '../../missions/streak';
-import { hasPlayedDaily, dailyResetCountdown } from '../../missions/dailyPlay';
+import { hasCompletedDaily, dailyResetCountdown } from '../../missions/dailyPlay';
 import { missionPoster } from '../missionArt';
 import { careerScore, rankFor, nextRankProgress } from '../../missions/rank';
 import { isConfigured, fetchCareerStanding } from '../../leaderboard/client';
@@ -75,6 +75,9 @@ export class HomeScreen {
     this.nextId = next.id;
     const total = campaign.length;
     const num = String(next.index + 1).padStart(2, '0');
+    // Region the mission is set in (shares ids with the MAPS picker; omitted `map` → default SK) — shown
+    // as a pin pill on the card so "Mission 04" carries WHERE it is, not just its number.
+    const region = MAPS.find((mm) => mm.id === (next.map ?? MAPS[0].id))?.name ?? MAPS[0].name;
     const poster = missionPoster(next.id);
     const stars = bestStars(next.id);
     const best = bestScore(next.id);
@@ -82,10 +85,10 @@ export class HomeScreen {
 
     const daily = buildDailyMission(new Date());
     const streak = dailyStreak(new Date());
-    const ignitions = daily.fires?.length ?? 0;
-    // One play per day: once today's burn is flown the card locks to a "resets in Xh" state and
-    // auto-collapses (nothing actionable left), but the pilot can still expand it to re-read the brief.
-    const played = hasPlayedDaily();
+    // Retry until cleared, then locked: while today's burn is unbeaten the card stays actionable ("Fly
+    // today" — retry as many times as it takes). Once CLEARED it locks to a "resets in Xh" / "Cleared"
+    // state; the brief stays readable, it just can't be re-flown until midnight.
+    const dailyCleared = hasCompletedDaily();
 
     const grank = isConfigured() ? `<div class="grank"><b>#–</b><span>Global</span></div>` : '';
 
@@ -117,33 +120,28 @@ export class HomeScreen {
   </header>
 
   <div class="zone z-daily">
-  <!-- daily burn -->
+  <!-- daily burn — compact dispatch slip: leads with the brand mark (same logo as the dossier),
+       no ignition pill; clearing today's burn flips it to a "Cleared · resets in Xh" locked state. -->
   <div class="sec rise d2"><span class="tag">Daily Burn</span><span class="line"></span><span class="stamp">Shared fire</span></div>
-  <section class="card warm cut crt rise d2${played ? ' collapsed' : ''}"><span class="crt-streak"></span>
-    <button class="daily-head row between" data-act="daily-toggle" aria-label="Toggle Daily Burn details">
-      <div class="row" style="gap:12px;">
-        <div class="glyph flicker">${FLAME_ONLY}</div>
-        <div><div style="font-size:var(--fs-title);font-weight:var(--fw-black);">Today's Burn</div>
-        <div class="mono" style="font-size:var(--fs-tag);letter-spacing:.14em;color:var(--dim);margin-top:3px;">${dailyDateLabel(new Date()).toUpperCase()}</div></div>
+  <section class="card warm cut crt daily rise d2"><span class="crt-streak"></span>
+    <div class="drow">
+      <div class="glyph flicker">${FLAME}</div>
+      <div class="grow">
+        <div class="row between" style="gap:8px;">
+          <div>
+            <div style="font-size:var(--fs-title);font-weight:var(--fw-black);">Today's Burn</div>
+            <div class="mono" style="font-size:var(--fs-tag);letter-spacing:.14em;color:var(--dim);margin-top:3px;">${dailyDateLabel(new Date()).toUpperCase()}</div>
+          </div>
+          ${dailyCleared ? `<span class="done-badge">${ic('check')}Cleared</span>` : `<span class="streak">${FLAME_ONLY}${streak}-day</span>`}
+        </div>
+        <p class="dbrief">${daily.brief}</p>
+        <div class="row between" style="margin-top:11px;gap:10px;">
+          <span class="ctx">${ic('clock')}${dailyCleared ? `Resets in ${dailyResetCountdown()}` : 'Resets midnight'}</span>
+          ${dailyCleared
+            ? `<button class="btn ember sm locked" disabled>${ic('lock')}Cleared today</button>`
+            : `<button class="btn ember sm" data-act="daily">${ic('play')}Fly today</button>`}
+        </div>
       </div>
-      <div class="row" style="gap:8px;">
-        ${played ? `<span class="done-badge">${ic('check')}Flown</span>` : `<span class="streak">${FLAME_ONLY}${streak}-day</span>`}
-        <span class="chev">${ic('chevron-down')}</span>
-      </div>
-    </button>
-    <div class="daily-body">
-    <p style="margin-top:13px;font-size:var(--fs-body);line-height:1.45;color:rgba(255,255,255,0.86);padding-left:12px;border-left:3px solid var(--fire);">${daily.brief}</p>
-    <div class="ctx-row" style="margin-top:12px;">
-      <span class="ctx">${ic('map')}Saskatchewan</span>
-      <span class="ctx hot">${ic('fire')}${ignitions} ignitions</span>
-      <span class="ctx">${ic('clock')}${played ? `Resets in ${dailyResetCountdown()}` : 'Resets midnight'}</span>
-    </div>
-    <div class="row between" style="margin-top:15px;">
-      <span class="mono" style="font-size:var(--fs-micro);letter-spacing:.16em;text-transform:uppercase;color:var(--faint);font-weight:var(--fw-bold);">Same fire worldwide</span>
-      ${played
-        ? `<button class="btn ember sm locked" disabled>${ic('lock')}Played today</button>`
-        : `<button class="btn ember sm" data-act="daily">${ic('play')}Fly today</button>`}
-    </div>
     </div>
   </section>
   </div>
@@ -155,20 +153,20 @@ export class HomeScreen {
     ${poster ? `<img class="img" src="${poster}" alt="">` : `<div class="fallback"><b>${num}</b></div>`}
     <div class="scrim"></div>
     <div class="brackets"><i></i><i></i><i></i></div>
-    <div class="inner" style="min-height:244px;">
-      <div class="row" style="gap:8px;"><span class="chip">Mission ${num}</span><span class="chip ghost">Campaign</span></div>
+    <div class="inner">
+      <div class="row" style="gap:7px;"><span class="chip">Mission ${num}</span><span class="chip ghost reg">${ic('pin')}${region}</span></div>
       <div class="grow" style="min-height:8px;"></div>
       <h2 class="h-big">${next.name}</h2>
-      <p class="clamp2" style="margin-top:8px;font-size:var(--fs-body);line-height:1.42;color:rgba(255,255,255,0.84);max-width:32ch;text-shadow:0 1px 6px rgba(0,0,0,0.75);">${next.tagline ?? next.brief}</p>
-      <div class="row" style="gap:12px;margin-top:12px;">
+      <p class="clamp2 contbrief" style="margin-top:8px;font-size:var(--fs-body);line-height:1.42;color:rgba(255,255,255,0.84);max-width:32ch;text-shadow:0 1px 6px rgba(0,0,0,0.75);">${next.tagline ?? next.brief}</p>
+      <div class="row" style="gap:12px;margin-top:11px;">
         <span class="stars">${STAR(stars >= 1)}${STAR(stars >= 2)}${STAR(stars >= 3)}</span>
         <span class="mono" style="font-size:var(--fs-meta);color:rgba(255,255,255,0.78);">${best != null ? `Best <b style="color:var(--menu);font-weight:var(--fw-bold)">${best.toLocaleString('en-US')}</b>` : 'Not flown yet'}</span>
       </div>
-      <div style="margin-top:12px;">
+      <div class="contprog" style="margin-top:11px;">
         <div class="barrow"><span class="l">Campaign</span><span class="r">${cleared} / ${total} cleared</span></div>
         <div class="bar"><i style="width:${campFrac}%"></i></div>
       </div>
-      <button class="btn primary block" style="margin-top:16px;" data-act="continue">${ic('play')}${best != null ? 'Replay mission' : 'Fly mission'}</button>
+      <button class="btn primary block" style="margin-top:14px;" data-act="continue">${ic('play')}${best != null ? 'Replay mission' : 'Fly mission'}</button>
     </div>
   </article>
   </div>
@@ -202,11 +200,6 @@ ${railNav('home')}`;
         return this.nav.onContinue(this.nextId);
       case 'daily':
         return this.nav.onDaily();
-      case 'daily-toggle': {
-        // Collapse/expand the Daily Burn card (the whole header is the toggle).
-        this.root.querySelector('.z-daily .card.crt')?.classList.toggle('collapsed');
-        return;
-      }
       case 'campaign':
         return navigateRail('campaign'); // region → mission drilldown (the rail's Campaign tab)
       case 'board':

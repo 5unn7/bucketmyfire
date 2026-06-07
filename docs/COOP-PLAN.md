@@ -1,5 +1,11 @@
 # Co-op Development Plan
 
+> **⚠️ SUPERSEDED (2026-06-07) by `docs/FREE-FOR-ALL.md`.** The multiplayer mode pivoted from this
+> host-authoritative co-op to a lightweight **free-for-all** (same map, endless fires, personal
+> score). This document is retained as the reference for the road not taken — the deterministic
+> fire-sync / host-migration / drop-arbiter machinery here is NOT being built. Read `FREE-FOR-ALL.md`
+> for the live plan.
+
 > **Status:** approved plan, **paused — sequenced AFTER the world-foundation pivot.** Do not
 > start the build until the rectangular-playfield / map-foundation / mission-factory work has
 > landed. **Dependency:** that pivot rebases the **fire grid from square 160² to rectangular

@@ -1,6 +1,6 @@
 /**
  * Card — a frosted surface with an optional header (meta + title + trailing slot) and a body.
- * Folds the hand-rolled cards in `menuShared` / `ShopScreen`. `selectable` adds the hover-lift +
+ * Folds the hand-rolled cards in `menuShared`. `selectable` adds the hover-lift +
  * accent ring used by the map / aircraft / mission pickers (drive it with `setSelected`).
  */
 
