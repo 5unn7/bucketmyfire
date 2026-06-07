@@ -71,3 +71,12 @@ function wire(form: HTMLFormElement): void {
 }
 
 document.querySelectorAll<HTMLFormElement>('form[data-capture]').forEach(wire);
+
+// The gear poster cards' "Notify me" CTAs are anchors to #waitlist (smooth-scroll via CSS); once the
+// funnel is in view, drop the cursor into its email field so the visitor can type straight away.
+document.querySelectorAll<HTMLAnchorElement>('a[data-notify]').forEach((a) =>
+  a.addEventListener('click', () => {
+    const input = document.querySelector<HTMLInputElement>('#waitlist input');
+    if (input) setTimeout(() => input.focus({ preventScroll: true }), 420);
+  }),
+);

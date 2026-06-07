@@ -61,6 +61,7 @@
       }
       html {
         -webkit-text-size-adjust: 100%;
+        scroll-behavior: smooth;
       }
       body {
         margin: 0;
@@ -275,48 +276,152 @@
         gap: 14px;
         margin-top: 24px;
       }
-      .item {
-        background: var(--card);
-        border: 1px solid var(--hair);
-        border-radius: 14px;
+      /* — Poster card — the game's hero-card look (cslide/artcard) recreated in the shop's OWN tokens:
+         a full-bleed art tile under a bottom-weighted scrim + corner brackets, with the content stack
+         pinned to the base by AUTO-LAYOUT (margin-top:auto + gap). Used for the gear AND the waitlist. */
+      .poster {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        min-height: 244px;
+        border-radius: 16px;
         overflow: hidden;
-        transition: transform 0.14s ease, border-color 0.15s ease;
+        isolation: isolate;
+        border: 1px solid var(--hair);
+        background: var(--card);
+        /* rugged clipped corner, mirroring the game .artcard — no soft pill */
+        clip-path: polygon(0 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%);
+        transition: transform 0.14s ease, border-color 0.15s ease, box-shadow 0.2s ease;
       }
-      .item:hover {
+      .poster:hover {
         transform: translateY(-3px);
         border-color: var(--warm-hair);
+        box-shadow: 0 14px 40px rgba(0, 0, 0, 0.42);
       }
-      .item__tile {
-        position: relative;
-        aspect-ratio: 3 / 2;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border-bottom: 1px solid var(--hair);
-        background: radial-gradient(120% 110% at 50% 16%, rgba(255, 122, 69, 0.28), transparent 60%), var(--plate);
+      .poster__art {
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+        display: grid;
+        place-items: center;
+        background: radial-gradient(120% 105% at 50% 14%, rgba(255, 122, 69, 0.3), transparent 60%), var(--plate);
       }
-      .item__tile .tileflame {
-        width: 40px;
-        height: 49px;
-        opacity: 0.62;
-      }
-      /* Per-product line-art silhouette (tee / patch / print / cap) so the four pre-launch tiles read
-         as a real lineup, not four identical blanks. Stroked in the brand flame gradient. */
-      .item__tile .tileicon {
-        width: 54px;
-        height: 54px;
-        display: block;
+      /* Per-product line-art silhouette (tee / patch / print / cap), stroked in the brand flame gradient. */
+      .poster__art .tileicon {
+        width: 64px;
+        height: 64px;
         fill: none;
         stroke: url(#flameGrad);
         stroke-width: 2.2;
         stroke-linecap: round;
         stroke-linejoin: round;
-        opacity: 0.82;
+        opacity: 0.85;
       }
-      .badge {
+      .poster__scrim {
         position: absolute;
-        top: 9px;
-        right: 9px;
+        inset: 0;
+        z-index: 1;
+        pointer-events: none;
+        background: linear-gradient(180deg, rgba(8, 5, 4, 0.05) 0%, rgba(8, 5, 4, 0.12) 34%, rgba(6, 4, 3, 0.82) 76%, rgba(4, 3, 2, 0.96) 100%);
+      }
+      .poster__brackets {
+        position: absolute;
+        inset: 11px;
+        z-index: 2;
+        pointer-events: none;
+      }
+      .poster__brackets i {
+        position: absolute;
+        width: 14px;
+        height: 14px;
+        border-color: var(--warm-hair);
+        opacity: 0.7;
+      }
+      .poster__brackets i:nth-child(1) { top: 0; left: 0; border-top: 2px solid; border-left: 2px solid; }
+      .poster__brackets i:nth-child(2) { top: 0; right: 0; border-top: 2px solid; border-right: 2px solid; }
+      .poster__brackets i:nth-child(3) { bottom: 0; left: 0; border-bottom: 2px solid; border-left: 2px solid; }
+      .poster__body {
+        position: relative;
+        z-index: 3;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        padding: 13px 14px 15px;
+      }
+      .poster__top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .poster__tag {
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 1.6px;
+        text-transform: uppercase;
+        color: var(--gold);
+      }
+      /* AUTO LAYOUT: name / price / CTA pinned to the base of the poster, one gap between rows. */
+      .poster__stack {
+        margin-top: auto;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 9px;
+      }
+      .poster__nm {
+        font-size: 18px;
+        font-weight: 900;
+        line-height: 1.06;
+      }
+      .poster__pr {
+        font-size: 13px;
+        font-weight: 800;
+        color: var(--gold);
+      }
+      .poster__cta {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        border: 1px solid var(--warm-hair);
+        border-radius: 9px;
+        padding: 9px 12px;
+        font: inherit;
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--gold);
+        background: rgba(255, 194, 74, 0.08);
+        text-decoration: none;
+        cursor: pointer;
+        transition: background 0.15s ease, border-color 0.15s ease, transform 0.12s ease;
+      }
+      .poster__cta:hover {
+        background: rgba(255, 194, 74, 0.16);
+        border-color: rgba(255, 194, 74, 0.5);
+        transform: translateY(-1px);
+      }
+      /* Wide variant — the waitlist funnel as a centered poster card. */
+      .poster--wide {
+        min-height: 300px;
+        scroll-margin-top: 16px;
+      }
+      .poster--wide .poster__body {
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 28px 22px;
+      }
+      .poster--wide .mark {
+        width: 30px;
+        height: 37px;
+        margin: 0 auto 10px;
+        filter: drop-shadow(0 0 12px rgba(255, 106, 44, 0.45));
+      }
+      /* Squared status pill (no round pills — brand rule); sits inline in the poster's top row. */
+      .badge {
         font-size: 9px;
         font-weight: 900;
         letter-spacing: 1.5px;
@@ -324,22 +429,8 @@
         color: var(--gold);
         background: rgba(255, 194, 74, 0.12);
         border: 1px solid rgba(255, 194, 74, 0.4);
-        border-radius: 99px;
-        padding: 2px 8px;
-      }
-      .item__body {
-        padding: 11px 12px 13px;
-      }
-      .item__nm {
-        font-size: 13px;
-        font-weight: 700;
-        line-height: 1.2;
-      }
-      .item__pr {
-        margin-top: 4px;
-        font-size: 12px;
-        font-weight: 800;
-        color: var(--gold);
+        border-radius: 8px;
+        padding: 3px 8px;
       }
 
       /* — Story strip — */
@@ -360,23 +451,6 @@
         font-size: 14px;
         display: block;
         margin-top: 10px;
-      }
-
-      /* — Waitlist card (the funnel) — */
-      .waitlist {
-        margin: 14px 0 0;
-        background: linear-gradient(165deg, var(--card-hi), var(--card));
-        border: 1px solid var(--warm-hair);
-        border-radius: 18px;
-        padding: 28px 22px;
-        text-align: center;
-        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.4);
-      }
-      .waitlist .mark {
-        width: 30px;
-        height: 37px;
-        margin: 0 auto 12px;
-        filter: drop-shadow(0 0 12px rgba(255, 106, 44, 0.45));
       }
 
       /* — Footer — */
@@ -488,22 +562,58 @@
       <h2>The gear</h2>
       <p class="sub">Four pieces to start. Each printed on demand, named for a sortie.</p>
       <div class="gear">
-        <div class="item">
-          <div class="item__tile"><svg class="tileicon" aria-hidden="true"><use href="#gear-tee" /></svg><span class="badge">Soon</span></div>
-          <div class="item__body"><div class="item__nm">Hold the Line Tee</div><div class="item__pr">$32</div></div>
-        </div>
-        <div class="item">
-          <div class="item__tile"><svg class="tileicon" aria-hidden="true"><use href="#gear-patch" /></svg><span class="badge">Soon</span></div>
-          <div class="item__body"><div class="item__nm">Hotshot Crew Patch</div><div class="item__pr">$12</div></div>
-        </div>
-        <div class="item">
-          <div class="item__tile"><svg class="tileicon" aria-hidden="true"><use href="#gear-print" /></svg><span class="badge">Soon</span></div>
-          <div class="item__body"><div class="item__nm">First Light Print</div><div class="item__pr">$24</div></div>
-        </div>
-        <div class="item">
-          <div class="item__tile"><svg class="tileicon" aria-hidden="true"><use href="#gear-cap" /></svg><span class="badge">Soon</span></div>
-          <div class="item__body"><div class="item__nm">Tanker Cap</div><div class="item__pr">$28</div></div>
-        </div>
+        <article class="poster">
+          <div class="poster__art"><svg class="tileicon" aria-hidden="true"><use href="#gear-tee" /></svg></div>
+          <div class="poster__scrim"></div>
+          <span class="poster__brackets"><i></i><i></i><i></i></span>
+          <div class="poster__body">
+            <div class="poster__top"><span class="poster__tag">Tee</span><span class="badge">Soon</span></div>
+            <div class="poster__stack">
+              <div class="poster__nm">Hold the Line Tee</div>
+              <div class="poster__pr">$32</div>
+              <a class="poster__cta" href="#waitlist" data-notify>Notify me</a>
+            </div>
+          </div>
+        </article>
+        <article class="poster">
+          <div class="poster__art"><svg class="tileicon" aria-hidden="true"><use href="#gear-patch" /></svg></div>
+          <div class="poster__scrim"></div>
+          <span class="poster__brackets"><i></i><i></i><i></i></span>
+          <div class="poster__body">
+            <div class="poster__top"><span class="poster__tag">Patch</span><span class="badge">Soon</span></div>
+            <div class="poster__stack">
+              <div class="poster__nm">Hotshot Crew Patch</div>
+              <div class="poster__pr">$12</div>
+              <a class="poster__cta" href="#waitlist" data-notify>Notify me</a>
+            </div>
+          </div>
+        </article>
+        <article class="poster">
+          <div class="poster__art"><svg class="tileicon" aria-hidden="true"><use href="#gear-print" /></svg></div>
+          <div class="poster__scrim"></div>
+          <span class="poster__brackets"><i></i><i></i><i></i></span>
+          <div class="poster__body">
+            <div class="poster__top"><span class="poster__tag">Print</span><span class="badge">Soon</span></div>
+            <div class="poster__stack">
+              <div class="poster__nm">First Light Print</div>
+              <div class="poster__pr">$24</div>
+              <a class="poster__cta" href="#waitlist" data-notify>Notify me</a>
+            </div>
+          </div>
+        </article>
+        <article class="poster">
+          <div class="poster__art"><svg class="tileicon" aria-hidden="true"><use href="#gear-cap" /></svg></div>
+          <div class="poster__scrim"></div>
+          <span class="poster__brackets"><i></i><i></i><i></i></span>
+          <div class="poster__body">
+            <div class="poster__top"><span class="poster__tag">Cap</span><span class="badge">Soon</span></div>
+            <div class="poster__stack">
+              <div class="poster__nm">Tanker Cap</div>
+              <div class="poster__pr">$28</div>
+              <a class="poster__cta" href="#waitlist" data-notify>Notify me</a>
+            </div>
+          </div>
+        </article>
       </div>
 
       <div class="story">
@@ -512,18 +622,23 @@
     </section>
 
     <section class="block wrap">
-      <div class="waitlist">
-        <svg class="mark" aria-hidden="true"><use href="#bmf-mark" /></svg>
-        <div class="kicker">Get the drop</div>
-        <h2>Be first when it lands.</h2>
-        <p class="sub">One email the day the gear drops. The drop, then nothing else.</p>
-        <form class="capture" data-capture novalidate>
-          <input type="email" inputmode="email" autocomplete="email" placeholder="you@example.com" aria-label="Email address" />
-          <button type="submit">Notify me</button>
-        </form>
-        <p class="msg" data-msg aria-live="polite"></p>
-        <p class="capture-note">No spam. No noise. Just the drop.</p>
-      </div>
+      <article class="poster poster--wide" id="waitlist">
+        <div class="poster__art"></div>
+        <div class="poster__scrim"></div>
+        <span class="poster__brackets"><i></i><i></i><i></i></span>
+        <div class="poster__body">
+          <svg class="mark" aria-hidden="true"><use href="#bmf-mark" /></svg>
+          <div class="kicker">Get the drop</div>
+          <h2>Be first when it lands.</h2>
+          <p class="sub">One email the day the gear drops. The drop, then nothing else.</p>
+          <form class="capture" data-capture novalidate>
+            <input type="email" inputmode="email" autocomplete="email" placeholder="you@example.com" aria-label="Email address" />
+            <button type="submit">Notify me</button>
+          </form>
+          <p class="msg" data-msg aria-live="polite"></p>
+          <p class="capture-note">No spam. No noise. Just the drop.</p>
+        </div>
+      </article>
     </section>
 
     <footer>
