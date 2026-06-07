@@ -5,15 +5,16 @@
  * bottom RAIL (Home · Campaign · Co-op · Hangar · Shop). Single-viewport / no-scroll per CLAUDE.md.
  *
  * Pure DOM over the shared `.bmf-app` stylesheet (styles.ts) — no Three. Rail tabs open the existing
- * branded panels (menus.ts): Campaign drills theatre → mission, Shop is its own screen; Board +
+ * branded panels (menus.ts): Campaign drills region → mission, Shop is its own screen; Board +
  * Settings moved OFF the rail onto the dossier card. Navigation that reloads (Continue → ?m=, Daily
- * → ?daily, a sortie's Fly) comes in via the `HomeNav` callbacks so main.ts stays the routing authority.
+ * → ?daily, a mission's Fly) comes in via the `HomeNav` callbacks so main.ts stays the routing authority.
  */
 import type { MissionDef } from '../../missions/types';
 import { loadProfile } from '../profile';
 import { getProgress, bestScore, bestStars, isUnlocked } from '../../missions/progress';
 import { buildDailyMission, dailyDateLabel } from '../../missions/daily';
 import { dailyStreak } from '../../missions/streak';
+import { hasPlayedDaily, dailyResetCountdown } from '../../missions/dailyPlay';
 import { missionPoster } from '../missionArt';
 import { careerScore, rankFor, nextRankProgress } from '../../missions/rank';
 import { isConfigured, fetchCareerStanding } from '../../leaderboard/client';
@@ -38,7 +39,7 @@ export class HomeScreen {
   constructor(parent: HTMLElement, private catalog: MissionDef[], private nav: HomeNav) {
     injectHomeStyles();
     // Seed the rail router: the catalog (Campaign/Board read it) + the boot hook the mission cards
-    // call to fly a sortie (onContinue → ?m= page-reload nav, owned by main.ts).
+    // call to fly a mission (onContinue → ?m= page-reload nav, owned by main.ts).
     setMenuCatalog(catalog, nav.onContinue);
     this.root = document.createElement('div');
     this.root.className = 'bmf-app home';
@@ -82,6 +83,9 @@ export class HomeScreen {
     const daily = buildDailyMission(new Date());
     const streak = dailyStreak(new Date());
     const ignitions = daily.fires?.length ?? 0;
+    // One play per day: once today's burn is flown the card locks to a "resets in Xh" state and
+    // auto-collapses (nothing actionable left), but the pilot can still expand it to re-read the brief.
+    const played = hasPlayedDaily();
 
     const grank = isConfigured() ? `<div class="grank"><b>#–</b><span>Global</span></div>` : '';
 
@@ -115,24 +119,31 @@ export class HomeScreen {
   <div class="zone z-daily">
   <!-- daily burn -->
   <div class="sec rise d2"><span class="tag">Daily Burn</span><span class="line"></span><span class="stamp">Shared fire</span></div>
-  <section class="card warm cut crt rise d2"><span class="crt-streak"></span>
-    <div class="row between">
+  <section class="card warm cut crt rise d2${played ? ' collapsed' : ''}"><span class="crt-streak"></span>
+    <button class="daily-head row between" data-act="daily-toggle" aria-label="Toggle Daily Burn details">
       <div class="row" style="gap:12px;">
         <div class="glyph flicker">${FLAME_ONLY}</div>
         <div><div style="font-size:var(--fs-title);font-weight:var(--fw-black);">Today's Burn</div>
         <div class="mono" style="font-size:var(--fs-tag);letter-spacing:.14em;color:var(--dim);margin-top:3px;">${dailyDateLabel(new Date()).toUpperCase()}</div></div>
       </div>
-      <span class="streak">${FLAME_ONLY}${streak}-day</span>
-    </div>
+      <div class="row" style="gap:8px;">
+        ${played ? `<span class="done-badge">${ic('check')}Flown</span>` : `<span class="streak">${FLAME_ONLY}${streak}-day</span>`}
+        <span class="chev">${ic('chevron-down')}</span>
+      </div>
+    </button>
+    <div class="daily-body">
     <p style="margin-top:13px;font-size:var(--fs-body);line-height:1.45;color:rgba(255,255,255,0.86);padding-left:12px;border-left:3px solid var(--fire);">${daily.brief}</p>
     <div class="ctx-row" style="margin-top:12px;">
       <span class="ctx">${ic('map')}Saskatchewan</span>
       <span class="ctx hot">${ic('fire')}${ignitions} ignitions</span>
-      <span class="ctx">${ic('clock')}Resets midnight</span>
+      <span class="ctx">${ic('clock')}${played ? `Resets in ${dailyResetCountdown()}` : 'Resets midnight'}</span>
     </div>
     <div class="row between" style="margin-top:15px;">
       <span class="mono" style="font-size:var(--fs-micro);letter-spacing:.16em;text-transform:uppercase;color:var(--faint);font-weight:var(--fw-bold);">Same fire worldwide</span>
-      <button class="btn ember sm" data-act="daily">${ic('play')}Fly today</button>
+      ${played
+        ? `<button class="btn ember sm locked" disabled>${ic('lock')}Played today</button>`
+        : `<button class="btn ember sm" data-act="daily">${ic('play')}Fly today</button>`}
+    </div>
     </div>
   </section>
   </div>
@@ -191,8 +202,13 @@ ${railNav('home')}`;
         return this.nav.onContinue(this.nextId);
       case 'daily':
         return this.nav.onDaily();
+      case 'daily-toggle': {
+        // Collapse/expand the Daily Burn card (the whole header is the toggle).
+        this.root.querySelector('.z-daily .card.crt')?.classList.toggle('collapsed');
+        return;
+      }
       case 'campaign':
-        return navigateRail('campaign'); // theatre → mission drilldown (the rail's Campaign tab)
+        return navigateRail('campaign'); // region → mission drilldown (the rail's Campaign tab)
       case 'board':
         return openBoard();
       case 'settings':

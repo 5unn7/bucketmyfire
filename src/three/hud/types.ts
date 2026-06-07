@@ -81,6 +81,7 @@ export interface EndScreenHooks {
   onNext(): void; // ▶ Next mission
   onMenu(): void; // ◂ Mission menu
   onRetry(): void; // ↻ Retry this mission
+  noRetry?: boolean; // suppress the RETRY button entirely (Daily Burn — one play per day, no replay)
   onLeaderboard?(): void; // 🏆 open the global leaderboard on this mission
 }
 

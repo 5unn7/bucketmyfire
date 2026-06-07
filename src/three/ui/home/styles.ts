@@ -157,6 +157,18 @@ const CSS = `
 .bmf-app .streak{ display:inline-flex; align-items:center; gap:6px; font-family:var(--mono); font-size:var(--fs-tag); font-weight:var(--fw-bold); letter-spacing:.1em; text-transform:uppercase; color:var(--ember-hi); padding:6px 10px; border-radius:var(--r-pill); background:var(--warm-glass); border:1px solid var(--warm-stroke); white-space:nowrap; }
 .bmf-app .streak svg{ width:11px; height:13px; } .bmf-app .streak svg path{ fill:var(--fire); }
 
+/* Daily Burn card: collapsible head (whole header is the toggle) + a "played today" locked state. */
+.bmf-app .daily-head{ width:100%; background:none; border:0; padding:0; margin:0; font:inherit; color:inherit; text-align:left; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.bmf-app .chev{ display:inline-grid; place-items:center; width:24px; height:24px; flex:0 0 auto; color:var(--dim); border-radius:var(--r-sm); transition:transform .22s ease, color .2s; }
+.bmf-app .chev svg{ width:16px; height:16px; }
+.bmf-app .daily-head:hover .chev{ color:var(--ember-hi); }
+.bmf-app .card.crt.collapsed .chev{ transform:rotate(-90deg); }
+.bmf-app .daily-body{ overflow:hidden; }
+.bmf-app .card.crt.collapsed .daily-body{ display:none; }
+.bmf-app .done-badge{ display:inline-flex; align-items:center; gap:5px; font-family:var(--mono); font-size:var(--fs-tag); font-weight:var(--fw-bold); letter-spacing:.1em; text-transform:uppercase; color:var(--ok); padding:6px 10px; border-radius:var(--r-pill); background:rgba(99,214,138,0.12); border:1px solid rgba(99,214,138,0.5); white-space:nowrap; }
+.bmf-app .done-badge svg{ width:12px; height:12px; }
+.bmf-app .btn.locked{ opacity:.55; cursor:default; pointer-events:none; }
+
 .bmf-app .stars{ display:inline-flex; gap:3px; } .bmf-app .stars svg{ width:15px; height:15px; }
 .bmf-app .stars .on{ fill:var(--menu); stroke:none; filter:drop-shadow(0 0 5px rgba(255,194,74,0.7)); }
 .bmf-app .stars .off{ fill:rgba(255,255,255,0.2); stroke:none; }

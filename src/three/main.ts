@@ -10,6 +10,7 @@ import { NewPilotScreen } from './ui/home/NewPilot';
 import { TitleScreen } from './ui/title/TitleScreen';
 import { CAMPAIGN, missionById } from './missions/catalog';
 import { buildDailyMission, isDailyId } from './missions/daily';
+import { hasPlayedDaily, markDailyPlayed } from './missions/dailyPlay';
 import { HELI_MODELS } from './meshes/heliModels';
 import { coldStartSeen, hasNamedProfile } from './ui/profile';
 import { openLeaderboard } from './ui/Leaderboard';
@@ -90,9 +91,30 @@ function routeMission(): void {
     return;
   }
 
+  // No `?m=` → TitleScreen is the first screen; PLAY mounts this hub (the daily-played redirect below
+  // also lands here directly). Returning pilot → HomeScreen; new pilot → the registration gate.
+  const openHome = (): void => {
+    new HomeScreen(container, CAMPAIGN, {
+      onContinue: (id) => gotoCampaign(id),
+      onDaily: () => {
+        const url = new URL(location.href);
+        url.searchParams.set('daily', '1');
+        url.searchParams.delete('m');
+        location.assign(url.toString());
+      },
+    });
+  };
+
   // Daily Burn: ?daily boots today's procedurally-seeded "clear every fire" challenge (FIX #1/#8) —
   // a fresh shared map each day with its own per-day leaderboard. Bypasses the campaign router.
   if (params.has('daily')) {
+    // One play per day: a consumed daily bounces straight back to the hub (the card shows the locked
+    // "played — resets in Xh" state). ?qa is exempt so headless verification can always boot it.
+    if (!params.has('qa') && hasPlayedDaily()) {
+      openHome();
+      return;
+    }
+    if (!params.has('qa')) markDailyPlayed(); // spend today's shot at boot — quitting early can't dodge it
     bootMission(buildDailyMission(new Date()));
     return;
   }
@@ -103,21 +125,10 @@ function routeMission(): void {
   if (selectedId) {
     bootMission(missionById(selectedId) ?? CAMPAIGN[0]);
   } else {
-    // No `?m=` → TitleScreen is always the first screen. PLAY routes based on pilot status:
-    // returning pilot (saved callsign) → HomeScreen hub; new pilot → the branded registration gate
-    // (NewPilotScreen), which lands on the SAME hub once a callsign is set.
+    // TitleScreen is always the first screen. PLAY routes based on pilot status: returning pilot
+    // (saved callsign) → HomeScreen hub; new pilot → the branded registration gate (NewPilotScreen),
+    // which lands on the SAME hub once a callsign is set.
     // Headless/deep-link (?m= / ?autostart / ?qa) bypasses this branch and boots the game directly.
-    const openHome = (): void => {
-      new HomeScreen(container, CAMPAIGN, {
-        onContinue: (id) => gotoCampaign(id),
-        onDaily: () => {
-          const url = new URL(location.href);
-          url.searchParams.set('daily', '1');
-          url.searchParams.delete('m');
-          location.assign(url.toString());
-        },
-      });
-    };
     new TitleScreen(container, CAMPAIGN, () => {
       if (hasNamedProfile()) openHome();
       else new NewPilotScreen(container, openHome);
@@ -217,11 +228,11 @@ function bootMission(mission: MissionDef): void {
   // Headless QA (?qa drives __game; ?autostart boots straight into a mission) skips the cold-start
   // ritual — the autopilot/teleport/screenshot flows expect a running, airborne aircraft.
   // Skip the hold-to-spool ritual for headless QA/autostart, AND once the pilot has completed it once
-  // before (#9) — after the first time it's a speed bump, so later sorties boot engine-running.
+  // before (#9) — after the first time it's a speed bump, so later missions boot engine-running.
   const skipColdStart = params.has('qa') || params.has('autostart') || coldStartSeen();
   // The interactive first-flight coach must be OFF under headless QA — it would interfere with the
   // verify:render scoop→drop autopilot (a hard CI deploy gate). Real boots leave it on; the Game
-  // gates it further to a new pilot's first campaign sortie.
+  // gates it further to a new pilot's first campaign mission.
   const disableCoach = params.has('qa') || params.has('autostart');
   // QA / dev: fly ANY airframe regardless of unlock progress with ?heli=<id> (bell-205a1 | bell-212 |
   // uh-60), e.g. ?m=first-light&autostart&heli=uh-60. Unknown ids fall back to the saved default.
@@ -365,7 +376,7 @@ function bootMission(mission: MissionDef): void {
 
   // Dev/QA hook (gated exactly like __game): drive an in-place mission switch headlessly, e.g.
   // `window.__switchMission('after-burn')`, so the dispose→rebuild path can be exercised without
-  // playing a sortie to its end screen. Never present in a normal player's prod bundle.
+  // playing a mission to its end screen. Never present in a normal player's prod bundle.
   if (import.meta.env.DEV || params.has('qa')) {
     (window as unknown as Record<string, unknown>).__switchMission = (id: string): void =>
       switchMission(missionById(id) ?? mission);
@@ -374,13 +385,14 @@ function bootMission(mission: MissionDef): void {
   /** End-banner + in-game buttons. RETRY and NEXT rebuild in place (instant — no reload); MENU still
    *  navigates back to the home screen via a reload (it crosses into the TitleScreen's own renderer). */
   function makeEndHooks(m: MissionDef): EndScreenHooks {
-    // Daily Burn: no campaign NEXT; replay re-runs today's same-seed map. Kept as a reload — the daily
-    // mission is rebuilt from `new Date()` and is a rare path, so it's not worth wiring in-place.
+    // Daily Burn: no campaign NEXT and no RETRY (one play per day — the shot was spent at boot). Every
+    // exit just returns to the hub, where the card now shows the locked "resets in Xh" state.
     if (isDailyId(m.id)) {
       return {
         hasNext: false,
-        onNext: () => location.reload(),
-        onRetry: () => location.reload(),
+        noRetry: true, // one play per day — no replay of today's burn (the shot was spent at boot)
+        onNext: () => gotoCampaign(null),
+        onRetry: () => gotoCampaign(null),
         onMenu: () => gotoCampaign(null),
         onLeaderboard: () => openLeaderboard([...CAMPAIGN, m], m.id),
       };
