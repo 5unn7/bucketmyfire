@@ -1733,8 +1733,9 @@ export const TITLE = {
 export const FFA = {
   targetActive: 8, // keep roughly this many fires burning — the spawner tops up toward it while below
   spawnEverySec: 5, // cadence (s) at which the spawner tries to add one fire while under targetActive
-  pointsPerFire: 100, // score awarded per fire knocked down with water
+  pointsPerFire: 50, // score awarded per fire knocked down with water
   pointsPerHit: 6, // small bonus per EFFECTIVE drop (rewards steady, accurate work between kills)
+  pointsPerBridge: 250, // stunt bonus for cleanly threading UNDER a bridge deck (the "crazy move")
   fireMilestone: 10, // in-flight "fires out  N/M" readout rounds the target up to the next multiple of this
   scoreMilestone: 500, // ditto for the live "score  N/M" readout — keeps the counters always chasing
   boardEverySec: 45, // push the running score to the shared per-day board this often (so others see you climb)

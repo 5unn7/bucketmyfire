@@ -2096,7 +2096,10 @@ export class Game {
         );
       }
     }
-    this.ffaScore = this.fireSystem.doused * FFA.pointsPerFire + this.scoreDropsEffective * FFA.pointsPerHit;
+    this.ffaScore =
+      this.fireSystem.doused * FFA.pointsPerFire +
+      this.scoreDropsEffective * FFA.pointsPerHit +
+      this.bridgePasses * FFA.pointsPerBridge;
 
     // Push the running score to the shared per-day board on a cadence so others see you climb live.
     // submitScore is fire-and-forget + no-ops when Supabase is unconfigured (board reads "offline").
@@ -2499,8 +2502,9 @@ export class Game {
   /**
    * Track threading the bridges for the clean-pass reward (the "secret trick"). A pass counts when the
    * airframe enters the tunnel under a deck on one side and exits the OTHER side without striking —
-   * acknowledged with a quiet radio nod naming that bridge (recognition only, no score change), rate-
-   * limited per bridge so hovering can't farm it. No-op (and cheap) on maps without any bridges.
+   * acknowledged with a "that was some crazy move" radio nod (and, in Open Skies, worth
+   * FFA.pointsPerBridge toward ffaScore), rate-limited per bridge so hovering can't farm it. No-op
+   * (and cheap) on maps without any bridges.
    */
   private updateBridgePass(dt: number): void {
     const p = this.heliSim.position;
@@ -2517,12 +2521,10 @@ export class Game {
         if (Math.sign(u) === -st.enterU && st.cd <= 0 && !this.crashed && !this.won && !this.lost) {
           this.bridgePasses++;
           st.cd = BRIDGE.rewardCooldown;
-          const lines = [
-            `Whoo! Clean under the ${bridge.name} bridge — that was flying.`,
-            `Right under the ${bridge.name} deck — nerves of steel, Water-1.`,
-            `Did you just thread the ${bridge.name} bridge? Don’t tell the chief.`,
-          ];
-          this.hud.pushComms('crew', lines[(this.bridgePasses - 1) % lines.length], 'info');
+          // In Open Skies the pass is worth points (fed into ffaScore in stepEndless), so call out the
+          // bonus; elsewhere it's pure recognition. Same headline message either way.
+          const msg = this.endless ? `That was some crazy move  +${FFA.pointsPerBridge}` : 'That was some crazy move';
+          this.hud.pushComms('crew', msg, 'info');
           this.audio.playSquelch('info');
         }
       }

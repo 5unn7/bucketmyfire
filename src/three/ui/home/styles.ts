@@ -136,6 +136,11 @@ const CSS = `
 .bmf-app .artcard.map .img{ inset:0 0 auto 0; height:72%; padding:18px 16px 0; box-sizing:border-box;
   object-fit:contain; object-position:50% 44%; filter:drop-shadow(0 18px 20px rgba(0,0,0,0.5)); }
 .bmf-app .artcard.map .scrim{ background:linear-gradient(180deg, transparent 0%, transparent 50%, rgba(6,4,3,0.72) 80%, rgba(4,3,2,0.95) 100%); }
+/* Header pills are a real auto-layout row: the tagline chip flexes + ellipsizes, the status badge
+   holds its width, and a gap keeps them apart — was a nowrap chip butting into a clipped badge. */
+.bmf-app .artcard.map .inner > .row.between{ gap:10px; }
+.bmf-app .artcard.map .chip.ghost{ flex:0 1 auto; min-width:0; display:block; overflow:hidden; text-overflow:ellipsis; }
+.bmf-app .artcard.map .inner > .row.between > .badge{ flex:0 0 auto; }
 .bmf-app .cslide.active .artcard.map .img{ animation:bmf-map-float 7s ease-in-out infinite; }
 @keyframes bmf-map-float{ 0%,100%{ transform:translateY(0); } 50%{ transform:translateY(-7px); } }
 .bmf-app .artcard .fallback{ position:absolute; inset:0; z-index:0; background:radial-gradient(120% 90% at 50% 120%, var(--ember-50), transparent 60%), linear-gradient(160deg,#2a2030,#160d12 70%); display:grid; place-items:center; }
@@ -200,15 +205,24 @@ const CSS = `
   padding-left:11px; border-left:3px solid var(--fire);
   display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
 
-/* ===== BMF Gear banner — a DESKTOP-ONLY promo card in the home's LEFT column, sitting under Today's
-   Burn and pinned to the BOTTOM of that cell so its base lines up with the Continue mission card (the
-   "aligned" goal — see the desktop grid block below). Hidden on phone/tablet, where the single-viewport
-   stack has no spare room. The whole card is ONE tap target → the /shop.html merch site. Same warm
-   "fight"-register .card shell as the daily slip; built from tokens only (no new colour literals). ===== */
-.bmf-app.home .shop-sec, .bmf-app.home .shopbanner{ display:none; }
-.bmf-app .shopbanner{ width:100%; align-items:center; gap:13px; text-align:left; font:inherit; color:var(--text);
+/* ===== BMF Gear banner — a promo card in the home's left column, sitting UNDER Today's Burn and
+   opening the /shop.html merch site. On the desktop dashboard it's pinned to the BOTTOM of the Today's
+   Burn cell so its base lines up with the Continue mission card (the "aligned" goal — see the desktop
+   grid block below). On phone/tablet it flows directly under the daily slip; it's gated OUT only on the
+   shortest viewports so the single-viewport no-scroll law still holds (CLAUDE.md). The whole card is ONE
+   tap target. GLASSY RED: a frosted, translucent fire/ember wash (warm "fight" register, hottest end) +
+   backdrop blur so it POPS against the dark hub — built from tokens only (no new colour literals). ===== */
+.bmf-app.home .shop-sec{ display:none; } /* section label only rides the desktop dashboard; phone/tablet show the banner alone */
+.bmf-app .shopbanner{ display:flex; width:100%; margin-top:11px; align-items:center; gap:13px; text-align:left; font:inherit; color:var(--text);
   cursor:pointer; -webkit-tap-highlight-color:transparent; transition:transform .14s ease, border-color .14s ease, box-shadow .22s ease; }
-.bmf-app .shopbanner:hover{ transform:translateY(-2px); border-color:var(--warm-stroke); box-shadow:var(--shadow-card), 0 0 24px var(--ember-18); }
+/* Glassy red — translucent fire/ember gradient over a backdrop blur (one glass layer). Overrides the
+   .card metal fill (3-class specificity, sourced after .card.warm so it wins). */
+.bmf-app .shopbanner.card{ border-color:var(--warm-stroke); backdrop-filter:var(--blur); -webkit-backdrop-filter:var(--blur);
+  background:
+    radial-gradient(140% 180% at 100% 120%, var(--ember-50), transparent 62%),
+    linear-gradient(145deg, var(--fire-28) 0%, var(--ember-42) 48%, var(--fire-55) 100%);
+  box-shadow:var(--shadow-card), inset 0 1px 0 var(--bevel-top), 0 0 26px var(--ember-30); }
+.bmf-app .shopbanner:hover{ transform:translateY(-2px); border-color:var(--warm-stroke); box-shadow:var(--shadow-card), inset 0 1px 0 var(--bevel-top), 0 0 34px var(--ember-40); }
 .bmf-app .shopbanner:active{ transform:translateY(-1px); }
 .bmf-app .sb-ic{ width:40px; height:40px; flex:0 0 auto; display:grid; place-items:center; border-radius:var(--r-sm);
   border:1px solid var(--warm-stroke); background:radial-gradient(circle at 40% 30%, var(--warm-38), var(--card-bg));
@@ -216,10 +230,14 @@ const CSS = `
 .bmf-app .sb-ic svg{ width:19px; height:19px; }
 .bmf-app .sb-copy{ flex:1; min-width:0; display:flex; flex-direction:column; gap:3px; }
 .bmf-app .sb-title{ font-size:var(--fs-md); font-weight:var(--fw-black); line-height:1.08; color:var(--text); }
-.bmf-app .sb-sub{ font-size:var(--fs-meta); line-height:1.36; color:var(--dim); }
-.bmf-app .sb-go{ flex:0 0 auto; display:grid; place-items:center; width:26px; height:26px; color:var(--faint); transition:color .14s ease, transform .14s ease; }
+.bmf-app .sb-sub{ font-size:var(--fs-meta); line-height:1.36; color:var(--text-subtle); }
+.bmf-app .sb-go{ flex:0 0 auto; display:grid; place-items:center; width:26px; height:26px; color:var(--ember-hi); transition:color .14s ease, transform .14s ease; }
 .bmf-app .sb-go svg{ width:18px; height:18px; }
-.bmf-app .shopbanner:hover .sb-go{ color:var(--ember-hi); transform:translateX(2px); }
+.bmf-app .shopbanner:hover .sb-go{ color:var(--text); transform:translateX(2px); }
+/* Shortest viewports — drop the banner (and on short phones its sub line) so the hub never scrolls.
+   z-daily-scoped (0,4,0) so it also beats the desktop dashboard's reveal on a short desktop window. */
+@media (max-height:760px){ .bmf-app.home .z-daily .sb-sub{ display:none; } }
+@media (max-height:670px){ .bmf-app.home .z-daily .shop-sec, .bmf-app.home .z-daily .shopbanner{ display:none; } }
 
 .bmf-app .stars{ display:inline-flex; gap:3px; } .bmf-app .stars svg{ width:15px; height:15px; }
 .bmf-app .stars .on{ fill:var(--menu); stroke:none; filter:drop-shadow(0 0 5px var(--gold-70)); }
@@ -360,15 +378,17 @@ const CSS = `
    No-scroll is then guaranteed by construction — short phones just shrink the cards, never overflow. */
 .bmf-app .osky .heligrid{ margin-top:11px; flex:1 1 auto; min-height:0; grid-template-rows:1fr; }
 .bmf-app .osky .osky-cta{ padding-top:16px; }
-/* Short phones: tighten the rhythm + shed the subtitle so the cards keep as much height as possible. */
+/* Short phones: tighten the rhythm (keep the full two-line subtitle) so the cards stay as large as
+   possible. The grid flex-fills, so the extra subtitle line is absorbed by the cards, never a scroll. */
 @media (max-height:680px){
   .bmf-app .osky{ padding-top:2px; }
-  .bmf-app .osky .osky-sub{ -webkit-line-clamp:1; margin-top:6px; }
+  .bmf-app .osky .osky-sub{ margin-top:6px; }
   .bmf-app .osky .sec{ margin:10px 2px 0; }
   .bmf-app .osky .osky-cta{ padding-top:11px; }
   .bmf-app .osky .hc-name{ min-height:0; }
 }
-@media (max-height:560px){
+/* Only on extreme-short landscape do we drop the subtitle, to guarantee the Join button clears. */
+@media (max-height:460px){
   .bmf-app .osky .osky-sub{ display:none; }
 }
 
@@ -570,7 +590,7 @@ const CSS = `
   .bmf-app.home .z-cont{ grid-column:2; grid-row:2; min-height:0; }
   .bmf-app.home .sec{ margin-top:0; }
   .bmf-app.home .shop-sec{ display:flex; margin-top:auto; }
-  .bmf-app.home .shopbanner{ display:flex; }
+  .bmf-app.home .shopbanner{ margin-top:0; }
   /* Menu overlays (Settings · Open Skies): a wide centred column. */
   .bmf-app:not(.home):not(.newpilot) .pad{ max-width:760px;
     padding-top:calc(env(safe-area-inset-top) + 30px); padding-bottom:120px; }

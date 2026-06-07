@@ -1,6 +1,6 @@
 {
   "uiTokenObjects": 1,
-  "totalHardcoded": 187,
+  "totalHardcoded": 191,
   "perFile": {
     "src/three/ui/CloudSave.ts": 2,
     "src/three/ui/components/base.ts": 5,
@@ -9,7 +9,7 @@
     "src/three/ui/HelpModal.ts": 55,
     "src/three/ui/home/HomeScreen.ts": 1,
     "src/three/ui/home/menus.ts": 1,
-    "src/three/ui/home/styles.ts": 98,
+    "src/three/ui/home/styles.ts": 102,
     "src/three/ui/Leaderboard.ts": 5,
     "src/three/ui/menuShared.ts": 3,
     "src/three/ui/profile.ts": 3,

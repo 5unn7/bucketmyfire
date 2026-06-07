@@ -215,7 +215,7 @@ export function openCampaign(): void {
       : '';
     const footer = !m.available
       ? `<button class="btn ghost block is-disabled">${ic('lock')}Coming soon</button>`
-      : `<button class="btn primary block" data-map="${m.id}">${ic('play')}${selected ? 'Choose a mission' : 'Deploy here'}</button>`;
+      : `<button class="btn primary block" data-map="${m.id}">${ic('play')}Enter</button>`;
     return posterCard({ locked: !m.available, cardClass: 'map', backdrop, tagline: m.tagline, badge, title: m.name, body, footer });
   });
 
@@ -426,7 +426,7 @@ export function openCoop(): void {
   // Title lives in the overlay's top bar (the appbar shows "Open Skies") — no duplicate body headline.
   const body = `<div class="osky">
     <span class="chip">${ic('fire')}Free-for-all</span>
-    <p class="muted osky-sub">Open fire. Fly with your friends, show your skills and earn points.</p>
+    <p class="muted osky-sub">Fly with your friends, showcase your skills and earn points.</p>
     <div class="sec"><span class="tag">Your aircraft</span><span class="line"></span></div>
     <div class="heligrid">${HELIS.map(heliCard).join('')}</div>
     <div class="osky-cta">

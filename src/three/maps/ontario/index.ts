@@ -4,7 +4,7 @@ import { ONTARIO } from './region';
 const card: MapCard = {
   id: 'ontario',
   name: 'Ontario',
-  tagline: 'Shield & boreal · soon',
+  tagline: 'Shield & boreal',
   blurb: 'Northern Ontario’s Canadian Shield: endless boreal forest and big cold lakes from Thunder Bay to the James Bay lowlands.',
   available: false,
   accent: '#2f8f7a',
