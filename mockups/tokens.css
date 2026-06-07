@@ -10,6 +10,7 @@
   --track:rgba(255,255,255,0.10);--recess:rgba(5,9,13,0.55);--field:rgba(8,13,18,0.60);--rowmine:rgba(103,232,255,0.14);
   --stroke:rgba(255,255,255,0.12);--stroke-strong:rgba(255,255,255,0.18);--warm-stroke:rgba(255,138,110,0.85);--hair:rgba(255,255,255,0.07);
   --shadow-card:0 8px 30px rgba(0,0,0,0.45);--ember-glow:0 0 16px rgba(255,106,44,0.5);--blur:blur(12px) saturate(120%);
+  --accent:#67e8ff;--accent-hi:#9af1ff;--accent-soft:rgba(103,232,255,0.55);--accent-fill:rgba(103,232,255,0.10);--glow:0 0 10px rgba(103,232,255,0.45);
   --ember-05:rgba(255,106,44,0.05);--ember-10:rgba(255,106,44,0.10);--ember-12:rgba(255,106,44,0.12);--ember-14:rgba(255,106,44,0.14);--ember-18:rgba(255,106,44,0.18);--ember-20:rgba(255,106,44,0.20);--ember-22:rgba(255,106,44,0.22);--ember-30:rgba(255,106,44,0.30);--ember-32:rgba(255,106,44,0.32);--ember-35:rgba(255,106,44,0.35);--ember-40:rgba(255,106,44,0.40);--ember-42:rgba(255,106,44,0.42);--ember-50:rgba(255,106,44,0.50);
   --fire-06:rgba(255,122,69,0.06);--fire-12:rgba(255,122,69,0.12);--fire-16:rgba(255,122,69,0.16);--fire-28:rgba(255,122,69,0.28);--fire-55:rgba(255,122,69,0.55);
   --glow-50:rgba(255,140,50,0.5);--glow-60:rgba(255,140,50,0.6);--glow-80:rgba(255,140,50,0.8);--glow-90:rgba(255,140,50,0.9);--warm-26:rgba(255,140,60,0.26);--warm-38:rgba(255,140,60,0.38);

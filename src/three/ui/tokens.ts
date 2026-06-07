@@ -22,6 +22,7 @@ export function tokenDecls(): string {
     `--track:${UI.track};--recess:${UI.recess};--field:${UI.field};--rowmine:${UI.rowMine};`,
     `--stroke:${UI.stroke};--stroke-strong:${UI.strokeStrong};--warm-stroke:${UI.warmStroke};--hair:${UI.hair};`,
     `--shadow-card:${UI.shadowCard};--ember-glow:${UI.emberGlow};--blur:${UI.blur};`,
+    `--accent:${UI.accent};--accent-hi:${UI.accentHi};--accent-soft:${UI.accentSoft};--accent-fill:${UI.accentFill};--glow:${UI.glow};`,
     `--ember-05:${HOME.ember05};--ember-10:${HOME.ember10};--ember-12:${HOME.ember12};--ember-14:${HOME.ember14};--ember-18:${HOME.ember18};--ember-20:${HOME.ember20};--ember-22:${HOME.ember22};--ember-30:${HOME.ember30};--ember-32:${HOME.ember32};--ember-35:${HOME.ember35};--ember-40:${HOME.ember40};--ember-42:${HOME.ember42};--ember-50:${HOME.ember50};`,
     `--fire-06:${HOME.fire06};--fire-12:${HOME.fire12};--fire-16:${HOME.fire16};--fire-28:${HOME.fire28};--fire-55:${HOME.fire55};`,
     `--glow-50:${HOME.glow50};--glow-60:${HOME.glow60};--glow-80:${HOME.glow80};--glow-90:${HOME.glow90};--warm-26:${HOME.warm26};--warm-38:${HOME.warm38};`,

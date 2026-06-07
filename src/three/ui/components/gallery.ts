@@ -61,7 +61,7 @@ export function mountKitGallery(host: HTMLElement): void {
   );
 
   // Buttons — every variant × register.
-  const variants: ButtonVariant[] = ['primary', 'secondary', 'ghost', 'pill', 'danger'];
+  const variants: ButtonVariant[] = ['primary', 'secondary', 'ghost', 'danger'];
   const registers: Register[] = ['cockpit', 'fight'];
   for (const register of registers) {
     col.appendChild(
@@ -87,6 +87,7 @@ export function mountKitGallery(host: HTMLElement): void {
         b.setLoading(true);
         return b.el;
       })(),
+      makeButton({ label: 'Locked', icon: '🔒', locked: true }).el,
     ]),
   );
 
