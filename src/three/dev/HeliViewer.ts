@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { createHelicopter, type HelicopterMesh } from '../meshes/helicopter';
-import { swapInModel, HELI_MODELS } from '../meshes/heliModels';
+import { swapInModel, snapDoorLogo, HELI_MODELS } from '../meshes/heliModels';
 import { HELIS } from '../ui/profile';
 import { resolveHeliClass } from '../config';
 import { FrameContext } from '../render/FrameContext';
@@ -70,6 +70,20 @@ export class HeliViewer {
   private tailScaleChip: HTMLElement | null = null;
   private tailReadout: HTMLElement | null = null;
 
+  // --- Door-logo placement (brand icon on both cabin doors; ALL 3 airframes) ------------------
+  private logoPort: THREE.Object3D | null = null;
+  private logoStar: THREE.Object3D | null = null;
+  private readonly logoOffset = new THREE.Vector3(); // door-centre: x fore/aft, y height, z = resolved surface
+  private readonly logoOffsetBaked = new THREE.Vector3();
+  private logoSize = 1; // current decal height (world units)
+  private logoSizeBaked = 1;
+  private readonly logoSliders: Record<'x' | 'y', HTMLInputElement> = {} as never;
+  private readonly logoChips: Record<'x' | 'y', HTMLElement> = {} as never;
+  private logoSizeSlider: HTMLInputElement | null = null;
+  private logoSizeChip: HTMLElement | null = null;
+  private logoReadout: HTMLElement | null = null;
+  private logoPanel: HTMLElement | null = null;
+
   constructor(private readonly container: HTMLElement) {
     this.heliId = HELIS[0].id;
 
@@ -112,6 +126,7 @@ export class HeliViewer {
     this.buildPad();
     this.stats = this.buildUI();
     this.tunerPanel = this.buildTunerPanel();
+    this.logoPanel = this.buildLogoPanel();
     this.loadHeli(this.heliId);
 
     window.addEventListener('resize', this.onResize);
@@ -148,7 +163,10 @@ export class HeliViewer {
     this.rotorChildBases = [];
     this.tailMount = null;
     this.tailMountBase = null;
+    this.logoPort = null;
+    this.logoStar = null;
     this.syncTunerFromSpec(id); // seed each group from the spec's baked offsets
+    this.syncLogoFromSpec(id); // seed the door-logo panel from the spec
     this.tunerPanel.style.display = id === 'bell-212' ? 'block' : 'none';
 
     const heli = createHelicopter(id);
@@ -172,7 +190,11 @@ export class HeliViewer {
     // The proc tail rotor hangs under a 'tailRotorMount' group — that's what we translate/scale.
     this.tailMount = this.heli.tailRotor.parent;
     this.tailMountBase = this.tailMount ? this.tailMount.position.clone() : null;
+    // Door-logo decals (added by swapInModel before this onReady) — grab them so the panel moves them.
+    this.logoPort = this.heli.group.getObjectByName('doorLogoPort') ?? null;
+    this.logoStar = this.heli.group.getObjectByName('doorLogoStar') ?? null;
     this.applyTuner();
+    this.applyLogo();
   }
 
   /** Re-derive rotor + tail transforms from the captured baselines + the live slider DELTAS off the
@@ -203,6 +225,44 @@ export class HeliViewer {
       const o = this.tailOffset;
       this.tailReadout.textContent = `tailRotorOffset: [${o.x.toFixed(2)}, ${o.y.toFixed(2)}, ${o.z.toFixed(2)}], tailRotorScale: ${this.tailScale.toFixed(2)}`;
     }
+  }
+
+  // --- Door-logo tuner ---------------------------------------------------------
+
+  /** Seed the door-logo panel (offsets, size, sliders) from the spec, and hide it for an airframe
+   *  with no `doorLogo`. Opens exactly where the game sits, so the readout pastes 1:1. */
+  private syncLogoFromSpec(id: string): void {
+    const dl = HELI_MODELS[id]?.doorLogo;
+    if (this.logoPanel) this.logoPanel.style.display = dl ? 'block' : 'none';
+    const off = dl?.offset ?? [0, 0, 0];
+    this.logoOffset.set(off[0], off[1], off[2]);
+    this.logoOffsetBaked.copy(this.logoOffset);
+    this.logoSize = dl?.size ?? 1;
+    this.logoSizeBaked = this.logoSize;
+    for (const axis of ['x', 'y'] as const) {
+      if (this.logoSliders[axis]) this.logoSliders[axis].value = String(this.logoOffset[axis]);
+      if (this.logoChips[axis]) this.logoChips[axis].textContent = this.logoOffset[axis].toFixed(2);
+    }
+    if (this.logoSizeSlider) this.logoSizeSlider.value = String(this.logoSize);
+    if (this.logoSizeChip) this.logoSizeChip.textContent = this.logoSize.toFixed(2);
+    this.refreshLogoReadout();
+  }
+
+  /** Re-seat both door decals flush on the body via snapDoorLogo (z is found by raycast, so dragging
+   *  X/Y keeps them welded to the door). Records the resolved port-side z for the readout. */
+  private applyLogo(): void {
+    if (!this.heli) return;
+    const g = this.heli.group;
+    const { x, y } = this.logoOffset;
+    if (this.logoPort) this.logoOffset.z = snapDoorLogo(g, this.logoPort, 1, x, y, this.logoSize, this.logoOffsetBaked.z);
+    if (this.logoStar) snapDoorLogo(g, this.logoStar, -1, x, y, this.logoSize, this.logoOffsetBaked.z);
+    this.refreshLogoReadout();
+  }
+
+  private refreshLogoReadout(): void {
+    if (!this.logoReadout) return;
+    const o = this.logoOffset;
+    this.logoReadout.textContent = `doorLogo: { offset: [${o.x.toFixed(2)}, ${o.y.toFixed(2)}, ${o.z.toFixed(2)}], size: ${this.logoSize.toFixed(2)} }`;
   }
 
   /** Seed every group's current + baked offset (and its DOM) from the spec, so the panel opens
@@ -399,6 +459,102 @@ export class HeliViewer {
     section.appendChild(reset);
 
     panel.appendChild(section);
+  }
+
+  /** The live door-logo placer (bottom-right): X/Y/Z move the PORT decal (starboard mirrors), a size
+   *  slider scales both, and the readout is the exact `doorLogo` line to paste into the airframe spec.
+   *  Visible for every airframe that has a `doorLogo`. */
+  private buildLogoPanel(): HTMLElement {
+    const panel = el('div', '', {
+      position: 'fixed', bottom: '14px', right: '14px', width: '300px', maxHeight: '90vh', overflowY: 'auto', zIndex: '20',
+      padding: '14px 16px', color: '#e8eef4', font: '13px system-ui, sans-serif',
+      background: 'rgba(12,16,20,0.86)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '12px',
+      backdropFilter: 'blur(8px)', boxShadow: '0 10px 30px rgba(0,0,0,0.4)', display: 'none',
+    });
+    panel.appendChild(el('div', 'Door logo', { font: '700 14px system-ui, sans-serif', color: '#fff', marginBottom: '2px' }));
+    panel.appendChild(el('div', 'Brand mark on both doors — snaps flush to the body; X/Y place it.', { color: '#9fb2c4', fontSize: '11px', marginBottom: '8px' }));
+
+    const LABELS: Record<'x' | 'y', string> = { x: 'X — nose ↔ tail', y: 'Y — up ↕ down' };
+    for (const axis of ['x', 'y'] as const) {
+      const row = el('div', '', { margin: '7px 0' });
+      const head = el('div', '', { display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#9fb2c4', marginBottom: '3px' });
+      head.appendChild(el('span', LABELS[axis], {}));
+      const chip = el('span', this.logoOffset[axis].toFixed(2), { color: '#fff', fontFamily: 'ui-monospace, monospace' });
+      head.appendChild(chip);
+      row.appendChild(head);
+      const slider = document.createElement('input');
+      slider.type = 'range';
+      slider.min = '-6';
+      slider.max = '6';
+      slider.step = '0.02';
+      slider.value = String(this.logoOffset[axis]);
+      slider.style.width = '100%';
+      slider.style.accentColor = '#ff8a1e';
+      slider.addEventListener('input', () => {
+        this.logoOffset[axis] = parseFloat(slider.value);
+        chip.textContent = this.logoOffset[axis].toFixed(2);
+        this.applyLogo();
+      });
+      row.appendChild(slider);
+      panel.appendChild(row);
+      this.logoSliders[axis] = slider;
+      this.logoChips[axis] = chip;
+    }
+
+    // Size (decal height)
+    const srow = el('div', '', { margin: '7px 0' });
+    const shead = el('div', '', { display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#9fb2c4', marginBottom: '3px' });
+    shead.appendChild(el('span', 'Size (height)', {}));
+    const schip = el('span', this.logoSize.toFixed(2), { color: '#fff', fontFamily: 'ui-monospace, monospace' });
+    shead.appendChild(schip);
+    srow.appendChild(shead);
+    const sslider = document.createElement('input');
+    sslider.type = 'range';
+    sslider.min = '0.2';
+    sslider.max = '4';
+    sslider.step = '0.02';
+    sslider.value = String(this.logoSize);
+    sslider.style.width = '100%';
+    sslider.style.accentColor = '#ff8a1e';
+    sslider.addEventListener('input', () => {
+      this.logoSize = parseFloat(sslider.value);
+      schip.textContent = this.logoSize.toFixed(2);
+      this.applyLogo();
+    });
+    srow.appendChild(sslider);
+    panel.appendChild(srow);
+    this.logoSizeSlider = sslider;
+    this.logoSizeChip = schip;
+
+    const readout = el('div', 'doorLogo: …', {
+      marginTop: '8px', padding: '6px 8px', borderRadius: '7px', fontSize: '10px', fontFamily: 'ui-monospace, monospace',
+      color: '#ffd21a', background: 'rgba(255,210,26,0.08)', border: '1px solid rgba(255,210,26,0.25)', cursor: 'pointer', userSelect: 'all',
+    });
+    readout.title = 'Click to copy — paste into the airframe spec in heliModels.ts';
+    readout.addEventListener('click', () => void navigator.clipboard?.writeText(readout.textContent ?? ''));
+    this.logoReadout = readout;
+    panel.appendChild(readout);
+
+    const reset = el('button', 'Reset to baked', {
+      marginTop: '8px', width: '100%', padding: '6px', font: '600 11px system-ui, sans-serif',
+      color: '#dfe9f5', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.14)',
+      borderRadius: '8px', cursor: 'pointer',
+    });
+    reset.addEventListener('click', () => {
+      this.logoOffset.copy(this.logoOffsetBaked);
+      this.logoSize = this.logoSizeBaked;
+      for (const axis of ['x', 'y'] as const) {
+        this.logoSliders[axis].value = String(this.logoOffset[axis]);
+        this.logoChips[axis].textContent = this.logoOffset[axis].toFixed(2);
+      }
+      if (this.logoSizeSlider) this.logoSizeSlider.value = String(this.logoSize);
+      if (this.logoSizeChip) this.logoSizeChip.textContent = this.logoSize.toFixed(2);
+      this.applyLogo();
+    });
+    panel.appendChild(reset);
+
+    this.container.appendChild(panel);
+    return panel;
   }
 
   /** Build one titled control group (its sliders + value chips + copy-able readout) and register it

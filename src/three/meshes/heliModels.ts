@@ -118,6 +118,11 @@ export interface HeliModelSpec {
    *  airfoil blades, flybar, gearbox). `splitRotorMinY` is still used to strip the merged
    *  mesh's blade geometry from the body so the proc rotor sits cleanly on top. */
   useProcRotor?: boolean;
+  /** Brand icon decal on both cabin doors. `offset` = the PORT (+Z) door-centre in group-local
+   *  (= world) units [+x nose, +y up, +z port]; the starboard copy mirrors to −z and faces outward.
+   *  `size` = decal HEIGHT in world units (width locked to the icon's ~0.81:1 aspect). Dial live with
+   *  the Door-logo sliders in `?heliview`, then paste the readout here. Omit → no door logo. */
+  doorLogo?: { offset: [number, number, number]; size: number };
 }
 
 // Vite serves `public/` at the site root (base: './'); BASE_URL makes the path
@@ -139,6 +144,8 @@ export const HELI_MODELS: Record<string, HeliModelSpec> = {
       roof: 0xeceff1, flank: 0xc12a1b, sill: 0x16181d, line: 0xff8a1e, glass: 0x0d1622, blade: 0x1b1d22,
       roofAt: 0.66, sillAt: 0.2, lineAt: 0.6, lineHalf: 0.035, glow: 2.2,
     },
+    // Brand mark on both cabin doors ([fore/aft, height]; z fallback) — tuned in ?heliview.
+    doorLogo: { offset: [0.5, 1.2, 0.55], size: 0.72 },
   },
   // Bell 212 — a single merged mesh (Bell204_0). Fore/aft runs along the model's Z, so a
   // −90° yaw swings it onto +X. No separable rotor node, so we SLICE the model's OWN main
@@ -170,6 +177,8 @@ export const HELI_MODELS: Record<string, HeliModelSpec> = {
       roof: 0xe9eced, flank: 0xd29a1f, sill: 0x1d1f24, line: 0xff5a26, glass: 0x0d1622, blade: 0x17181c,
       roofAt: 0.64, sillAt: 0.22, lineAt: 0.58, lineHalf: 0.035, glow: 2.0,
     },
+    // Brand mark on both cabin doors ([fore/aft, height]; z fallback) — tuned in ?heliview.
+    doorLogo: { offset: [1.4, 0.94, 0.84], size: 0.78 },
   },
   // UH-60M Black Hawk (low poly). Nose at +Z (the tail rotor sits at −Z), so a +90°
   // yaw points it down +X. Both rotors are separable and keep the model's own livery.
@@ -182,16 +191,19 @@ export const HELI_MODELS: Record<string, HeliModelSpec> = {
     fuselageNode: 'Fuselage_6',
     mainRotorNode: 'main_rotor_prop_7',
     tailRotorNode: 'TAIL_ROTOR_4',
-    // This glTF is chirality-MIRRORED (left/right flipped) relative to the 205/212, so the shared
-    // flight `bank` rolls it the wrong way (a left turn lifted the wrong wing). Pitch/yaw read fine —
-    // a lateral mirror only inverts ROLL — so we just negate the roll for this airframe. See bankSign.
-    bankSign: -1,
-    // Steel hi-vis: the spec-gloss army skin can't bind in modern three (renders clay), so it
-    // repaints clean — bright steel roof, gunmetal flank, black belly, hi-vis safety-yellow line.
+    // Banks correctly off the shared `bank` (default bankSign +1) — same chirality as the 205/212.
+    // (An earlier −1 here, on a guess that this glTF was lateral-mirrored, actually rolled it the
+    // WRONG way: a left turn lifted the wrong wing. The model is NOT mirrored, so no negation.)
+    // Tactical olive: the spec-gloss army skin can't bind in modern three (renders clay), so it
+    // repaints clean — pale-sage roof, olive-drab flank (its signature), near-black belly, hi-vis
+    // safety-yellow line. Grounded military green; reads against forest + smoke, distinct from the
+    // crimson 205 + gold 212.
     livery: {
-      roof: 0xdde4e9, flank: 0x8b939d, sill: 0x16181c, line: 0xffd21a, glass: 0x0d1622, blade: 0x17181c,
+      roof: 0xb9c2a6, flank: 0x4a5a36, sill: 0x14160f, line: 0xffd21a, glass: 0x0d1622, blade: 0x17181c,
       roofAt: 0.66, sillAt: 0.2, lineAt: 0.6, lineHalf: 0.04, glow: 2.0,
     },
+    // Brand mark on both cabin doors ([fore/aft, height]; z fallback) — tuned in ?heliview.
+    doorLogo: { offset: [-2.02, 1.16, 0.32], size: 0.78 },
   },
 };
 
@@ -372,6 +384,11 @@ export function swapInModel(heli: HelicopterMesh, heliId?: string, onReady?: () 
         }
       }
 
+      // --- Door logo -------------------------------------------------------
+      // Stamp the brand mark on both cabin doors (no-op without spec.doorLogo). After the paint so
+      // the livery never touches it; on `group` so it poses + banks with the airframe.
+      addDoorLogos(group, spec);
+
       onReady?.(); // model + rotor fully assembled — dev viewer captures its pivot baseline here
     },
     undefined,
@@ -392,6 +409,108 @@ const PROC_BLADE = new THREE.MeshStandardMaterial({ color: 0x191b1f, roughness: 
 const PROC_HUB = new THREE.MeshStandardMaterial({ color: 0x70757d, roughness: 0.4, metalness: 0.7 });
 PROC_BLADE.userData.shared = true;
 PROC_HUB.userData.shared = true;
+
+// --- Door logo decal (brand icon on both cabin doors) -------------------------
+// The brand bucket-drop mark, rasterized ONCE from its SVG into a shared transparent CanvasTexture
+// and a shared white material (both flagged `userData.shared` so Game.dispose()'s teardown skips
+// them — same contract as PROC_BLADE/HUB). `addDoorLogos` stamps it on both cabin doors as two flat
+// alpha-tested quads parented to the aircraft GROUP, so they pose + bank with the airframe. Placement
+// is per-spec (`doorLogo`), tuned live in the ?heliview Door-logo panel.
+const LOGO_ASPECT = 149.7 / 184.72; // brand icon viewBox w/h ≈ 0.81
+
+let doorLogoTexture: THREE.Texture | null = null;
+function getDoorLogoTexture(): THREE.Texture {
+  if (doorLogoTexture) return doorLogoTexture;
+  // CanvasTexture starts blank (fully transparent → alphaTest hides it) and is refreshed once the
+  // SVG <img> decodes — the logo just pops in a frame later, like the glTF behind the proc fallback.
+  const px = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = px;
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  tex.userData.shared = true;
+  const img = new Image();
+  img.onload = () => {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const w = px * LOGO_ASPECT; // fit the tall mark centred, aspect preserved
+    ctx.clearRect(0, 0, px, px);
+    ctx.drawImage(img, (px - w) / 2, 0, w, px);
+    tex.needsUpdate = true;
+  };
+  img.src = BASE + 'brand/icon_white.svg';
+  doorLogoTexture = tex;
+  return tex;
+}
+
+let doorLogoMaterial: THREE.MeshStandardMaterial | null = null;
+function getDoorLogoMaterial(): THREE.MeshStandardMaterial {
+  if (doorLogoMaterial) return doorLogoMaterial;
+  // Alpha-tested cutout (not blended) → writes depth, occludes cleanly, no transparency sorting.
+  // polygonOffset pulls it toward the camera so it never z-fights the door panel it sits on.
+  const mat = new THREE.MeshStandardMaterial({
+    map: getDoorLogoTexture(),
+    transparent: true,
+    alphaTest: 0.45,
+    roughness: 0.5,
+    metalness: 0,
+    side: THREE.DoubleSide,
+    polygonOffset: true,
+    polygonOffsetFactor: -4,
+    polygonOffsetUnits: -4,
+  });
+  mat.userData.shared = true;
+  doorLogoMaterial = mat;
+  return mat;
+}
+
+/**
+ * Sit a door decal FLUSH on the body: raycast from outside the given side inward at (x, y), hit the
+ * airframe surface, and seat the quad a hair proud of it — so the logo lands on the door no matter
+ * each model's width (guessing an absolute lateral offset floated it off). All in group-local space
+ * (the decal's parent), so it's correct wherever `group` sits in the world. `side` +1 = port (+Z),
+ * −1 = starboard (−Z); the quad scales to (size·aspect, size) and faces outward. Falls back to
+ * `fallbackZ` if the ray misses. Returns the resolved surface z (group-local). Shared by the loader
+ * and the ?heliview tuner, so dragging X/Y keeps the logo welded to the body. */
+const _logoRay = new THREE.Raycaster();
+export function snapDoorLogo(
+  group: THREE.Object3D, mesh: THREE.Object3D, side: 1 | -1, x: number, y: number, size: number, fallbackZ = 1,
+): number {
+  group.updateWorldMatrix(true, true); // refresh body world matrices before casting
+  const body = group.getObjectByName('heliModel');
+  let localZ = side * Math.abs(fallbackZ);
+  if (body) {
+    const reach = Math.max(30, size * 10);
+    const origin = new THREE.Vector3(x, y, side * reach).applyMatrix4(group.matrixWorld);
+    const dir = new THREE.Vector3(0, 0, -side).transformDirection(group.matrixWorld).normalize();
+    _logoRay.set(origin, dir);
+    const hit = _logoRay.intersectObject(body, true)[0]; // nearest = the outer door surface on this side
+    if (hit) localZ = group.worldToLocal(hit.point.clone()).z;
+  }
+  const w = size * LOGO_ASPECT;
+  mesh.scale.set(w, size, 1);
+  mesh.position.set(x, y, localZ + side * 0.02); // a hair proud so it never z-fights the panel
+  mesh.rotation.y = side > 0 ? 0 : Math.PI; // face outward on each side
+  return localZ;
+}
+
+/** Stamp the brand icon on both cabin doors, snapped flush to the body. The quads are UNIT planes
+ *  (scaled by snapDoorLogo), named `doorLogoPort`/`doorLogoStar` so the ?heliview tuner can move them.
+ *  `offset` carries the door-centre [x = fore/aft, y = height]; z is only a fallback if the ray misses. */
+function addDoorLogos(group: THREE.Object3D, spec: HeliModelSpec): void {
+  if (!spec.doorLogo) return;
+  const { offset, size } = spec.doorLogo;
+  const mat = getDoorLogoMaterial();
+  const port = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
+  port.name = 'doorLogoPort';
+  const star = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
+  star.name = 'doorLogoStar';
+  port.renderOrder = star.renderOrder = 3;
+  group.add(port, star);
+  snapDoorLogo(group, port, 1, offset[0], offset[1], size, offset[2]);
+  snapDoorLogo(group, star, -1, offset[0], offset[1], size, offset[2]);
+}
 
 /**
  * Translate a spinnable rotor handle by `offset` (group-local units): the whole disc — pivot AND
