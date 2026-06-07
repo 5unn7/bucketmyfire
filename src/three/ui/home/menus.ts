@@ -243,16 +243,18 @@ function missionsForMap(mapId: string): MissionDef[] {
 }
 
 // ============================ MISSIONS (inside a map) ============================
-// Step 2 of Campaign: a carousel of the chosen map's missions — poster, brief, best run, fly action.
-// Back returns to the region picker (not straight to Home), so the map→mission drill reads as one
-// flow. FLY boots the mission via the seeded campaign-nav hook (page reload, the existing router).
+// Step 2 of Campaign: a vertical CARD LIST of the chosen map's missions (accordion). Every card
+// carries its full copy — number, name, tagline, badge, stars, best run — with the poster anchored
+// RIGHT behind a left-to-right scrim so the text stays legible. The "next up" card opens EXPANDED,
+// revealing its fly CTA (+ fuller brief); tapping any other card expands it in turn. Back returns to
+// the region picker so the drill reads map → mission. FLY boots via the seeded campaign-nav hook.
 export function openMissions(mapId: string): void {
   const all = missionsForMap(mapId);
   const map = MAPS.find((m) => m.id === mapId);
   const completed = new Set(getProgress().completed);
   const nextId = all.find((m) => isUnlocked(m, all) && !completed.has(m.id))?.id ?? null;
 
-  const slides = all.map((m) => {
+  const cards = all.map((m) => {
     const unlocked = isUnlocked(m, all);
     const done = completed.has(m.id);
     const isNext = m.id === nextId;
@@ -260,7 +262,7 @@ export function openMissions(mapId: string): void {
     const stars = bestStars(m.id);
     const num = String(m.index + 1).padStart(2, '0');
     const poster = missionPoster(m.id);
-    const cover = poster ? `<img class="img" src="${poster}" alt="">` : `<div class="fallback"><b>${num}</b></div>`;
+    const art = poster ? `<img class="img" src="${poster}" alt="">` : `<div class="fallback"><b>${num}</b></div>`;
     const badge = !unlocked
       ? `<span class="pill locked">${ic('lock')}Locked</span>`
       : isNext
@@ -272,35 +274,61 @@ export function openMissions(mapId: string): void {
     const scoreLine = best != null
       ? `<span class="mono" style="font-size:var(--fs-meta);color:rgba(255,255,255,0.78);">Best <b style="color:var(--menu);font-weight:var(--fw-bold)">${best.toLocaleString('en-US')}</b></span>`
       : `<span class="mono" style="font-size:var(--fs-meta);color:var(--faint);">Not flown yet</span>`;
+    // The fuller brief only shows in the expanded body, and only when it adds to the always-on tagline.
+    const fuller = m.tagline && m.brief && m.brief !== m.tagline ? `<p class="mbrief">${m.brief}</p>` : '';
     const cta = !unlocked
-      ? `<button class="btn ghost block is-disabled" style="margin-top:14px;">${ic('lock')}Clear earlier missions</button>`
-      : `<button class="btn primary block" style="margin-top:14px;" data-fly="${m.id}">${ic('play')}${done ? 'Replay mission' : 'Fly mission'}</button>`;
-    return `<article class="cslide${unlocked ? '' : ' locked'}">
-      <div class="artcard">
-        ${cover}<div class="scrim"></div><div class="brackets"><i></i><i></i><i></i></div>
-        <div class="inner">
-          <div class="row between"><span class="chip ghost">Mission ${num}</span>${badge}</div>
-          <div class="grow"></div>
-          <h2 class="h-big">${m.name}</h2>
-          <p class="clamp2" style="margin-top:8px;font-size:var(--fs-body);line-height:1.42;color:rgba(255,255,255,0.84);max-width:32ch;">${m.tagline ?? m.brief}</p>
-          <div class="row" style="gap:12px;margin-top:11px;">${starRow}${scoreLine}</div>
-          ${cta}
-        </div>
+      ? `<button class="btn ghost block is-disabled">${ic('lock')}Clear earlier missions</button>`
+      : `<button class="btn primary block" data-fly="${m.id}">${ic('play')}${done ? 'Replay mission' : 'Fly mission'}</button>`;
+    return `<article class="mcard${isNext ? ' active' : ''}${unlocked ? '' : ' locked'}" data-mid="${m.id}" role="button" tabindex="0" aria-expanded="${isNext}">
+      <div class="mart">${art}</div><div class="mfade"></div>
+      <div class="mbody">
+        <div class="mhead"><span class="chip ghost">Mission ${num}</span>${badge}</div>
+        <h3 class="mname">${m.name}</h3>
+        <p class="mtag">${m.tagline ?? m.brief}</p>
+        <div class="mmeta">${starRow}${scoreLine}</div>
+        <div class="mexpand"><div>${fuller}${cta}</div></div>
       </div></article>`;
   });
 
-  const initial = Math.max(0, all.findIndex((m) => m.id === nextId));
-  const { root } = overlay('campaign', map?.name ?? 'Campaign', `${all.length} missions · hardest last`, carousel(slides, 'Mission'));
-  wireCarousel(root, initial);
+  const { root } = overlay('campaign', map?.name ?? 'Campaign', `${all.length} missions · hardest last`, `<div class="mlist">${cards.join('')}</div>`);
   // Back goes to the region picker so the drill reads map → mission (the overlay's default close()
   // — which returns to Home — still fires first, so this just re-opens Campaign on top).
   root.querySelector('[data-x]')?.addEventListener('click', () => openCampaign());
-  root.querySelectorAll<HTMLElement>('[data-fly]').forEach((b) =>
-    b.addEventListener('click', (e) => {
-      e.stopPropagation();
-      flyMission?.(b.dataset.fly!);
-    }),
-  );
+  wireMissionList(root);
+}
+
+/** Wire the mission card list: tapping a card expands it (accordion — one open at a time); the
+ *  active card's CTA flies. The "next up" card starts expanded; on open we nudge it into view. */
+function wireMissionList(root: HTMLElement): void {
+  const cards = Array.from(root.querySelectorAll<HTMLElement>('.mcard'));
+  const expand = (card: HTMLElement): void => {
+    cards.forEach((c) => {
+      const on = c === card;
+      c.classList.toggle('active', on);
+      c.setAttribute('aria-expanded', String(on));
+    });
+    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  };
+  cards.forEach((card) => {
+    card.addEventListener('click', (e) => {
+      const fly = (e.target as HTMLElement).closest<HTMLElement>('[data-fly]');
+      if (fly) {
+        e.stopPropagation();
+        flyMission?.(fly.dataset.fly!);
+        return;
+      }
+      if (!card.classList.contains('active')) expand(card);
+    });
+    card.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      if (!card.classList.contains('active')) expand(card);
+      else card.querySelector<HTMLElement>('[data-fly]')?.click();
+    });
+  });
+  // Bring the initially-expanded (next up) card into view without animation.
+  const active = cards.find((c) => c.classList.contains('active'));
+  active?.scrollIntoView({ block: 'nearest' });
 }
 
 /** Small inline star pip (matches HomeScreen's medal styling via the shared `.stars` CSS). */

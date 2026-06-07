@@ -256,6 +256,39 @@ const CSS = `
 .bmf-app .specgrid .spec{ grid-template-columns:50px 1fr; gap:8px; margin:0; }
 .bmf-app .specgrid .spec .name{ color:rgba(255,255,255,0.62); }
 
+/* ===== mission card LIST (accordion) — copy on the left, art on the right, gradient fade left =====
+   One vertical stack; the active mission expands (reveals its CTA), collapsed cards keep ALL their
+   copy. The right-anchored poster reads through a left-to-right scrim so the left-hand text stays
+   legible over any image. This is the one permitted bounded inner-scroll list (CLAUDE.md). */
+.bmf-app .mlist{ display:flex; flex-direction:column; gap:11px; margin-top:12px; }
+.bmf-app .mcard{ position:relative; display:block; width:100%; text-align:left; cursor:pointer; overflow:hidden;
+  border-radius:var(--r-lg); border:1px solid var(--stroke-strong); background:#0a0e12; color:inherit; font:inherit;
+  box-shadow:var(--shadow-card); transition:border-color .18s, box-shadow .25s, transform .12s;
+  clip-path:polygon(0 0,100% 0,100% calc(100% - 16px),calc(100% - 16px) 100%,0 100%); -webkit-tap-highlight-color:transparent; }
+.bmf-app .mcard:hover{ border-color:var(--warm-stroke); transform:translateY(-1px); }
+.bmf-app .mcard.active{ border-color:var(--menu-soft); box-shadow:var(--shadow-card), 0 0 26px rgba(255,106,44,0.14); transform:none; }
+.bmf-app .mcard:focus-visible{ outline:none; border-color:var(--ember); box-shadow:0 0 0 3px rgba(255,106,44,0.22); }
+/* right-anchored art + the left-fading scrim that buys the copy its contrast */
+.bmf-app .mcard .mart{ position:absolute; inset:0; z-index:0; }
+.bmf-app .mcard .mart .img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:80% 36%; }
+.bmf-app .mcard .mart .fallback{ position:absolute; inset:0; background:radial-gradient(120% 96% at 82% 28%, rgba(255,106,44,0.42), transparent 62%), linear-gradient(160deg,#2a2030,#160d12 72%); }
+.bmf-app .mcard .mart .fallback b{ position:absolute; right:20px; top:50%; transform:translateY(-50%); font-family:var(--mono); font-weight:var(--fw-black); font-size:56px; color:rgba(255,255,255,0.08); }
+.bmf-app .mcard .mfade{ position:absolute; inset:0; z-index:1; pointer-events:none;
+  background:linear-gradient(90deg, #0a0e12 0%, #0a0e12 34%, rgba(10,14,18,0.80) 55%, rgba(10,14,18,0.20) 80%, transparent 100%),
+    linear-gradient(0deg, rgba(5,8,11,0.55) 0%, transparent 42%); }
+.bmf-app .mcard.locked .mart{ filter:grayscale(.6) brightness(.6); }
+.bmf-app .mcard .mbody{ position:relative; z-index:2; padding:13px 15px; max-width:74%; }
+.bmf-app .mcard .mhead{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.bmf-app .mcard .mname{ font-size:var(--fs-lg); font-weight:var(--fw-black); line-height:1.1; color:#fff; margin-top:10px; }
+.bmf-app .mcard .mtag{ font-size:var(--fs-meta); line-height:1.42; color:rgba(255,255,255,0.82); margin-top:6px; max-width:32ch; }
+.bmf-app .mcard .mmeta{ display:flex; align-items:center; gap:12px; margin-top:10px; }
+/* expand region — grid-rows trick animates the reveal without measuring height */
+.bmf-app .mcard .mexpand{ display:grid; grid-template-rows:0fr; transition:grid-template-rows .28s cubic-bezier(.16,.84,.3,1); }
+.bmf-app .mcard .mexpand > div{ overflow:hidden; min-height:0; }
+.bmf-app .mcard.active .mexpand{ grid-template-rows:1fr; }
+.bmf-app .mcard .mbrief{ font-size:var(--fs-meta); line-height:1.5; color:rgba(255,255,255,0.7); margin-top:11px; max-width:34ch; }
+.bmf-app .mcard .mexpand .btn{ margin-top:13px; max-width:300px; }
+
 /* ===== bottom rail ===== */
 .bmf-app .rail{ position:absolute; left:0; right:0; bottom:0; z-index:40; height:calc(var(--rail-h) + env(safe-area-inset-bottom)); padding-bottom:env(safe-area-inset-bottom);
   background:linear-gradient(180deg,#15191d 0%, #0c0f12 100%); border-top:1px solid var(--bevel-top); box-shadow:0 -8px 24px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.05); }
