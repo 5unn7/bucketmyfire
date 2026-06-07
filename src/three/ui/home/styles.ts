@@ -73,14 +73,10 @@ const CSS = `
 .bmf-app .sec .stamp.link{ cursor:pointer; color:var(--menu); border-color:var(--menu-soft); }
 
 .bmf-app .appbar{ display:flex; align-items:center; gap:12px; min-height:44px; margin-bottom:6px; }
-.bmf-app .back{ width:38px; height:38px; flex:0 0 auto; border-radius:var(--r-sm); border:1px solid var(--stroke); background:var(--card-soft); color:var(--text); display:grid; place-items:center; cursor:pointer; transition:border-color .14s, transform .14s; }
-.bmf-app .back:hover{ border-color:var(--menu-soft); transform:translateY(-1px); }
-.bmf-app .back svg{ width:18px; height:18px; }
 .bmf-app .iconbtn{ width:36px; height:36px; flex:0 0 auto; border-radius:var(--r-sm); border:1px solid var(--stroke); background:var(--card-soft); color:var(--dim); display:grid; place-items:center; cursor:pointer; transition:border-color .14s, color .14s, transform .14s; }
 .bmf-app .iconbtn:hover{ color:var(--ember-hi); border-color:var(--warm-stroke); transform:translateY(-1px); }
 .bmf-app .iconbtn svg{ width:17px; height:17px; }
 .bmf-app .appbar .ttl{ font-size:var(--fs-title); font-weight:var(--fw-heavy); letter-spacing:.04em; text-transform:uppercase; }
-.bmf-app .appbar .sub{ font-family:var(--mono); font-size:var(--fs-micro); letter-spacing:.18em; text-transform:uppercase; color:var(--faint); margin-top:2px; }
 
 .bmf-app .flame path,.bmf-app .flame polygon{ fill:url(#flameGrad); }
 /* Brand mark badge — the SAME treatment as the daily glyph (sibling logos down the board), but
@@ -252,9 +248,16 @@ const CSS = `
 .bmf-app .cnav:hover{ background:var(--ember-18); transform:translateY(-50%) scale(1.07); }
 .bmf-app .cnav.hide{ opacity:0; pointer-events:none; }
 
-.bmf-app .cmeta{ display:flex; align-items:center; justify-content:center; gap:8px; margin-top:11px;
-  font-family:var(--mono); font-size:var(--fs-micro); letter-spacing:.18em; text-transform:uppercase; color:var(--faint); font-weight:var(--fw-bold); }
-.bmf-app .cmeta b{ color:var(--ember-hi); }
+/* Mobile (phone): the Campaign / Hangar hero carousel FILLS the space between the header and the
+   rail, so the card always fits one viewport — it shrinks on short phones instead of overflowing or
+   forcing a scroll. Tablet/desktop keep their taller fixed-height flanked hero (media blocks below). */
+@media (max-width:739px){
+  .bmf-app .pad:has(> .carousel){ display:flex; flex-direction:column; overflow:hidden; }
+  .bmf-app .pad:has(> .carousel) > .carousel{ flex:1 1 auto; min-height:0; }
+  .bmf-app .pad:has(> .carousel) .ctrack{ height:100%; }
+  .bmf-app .pad:has(> .carousel) .cslide{ height:100%; }
+  .bmf-app .pad:has(> .carousel) .cslide .artcard .inner{ min-height:0; height:100%; }
+}
 
 /* heli hero — procedural "hangar bay" art tinted by the airframe accent (--accent) */
 .bmf-app .artcard.heli .heli-art{ position:absolute; inset:0; z-index:0; overflow:hidden;

@@ -36,6 +36,10 @@ function currentProfile(): Profile {
 let menuCatalog: MissionDef[] = [];
 let flyMission: ((id: string) => void) | null = null;
 let activeOverlay: { key: string; close: () => void } | null = null;
+// The Campaign tab covers two views (region picker → mission list). With the back button gone, the
+// rail is the only way up, so we track which view is showing: tapping Campaign while on the mission
+// list drills back UP to the region picker instead of being a no-op.
+let campaignView: 'region' | 'missions' = 'region';
 
 /** HomeScreen seeds the campaign catalog (the Campaign/Board surfaces read it) and the boot hook the
  *  mission cards call to fly a mission (a page-reload campaign nav owned by main.ts). */
@@ -47,7 +51,9 @@ export function setMenuCatalog(catalog: MissionDef[], onFly?: (id: string) => vo
 /** Route a rail tap: close the current panel (if any), then open the target. `home` just falls back
  *  to the hub mounted underneath. Shop LEAVES the game for the standalone /shop.html website. */
 export function navigateRail(key: string): void {
-  if (activeOverlay && activeOverlay.key === key) return; // already on this panel
+  // Already on this panel — tapping its own tab is a no-op, EXCEPT the Campaign tab while on the
+  // mission list, where it drills back up to the region picker (the back button's old job).
+  if (activeOverlay && activeOverlay.key === key && !(key === 'campaign' && campaignView === 'missions')) return;
   const prev = activeOverlay;
   prev?.close();
   switch (key) {
@@ -72,8 +78,9 @@ export function openBoard(): void {
 }
 
 /** Build a focused full-screen overlay WITH the persistent bottom rail (`key` = its active tab).
- *  Back / Esc / the rail's Home tab all return to the hub. Returns the root + a close() helper. */
-function overlay(key: string, title: string, sub: string, body: string): { root: HTMLDivElement; close: () => void } {
+ *  Navigation is the rail's job (no back button); Esc / the rail's Home tab return to the hub.
+ *  Returns the root + a close() helper. */
+function overlay(key: string, title: string, body: string): { root: HTMLDivElement; close: () => void } {
   injectHomeStyles();
   const root = document.createElement('div');
   root.className = 'bmf-app';
@@ -81,8 +88,7 @@ function overlay(key: string, title: string, sub: string, body: string): { root:
   root.innerHTML =
     DEFS +
     `<div class="scene"></div><div class="embers"></div>` +
-    `<div class="pad"><div class="appbar"><button class="back" data-x aria-label="Back">${ic('back')}</button>` +
-    `<div><div class="ttl">${title}</div><div class="sub">${sub}</div></div></div>${body}</div>` +
+    `<div class="pad"><div class="appbar"><div class="ttl">${title}</div></div>${body}</div>` +
     railNav(key);
   document.body.appendChild(root);
   const embers = root.querySelector<HTMLElement>('.embers');
@@ -96,7 +102,6 @@ function overlay(key: string, title: string, sub: string, body: string): { root:
     if (e.key === 'Escape') close();
   }
   window.addEventListener('keydown', onKey);
-  root.querySelector('[data-x]')?.addEventListener('click', close);
   root.querySelectorAll<HTMLElement>('.rail [data-rail]').forEach((b) =>
     b.addEventListener('click', () => navigateRail(b.dataset.rail || 'home')),
   );
@@ -105,11 +110,10 @@ function overlay(key: string, title: string, sub: string, body: string): { root:
 }
 
 // — Hero carousel (shared by Maps + Hangar) ——————————————————————————————————
-// One full-bleed, center-snap, one-card-at-a-time strip with chevrons + dots + an "n / total"
-// counter. Both pickers render their items as poster `.cslide`s and wire this same controller so
-// the two screens read identically. Tapping an off-centre slide brings it to centre; the active
-// slide's own CTA does the selecting.
-function carousel(slides: string[], counterLabel: string): string {
+// One full-bleed, center-snap, one-card-at-a-time strip with chevrons + dots. Both pickers render
+// their items as poster `.cslide`s and wire this same controller so the two screens read
+// identically. Tapping an off-centre slide brings it to centre; the active slide's own CTA selects.
+function carousel(slides: string[]): string {
   const n = slides.length;
   return (
     `<div class="carousel">` +
@@ -117,19 +121,17 @@ function carousel(slides: string[], counterLabel: string): string {
     `<div class="ctrack" data-ctrack>${slides.join('')}</div>` +
     (n > 1 ? `<button class="cnav next" data-cnav="1" aria-label="Next">${ic('chevron-right')}</button>` : '') +
     `</div>` +
-    (n > 1 ? `<div class="dots" data-cdots>${slides.map((_, i) => `<i class="${i === 0 ? 'on' : ''}"></i>`).join('')}</div>` : '') +
-    `<div class="cmeta"><b data-cidx>1</b> / ${n} · ${counterLabel}</div>`
+    (n > 1 ? `<div class="dots" data-cdots>${slides.map((_, i) => `<i class="${i === 0 ? 'on' : ''}"></i>`).join('')}</div>` : '')
   );
 }
 
-/** Wire the carousel in `root`: scroll → active slide (scale-up + dots + counter + chevron fade),
+/** Wire the carousel in `root`: scroll → active slide (scale-up + dots + chevron fade),
  *  chevrons + off-centre taps re-centre. `onActive(i)` fires on each settle. Returns a `center(i)`. */
 function wireCarousel(root: HTMLElement, initial: number, onActive?: (i: number) => void): (i: number) => void {
   const track = root.querySelector<HTMLElement>('[data-ctrack]');
   if (!track) return () => {};
   const slides = Array.from(track.querySelectorAll<HTMLElement>('.cslide'));
   const dots = root.querySelector<HTMLElement>('[data-cdots]');
-  const idxEl = root.querySelector<HTMLElement>('[data-cidx]');
   const prev = root.querySelector<HTMLElement>('.cnav.prev');
   const next = root.querySelector<HTMLElement>('.cnav.next');
   let active = -1;
@@ -145,7 +147,6 @@ function wireCarousel(root: HTMLElement, initial: number, onActive?: (i: number)
     active = i;
     slides.forEach((s, k) => s.classList.toggle('active', k === i));
     dots && Array.from(dots.children).forEach((d, k) => d.classList.toggle('on', k === i));
-    if (idxEl) idxEl.textContent = String(i + 1);
     prev?.classList.toggle('hide', i === 0);
     next?.classList.toggle('hide', i === slides.length - 1);
     onActive?.(i);
@@ -226,8 +227,9 @@ export function openCampaign(): void {
       </div></article>`;
   });
 
+  campaignView = 'region';
   const initial = Math.max(0, MAPS.findIndex((m) => m.id === pro.mapId && m.available));
-  const { root, close } = overlay('campaign', 'Campaign', 'Choose a region', carousel(slides, 'Region'));
+  const { root, close } = overlay('campaign', 'Campaign', carousel(slides));
   wireCarousel(root, initial);
   root.querySelectorAll<HTMLElement>('[data-map]').forEach((b) =>
     b.addEventListener('click', (e) => {
@@ -293,10 +295,8 @@ export function openMissions(mapId: string): void {
       </div></article>`;
   });
 
-  const { root } = overlay('campaign', map?.name ?? 'Campaign', `${all.length} missions · hardest last`, `<div class="mlist">${cards.join('')}</div>`);
-  // Back goes to the region picker so the drill reads map → mission (the overlay's default close()
-  // — which returns to Home — still fires first, so this just re-opens Campaign on top).
-  root.querySelector('[data-x]')?.addEventListener('click', () => openCampaign());
+  campaignView = 'missions';
+  const { root } = overlay('campaign', map?.name ?? 'Campaign', `<div class="mlist">${cards.join('')}</div>`);
   wireMissionList(root);
 }
 
@@ -343,14 +343,10 @@ function star(on: boolean): string {
 export function openHangar(): void {
   const cleared = missionsCleared();
   const slides = HELIS.map((h) => heliSlide(h, cleared));
-  const body =
-    carousel(slides, 'Airframe') +
-    `<div class="card metal" style="margin-top:16px;"><div class="row" style="gap:12px;"><div class="glyph">${FLAME}</div>` +
-    `<div class="grow"><div style="font-size:var(--fs-md);font-weight:var(--fw-semibold);">Earn your fleet</div>` +
-    `<div class="muted" style="font-size:var(--fs-meta);margin-top:2px;">Bell 212 unlocks at 2 missions · UH-60 at 5. You've cleared ${cleared}.</div></div></div></div>`;
+  const body = carousel(slides);
 
   const initial = Math.max(0, HELIS.findIndex((h) => h.id === currentProfile().heliId));
-  const { root } = overlay('hangar', 'Hangar', 'Your aircraft', body);
+  const { root } = overlay('hangar', 'Hangar', body);
 
   const refresh = (): void => {
     const sel = currentProfile().heliId;
@@ -404,11 +400,22 @@ function heliSlide(h: CatalogItem, cleared: number): string {
  *  Everyone flies the same daily-seeded Saskatchewan, the fires never stop, you build a personal score.
  *  Routes to `?ffa` (a reload boot owned by main.ts), mirroring the Daily Burn nav. */
 export function openCoop(): void {
-  // Free-for-all: every airframe is available (it's a sandbox, not the campaign ladder). Default the
-  // pick to the pilot's saved heli, else the trainer.
+  // Open Skies is a sandbox, but it still respects the campaign unlock ladder — you fly the airframes
+  // you've EARNED, the same gate as the Hangar. Default the pick to the pilot's saved heli (loadProfile
+  // already clamps a locked save back to the trainer), falling back to the first unlocked airframe so a
+  // ?heli= override or stale pick can never seed a locked selection.
+  const cleared = missionsCleared();
+  const unlocked = (h: CatalogItem): boolean => isHeliUnlocked(h, cleared);
   let picked = currentProfile().heliId || HELIS[0].id;
-  const heliBtn = (h: (typeof HELIS)[number]): string =>
-    `<button class="btn ${h.id === picked ? 'ember' : 'ghost'} sm block" style="margin-top:8px;border-radius:var(--r-sm);justify-content:flex-start;gap:10px;" data-heli="${h.id}">${ic('heli')}<b>${h.name}</b><span class="muted" style="font-weight:var(--fw-regular);">${h.tagline}</span></button>`;
+  if (!unlocked(HELIS.find((h) => h.id === picked) ?? HELIS[0])) picked = (HELIS.find(unlocked) ?? HELIS[0]).id;
+  // Locked airframes render dimmed with their unlock requirement and carry data-locked, which the
+  // selection handlers below skip — is-disabled only greys the button, it does NOT block the click.
+  const heliBtn = (h: (typeof HELIS)[number]): string => {
+    const ok = unlocked(h);
+    const sub = ok ? h.tagline : `Clear ${h.unlockAfter} missions`;
+    const tone = ok ? (h.id === picked ? 'ember' : 'ghost') : 'ghost is-disabled';
+    return `<button class="btn ${tone} sm block" style="margin-top:8px;border-radius:var(--r-sm);justify-content:flex-start;gap:10px;" data-heli="${h.id}"${ok ? '' : ' data-locked'}>${ic(ok ? 'heli' : 'lock')}<b>${h.name}</b><span class="muted" style="font-weight:var(--fw-regular);">${sub}</span></button>`;
+  };
   const body = `<div style="margin-top:10px;">
     <span class="chip">Free-for-all</span>
     <h1 class="h-big" style="margin-top:14px;">Open Skies.</h1>
@@ -418,12 +425,15 @@ export function openCoop(): void {
     <button class="btn ember block" style="margin-top:16px;border-radius:var(--r-sm);" data-ffa>${ic('play')}Fly Open Skies</button>
     <button class="btn ghost block" style="margin-top:10px;border-radius:var(--r-sm);" data-ffa-board>${ic('trophy')}Today's board</button>
   </div>`;
-  const { root } = overlay('coop', 'Open Skies', 'Free-for-all', body);
-  // Heli selection: highlight the chosen airframe (ember) vs the rest (ghost).
+  const { root } = overlay('coop', 'Open Skies', body);
+  // Heli selection: highlight the chosen airframe (ember) vs the rest (ghost). Locked airframes are
+  // inert — you can't fly what you haven't earned, so skip them on both the click and the re-paint.
   root.querySelectorAll<HTMLElement>('[data-heli]').forEach((b) => {
+    if (b.hasAttribute('data-locked')) return;
     b.addEventListener('click', () => {
       picked = b.dataset.heli || picked;
       root.querySelectorAll<HTMLElement>('[data-heli]').forEach((x) => {
+        if (x.hasAttribute('data-locked')) return;
         const on = x.dataset.heli === picked;
         x.classList.toggle('ember', on);
         x.classList.toggle('ghost', !on);
@@ -463,10 +473,9 @@ export function openSettings(): void {
   <div class="card" style="margin-top:12px;">
     <div class="srow danger"><div class="ic">${ic('trash')}</div><div class="grow"><div class="t">Reset progress</div><div class="s">Wipe ranks, stars &amp; unlocks</div></div>
       <button class="btn danger" data-reset>Reset…</button></div>
-  </div>
-  <div style="margin-top:16px;text-align:center;font-family:var(--mono);font-size:var(--fs-micro);letter-spacing:.16em;text-transform:uppercase;color:var(--faint);">bucketmyfire v1.0 · Marakana</div>`;
+  </div>`;
 
-  const { root } = overlay('settings', 'Settings', 'Field settings', body);
+  const { root } = overlay('settings', 'Settings', body);
 
   root.querySelector('[data-sound]')?.addEventListener('click', (e) => {
     const t = e.currentTarget as HTMLElement;
