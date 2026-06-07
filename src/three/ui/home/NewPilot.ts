@@ -12,6 +12,7 @@
 import { validateCallsign, MAX_CALLSIGN } from '../callsign';
 import { isNameTaken, getClientId } from '../../leaderboard/client';
 import { isValidEmail, isConfigured, saveToCloud } from '../../leaderboard/cloudSave';
+import { openCloudSave } from '../CloudSave';
 import { loadProfile, saveProfile, findItem, firstAvailable, isHeliUnlocked, missionsCleared, MAPS, HELIS } from '../profile';
 import { injectHomeStyles, spawnEmbers } from './styles';
 import { DEFS, FLAME, HELMET, ic } from './icons';
@@ -57,6 +58,11 @@ export class NewPilotScreen {
     const cloud = isConfigured()
       ? 'Save your progress and pick up your run on any device.'
       : 'Cloud save is offline right now — your progress stays safe on this device.';
+    // Returning pilots who cleared their browser can pull their run back from the cloud (callsign +
+    // email). Only offered when cloud save is actually configured — otherwise there's nothing to load.
+    const load = isConfigured()
+      ? `<button id="np-load" class="btn ghost block" style="margin-top:10px;">${ic('cloud')}Load a saved profile</button>`
+      : '';
     return `
 <div class="scene"></div><div class="embers"></div>
 <div class="pad">
@@ -87,6 +93,7 @@ export class NewPilotScreen {
     <p class="fhint">${cloud}</p>
 
     <button id="np-cta" class="btn primary block" style="margin-top:24px;">${ic('play')}Enter the fight</button>
+    ${load}
 
     <p class="legal" style="margin-top:22px;">By continuing you agree to our
       <a href="/terms.html" target="_blank" rel="noopener noreferrer">Terms</a> and
@@ -128,6 +135,10 @@ export class NewPilotScreen {
       }
     });
     this.cta.addEventListener('click', () => void this.submit());
+
+    // "Load a saved profile" → the cloud restore modal (callsign + email). A successful restore
+    // reloads the page, so main.ts re-routes a now-registered pilot straight to the Home hub.
+    this.root.querySelector('#np-load')?.addEventListener('click', () => openCloudSave());
   }
 
   /** Persist the callsign (+ optional cloud link), then hand off to the Home hub. */
