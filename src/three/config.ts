@@ -1740,6 +1740,15 @@ export const FFA = {
   netInterpMs: 160, // remote-pilot smoothing time constant — rides through 12Hz jitter without lag
   netStaleMs: 6000, // drop a remote pilot not heard from in this long (left / disconnected)
   netMaxRemotes: 8, // hard cap on simultaneously-rendered ghost pilots (perf)
+  // Pose `flags` bitfield (set in Game.sendPose, decoded by RemotePilots). Lives here, NOT in the
+  // code-split openSkies.ts, so Game can read it without statically pulling realtime-js into the bundle.
+  poseFlagBucket: 1, // bit 0: a slung bucket is rigged (water payload + attached) → render the ghost's bucket
+  poseFlagDropping: 2, // bit 1: pouring water right now → peers pour spray from the ghost's bucket mouth
+  // Spawn scatter: every pilot's home pad is the SAME deterministic XZ, so a naive spawn stacks every ship
+  // (and ghost) on one spot — they overlap and re-collide the instant immunity ends. Each client instead
+  // takes a slot on a ring (this radius, world units) around the pad: deterministic from its own id when it
+  // can't yet see peers (initial spawn), then occupancy-aware against the ghosts it sees (respawn).
+  spawnRing: 18, // radius (u) of the home-pad spawn ring — ≥ 2× collideRadius so neighbouring slots clear
   // Pilot-vs-pilot: a mid-air collision blows BOTH ships out of the sky (each client detects it locally
   // against the ghost it renders → no host needed), then they respawn in flight.
   collideRadius: 9, // world units — centre-to-centre distance that counts as a collision (~an airframe length)

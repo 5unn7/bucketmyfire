@@ -224,6 +224,7 @@ export class Game {
   private lakeRadar: { x: number; z: number; r: number }[] | null = null;
   private washRippleTimer = 0; // throttles the downwash ripple rings under a low heli (C4)
   private sprayAccum = 0; // throttles drop-spray emission to SPRAY.emitInterval
+  private netLeaking = false; // latest "pouring water" state (drop OR scrape-slop) → broadcast so peers spray
   private smokeAccum = 0; // throttles per-fire smoke puff bursts to SMOKE.emitInterval
   private emberAccum = 0; // throttles per-fire ember bursts to EMBERS.emitInterval
   private smokeVeil = 0; // C5: eased blinding-smoke veil opacity (camera-in-plume)
@@ -424,8 +425,11 @@ export class Game {
     // and the crew LZs off in some random direction.
     if (this.helipadXZ) {
       const p = this.helipadXZ;
-      const floorY = this.landingFloorAt(p.x, p.z);
-      if (this.engineStarted) this.heliSim.hoverAt(p.x, p.z, floorY);
+      // Open Skies: every pilot's pad is the same XZ, so scatter the AIRBORNE spawn around it (a ring slot
+      // deterministic from this client's id — see ffaSpawnXZ) so ships/ghosts don't all stack on one spot.
+      const s = this.mission.endless && this.engineStarted ? this.ffaSpawnXZ(p) : p;
+      const floorY = this.landingFloorAt(s.x, s.z);
+      if (this.engineStarted) this.heliSim.hoverAt(s.x, s.z, floorY);
       else this.heliSim.land(p.x, p.z, floorY);
       this.heliSim.yaw = p.yaw;
     }
@@ -1722,6 +1726,7 @@ export class Game {
     // integrate them (gravity + impact). Droplets that land on a lake nudge a ripple. ---
     this.sprayAccum += dt;
     const leaking = dropping || (scraping && this.water > 0); // dump OR slop-from-scrape
+    this.netLeaking = leaking; // broadcast (Open Skies) so peers pour spray from our bucket too
     if (leaking && this.sprayAccum >= SPRAY.emitInterval) {
       this.sprayAccum = 0;
       // Launch the sheet from the bucket mouth, but carry the WIND as a constant velocity so a droplet
@@ -2148,11 +2153,21 @@ export class Game {
         pitch: this.heliSim.pitch,
         agl: this.heliSim.agl,
         fill: this.capacity > 0 ? this.water / this.capacity : 0,
-        flags: 0,
+        // flags bitfield: bit 0 = a slung bucket is rigged (water payload + attached) so peers render it;
+        // bit 1 = pouring water right now so peers pour spray from our ghost's bucket mouth.
+        flags:
+          (this.payloadMode === 'water' && this.bucketAttached ? FFA.poseFlagBucket : 0) |
+          (this.netLeaking ? FFA.poseFlagDropping : 0),
         score: this.ffaScore,
       });
     }
     this.remotePilots.sync(this.openSkies.remotes(), dt);
+
+    // Pour spray from any peer dropping water, out of their bucket mouth, through the shared pool — so a
+    // remote douse reads exactly like our own. Drift the curtain downwind the same way the local drop does.
+    this.remotePilots.forEachDrop((x, y, z, vx, vz) => {
+      this.spray.emit(x, y, z, vx + this.wind.vx * DROP_PHYSICS.windDriftGain, vz + this.wind.vz * DROP_PHYSICS.windDriftGain);
+    });
 
     if (this.ffaInvuln > 0) this.ffaInvuln -= dt; // tick down the post-respawn collision immunity
 
@@ -2311,6 +2326,46 @@ export class Game {
   }
 
   /**
+   * Open Skies spawn scatter: pick a slot on a ring around the home pad so ships (and their ghosts) don't
+   * all stack on one spot and re-collide the instant immunity ends. The slot is deterministic from THIS
+   * client's id, which (a) spreads pilots when no peers are visible yet — the initial spawn, before the
+   * channel connects — and (b) orders each client's candidate sweep differently, so two pilots picking at
+   * the same instant diverge instead of choosing the same gap. When peers ARE visible (respawn), it takes
+   * the first slot comfortably clear of every ghost, falling back to the clearest slot on a crowded ring.
+   */
+  private ffaSpawnXZ(pad: { x: number; z: number }): { x: number; z: number } {
+    // Stable per-client base angle (small string hash over the id).
+    const cid = getClientId();
+    let h = 0;
+    for (let i = 0; i < cid.length; i++) h = (Math.imul(31, h) + cid.charCodeAt(i)) | 0;
+    const base = (((h % 360) + 360) % 360) * (Math.PI / 180);
+
+    // Ghosts to avoid (empty at the initial spawn — the presence channel hasn't connected yet).
+    const occ: { x: number; z: number }[] = [];
+    this.remotePilots?.occupiedXZ(occ);
+
+    const R = FFA.spawnRing;
+    const SLOTS = 12; // candidate angles swept around the ring
+    const GOLDEN = 2.399963; // golden-angle step (rad) → a low-collision sweep, client-ordered from `base`
+    let best = { x: pad.x + Math.cos(base) * R, z: pad.z + Math.sin(base) * R };
+    if (occ.length === 0) return best; // no peers known → the deterministic base slot is enough
+    let bestClear = -Infinity;
+    for (let i = 0; i < SLOTS; i++) {
+      const ang = base + i * GOLDEN;
+      const x = pad.x + Math.cos(ang) * R;
+      const z = pad.z + Math.sin(ang) * R;
+      let clear = Infinity;
+      for (const o of occ) clear = Math.min(clear, Math.hypot(o.x - x, o.z - z));
+      if (clear >= FFA.collideRadius * 1.5) return { x, z }; // first comfortably-clear slot wins
+      if (clear > bestClear) {
+        bestClear = clear;
+        best = { x, z };
+      }
+    }
+    return best; // crowded ring → the clearest slot we found
+  }
+
+  /**
    * Free-for-all respawn: once the brief death hold elapses, put the airframe back in the AIR over home
    * with the engine already running (NO cold-start ritual) and a fresh, pristine airframe — the endless
    * round continues and the accumulated score is kept. Reuses the airborne-spawn pose and snaps the slung
@@ -2324,19 +2379,13 @@ export class Game {
     this.heliSim.crashing = false;
     this.heliSim.crashLanded = false;
     // Back in the air over home, engine running (no spool), level attitude. The home pad is the SAME
-    // deterministic XZ for every pilot, so offset each player by a stable per-client angle around it —
-    // two pilots who died together then don't respawn exactly overlapped (which would re-collide the
-    // instant immunity ends).
+    // deterministic XZ for every pilot, so scatter onto a ring slot clear of the ghosts we can see —
+    // two pilots who died together don't respawn overlapped (which would re-collide the instant immunity
+    // ends), and stragglers re-entering a crowded pad land in a gap.
     const pad = this.helipadXZ ?? { x: 0, z: 0, yaw: 0 };
-    let h = 0;
-    const cid = getClientId();
-    for (let i = 0; i < cid.length; i++) h = (Math.imul(31, h) + cid.charCodeAt(i)) | 0;
-    const ang = (((h % 360) + 360) % 360) * (Math.PI / 180);
-    const off = FFA.collideRadius * 2;
-    const rx = pad.x + Math.cos(ang) * off;
-    const rz = pad.z + Math.sin(ang) * off;
-    const floorY = this.landingFloorAt(rx, rz);
-    this.heliSim.hoverAt(rx, rz, floorY);
+    const s = this.ffaSpawnXZ(pad);
+    const floorY = this.landingFloorAt(s.x, s.z);
+    this.heliSim.hoverAt(s.x, s.z, floorY);
     this.heliSim.yaw = pad.yaw;
     this.heliSim.bank = 0;
     this.heliSim.pitch = 0;
