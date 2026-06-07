@@ -60,13 +60,17 @@ export class EndScreen {
    */
   show(s: HudState): void {
     const reduce = prefersReducedMotion();
+    // Compact the results card on short viewports so the debrief obeys the no-scroll law (DESIGN.md):
+    // tighter padding + section/button gaps let a full win-debrief (breakdown + unlock + 3 button rows)
+    // fit a short phone. The bounded maxHeight + scroll stay ONLY as a never-clip safety net.
+    const shortVp = window.innerHeight < 700;
     // Blurred backdrop — captures pointer events (taps don't leak to the game) and centers the card.
     const back = scrim({ opacity: reduce ? '1' : '0', transition: reduce ? 'none' : 'opacity 0.3s ease' });
     this.banner = back; // the `shown` guard in update() keys off this
 
     const card = frosted({
       textAlign: 'center',
-      padding: '24px 26px 20px',
+      padding: shortVp ? '15px 22px 13px' : '24px 26px 20px',
       borderRadius: R.xl,
       pointerEvents: 'auto',
       width: '100%',
@@ -207,13 +211,13 @@ export class EndScreen {
 
     if (this.end) {
       // Primary action row — the obvious next move (advance / retry) + back to the menu.
-      const row = el('div', { display: 'flex', gap: '10px', justifyContent: 'center', marginTop: '20px', flexWrap: 'wrap' });
+      const row = el('div', { display: 'flex', gap: '10px', justifyContent: 'center', marginTop: shortVp ? '12px' : '20px', flexWrap: 'wrap' });
       if (s.won && this.end.hasNext) row.appendChild(bannerButton('NEXT ▸', 'primary', this.end.onNext));
       if (!s.won && !this.end.noRetry) row.appendChild(bannerButton('↻ RETRY', 'primary', this.end.onRetry));
       row.appendChild(bannerButton('MENU', 'ghost', this.end.onMenu));
       card.appendChild(row);
       // Secondary row — leaderboard + share (the free viral loop; OG tags already unfurl the link).
-      const row2 = el('div', { display: 'flex', gap: '10px', justifyContent: 'center', marginTop: '10px', flexWrap: 'wrap' });
+      const row2 = el('div', { display: 'flex', gap: '10px', justifyContent: 'center', marginTop: shortVp ? '8px' : '10px', flexWrap: 'wrap' });
       if (this.end.onLeaderboard) row2.appendChild(bannerButton('🏆 LEADERBOARD', 'secondary', this.end.onLeaderboard));
       row2.appendChild(this.shareButton(s));
       card.appendChild(row2);
@@ -221,7 +225,7 @@ export class EndScreen {
       // the game for the standalone BMF Gear website (/shop.html) where the waitlist capture lives.
       if (s.won) {
         const store = bannerButton('🪧 SQUADRON STORE', 'store', () => { window.location.href = '/shop.html'; });
-        const storeRow = el('div', { display: 'flex', justifyContent: 'center', marginTop: '12px' });
+        const storeRow = el('div', { display: 'flex', justifyContent: 'center', marginTop: shortVp ? '8px' : '12px' });
         storeRow.appendChild(store);
         card.appendChild(storeRow);
       }
@@ -287,7 +291,8 @@ function metaLine(text: string): HTMLDivElement {
 /** A small section divider: a label tag on the left, a hairline rule filling the middle, and an optional
  *  right-hand STAMP (the gold "NEW BEST" flag). Sets the score block apart as its own titled region. */
 function sectionHeader(label: string, stamp: string): HTMLDivElement {
-  const row = el('div', { display: 'flex', alignItems: 'center', gap: '10px', marginTop: '18px', marginBottom: '8px' });
+  const compact = window.innerHeight < 700; // tighten the SCORE divider gap on short phones (no-scroll law)
+  const row = el('div', { display: 'flex', alignItems: 'center', gap: '10px', marginTop: compact ? '11px' : '18px', marginBottom: '8px' });
   row.appendChild(el('div', { fontSize: FS.label, fontWeight: FW.heavy, letterSpacing: '2px', color: UI.faint, flex: '0 0 auto' }, label));
   row.appendChild(el('div', { flex: '1 1 auto', height: '1px', background: UI.stroke }));
   if (stamp) {
