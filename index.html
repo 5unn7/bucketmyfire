@@ -2,12 +2,9 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <!-- Inline-SVG emoji favicon: silences the /favicon.ico 404 with zero binary assets.
-         Brackets are %-encoded so Vite's HTML parser doesn't strip the data URI. -->
-    <link
-      rel="icon"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🚁%3C/text%3E%3C/svg%3E"
-    />
+    <!-- Brand favicon: the bucket-drop flame mark (public/icon.svg), an SVG so it stays
+         crisp at any tab size with zero binary assets. Shared with the apple-touch-icon + manifest. -->
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
