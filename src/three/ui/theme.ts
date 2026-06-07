@@ -70,6 +70,9 @@ export const UI = {
   ctaGlow: 'rgba(239,170,43,0.42)',
   // Text hierarchy
   text: 'rgba(255,255,255,0.94)',
+  textSubtle: 'rgba(255,255,255,0.82)', // subtle body white — dimmer than `text`, brighter than `dim`; the
+  // home of the ~0.78–0.86 whites used for card taglines / brief copy (continue card, daily brief) that
+  // had no token and were hand-typed per screen.
   textCool: 'rgba(198,224,236,0.82)', // body text that wants a COOL cast without claiming "interactive" —
   // the correct home for the cyan-tinted prose that was wrongly using the `accent` (cyan = actionable only).
   ink: '#0c1410', // near-black text for drawing ON a bright fill (a gold medal chip, an accent pill).

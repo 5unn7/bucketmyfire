@@ -17,7 +17,7 @@ export function tokenDecls(): string {
     `--menu:${UI.menu};--menu-soft:${UI.menuSoft};--menu-fill:${UI.menuFill};`,
     `--cta:${UI.cta};--cta-hi:${UI.ctaHi};--cta-ink:${UI.ctaInk};--cta-glow:${UI.ctaGlow};`,
     `--warn:${UI.warn};--ok:${UI.ok};--caution:${UI.caution};--gold:${UI.gold};--silver:${UI.silver};--bronze:${UI.bronze};`,
-    `--text:${UI.text};--ink:${UI.ink};--dim:${UI.dim};--faint:${UI.faint};`,
+    `--text:${UI.text};--text-subtle:${UI.textSubtle};--ink:${UI.ink};--dim:${UI.dim};--faint:${UI.faint};`,
     `--card-glass:${UI.cardGlass};--card-soft:${UI.cardSoft};--warm-glass:${UI.warmGlass};`,
     `--track:${UI.track};--recess:${UI.recess};--field:${UI.field};--rowmine:${UI.rowMine};`,
     `--stroke:${UI.stroke};--stroke-strong:${UI.strokeStrong};--warm-stroke:${UI.warmStroke};--hair:${UI.hair};`,

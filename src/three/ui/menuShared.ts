@@ -169,7 +169,7 @@ export function coopTeaserCard(number: number): HTMLDivElement {
 
   card.appendChild(div({ fontSize: FS.title, fontWeight: FW.bold, margin: '7px 0 6px' }, '🤝 Co-op'));
   const blurb = div(
-    { fontSize: FS.sm, lineHeight: '1.45', color: 'rgba(231,247,255,0.72)' },
+    { fontSize: FS.sm, lineHeight: '1.45', color: UI.textCool },
     '2–4 players against one fire too big to fly alone — more towns, crews and rescues than a single pilot can hold. Bring friends.',
   );
   clamp(blurb, 2);

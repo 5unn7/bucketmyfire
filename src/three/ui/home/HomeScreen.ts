@@ -157,10 +157,10 @@ export class HomeScreen {
       <div class="row" style="gap:7px;"><span class="chip">Mission ${num}</span><span class="chip ghost reg">${ic('pin')}${region}</span></div>
       <div class="grow" style="min-height:8px;"></div>
       <h2 class="h-big">${next.name}</h2>
-      <p class="clamp2 contbrief" style="margin-top:8px;font-size:var(--fs-body);line-height:1.42;color:rgba(255,255,255,0.84);max-width:32ch;text-shadow:0 1px 6px rgba(0,0,0,0.75);">${next.tagline ?? next.brief}</p>
+      <p class="clamp2 contbrief" style="margin-top:8px;font-size:var(--fs-body);line-height:1.42;color:var(--text-subtle);max-width:32ch;text-shadow:0 1px 6px rgba(0,0,0,0.75);">${next.tagline ?? next.brief}</p>
       <div class="row" style="gap:12px;margin-top:11px;">
         <span class="stars">${STAR(stars >= 1)}${STAR(stars >= 2)}${STAR(stars >= 3)}</span>
-        <span class="mono" style="font-size:var(--fs-meta);color:rgba(255,255,255,0.78);">${best != null ? `Best <b style="color:var(--menu);font-weight:var(--fw-bold)">${best.toLocaleString('en-US')}</b>` : 'Not flown yet'}</span>
+        <span class="mono" style="font-size:var(--fs-meta);color:var(--text-subtle);">${best != null ? `Best <b style="color:var(--menu);font-weight:var(--fw-bold)">${best.toLocaleString('en-US')}</b>` : 'Not flown yet'}</span>
       </div>
       <div class="contprog" style="margin-top:11px;">
         <div class="barrow"><span class="l">Campaign</span><span class="r">${cleared} / ${total} cleared</span></div>
