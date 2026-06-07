@@ -104,6 +104,11 @@ export const LAKE_SHAPE = {
   harmonics: 2, // number of angular lobes summed onto the ellipse
   harmonicAmp: 0.12, // max amplitude of each lobe (fraction of radius)
   meshRings: 14, // concentric rings in the water disc — enough for a smooth depth fade (no banding)
+  // Authored-outline cleanup: a long/lobed real lake (Lac La Ronge) ray-cast from its centroid yields a
+  // single-valued boundary LUT with SHARP notches where the nearest shore crossing jumps between angles —
+  // those notches render as sliver triangles that shimmer ("low-graphic / glitch"). A wrap-around low-pass
+  // pass over the LUT relaxes the notches into a smooth, uniform waterline. Shared by mesh + basin + isOverWater.
+  outlineSmoothPasses: 4, // 0 = off (verbatim outline); each pass is a 3-tap binomial blur over the 128-sample ring
 } as const;
 
 // Streams / mini rivers (Track A4). Thin meandering channels that connect lakes
@@ -1172,6 +1177,19 @@ export const MISSIONS = {
   refuelAgl: 16, // radar altitude (units) below which refuel can start
   refuelSpeed: 6, // airspeed (units/s) below which refuel can start
   starveSinkLift: -0.45, // forced collective when starved — engine cut, the heli can only sink
+} as const;
+
+// LOW-HOVER tree ring (the Low Hover Drill feature) — a deliberate WALL of conifers ringing each
+// drill clearing so the spot reads as a real "hole in the timber", not a random forest gap. The
+// natural forest only THINS here (clearingFactor over `lowHoverClearRadius`); this lays a dense,
+// deterministic ring in the cleared annulus, leaving a clean cutout at centre to drop into and hold.
+// The ring trees register as canopy colliders (fed into Obstacles), so drifting into the wall strikes
+// the rotor — the wall IS the hazard the drill trains against. `innerR` must stay ≥ `lowHoverRadius`
+// so the acceptance zone stays open; `outerR` ≈ `lowHoverClearRadius` so the wall fills the cleared gap.
+export const HOVER_RING = {
+  innerR: 13, // clear cutout radius (units) — keep ≥ MISSIONS.lowHoverRadius (11) so the hold zone stays open
+  outerR: 20, // outer edge of the tree wall (≈ MISSIONS.lowHoverClearRadius) — the cleared annulus becomes timber
+  treesPerU2: 0.13, // areal density of the band → how solid the wall reads (higher = thicker, fewer gaps to clip through)
 } as const;
 
 // Wildlife (boreal fauna) — procedural low-poly animals that bring the map to life:

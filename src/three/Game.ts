@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { createTerrain } from './meshes/terrain';
 import { createTreeField, TreeField } from './meshes/trees';
+import { createTreeRing } from './meshes/treeRing';
 import { deciduousSpecies, snagSpecies, speciesRng } from './meshes/treeSpecies';
 import { createRiverMesh } from './meshes/river';
 import { createRoadMesh } from './meshes/road';
@@ -124,6 +125,7 @@ export class Game {
   private readonly fauna: Fauna; // wildlife (moose/deer/loons…) — depends on world
   private readonly forest: TreeField; // chunked conifer forest (DEFERRED) — culled each frame to what's in view
   private readonly forestNear: TreeField; // small SYNCHRONOUS conifer patch around the spawn — present at first frame
+  private readonly hoverRings: TreeField[] = []; // dense conifer walls ringing each Low Hover Drill clearing (collider hazards)
   // Decorative accent fields, built one tick AFTER the first frame (see buildAccentFoliage): they're
   // not colliders and the sim is frozen on the briefing/cold-start deck while they pop in, so deferring
   // them off the construction critical path shaves the first-frame freeze with no visible cost. Null
@@ -658,6 +660,29 @@ export class Game {
     swayFoliage(nearPatch);
     const nearColliders = nearPatch.colliders.map((c) => ({ ...c, x: c.x + spawn.x, z: c.z + spawn.z })); // → world XZ
 
+    // --- Low-hover tree rings: a deliberate WALL of timber circling each drill clearing -------------------
+    // The forest only THINS at these spots (clearingFactor over lowHoverClearRadius); this lays a dense,
+    // deterministic conifer ring in that cleared annulus so the spot reads as a real hole with a clean
+    // cutout to drop into. The ring's canopy colliders go into Obstacles below, so drifting into the wall
+    // strikes the rotor — the wall is the hazard the drill trains against. Built SYNCHRONOUSLY (a handful of
+    // small fields) so the walls stand from frame 1, like the near patch. Each ring gets its OWN seeded
+    // stream keyed off the spot so its layout is deterministic and independent of the forest scatter.
+    const ringColliders: typeof nearColliders = [];
+    for (const z of this.crewZones) {
+      if (!z.lowHover) continue;
+      const ring = createTreeRing({
+        cx: z.x,
+        cz: z.z,
+        heightAt: (x, zz) => this.world.groundHeightAt(x, zz),
+        sample: (x, zz) => this.world.biomes.sample(x, zz),
+        rng: speciesRng(WORLD3D.seed ^ (0x4ee9 + (Math.round(z.x) * 73856093) ^ (Math.round(z.z) * 19349663))),
+      });
+      this.scene.add(ring.object);
+      swayFoliage(ring);
+      this.hoverRings.push(ring);
+      ringColliders.push(...ring.colliders);
+    }
+
     // --- The full forest (DEFERRED, own rng) — fades to 0 inside the near patch so they don't overlap ----
     const forest = createTreeField({
       candidates: Math.round(FOREST.baseCandidates * forestDensityMul * (this.world.sizeX / 600) * (this.world.sizeZ / 600)),
@@ -681,12 +706,13 @@ export class Game {
     });
     this.forest = forest;
     this.scene.add(forest.object); // present but EMPTY now — fills as the deferred stepper runs
-    // Collision is live from frame 1 for the near patch; rebuilt to include the full forest when it finishes.
-    this.obstacles = new Obstacles(this.world, nearColliders);
+    // Collision is live from frame 1 for the near patch + the hover-drill tree rings; rebuilt to include the
+    // full forest when it finishes.
+    this.obstacles = new Obstacles(this.world, [...nearColliders, ...ringColliders]);
     this.deferredBuild.push((budgetMs) => {
       const done = forest.buildStep!(budgetMs);
       if (done) {
-        this.obstacles = new Obstacles(this.world, [...nearColliders, ...forest.colliders]); // full canopy collision now live
+        this.obstacles = new Obstacles(this.world, [...nearColliders, ...ringColliders, ...forest.colliders]); // full canopy collision now live
         swayFoliage(forest);
       }
       return done;
@@ -1634,6 +1660,7 @@ export class Game {
     // rest); centered on the eye so chunks ahead/behind toggle correctly.
     this.forest.cull(this.chase.camera.position.x, this.chase.camera.position.z);
     this.forestNear.cull(this.chase.camera.position.x, this.chase.camera.position.z); // the sync near-spawn patch
+    for (const ring of this.hoverRings) ring.cull(this.chase.camera.position.x, this.chase.camera.position.z); // low-hover tree walls
     this.groves?.cull(this.chase.camera.position.x, this.chase.camera.position.z); // null until the deferred build runs
     this.snags?.cull(this.chase.camera.position.x, this.chase.camera.position.z);
     // C5: trees the fire field reaches ignite, char, and collapse into black snags.
