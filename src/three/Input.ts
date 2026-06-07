@@ -68,6 +68,7 @@ export class Input {
   private btnDown = false;
   private btnDrop = false;
   private prevDrop = false; // last frame's drop level, for press-edge detection
+  private dropEnabled = true; // false while a crew low-hover hold owns the controls — DROP greys out + ignores taps/Space
   private btnSwap = false;
   private prevSwap = false; // last frame's swap level, for press-edge detection
   private btnDetach = false;
@@ -181,8 +182,9 @@ export class Input {
     if (k.has('KeyI') || this.btnUp) lift += 1;
     if (k.has('KeyJ') || this.btnDown) lift -= 1;
 
-    // Drop: Space (or the on-screen DROP button).
-    const drop = this.btnDrop || k.has('Space');
+    // Drop: Space (or the on-screen DROP button). Gated off while disabled (a crew low-hover hold) so a
+    // held button or Space can't leak a phantom drop through.
+    const drop = this.dropEnabled && (this.btnDrop || k.has('Space'));
     const dropPressed = drop && !this.prevDrop; // rising edge → one-tap dump trigger
     this.prevDrop = drop;
 
@@ -203,6 +205,20 @@ export class Input {
    *  where the same button lays a backburn instead of dropping water. Keyboard Space is unchanged. */
   setActionLabel(label: string): void {
     if (this.dropLabel) this.dropLabel.textContent = label;
+  }
+
+  /** Enable or disable the DROP action entirely. `Game` disables it during a crew low-hover hold (no bucket
+   *  to drop): the hexagon greys out and stops intercepting taps + Space, so the inert control reads as
+   *  inactive instead of a dead button you keep mashing. Change-guarded — safe to call every frame. */
+  setDropEnabled(on: boolean): void {
+    if (on === this.dropEnabled) return;
+    this.dropEnabled = on;
+    if (this.dropBtn) {
+      this.dropBtn.style.pointerEvents = on ? '' : 'none';
+      this.dropBtn.style.opacity = on ? '1' : '0.3';
+      this.dropBtn.style.filter = on ? '' : 'grayscale(1)';
+    }
+    if (!on) this.btnDrop = false; // release any held press so it doesn't latch through the disable
   }
 
   /**

@@ -52,7 +52,7 @@ export interface HudState {
     onboard: number; // crew currently in the cabin (0 or 1)
     delivered: number; // crews set down so far
     total: number; // crews to deliver this mission
-    mode: 'boarding' | 'disembarking' | null; // actively working a zone (drives the bar), else null
+    mode: 'boarding' | 'disembarking' | 'deploying' | null; // actively working a zone (drives the bar), else null
     progress: number; // 0..1 dwell on the worked zone
   };
   // Debrief summary for the end banner (what the run achieved) — built once at outcome.

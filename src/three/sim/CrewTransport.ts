@@ -149,12 +149,13 @@ export class CrewTransport {
 
   /**
    * What the heli is doing on the zone it's working RIGHT NOW: `boarding` (a crew is climbing in at a
-   * load zone) or `disembarking` (stepping off at an unload zone), or null when not actively working a
-   * zone. Drives the HUD "CREW BOARDING / DISEMBARKING" progress bar (paired with `progress`).
+   * load zone), `disembarking` (stepping off at an unload zone), `deploying` (a crew rappels out during a
+   * low-hover hold), or null when not actively working a zone. Drives the HUD "CREW BOARDING /
+   * DISEMBARKING / DEPLOYING" progress bar (paired with `progress`).
    */
-  get mode(): 'boarding' | 'disembarking' | null {
+  get mode(): 'boarding' | 'disembarking' | 'deploying' | null {
     if (this.active < 0) return null;
-    if (this.zones[this.active].lowHover) return null; // drill only — no crew boarding animation
+    if (this.zones[this.active].lowHover) return 'deploying'; // low-hover hold: crew deploy on the line while you hold it
     return this._carrying ? 'disembarking' : 'boarding';
   }
 

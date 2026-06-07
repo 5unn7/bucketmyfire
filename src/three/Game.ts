@@ -1355,6 +1355,9 @@ export class Game {
       if (!frozen && !this.heliSim.crashing && this.payloadMode === 'crew') {
         this.crew.update(dt, this.heliSim.position.x, this.heliSim.position.z, this.heliSim.agl, this.heliSim.speed);
       }
+      // DROP is inert in a crew loadout — grey the hexagon out while actively holding a zone (the hover
+      // insertion owns the controls), and hand it back the instant you lift off the spot.
+      if (this.payloadMode === 'crew') this.input.setDropEnabled(!this.crew.working);
       // Casualties: a trapped family the FIRE reaches first is lost — and that happens whatever you're
       // rigged for (they burn while you're off fighting flames in the water loadout). Warn when the
       // fire's on them, mayday when it's too late; the `rescue` fail (if the mission has one) then

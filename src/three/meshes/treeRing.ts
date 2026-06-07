@@ -60,6 +60,14 @@ export function createTreeRing(opts: TreeRingOptions): TreeField {
   // Colliders are built in local space — offset them to world XZ so Obstacles snags on them where they stand.
   const worldColliders = field.colliders.map((c) => ({ ...c, x: c.x + opts.cx, z: c.z + opts.cz }));
 
-  // Same TreeField contract (so `swayFoliage`/`cull` work unchanged), but with world-space colliders.
-  return { ...field, colliders: worldColliders };
+  // Same TreeField contract (so `swayFoliage` works unchanged), with world-space colliders — but `cull()`
+  // measures chunk distances in the field's LOCAL frame (it was scattered at the ORIGIN, then the GROUP was
+  // translated onto the clearing). `Game` drives cull() with WORLD camera coords, so we must rebase them into
+  // local space first; otherwise it compares world-vs-local and the whole ring BLINKS OUT the instant you fly
+  // near the pad (the local chunk centres sit by the origin, hundreds of units from your world position).
+  return {
+    ...field,
+    colliders: worldColliders,
+    cull: (camX: number, camZ: number) => field.cull(camX - opts.cx, camZ - opts.cz),
+  };
 }

@@ -1133,7 +1133,9 @@ export const MISSIONS = {
   // and the rotor strikes the canopy (the normal CRASH path → mission lost). AGL is GROUND-relative (rides
   // the flight floor); keep the ceiling LOW so the belly sits down among the treetops where the ring bites.
   lowHoverSec: 8, // seconds to hold the low hover at each spot (was 12 — shortened; the tree ring is the challenge now)
-  lowHoverAglMax: 3.5, // ceiling for a valid low hover (≈16 ft) — low enough the surrounding treetops poke above the belly
+  lowHoverAglMax: 10, // ceiling (units above the eased pad floor) for a valid low hover — raised 3.5→10 so the
+  // insertion hover holds comfortably over the clearing instead of knife-edge among the treetops; lateral
+  // precision (stay inside `lowHoverRadius`, off the ring) is the skill now, not pinning the altitude
   lowHoverSpeed: 3.0, // max airspeed (units/s) — near-stationary, a touch forgiving for the drill
   lowHoverGraceSec: 1.2, // a brief breach (drift/climb/overspeed) shorter than this PAUSES the dwell instead of resetting it
   lowHoverRadius: 11, // horizontal acceptance radius (units) for a low-hover spot — tighter than lzRadius (the hole is small)

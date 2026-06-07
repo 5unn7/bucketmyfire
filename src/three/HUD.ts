@@ -717,8 +717,12 @@ export class HUD {
     }
     if (!working || !crew) return;
     const boarding = crew.mode === 'boarding';
-    const col = boarding ? UI.accent : UI.ok; // cyan picking up / green setting down (#8: was an ad-hoc 3rd green, now the shared success token)
-    this.crewBarLabel.textContent = boarding ? 'CREW BOARDING' : 'CREW DISEMBARKING';
+    const col = boarding ? UI.accent : UI.ok; // cyan picking up / green setting down or deploying (#8: the shared success token)
+    this.crewBarLabel.textContent = boarding
+      ? 'CREW BOARDING'
+      : crew.mode === 'deploying'
+        ? 'CREW DEPLOYING'
+        : 'CREW DISEMBARKING';
     this.crewBarLabel.style.color = col;
     this.crewBarFill.style.background = col;
     this.crewBarFill.style.transform = `scaleX(${clamp01(crew.progress)})`;
