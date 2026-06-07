@@ -325,7 +325,7 @@ value the design doesn't use. Streaming stays possible later behind the same `Wo
   - **Wiring:** `Game.ts` constructs `FuelSim`, feeds it the flight sim's throttle/climb/
     payload each frame, reads `fuel`/`starved` back to gate engine power + drive the HUD,
     and runs the cache spawner off `FireSystem` signals + the depot/cache refuel check.
-  - **Verify** (headless, pure-sim — the standing approach): a hard sortie drains to 0 in
+  - **Verify** (headless, pure-sim — the standing approach): a hard mission drains to 0 in
     ~2.5 min and an idle hover lasts far longer (thrust coupling); `starved` latches at 0 and
     refuel within `refuelRadius` of the depot climbs back to full; a cache spawns only after
     ≥10 douses with a >level-3 fire present, never exceeds `maxCaches`, never on water, and

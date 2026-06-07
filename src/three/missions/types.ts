@@ -212,7 +212,7 @@ export interface MissionDef {
   // Which MAP/region this mission is set in (see maps/<region>/region.ts anchors; shares ids with the
   // ui/profile.ts MAPS picker). Drives the place-name pools. Omit → the default Saskatchewan map.
   map?: string;
-  // Which fire BASE the sortie spawns / refuels from — a MapAnchor id in the `map` region
+  // Which fire BASE the mission spawns / refuels from — a MapAnchor id in the `map` region
   // (see maps/<region>/region.ts anchors: 'la-ronge', 'denare-beach', 'buffalo-narrows', …). The home
   // depot is NAMED from this anchor today; Phase 1 (docs/MAPS.md) will also POSITION it there.
   // Distinct from `places.communities`, which name the towns you PROTECT. Omit → the region's
@@ -241,7 +241,7 @@ export interface MissionDef {
   // the heli LANDS at zones to board/unload crew. `torch` = a helitorch ignition rig: no scoop/drop,
   // the DROP button becomes IGNITE and lays a backfire along a marked control line (see `controlLine`).
   payload?: 'water' | 'crew' | 'torch';
-  // Available loadouts for a MIXED sortie (do more than one job in one flight). When >1, the pilot
+  // Available loadouts for a MIXED mission (do more than one job in one flight). When >1, the pilot
   // RE-RIGS the slung load while set down at the home base (a deliberate swap, so the control scheme is
   // never two things at once). `payload` is the STARTING loadout; omit `loadouts` (or give one) → a
   // single-loadout mission, exactly as before. Order is the swap cycle order. (e.g. ['torch','water']

@@ -175,9 +175,9 @@ export type Mode = 'play' | 'noop' | 'starve';
 /** Step the rig to a terminal state (or the cap). `mode` picks the player's behaviour. */
 export function run(mission: MissionDef, mode: Mode, maxSec: number = MAX_SEC): { r: Rig; elapsed: number; addedZones: number } {
   const r = build(mission);
-  // Whether the pilot can put water on fire this mission: a pure-crew sortie carries NO bucket, so
+  // Whether the pilot can put water on fire this mission: a pure-crew mission carries NO bucket, so
   // the perfect player must NOT douse (its fires can only be outrun / threaten structures). A mixed
-  // crew+water sortie lists 'water' among its loadouts → the player re-rigs and can douse.
+  // crew+water mission lists 'water' among its loadouts → the player re-rigs and can douse.
   const loadouts = mission.loadouts?.length ? mission.loadouts : [mission.payload ?? 'water'];
   const canWater = loadouts.includes('water');
   let elapsed = 0;
@@ -186,7 +186,7 @@ export function run(mission: MissionDef, mode: Mode, maxSec: number = MAX_SEC): 
     r.wind.update(DT * 1000);
 
     if (mode === 'play') {
-      // The perfect player does BOTH jobs the mission demands (a MIXED crew+water sortie re-rigs at
+      // The perfect player does BOTH jobs the mission demands (a MIXED crew+water mission re-rigs at
       // base; here we idealise the swap away and prove the objectives are jointly satisfiable in time):
       // ferry any pending crew by LANDING on the active zone (skids down, stopped → the landed gate),
       // AND suppress fires with discrete bucket passes. Pure-crew missions have no fires; pure-water
@@ -230,7 +230,7 @@ export function run(mission: MissionDef, mode: Mode, maxSec: number = MAX_SEC): 
       // BACKBURN: the perfect player flies the control line and torches each segment in turn — the
       // idealised "fly to the next marker, light it" (mirrors Game lighting + seeding a real backfire,
       // via the SAME Backburn tracker + igniteAt). Laying the whole line meets the `backburn` objective;
-      // the head can't be doused (no water this sortie), so the win is the lay, won before it arrives.
+      // the head can't be doused (no water this mission), so the win is the lay, won before it arrives.
       if (r.backburn && !r.backburn.complete && step % BACKBURN_PASS === 0) {
         const next = r.backburn.views.find((p) => !p.lit);
         if (next) {
@@ -241,7 +241,7 @@ export function run(mission: MissionDef, mode: Mode, maxSec: number = MAX_SEC): 
       // Keep the tank topped when it dips (a competent pilot returns to refuel).
       if (r.fuel) r.fuel.update(DT, { throttle01: 0.4, climbUp: 0, payloadRatio: 0, refueling: r.fuel.fuel < 0.5 });
     } else if (mode === 'starve') {
-      // Hard sortie, never refuel → run the tank dry (drives the fuelOut fail).
+      // Hard mission, never refuel → run the tank dry (drives the fuelOut fail).
       if (r.fuel) r.fuel.update(DT, { throttle01: 1, climbUp: 1, payloadRatio: 1, refueling: false });
     }
     // 'noop' does nothing — no suppression, no ferrying, no refuel.

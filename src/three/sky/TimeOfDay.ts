@@ -9,7 +9,7 @@ import type { TimeOfDay } from '../missions/types';
  * sky matches the zenith, the sun sits where the light comes from). `applyAtmosphere` pushes a
  * preset onto the live lights/fog; `createSkyDome` reads the sky colors; `Game` reads `sunDir`
  * to place the sun. Swapping presets re-skies the whole world — a mission picks one by name
- * (`SKY_PRESETS`) so not every sortie is golden hour.
+ * (`SKY_PRESETS`) so not every mission is golden hour.
  */
 export interface SkyPreset {
   name: string;

@@ -140,7 +140,7 @@ export class TitleScreen {
     if (profile?.name) {
       welcome = div(
         { fontSize: FS.meta, color: UI.dim, textShadow: '0 1px 12px rgba(0,0,0,0.8)' },
-        `Welcome back, ${profile.name}${cleared > 0 ? ` · ${cleared} sortie${cleared === 1 ? '' : 's'} flown` : ''}`,
+        `Welcome back, ${profile.name}${cleared > 0 ? ` · ${cleared} mission${cleared === 1 ? '' : 's'} flown` : ''}`,
       );
       hero.appendChild(welcome);
     }

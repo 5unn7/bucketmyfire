@@ -254,7 +254,7 @@ class Leaderboard {
 
   private fromCareer(r: CareerEntry, rank: number): Ranked {
     const mine = !!this.myName && r.pilot.toLowerCase() === this.myName.toLowerCase();
-    const sub = [`${r.missions} ${r.missions === 1 ? 'sortie' : 'sorties'}`, fmtAgo(r.last_seen)].filter(Boolean).join('   ·   ');
+    const sub = [`${r.missions} ${r.missions === 1 ? 'mission' : 'missions'}`, fmtAgo(r.last_seen)].filter(Boolean).join('   ·   ');
     return { rank, pilot: r.pilot, value: r.total.toLocaleString(), num: r.total, sub, mine, key: r.pilot.toLowerCase(), delta: null };
   }
 
@@ -266,7 +266,7 @@ class Leaderboard {
         this.note(
           daily
             ? 'No runs on today’s burn yet — clear it and set the pace.'
-            : 'No runs yet — fly a sortie and be the first on the board.',
+            : 'No runs yet — fly a mission and be the first on the board.',
         ),
       );
       const local = this.localPanel();
@@ -590,7 +590,7 @@ class Leaderboard {
     const careerScore = Object.values(prog.best).reduce((a, b) => a + b, 0);
     const topMission = Object.values(prog.best).reduce((m, b) => Math.max(m, b), 0);
     tiles.push(
-      { label: 'Sorties', value: `${cleared}/${this.catalog.length}` },
+      { label: 'Missions', value: `${cleared}/${this.catalog.length}` },
       { label: 'Career score', value: careerScore.toLocaleString() },
       { label: 'Best mission', value: topMission.toLocaleString() },
     );

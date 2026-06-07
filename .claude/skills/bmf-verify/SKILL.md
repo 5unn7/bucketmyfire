@@ -102,8 +102,8 @@ present. So:
 
 URL params the router honors (`main.ts`): `?autostart` boots straight into the first mission;
 `?m=<missionId>` selects a specific mission (ids in
-[src/three/missions/catalog.ts](../../../src/three/missions/catalog.ts), e.g. `first-sortie`).
-Typical QA URL: `http://localhost:<port>/?m=first-sortie&qa=1`.
+[src/three/missions/catalog.ts](../../../src/three/missions/catalog.ts), e.g. `first-light`).
+Typical QA URL: `http://localhost:<port>/?m=first-light&qa=1`.
 
 `__game.debug` is read-only state: `{ x, y, z, agl, floor, bucketY, water, firesLeft, burnedOut,
 lakes, fires[] }` (each fire `{ x, z, y, intensity, size, fuel }`). Read it to assert behavior.

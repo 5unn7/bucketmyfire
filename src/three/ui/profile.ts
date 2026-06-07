@@ -8,8 +8,8 @@
  * Scope: ONE map is playable today (the live boreal world); the other maps are
  * `available: false` placeholders ("Coming soon"). All THREE helicopters are
  * playable, but the campaign GATES them — they are not all unlocked at the start:
- * the Bell 205A-1 is open from sortie one, the Bell 212 unlocks once you've cleared
- * `unlockAfter` sorties, and the UH-60 unlocks for the last two. `isHeliUnlocked()`
+ * the Bell 205A-1 is open from mission one, the Bell 212 unlocks once you've cleared
+ * `unlockAfter` missions, and the UH-60 unlocks for the last two. `isHeliUnlocked()`
  * resolves that gate against `missions/progress`; the pickers (Onboarding +
  * MissionSelect) render a locked card with the requirement until it's met.
  */
@@ -43,7 +43,7 @@ export interface CatalogItem {
   specs?: { label: string; value: number }[];
   /** Optional headline facts (maps) — pre-formatted province scale shown as stat rows on the card. */
   stats?: { area: string; lakes: string };
-  /** Campaign gate (helis): sorties that must be CLEARED before this airframe is
+  /** Campaign gate (helis): missions that must be CLEARED before this airframe is
    *  flyable. 0/undefined → open from the start. See isHeliUnlocked(). */
   unlockAfter?: number;
 }
@@ -63,9 +63,9 @@ export const MAPS: CatalogItem[] = mapCards().map((c) => ({
 // the airframe AND how it flies/carries/survives. The spec bars below illustrate that class:
 // 205 = slow/forgiving/small, 212 = medium, UH-60 = fast/big/twitchy/tough.
 //
-// They are GATED by campaign progress (`unlockAfter` = sorties to clear), so a new pilot
+// They are GATED by campaign progress (`unlockAfter` = missions to clear), so a new pilot
 // starts on the trainer and earns the heavier ships: the 205 is open, the 212 unlocks after
-// the first two sorties (in time for the first real wall), and the Black Hawk for the last two
+// the first two missions (in time for the first real wall), and the Black Hawk for the last two
 // (the set-piece + finale). (Additive — clearing a tier never takes an earlier airframe away.)
 export const HELIS: CatalogItem[] = [
   {
@@ -127,7 +127,7 @@ export function findItem(catalog: CatalogItem[], id: string | undefined): Catalo
 }
 
 /**
- * How many campaign sorties the pilot has CLEARED — the value heli unlocks gate on.
+ * How many campaign missions the pilot has CLEARED — the value heli unlocks gate on.
  * Reads the same localStorage progress the mission menu uses (0 for a fresh pilot).
  */
 export function missionsCleared(): number {
@@ -136,7 +136,7 @@ export function missionsCleared(): number {
 
 /**
  * Is a helicopter flyable right now? It must exist (`available`) AND the campaign must have
- * cleared at least `unlockAfter` sorties (default 0 → open from the start). Pass a pre-read
+ * cleared at least `unlockAfter` missions (default 0 → open from the start). Pass a pre-read
  * `cleared` count when gating a whole picker grid so it doesn't re-hit storage per card.
  */
 export function isHeliUnlocked(heli: CatalogItem, cleared: number = missionsCleared()): boolean {
@@ -144,7 +144,7 @@ export function isHeliUnlocked(heli: CatalogItem, cleared: number = missionsClea
 }
 
 /**
- * Helicopters whose campaign gate is crossed by going from `before` to `after` cleared sorties —
+ * Helicopters whose campaign gate is crossed by going from `before` to `after` cleared missions —
  * i.e. `unlockAfter` lands in `(before, after]`. Drives the on-win "NEW AIRCRAFT UNLOCKED" callout:
  * Game samples the cleared count either side of recording a win and asks which airframes just opened.
  */
@@ -212,11 +212,11 @@ export function clearProfile(): void {
 
 // --- Cold-start ritual seen-flag (#9) ---------------------------------------
 // The hold-to-spool engine start is a great fantasy beat the FIRST time and a speed bump by the sixth
-// sortie. We persist a one-bit "you've done it once" flag so the boot path skips the ritual on later
+// mission. We persist a one-bit "you've done it once" flag so the boot path skips the ritual on later
 // missions (booting with the engine already running, the same path QA/?autostart uses).
 const COLD_START_KEY = 'bmf.coldstart.v1';
 
-/** Has the pilot completed the hold-to-start ritual at least once? (Later sorties skip it.) */
+/** Has the pilot completed the hold-to-start ritual at least once? (Later missions skip it.) */
 export function coldStartSeen(): boolean {
   try {
     return localStorage.getItem(COLD_START_KEY) === '1';

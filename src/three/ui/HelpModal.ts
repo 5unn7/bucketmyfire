@@ -497,7 +497,7 @@ export class HelpModal {
       );
     }
     const note = h('div', { className: 'bmf-help-note' });
-    note.innerHTML = 'Your <b>OBJECTIVES</b> (top-left) are the win condition. Finish them to clear the sortie. Some missions add a <b>FUEL</b> gauge; land at a base before it runs dry.';
+    note.innerHTML = 'Your <b>OBJECTIVES</b> (top-left) are the win condition. Finish them to clear the mission. Some missions add a <b>FUEL</b> gauge; land at a base before it runs dry.';
 
     const rows = CONTROLS.map((c) => {
       const ctrls = h('div', { className: 'bmf-help-ctrls' }, [h('span', { className: 'bmf-help-touch', textContent: c.touch })]);

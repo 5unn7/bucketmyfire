@@ -19,7 +19,7 @@ import type { MissionDef } from '../../missions/types';
  * mission-select menu groups missions BY `map`, so this whole campaign lives under the Saskatchewan map.
  *
  * Two engine capabilities the campaign leans on (see `types.ts`):
- *   - `loadouts` — a MIXED sortie re-rigs the slung load bucket↔crew while set down at the home base,
+ *   - `loadouts` — a MIXED mission re-rigs the slung load bucket↔crew while set down at the home base,
  *     so one mission can both FERRY crew and FIGHT fire (the pilot chooses when to swap).
  *   - `addObjective` / `addZone` beats — a rescue can POP UP mid-mission: a new evacuate goal + the
  *     family's cabin appear in the world. Gate these on `firesDoused` (NOT a clock) so they fire while

@@ -89,6 +89,6 @@ are detailed and authoritative. Map:
    - A **visual** change (water, bloom, smoke, grade, god-rays) → live headless. Shader values
      compile clean even when they render wrong, so you must *look*. Watch the logged
      `<lights_physical_fragment>` gotcha for any water/material edit.
-3. For "feel" changes, there's no substitute for flying it — boot `?m=first-sortie&qa=1` and fly,
+3. For "feel" changes, there's no substitute for flying it — boot `?m=first-light&qa=1` and fly,
    or note in your summary that a human should feel-test on a phone (the 60fps target is a real
    device, not a desktop).

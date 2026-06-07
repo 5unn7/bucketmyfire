@@ -33,7 +33,7 @@ import type {
 /** The tunable register ("adjust the range properly"). Move to config.ts when this is wired in. */
 export const VOICE = {
   callsign: 'Water-1', // the pilot
-  encourage: true, // include the mid-mission "you're holding her" beat on multi-fire sorties
+  encourage: true, // include the mid-mission "you're holding her" beat on multi-fire missions
   warnThreat: 0.5, // structure-threat level (0..1) that triggers the "fire at the flank" warning
   lowFuel: 0.25, // fuel fraction that triggers the low-fuel call
 };
@@ -220,7 +220,7 @@ export function generateScript(def: MissionDef, opts?: { nameOf?: (ref: Communit
   const b = generateLine('briefing', ctx);
   beats.push({ id: 'gen-brief', trigger: { at: 'start' }, actions: [comms(b.speaker, b.text, b.urgency)] });
 
-  // Mid-mission encouragement — REACTIVE on real progress (half the fires down), fire sorties only.
+  // Mid-mission encouragement — REACTIVE on real progress (half the fires down), fire missions only.
   if (kind === 'fire' && VOICE.encourage && fires >= 2) {
     const p = generateLine('progress', ctx);
     beats.push({ id: 'gen-progress', trigger: { at: 'firesDoused', n: Math.max(1, Math.floor(fires / 2)) }, actions: [comms(p.speaker, p.text, p.urgency)] });
@@ -244,7 +244,7 @@ export function generateScript(def: MissionDef, opts?: { nameOf?: (ref: Communit
     beats.push({ id: 'gen-fuel', trigger: { at: 'fuelBelow', frac: VOICE.lowFuel }, actions: [comms(f.speaker, f.text, f.urgency)] });
   }
 
-  // Crew progress — REACTIVE on the first delivery, crew sorties.
+  // Crew progress — REACTIVE on the first delivery, crew missions.
   if (def.objectives.some((o) => o.kind === 'deliver' || o.kind === 'evacuate')) {
     const c = generateLine('crewProgress', ctx);
     beats.push({ id: 'gen-crew', trigger: { at: 'crewDelivered', n: 1 }, actions: [comms(c.speaker, c.text, c.urgency)] });

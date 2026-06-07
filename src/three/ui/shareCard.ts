@@ -80,7 +80,7 @@ export function renderScoreCard(data: ScoreCardData): HTMLCanvasElement {
   // Outcome eyebrow.
   ctx.font = '600 26px system-ui, sans-serif';
   ctx.fillStyle = UI.fire; // fight register: the card's eyebrow burns warm, not cockpit cyan
-  ctx.fillText(data.won ? 'MISSION COMPLETE' : 'SORTIE FLOWN', 64, 152);
+  ctx.fillText(data.won ? 'MISSION COMPLETE' : 'MISSION FLOWN', 64, 152);
 
   // Hero score.
   ctx.font = '800 170px system-ui, sans-serif';

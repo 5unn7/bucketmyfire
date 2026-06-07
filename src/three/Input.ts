@@ -186,13 +186,13 @@ export class Input {
     return { turn, throttle, lift, drop, dropPressed, swapPressed, detachPressed };
   }
 
-  /** Relabel the primary action (DROP) button — Game sets it to "IGNITE" on a torch (helitorch) sortie,
+  /** Relabel the primary action (DROP) button — Game sets it to "IGNITE" on a torch (helitorch) mission,
    *  where the same button lays a backburn instead of dropping water. Keyboard Space is unchanged. */
   setActionLabel(label: string): void {
     if (this.dropBtn) this.dropBtn.textContent = label;
   }
 
-  /** Show/hide the DETACH (jettison-bucket) button. Game shows it on a water sortie while a bucket is
+  /** Show/hide the DETACH (jettison-bucket) button. Game shows it on a water mission while a bucket is
    *  attached — press it to release the slung bucket; you then RTB to a base for a fresh one. */
   setDetachVisible(on: boolean): void {
     if (this.detachBtn) this.detachBtn.style.display = on ? 'flex' : 'none';

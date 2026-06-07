@@ -65,7 +65,7 @@ Every mission gets `intel`, a `start` briefing line, ≥1 reactive beat, and out
 
 | # | Mission | Signature beats |
 |---|---------|-----------------|
-| 0 | First Sortie | DISPATCH welcome + scoop tip; CREW "nice drop" on first douse; calm. |
+| 0 | First Light | DISPATCH welcome + scoop tip; CREW "nice drop" on first douse; calm. |
 | 1 | Cabin Country | "fire's creeping the treeline" → at `threat≥.5` WARNING "cabins in the path"; `structureLost` red. |
 | 2 | Crew Insertion | brief the 3 LZs; CREW banter per `crewDelivered`; wind builds (flavour). |
 | 3 | Wind Shift | **namesake:** at ~`time{70}` a hard **`wind` shift** + WARNING "she's backing east, turning on the town" + a flank `ignite`. |

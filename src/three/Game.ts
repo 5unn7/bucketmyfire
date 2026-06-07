@@ -253,7 +253,7 @@ export class Game {
   private coachShown = false; // the coach overlay has been surfaced this game
   private coachCompleted = false; // tutorial finished/skipped → stop driving the coach
   private payloadMode: 'water' | 'crew' | 'torch'; // CURRENT slung loadout (mutable: mixed missions re-rig at base)
-  private bucketAttached = true; // water sorties: is the slung bucket rigged? DETACH jettisons it; a base re-rigs a fresh one
+  private bucketAttached = true; // water missions: is the slung bucket rigged? DETACH jettisons it; a base re-rigs a fresh one
   private readonly loadouts: ('water' | 'crew' | 'torch')[]; // loadouts the pilot can re-rig between; >1 → swap enabled
   private loadoutIdx = 0; // index into `loadouts` of the current payload
   private readonly bucketType: 'bambi' | 'valve';
@@ -287,7 +287,7 @@ export class Game {
     opts: { skipColdStart?: boolean; disableCoach?: boolean } = {},
   ) {
     this.mission = mission;
-    // Interactive first-flight coach: only the TRUE first sortie of a brand-new pilot, never under
+    // Interactive first-flight coach: only the TRUE first mission of a brand-new pilot, never under
     // headless QA (it would interfere with the verify:render scoop→drop autopilot + deploy gate).
     this.coach = new CoachDirector(!opts.disableCoach && !tutorialDone() && mission.id === CAMPAIGN[0].id);
     this.end = end;
@@ -774,7 +774,7 @@ export class Game {
     // only to satisfy the field; it's never posed for crew (the bucket/rope block is water-gated).
     this.slung = this.bucket.group;
     this.slungAnchorY = this.bucket.topAnchorY;
-    // Only a WATER sortie slings the bucket. Crew ride in the cabin; the torch (helitorch) lays fire
+    // Only a WATER mission slings the bucket. Crew ride in the cabin; the torch (helitorch) lays fire
     // from the aircraft itself — both hide the bucket + rope (the slung-bucket block is water-gated).
     if (this.payloadMode !== 'water') this.bucket.group.visible = false;
     // The longline is drawn as a short chain of segments so it can BOW into a
@@ -1135,7 +1135,7 @@ export class Game {
       if (this.rotorRpm >= 1) {
         this.engineStarted = true;
         this.hud.hideEngineStart();
-        markColdStartSeen(); // #9: ritual done once → later sorties boot with the engine already running
+        markColdStartSeen(); // #9: ritual done once → later missions boot with the engine already running
       }
     }
 
@@ -1157,16 +1157,16 @@ export class Game {
 
     // Loadout re-rig (mixed crew+water missions): set down at the home base to SWAP the slung load
     // bucket↔crew. Only a >1-loadout mission shows the button / accepts G; everyone else: button hidden,
-    // swap inert — zero behaviour change for normal sorties.
+    // swap inert — zero behaviour change for normal missions.
     if (this.loadouts.length > 1) {
       const canSwap = !frozen && !this.heliSim.crashing && this.atHomeBaseLanded();
       this.input.setSwapVisible(canSwap);
       if (canSwap && c.swapPressed) this.swapLoadout();
     }
 
-    // Bucket DETACH / re-attach (water sorties). The DETACH button jettisons the slung bucket anytime
+    // Bucket DETACH / re-attach (water missions). The DETACH button jettisons the slung bucket anytime
     // in flight — you then fly with no scoop/no drop until you set down at a base, where a fresh bucket
-    // is auto-rigged. Hidden at base (you'd just re-rig there) and on crew sorties (no bucket).
+    // is auto-rigged. Hidden at base (you'd just re-rig there) and on crew missions (no bucket).
     if (this.payloadMode === 'water') {
       const live = !frozen && !this.heliSim.crashing;
       this.input.setDetachVisible(live && this.bucketAttached && !this.atHomeBaseLanded());
@@ -1234,7 +1234,7 @@ export class Game {
         // and cleared the instant you refuel back above the line (or shut down). It shares the GPWS caption
         // slot but yields to a crash hazard, which takes priority — see the setAlert combine below.
         this.lowFuelAlert = this.fuelSim.low && !this.fuelSim.starved && !refueling ? 'LOW FUEL — RTB' : null;
-        // Dry tank is now a UNIVERSAL loss: run the tank empty on ANY fuel mission and the sortie is over
+        // Dry tank is now a UNIVERSAL loss: run the tank empty on ANY fuel mission and the mission is over
         // (the opt-in `fuelOut` fail used to be the only one that lost — elsewhere the engine just cut).
         if (this.fuelSim.starved) this.loseOnFuel();
       }
@@ -1714,7 +1714,7 @@ export class Game {
     const firesLeft = this.fireSystem.activeCount;
 
     // --- Interactive first-flight coach: read the loop state we just computed and drive the overlay +
-    // control spotlight. Inert (active=false) on every mission but a new pilot's first sortie. ---
+    // control spotlight. Inert (active=false) on every mission but a new pilot's first mission. ---
     if (!this.coachCompleted && (this.coach.active || this.coachShown)) {
       const cs = this.coach.update({
         dt,
@@ -2009,7 +2009,7 @@ export class Game {
     this.lost = this.runtime.state === 'lost';
     this.finalScore = this.runtime.score;
     if (this.won) {
-      // Heli unlocks gate on the COUNT of cleared sorties, so sample it either side of recording the
+      // Heli unlocks gate on the COUNT of cleared missions, so sample it either side of recording the
       // win: an airframe whose `unlockAfter` lands in that gap just opened → celebrate it on the end
       // screen. (recordWin only grows the count on a FIRST clear, so a replay announces nothing.)
       const clearedBefore = getProgress().completed.length;
@@ -2040,7 +2040,7 @@ export class Game {
         this.runtime.failedKind === 'rescue'
           ? "Water-1, the family's gone — the fire beat you to them. Break it off."
           : this.runtime.failedKind === 'fuelOut'
-            ? "Water-1, you're out of fuel. That's the sortie — should've watched the gauge."
+            ? "Water-1, you're out of fuel. That's the mission — should've watched the gauge."
             : this.runtime.failedKind === 'timeout'
               ? "Water-1, that's time — the fire got past us. Break it off."
               : this.runtime.failedKind === 'protect'
@@ -2088,7 +2088,7 @@ export class Game {
   }
 
   /**
-   * Universal fuel-out loss: running the tank completely dry now ends the sortie on EVERY fuel mission,
+   * Universal fuel-out loss: running the tank completely dry now ends the mission on EVERY fuel mission,
    * not just the opt-in `fuelOut`-fail ones. Kept Game-level (like finishCrash) so it's universal and the
    * campaign verifier is untouched; `fuelLost` routes the end banner to the fuel cause/sub-line. Fires
    * once (guarded on the outcome). The same dispatch line covers both the universal and opt-in paths.
@@ -2100,7 +2100,7 @@ export class Game {
     this.finalScore = this.runtime.score;
     this.lowFuelAlert = null;
     this.hud.setAlert(null);
-    this.hud.pushComms('dispatch', "Water-1, you're out of fuel. That's the sortie — should've watched the gauge.", 'alert');
+    this.hud.pushComms('dispatch', "Water-1, you're out of fuel. That's the mission — should've watched the gauge.", 'alert');
     this.audio.playSquelch('alert');
   }
 
@@ -2501,7 +2501,7 @@ export class Game {
   }
 
   /**
-   * Rig a fresh bucket — fired once when a detached water sortie returns to a base (grounded + slow in
+   * Rig a fresh bucket — fired once when a detached water mission returns to a base (grounded + slow in
    * refuel range, via `canRefuel`). Restores the slung load + longline empty (scoop to fill). No-op if
    * one's already attached. Mirrors `swapLoadout`'s fresh-rig reset, minus the loadout cycle.
    */

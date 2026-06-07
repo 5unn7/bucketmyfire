@@ -27,7 +27,7 @@ export interface ArchetypeOutput {
   fire: { spreadScale: number; spotScale?: number; maxActive?: number; containAfter?: number };
   wind: { angle?: number; strengthScale: number };
   difficulty: 1 | 2 | 3 | 4 | 5;
-  /** The in-game voice for this generated sortie (the factory uses these for the briefing/tagline). */
+  /** The in-game voice for this generated mission (the factory uses these for the briefing/tagline). */
   flavor: { kind: string; brief: string; tagline: string };
 }
 

@@ -1,6 +1,6 @@
 /**
  * Daily Burn — the retention keystone (audit FIX #1/#8). A single, world-wide-shared "clear every
- * fire" sortie whose world + difficulty are derived deterministically from TODAY'S DATE, so everyone
+ * fire" mission whose world + difficulty are derived deterministically from TODAY'S DATE, so everyone
  * plays the same fresh map each day and races one daily leaderboard. It reuses 100% of the mission
  * framework (seeded World gen, FireSystem, the pure scorer, MissionRuntime, the HUD) — a Daily Burn is
  * just a `MissionDef` built at runtime instead of authored in `catalog.ts`.

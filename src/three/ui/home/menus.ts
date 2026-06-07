@@ -2,8 +2,8 @@
  * Rail-menu overlays opened from the Home bottom rail. Shop → openShop reuses the existing page;
  * this file supplies the rest as focused, branded full-screen panels on the shared `.bmf-app`
  * stylesheet:
- *   - Campaign — theatre picker (Saskatchewan live + coming-soon) that DRILLS INTO that map's
- *                missions (openMissions): pick a sortie, fly it. Missions now live inside the map.
+ *   - Campaign — region picker (Saskatchewan live + coming-soon) that DRILLS INTO that map's
+ *                missions (openMissions): pick a mission, fly it. Missions now live inside the map.
  *   - Hangar   — aircraft picker (3 helis, specs, unlock gates), saves profile.heliId
  *   - Co-op    — coming-soon teaser (stub)
  *   - Settings — sound + reduced-motion toggles, callsign, region, reset progress (off the rail
@@ -36,7 +36,7 @@ let flyMission: ((id: string) => void) | null = null;
 let activeOverlay: { key: string; close: () => void } | null = null;
 
 /** HomeScreen seeds the campaign catalog (the Campaign/Board surfaces read it) and the boot hook the
- *  mission cards call to fly a sortie (a page-reload campaign nav owned by main.ts). */
+ *  mission cards call to fly a mission (a page-reload campaign nav owned by main.ts). */
 export function setMenuCatalog(catalog: MissionDef[], onFly?: (id: string) => void): void {
   menuCatalog = catalog;
   if (onFly) flyMission = onFly;
@@ -189,8 +189,8 @@ function wireCarousel(root: HTMLElement, initial: number, onActive?: (i: number)
   return center;
 }
 
-// ============================ CAMPAIGN (theatre → missions) ============================
-// The Campaign rail tab. Step 1 = pick a theatre (map); step 2 = pick a sortie INSIDE that map
+// ============================ CAMPAIGN (region → missions) ============================
+// The Campaign rail tab. Step 1 = pick a region (map); step 2 = pick a mission INSIDE that map
 // (openMissions). Selecting a live map persists it (profile.mapId) and drills in; the future maps
 // stay locked "coming soon" teasers.
 export function openCampaign(): void {
@@ -205,11 +205,11 @@ export function openCampaign(): void {
       ? `<span class="pill ${selected ? 'ok' : ''}">${selected ? 'Selected' : 'Live'}</span>`
       : `<span class="pill soon">Soon</span>`;
     const stats = m.available
-      ? `<div class="ctx-row" style="margin-top:11px;">${m.stats ? `<span class="ctx">${ic('map')}${m.stats.area}</span><span class="ctx">${ic('droplet')}${m.stats.lakes}</span>` : ''}<span class="ctx hot">${ic('fire')}${count} sorties</span></div>`
+      ? `<div class="ctx-row" style="margin-top:11px;">${m.stats ? `<span class="ctx">${ic('map')}${m.stats.area}</span><span class="ctx">${ic('droplet')}${m.stats.lakes}</span>` : ''}<span class="ctx hot">${ic('fire')}${count} missions</span></div>`
       : '';
     const cta = !m.available
       ? `<button class="btn ghost block is-disabled" style="margin-top:15px;">${ic('lock')}Coming soon</button>`
-      : `<button class="btn primary block" style="margin-top:15px;" data-map="${m.id}">${ic('play')}${selected ? 'Choose a sortie' : 'Deploy here'}</button>`;
+      : `<button class="btn primary block" style="margin-top:15px;" data-map="${m.id}">${ic('play')}${selected ? 'Choose a mission' : 'Deploy here'}</button>`;
     return `<article class="cslide${m.available ? '' : ' locked'}">
       <div class="artcard">
         ${cover}<div class="scrim"></div><div class="brackets"><i></i><i></i><i></i></div>
@@ -224,7 +224,7 @@ export function openCampaign(): void {
   });
 
   const initial = Math.max(0, MAPS.findIndex((m) => m.id === pro.mapId && m.available));
-  const { root, close } = overlay('campaign', 'Campaign', 'Choose a theatre', carousel(slides, 'Theatre'));
+  const { root, close } = overlay('campaign', 'Campaign', 'Choose a region', carousel(slides, 'Region'));
   wireCarousel(root, initial);
   root.querySelectorAll<HTMLElement>('[data-map]').forEach((b) =>
     b.addEventListener('click', (e) => {
@@ -237,15 +237,15 @@ export function openCampaign(): void {
   );
 }
 
-/** Campaign sorties set in a given map (defaults to the live map for legacy defs with no `map`). */
+/** Campaign missions set in a given map (defaults to the live map for legacy defs with no `map`). */
 function missionsForMap(mapId: string): MissionDef[] {
   return menuCatalog.filter((m) => (m.map ?? MAPS[0].id) === mapId);
 }
 
 // ============================ MISSIONS (inside a map) ============================
-// Step 2 of Campaign: a carousel of the chosen map's sorties — poster, brief, best run, fly action.
-// Back returns to the theatre picker (not straight to Home), so the map→mission drill reads as one
-// flow. FLY boots the sortie via the seeded campaign-nav hook (page reload, the existing router).
+// Step 2 of Campaign: a carousel of the chosen map's missions — poster, brief, best run, fly action.
+// Back returns to the region picker (not straight to Home), so the map→mission drill reads as one
+// flow. FLY boots the mission via the seeded campaign-nav hook (page reload, the existing router).
 export function openMissions(mapId: string): void {
   const all = missionsForMap(mapId);
   const map = MAPS.find((m) => m.id === mapId);
@@ -273,8 +273,8 @@ export function openMissions(mapId: string): void {
       ? `<span class="mono" style="font-size:var(--fs-meta);color:rgba(255,255,255,0.78);">Best <b style="color:var(--menu);font-weight:var(--fw-bold)">${best.toLocaleString('en-US')}</b></span>`
       : `<span class="mono" style="font-size:var(--fs-meta);color:var(--faint);">Not flown yet</span>`;
     const cta = !unlocked
-      ? `<button class="btn ghost block is-disabled" style="margin-top:14px;">${ic('lock')}Clear earlier sorties</button>`
-      : `<button class="btn primary block" style="margin-top:14px;" data-fly="${m.id}">${ic('play')}${done ? 'Replay sortie' : 'Fly sortie'}</button>`;
+      ? `<button class="btn ghost block is-disabled" style="margin-top:14px;">${ic('lock')}Clear earlier missions</button>`
+      : `<button class="btn primary block" style="margin-top:14px;" data-fly="${m.id}">${ic('play')}${done ? 'Replay mission' : 'Fly mission'}</button>`;
     return `<article class="cslide${unlocked ? '' : ' locked'}">
       <div class="artcard">
         ${cover}<div class="scrim"></div><div class="brackets"><i></i><i></i><i></i></div>
@@ -290,9 +290,9 @@ export function openMissions(mapId: string): void {
   });
 
   const initial = Math.max(0, all.findIndex((m) => m.id === nextId));
-  const { root } = overlay('campaign', map?.name ?? 'Campaign', `${all.length} sorties · hardest last`, carousel(slides, 'Sortie'));
+  const { root } = overlay('campaign', map?.name ?? 'Campaign', `${all.length} missions · hardest last`, carousel(slides, 'Mission'));
   wireCarousel(root, initial);
-  // Back goes to the theatre picker so the drill reads map → mission (the overlay's default close()
+  // Back goes to the region picker so the drill reads map → mission (the overlay's default close()
   // — which returns to Home — still fires first, so this just re-opens Campaign on top).
   root.querySelector('[data-x]')?.addEventListener('click', () => openCampaign());
   root.querySelectorAll<HTMLElement>('[data-fly]').forEach((b) =>
@@ -404,7 +404,7 @@ export function openSettings(): void {
     <div class="srow"><div class="ic">${ic('user')}</div><div class="grow"><div class="t">Pilot</div><div class="s" id="callsign">${pro.name || 'Unnamed'}</div></div>
       <button class="btn ghost sm" data-edit>${ic('edit')}Edit</button></div>
     <div class="srow"><div class="ic">${ic('cloud')}</div><div class="grow"><div class="t">Cloud &amp; board</div><div class="s ${online ? 'ok' : ''}">${online ? 'Online ✓' : 'Offline'}</div></div></div>
-    <div class="srow"><div class="ic">${ic('pin')}</div><div class="grow"><div class="t">Region</div><div class="s">Theatre</div></div><span class="pill">Saskatchewan</span></div>
+    <div class="srow"><div class="ic">${ic('pin')}</div><div class="grow"><div class="t">Region</div><div class="s">Map</div></div><span class="pill">Saskatchewan</span></div>
   </div>
   <div class="card" style="margin-top:12px;">
     <div class="srow danger"><div class="ic">${ic('trash')}</div><div class="grow"><div class="t">Reset progress</div><div class="s">Wipe ranks, stars &amp; unlocks</div></div>
