@@ -78,10 +78,14 @@ function coloredPrism(
   return geom;
 }
 
-/** A box geometry (position/normal/uv + a flat per-box vertex colour) ready to merge with the others. */
+/** A box geometry with a flat per-box vertex colour, ready to merge with the others. NB: returned
+ *  NON-INDEXED with the uv dropped, so its attribute set (position/normal/color) matches `coloredPrism`
+ *  exactly — `mergeGeometries` returns null if any sibling differs (indexed-vs-not, or a stray uv), and a
+ *  null geometry → `new THREE.Mesh(null)` throws and KILLS the render loop (frozen scene, dead controls). */
 function coloredBox(w: number, h: number, d: number, cx: number, cy: number, cz: number, color: THREE.Color, mul: number): THREE.BufferGeometry {
   const g = new THREE.BoxGeometry(w, h, d);
   g.translate(cx, cy, cz);
+  g.deleteAttribute('uv'); // settlement material is vertex-coloured (no map) — uv is dead weight + a merge mismatch
   const n = g.attributes.position.count;
   const col = new Float32Array(n * 3);
   const r = color.r * mul;
@@ -93,7 +97,9 @@ function coloredBox(w: number, h: number, d: number, cx: number, cy: number, cz:
     col[i * 3 + 2] = b;
   }
   g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  return g;
+  const flat = g.toNonIndexed(); // prism is non-indexed; mergeGeometries needs ALL indexed or NONE
+  g.dispose();
+  return flat;
 }
 
 /**
@@ -163,6 +169,10 @@ export function createSettlement(opts: SettlementOpts, material: THREE.Material)
 
   const merged = mergeGeometries(geos);
   geos.forEach((g) => g.dispose());
+  // Defence in depth: a null merge (incompatible attributes) must NOT reach `new THREE.Mesh(null)` —
+  // that throws in the ctor, escapes the setAnimationLoop callback, and the rAF chain never reschedules
+  // (whole game freezes on a dead canvas while audio plays on). Drop the decoration instead.
+  if (!merged) return null;
   const mesh = new THREE.Mesh(merged, material);
   mesh.name = `settlement:${opts.tier}`;
   mesh.castShadow = true;
