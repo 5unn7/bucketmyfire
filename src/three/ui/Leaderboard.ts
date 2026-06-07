@@ -47,8 +47,18 @@ const MONO = 'ui-monospace, "SF Mono", "Cascadia Mono", "Segoe UI Mono", Menlo, 
 const MINE_BG = BOARD.mine;
 const MINE_BORDER = UI.ember;
 
-// Column widths shared by the header strip and every row so the columns stay rail-aligned.
-const COL = { bar: '4px', pos: '30px', move: '46px', avatar: '30px', right: '96px', gap: '10px' };
+// Column widths shared by the header strip and every row so the columns stay rail-aligned. They resolve
+// from CSS custom properties set on the overlay root (`.bmf-lb-root`, see injectStyles), so a phone-width
+// media query can shrink the fixed columns + gap and hand the squeeze back to the flexible PILOT column —
+// the inline widths reference the vars, the stylesheet picks the breakpoint.
+const COL = {
+  bar: 'var(--lb-bar)',
+  pos: 'var(--lb-pos)',
+  move: 'var(--lb-move)',
+  avatar: 'var(--lb-avatar)',
+  right: 'var(--lb-right)',
+  gap: 'var(--lb-gap)',
+};
 
 /** Which board is showing: TOTAL (career + daily combined) or today's DAILY BURN. */
 type Board2 = 'total' | 'daily';
@@ -99,9 +109,11 @@ class Leaderboard {
       background: `radial-gradient(125% 92% at 50% -4%, ${BOARD.bgTop}, ${BOARD.bgBot})`,
       fontFamily: UI.font,
       color: UI.text,
-      padding: '30px 16px 56px',
       boxSizing: 'border-box',
     });
+    // Carries the column-width CSS vars + page padding (so the phone breakpoint in injectStyles can
+    // tighten both). Kept in the stylesheet, not inline, so the media query can win the cascade.
+    this.root.className = 'bmf-lb-root';
     setBlur(this.root); // blur whatever sits behind so nothing reads through the board
     // Backdrop tap (outside the panel) closes.
     this.root.addEventListener('pointerdown', (e) => {
@@ -393,7 +405,7 @@ class Leaderboard {
       display: 'flex',
       alignItems: 'center',
       gap: COL.gap,
-      padding: '9px 13px 8px',
+      padding: '9px var(--lb-px) 8px',
       borderBottom: `1px solid ${UI.stroke}`,
       background: BOARD.colHead,
       fontSize: FS.tag,
@@ -420,7 +432,7 @@ class Leaderboard {
       display: 'flex',
       alignItems: 'center',
       gap: COL.gap,
-      padding: '9px 13px',
+      padding: '9px var(--lb-px)',
       borderBottom: `1px solid ${UI.hair}`,
       background: r.mine ? MINE_BG : r.rank === 1 ? BOARD.rowLeader : i % 2 ? BOARD.rowAlt : 'transparent',
       position: 'relative',
@@ -458,10 +470,12 @@ class Leaderboard {
 
     // Who — callsign (+ YOU pill) over the sub line.
     const who = div({ flex: '1', minWidth: '0' });
-    const nameRow = div({ display: 'flex', alignItems: 'center', gap: '8px' });
+    const nameRow = div({ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '0', overflow: 'hidden' });
     nameRow.appendChild(
       div(
-        { fontSize: FS.lg, fontWeight: FW.bold, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+        // flex:'0 1 auto' + minWidth:0 so a long callsign actually shrinks & ellipsizes WITHIN the cell
+        // instead of overflowing into the score column (the flex-item default min-width:auto breaks ellipsis).
+        { flex: '0 1 auto', minWidth: '0', fontSize: FS.lg, fontWeight: FW.bold, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
         r.pilot,
       ),
     );
@@ -488,7 +502,7 @@ class Leaderboard {
       display: 'flex',
       alignItems: 'center',
       gap: COL.gap,
-      padding: '11px 13px',
+      padding: '11px var(--lb-px)',
       borderRadius: R.lg,
       background: BOARD.youRow,
       border: `1px solid ${UI.ember}99`,
@@ -507,9 +521,9 @@ class Leaderboard {
     card.appendChild(avatarDot(s.pilot, team, true));
 
     const who = div({ flex: '1', minWidth: '0' });
-    const nameRow = div({ display: 'flex', alignItems: 'center', gap: '8px' });
+    const nameRow = div({ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '0', overflow: 'hidden' });
     nameRow.appendChild(
-      div({ fontSize: FS.lg, fontWeight: FW.bold, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }, s.pilot),
+      div({ flex: '0 1 auto', minWidth: '0', fontSize: FS.lg, fontWeight: FW.bold, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }, s.pilot),
     );
     nameRow.appendChild(youPill());
     who.appendChild(nameRow);
@@ -611,7 +625,7 @@ class Leaderboard {
       background: BOARD.skeleton,
     });
     for (let i = 0; i < 7; i++) {
-      const rowEl = div({ display: 'flex', alignItems: 'center', gap: COL.gap, padding: '11px 13px', borderBottom: `1px solid ${UI.hair}` });
+      const rowEl = div({ display: 'flex', alignItems: 'center', gap: COL.gap, padding: '11px var(--lb-px)', borderBottom: `1px solid ${UI.hair}` });
       rowEl.appendChild(skel({ width: '20px', height: '16px' }));
       rowEl.appendChild(skel({ width: '30px', height: '30px', borderRadius: R.round }));
       rowEl.appendChild(skel({ flex: '1', height: '12px' }));
@@ -705,6 +719,7 @@ function skel(style: Partial<CSSStyleDeclaration>): HTMLDivElement {
 function avatarDot(pilot: string, team: string, mine: boolean): HTMLDivElement {
   const a = div({
     flex: 'none',
+    boxSizing: 'border-box', // so the 1px border doesn't push the avatar to 32px and drift the column off the header
     width: COL.avatar,
     height: COL.avatar,
     borderRadius: R.round,
@@ -829,6 +844,12 @@ function injectStyles(): void {
   stylesInjected = true;
   const tag = document.createElement('style');
   tag.textContent = `
+  /* Column-width tokens + page padding. Default (tablet/desktop) widths; the breakpoints below tighten
+     the fixed columns + gap on phones so the flexible PILOT column keeps real width instead of collapsing.
+     Kept here (not inline) so the media queries win the cascade. */
+  .bmf-lb-root { padding: 30px 16px 56px; --lb-bar: 4px; --lb-pos: 30px; --lb-move: 46px; --lb-avatar: 30px; --lb-right: 96px; --lb-gap: 10px; --lb-px: 13px; }
+  @media (max-width: 400px) { .bmf-lb-root { padding: 28px 10px 52px; --lb-pos: 26px; --lb-move: 34px; --lb-avatar: 28px; --lb-right: 86px; --lb-gap: 8px; --lb-px: 11px; } }
+  @media (max-width: 340px) { .bmf-lb-root { padding: 26px 8px 48px; --lb-pos: 24px; --lb-move: 30px; --lb-avatar: 26px; --lb-right: 80px; --lb-gap: 6px; --lb-px: 10px; } }
   @keyframes bmf-lb-shimmer { 0% { background-position: -240px 0 } 100% { background-position: 240px 0 } }
   @keyframes bmf-lb-spin { to { transform: rotate(360deg) } }
   @keyframes bmf-lb-in { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: none } }
