@@ -102,7 +102,22 @@ export const UI = {
   shadowCard: '0 8px 30px rgba(0,0,0,0.45)', // overlay cards — stronger, lifts off a busy backdrop
   glow: '0 0 10px rgba(103,232,255,0.45)', // ambient cyan accent glow (cockpit register)
   emberGlow: '0 0 16px rgba(255,106,44,0.5)', // warm brand glow — the fight-register analog of `glow`
-  font: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+  // Instrument + warm-control tokens — the homes for values HUD.ts / Input.ts used to hand-type: the
+  // cyan-tinted instrument white, the crew/advisory amber, the momentary objective-flash wash, and the
+  // warm DROP / RELEASE-bucket control glows + glyph text. One home per value so the cockpit can't drift.
+  instrument: '#eaf6ff', // near-white with a faint cool cast — HUD gauge-icon strokes, hints, captions
+  commsAmber: '#ffb24a', // crew / advisory amber (radio comms + the closing-threat bar) — between caution and fire
+  accentFlash: 'rgba(103,232,255,0.22)', // momentary cyan wash when an objective ticks done (brighter than accentFill)
+  warmText: '#ffe7df', // warm off-white glyph text on the DROP / RELEASE-bucket touch controls
+  dropGlow: 'drop-shadow(0 0 13px rgba(255,90,60,0.42)) drop-shadow(0 3px 6px rgba(0,0,0,0.45))', // DROP hero hex glow
+  detachGlow: 'drop-shadow(0 0 10px rgba(255,90,60,0.34)) drop-shadow(0 2px 5px rgba(0,0,0,0.4))', // RELEASE-bucket hex glow (slightly smaller)
+  knobHi: 'rgba(150,182,202,0.24)', // cool metallic lowlight in the joystick knob's radial highlight
+  // Type — TWO self-hosted faces (latin woff2, injected by ui/fonts.ts; tokens.ts emits these as
+  // `--font` / `--mono`). `font` = Saira (the display/UI grotesque: wordmark, headlines, body, buttons);
+  // `fontMono` = JetBrains Mono (the cockpit INSTRUMENT face: HUD numerals, eyebrows, tags, rail, pills —
+  // tabular by construction). System stacks trail as the swap fallback. See DESIGN.md → Typography.
+  font: '"Saira Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+  fontMono: '"JetBrains Mono Variable", ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace',
 };
 
 // Home-hub (.bmf-app) WARM "fight"-register ramp — fixed-alpha stops of the brand ember (#ff6a2c),

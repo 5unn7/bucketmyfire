@@ -19,6 +19,7 @@ import { resetStaleStorage } from './storage/reset';
 import { installErrorBeacon } from './telemetry/errorBeacon';
 import { signalFirstFrame } from './splashSignal';
 import { showLoading, hideLoading } from './ui/LoadingOverlay';
+import { injectFonts } from './ui/fonts';
 import type { MissionDef } from './missions/types';
 import type { EndScreenHooks } from './HUD';
 
@@ -36,6 +37,10 @@ import type { EndScreenHooks } from './HUD';
  * `window.__game`); `?m=<id>` deep-links a specific mission.
  */
 const container = document.getElementById('game') as HTMLDivElement;
+
+// Brand type — inject the self-hosted Saira + JetBrains Mono @font-faces before any UI paints, so the
+// title/hub/HUD render in the real faces (font-display:swap keeps the first paint instant on a cold cache).
+injectFonts();
 
 // Crash/error beacon FIRST, so a failure during storage reset / renderer / world construction is
 // reported too. Env-gated sink (VITE_ERROR_BEACON_URL); console-only when unset. PII-free.

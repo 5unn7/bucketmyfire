@@ -58,7 +58,7 @@ export function injectKitStyles(): void {
     transition:transform .12s, background .12s, box-shadow .12s, border-color .12s, color .12s; }
   .btn svg{ width:16px; height:16px; }
   .btn.block{ width:100%; }
-  .btn.sm{ padding:9px 15px; min-height:38px; font-size:var(--fs-sm); }
+  .btn.sm{ padding:11px 15px; min-height:44px; font-size:var(--fs-sm); }
   .btn.lg{ padding:16px 26px; min-height:54px; font-size:var(--fs-lg); }
   /* fight (warm) — the default register */
   .btn.primary{ background:var(--cta); color:var(--cta-ink); box-shadow:0 1px 0 rgba(255,255,255,0.5) inset, 0 -2px 0 rgba(0,0,0,0.18) inset, 0 8px 20px var(--cta-glow); }
@@ -81,6 +81,22 @@ export function injectKitStyles(): void {
   .btn[disabled], .btn.is-disabled, .btn[aria-disabled="true"]{ opacity:.45; filter:grayscale(.4); cursor:not-allowed; }
   .btn.is-loading{ pointer-events:none; }
   @media (prefers-reduced-motion: reduce){ .btn{ transition:background .12s, box-shadow .12s, color .12s, border-color .12s; } .btn:hover{ transform:none; } }
+
+  /* ===== Canonical badge — THE one status pill of record. Used by makeBadge() AND by string-markup
+     (class="badge …"). Squared (--r-sm, never a round pill) with ONE fixed height, so every badge in a
+     row lines up. Default is the warm "fight" register; tone modifiers map the DESIGN.md semantics. ===== */
+  .badge{ display:inline-flex; align-items:center; justify-content:center; gap:5px; box-sizing:border-box;
+    height:26px; padding:0 10px; font-family:var(--mono); font-size:var(--fs-tag); font-weight:var(--fw-bold);
+    letter-spacing:.1em; text-transform:uppercase; line-height:1; white-space:nowrap;
+    color:var(--menu); background:var(--menu-fill); border:1px solid var(--menu-soft); border-radius:var(--r-sm); }
+  .badge svg{ width:12px; height:12px; }
+  /* tones — token-only, no literals */
+  .badge.accent{ color:var(--accent); background:var(--accent-fill); border-color:var(--accent-soft); }
+  .badge.ok{ color:var(--ok); background:var(--ok-12); border-color:var(--ok-50); }
+  .badge.warn{ color:var(--warn); background:var(--warn-10); border-color:var(--warn-50); }
+  .badge.neutral, .badge.locked{ color:var(--dim); background:var(--recess); border-color:var(--hair); }
+  .badge.fire{ color:var(--ember-hi); background:var(--warm-glass); border-color:var(--warm-stroke); }
+  .badge.fire svg path{ fill:var(--fire); }
   `;
   document.head.appendChild(s);
 }

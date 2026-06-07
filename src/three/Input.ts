@@ -27,7 +27,8 @@
  */
 import { CAMERA } from './config';
 import type { LookOffset } from './ChaseCamera';
-import { UI, FW, FS, R, div, button, setBlur, anchor } from './ui/theme';
+import { UI, FW, FS, R, div, button, setBlur, anchor, prefersReducedMotion } from './ui/theme';
+import { makeIconSvg } from './ui/svgIcons';
 import { onLayout, type LayoutState } from './ui/layout';
 import { HelpModal, hasSeenHelp, markHelpSeen } from './ui/HelpModal';
 import type { HighlightId } from './ui/coach/CoachDirector';
@@ -95,11 +96,13 @@ export class Input {
   // drop (carry + spend fused into one element). These three refs drive that fill + its % readout.
   private dropLabel!: HTMLDivElement; // the action word ("DROP" / "IGNITE") — relabelled by setActionLabel
   private dropPct!: HTMLDivElement; // the water % readout under the word
-  private dropWater!: HTMLDivElement; // the rising water fill layer (clipped to the round button)
+  private dropWater!: HTMLDivElement; // the rising water fill layer (clipped to the hex button)
+  private dropWave!: HTMLDivElement; // the animated wave riding the water surface (a sloshing crest)
   private dropWaterActive = true; // false on crew/torch loadouts (no bucket) → fill hidden, button is just the action
   private flashBucketTimer = 0; // setTimeout id: restore the % readout after a drop-result tint
   private swapBtn!: HTMLDivElement;
-  private detachBtn!: HTMLDivElement;
+  private detachBtn!: HTMLDivElement; // the small hex RELEASE-BUCKET button (inner — sized + press-wired)
+  private detachWrap!: HTMLDivElement; // its wrapper (carries the glow) — the element shown/hidden
   private clusterRow!: HTMLDivElement;
   private helpBtn!: HTMLDivElement;
   private help!: HelpModal;
@@ -240,6 +243,7 @@ export class Input {
       // No bucket on the line — empty, dimmed, "NO" in warn-amber (RTB to a base to rig a fresh one).
       this.dropWater.style.height = '0%';
       this.dropWater.style.boxShadow = 'none';
+      this.dropWave.style.opacity = '0';
       this.dropBtn.style.opacity = '0.6';
       if (!this.flashBucketTimer) {
         this.dropPct.textContent = 'NO';
@@ -251,6 +255,7 @@ export class Input {
     const f = frac < 0 ? 0 : frac > 1 ? 1 : frac;
     this.dropWater.style.height = `${Math.round(f * 100)}%`;
     this.dropWater.style.boxShadow = opts.scooping ? `inset 0 0 16px ${UI.accent}` : 'none'; // glow while filling → "keep dipping"
+    this.dropWave.style.opacity = f > 0.02 ? '1' : '0'; // the surface wave only when there's water
     if (this.flashBucketTimer) return; // a drop-result tint owns the % readout — don't fight it
     this.dropPct.textContent = `${Math.round(f * 100)}`;
     this.dropPct.style.color = opts.scooping ? UI.accentHi : UI.water;
@@ -275,7 +280,7 @@ export class Input {
   /** Show/hide the DETACH (jettison-bucket) button. Game shows it on a water mission while a bucket is
    *  attached — press it to release the slung bucket; you then RTB to a base for a fresh one. */
   setDetachVisible(on: boolean): void {
-    if (this.detachBtn) this.detachBtn.style.display = on ? 'flex' : 'none';
+    if (this.detachWrap) this.detachWrap.style.display = on ? 'flex' : 'none'; // the wrapper carries the hex + outline + glow
   }
 
   /** Show/hide the contextual SWAP-loadout button. Game calls this each frame: it's only
@@ -336,10 +341,15 @@ export class Input {
     this.dropPct.style.fontSize = `${Math.round(drop * 0.15)}px`; // the water % readout (a touch smaller)
     this.clusterRow.style.gap = `${Math.round(set.gap * 1.7)}px`;
 
+    // RELEASE BUCKET — a small hexagon on the left edge (clearly smaller than the collective buttons).
+    const det = Math.round(set.clusterBtn * 0.72 * k);
+    Object.assign(this.detachBtn.style, { width: `${det}px`, height: `${det}px` });
+
     // (Free-look is now a full-screen drag layer — no sized element to lay out here.)
 
-    // Help.
-    const help = Math.round(set.helpSize * k);
+    // Help. Floor at the 44px touch minimum — the per-breakpoint helpSize (40–44) times the compact
+    // 0.92 scale can dip to ~37px, under the accessible target size for a real tap.
+    const help = Math.max(44, Math.round(set.helpSize * k));
     Object.assign(this.helpBtn.style, { width: `${help}px`, height: `${help}px`, fontSize: `${Math.round(help * 0.5)}px` });
   }
 
@@ -365,28 +375,26 @@ export class Input {
     parent.appendChild(root);
   }
 
-  /** DETACH — top-left corner, hidden until Game calls setDetachVisible(true).
-   *  Top-left puts it as far as possible from the joystick (bottom-left) and the
-   *  action cluster (bottom-right), so it takes a deliberate upward reach to hit. */
+  /** RELEASE BUCKET — a small HEXAGON icon button on the mid-LEFT edge (echoes the DROP hexagon),
+   *  hidden until Game calls setDetachVisible(true). The left-centre edge keeps it clear of the top-left
+   *  instrument strip (which it used to sit on top of and get lost in), the top-right radar, and both
+   *  thumb clusters (joystick BL / action cluster BR) — a deliberate side reach so a rare bucket-jettison
+   *  is never a fat-finger. The bucket-release glyph inherits the warm text colour. */
   private buildDetachUI(root: HTMLElement): void {
-    const detach = button('⊗  RELEASE BUCKET', {
-      position: 'relative',
-      display: 'none',
-      padding: '0 16px',
-      height: '40px',
-      borderRadius: R.pill,
-      fontSize: FS.meta,
-      fontWeight: FW.bold,
-      letterSpacing: '1.2px',
-      color: '#ffe7df',
-      borderColor: UI.warmStroke,
-      boxShadow: `0 0 14px rgba(255,90,60,0.26), ${UI.shadowBtn}`,
+    const { wrap, btn: detach } = makeHexButton({
+      fill: UI.warmGlass,
+      stroke: UI.warmStroke,
+      glow: UI.detachGlow,
     });
+    detach.style.color = UI.warmText;
+    detach.appendChild(makeIconSvg('bucket-release', 22));
+    wrap.style.display = 'none'; // shown by setDetachVisible (toggles the WRAPPER so the outline goes too)
     this.detachBtn = detach;
+    this.detachWrap = wrap;
     holdButton(detach, (on) => (this.btnDetach = on), UI.warm);
 
-    const a = anchor('top-left');
-    a.appendChild(detach);
+    const a = anchor('left-center');
+    a.appendChild(wrap);
     root.appendChild(a);
   }
 
@@ -454,7 +462,7 @@ export class Input {
       left: '50%',
       top: '50%',
       borderRadius: R.round,
-      background: 'radial-gradient(circle at 40% 34%, rgba(255,255,255,0.55), rgba(150,182,202,0.24))',
+      background: `radial-gradient(circle at 40% 34%, rgba(255,255,255,0.55), ${UI.knobHi})`,
       border: `1.5px solid ${UI.accentSoft}`,
       boxShadow: '0 3px 10px rgba(0,0,0,0.45)',
       transition: 'box-shadow 0.12s ease, border-color 0.12s ease',
@@ -519,19 +527,17 @@ export class Input {
   private buildCluster(root: HTMLElement): void {
     const climb = button('▲', { position: 'relative' });
     const descend = button('▼', { position: 'relative' });
-    const drop = button('', {
-      position: 'relative',
-      overflow: 'hidden', // clip the rising water fill to the round button — the "bucket"
-      background: UI.warmGlass,
-      borderColor: UI.warmStroke,
-      color: '#ffe7df',
-      fontWeight: FW.bold,
-      letterSpacing: '1.5px',
-      boxShadow: `0 0 18px rgba(255,90,60,0.28), ${UI.shadowBtn}`,
+    // The DROP hero is a HEXAGON (mechanical cockpit-control vibe), not a plain disc. makeHexButton
+    // gives a clip-path hex with the warm fill, a crisp SVG hex outline, and the glow on a wrapper
+    // (a drop-shadow that follows the hex silhouette — a clipped box-shadow would be cut off).
+    const { wrap: dropWrap, btn: drop } = makeHexButton({
+      fill: UI.warmGlass,
+      stroke: UI.warmStroke,
+      glow: UI.dropGlow,
     });
+    Object.assign(drop.style, { color: UI.warmText, fontWeight: FW.bold, letterSpacing: '1.5px' });
     // Bucket water — a cool layer that rises from the base with the bucket's fill and drains as you
-    // drop, sitting BEHIND the label. Cool water under the warm action tells the fight story in one
-    // place; the crest line reads as the surface. Driven by setBucket() each frame.
+    // drop, behind the label; clipped to the hex. An animated wave rides its surface (a sloshing crest).
     const water = div({
       position: 'absolute',
       left: '0',
@@ -539,13 +545,26 @@ export class Input {
       bottom: '0',
       height: '0%',
       background: `linear-gradient(to top, ${UI.waterBody}, rgba(86,196,238,0.10))`,
-      borderTop: `1.5px solid ${UI.waterCrest}`,
       boxSizing: 'border-box',
       transition: 'height 0.16s ease, box-shadow 0.2s ease, opacity 0.2s ease',
       pointerEvents: 'none',
     });
+    const wave = div({
+      position: 'absolute',
+      left: '0',
+      top: '-3px', // ride ON the surface
+      width: '200%', // two wave tiles wide so a -28px translate loops seamlessly
+      height: '8px',
+      backgroundRepeat: 'repeat-x',
+      backgroundSize: '28px 8px',
+      pointerEvents: 'none',
+    });
+    wave.style.backgroundImage = `url("data:image/svg+xml,${encodeURIComponent(waterWaveSvg())}")`;
+    injectWaveStyles();
+    if (!prefersReducedMotion()) wave.style.animation = 'bmf-water-wave 1.15s linear infinite'; // sloshing crest
+    water.appendChild(wave);
     const content = div({
-      position: 'relative', // paints above the absolutely-positioned water layer
+      position: 'relative', // paints above the water layer
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
@@ -564,6 +583,7 @@ export class Input {
     this.dropLabel = lbl;
     this.dropPct = pct;
     this.dropWater = water;
+    this.dropWave = wave;
     holdButton(climb, (on) => (this.btnUp = on));
     holdButton(descend, (on) => (this.btnDown = on));
     holdButton(drop, (on) => (this.btnDrop = on), UI.warm);
@@ -574,7 +594,7 @@ export class Input {
 
     const row = div({ display: 'flex', flexDirection: 'row', alignItems: 'flex-end' });
     row.appendChild(col);
-    row.appendChild(drop);
+    row.appendChild(dropWrap);
     this.clusterRow = row;
 
     const a = anchor('bottom-right');
@@ -681,6 +701,65 @@ function injectPulseStyles(): void {
     .bmf-coach-pulse { animation: none; box-shadow: 0 0 0 3px rgba(103,232,255,0.85), 0 0 18px 3px rgba(103,232,255,0.45); }
   }
   `;
+  document.head.appendChild(tag);
+}
+
+// --- Hexagon touch buttons (DROP hero + RELEASE BUCKET) --------------------------------------------
+// A flat-top hexagon reads as a mechanical cockpit control (not a plain disc). The clip-path shapes the
+// fill + any clipped children; the warm edge is a separate SVG outline (a clipped border would only
+// survive on the flat top/bottom); and the glow rides a WRAPPER as a drop-shadow (which follows the hex
+// silhouette — a clipped box-shadow would be cut off). The SAME points feed clip-path + the outline.
+const HEX_CLIP = 'polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)';
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+/** A crisp hexagon OUTLINE drawn over (and slightly beyond) a clipped hex button, so the edge follows
+ *  the diagonals. Square buttons only (preserveAspectRatio none + square = no stroke distortion). */
+function makeHexOutline(stroke: string): SVGSVGElement {
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 100 100');
+  svg.setAttribute('preserveAspectRatio', 'none');
+  svg.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;overflow:visible;pointer-events:none';
+  const poly = document.createElementNS(SVG_NS, 'polygon');
+  poly.setAttribute('points', '25,2 75,2 98,50 75,98 25,98 2,50');
+  poly.setAttribute('fill', 'none');
+  poly.setAttribute('stroke', stroke);
+  poly.setAttribute('stroke-width', '2.5');
+  poly.setAttribute('stroke-linejoin', 'round');
+  svg.appendChild(poly);
+  return svg;
+}
+
+/** Build a hexagon touch button: a clip-path hex `btn` (caller adds the size + contents) inside a
+ *  `wrap` that carries the glow + the crisp outline. Return both — size/press the `btn`, show/hide
+ *  the `wrap`. */
+function makeHexButton(o: { fill: string; stroke: string; glow: string }): { wrap: HTMLDivElement; btn: HTMLDivElement } {
+  const btn = button('', {
+    position: 'relative',
+    overflow: 'hidden',
+    border: 'none', // the hex edge is the SVG outline; a rect border would clip to the flats only
+    borderRadius: '0', // clip-path owns the shape — kill the default round so it can't intersect the hex
+    boxShadow: 'none', // glow lives on the wrapper (drop-shadow follows the hex)
+    background: o.fill,
+  });
+  btn.style.clipPath = HEX_CLIP;
+  btn.style.setProperty('-webkit-clip-path', HEX_CLIP);
+  const wrap = div({ position: 'relative', display: 'flex', filter: o.glow });
+  wrap.append(btn, makeHexOutline(o.stroke));
+  return { wrap, btn };
+}
+
+/** The SVG for the sloshing water crest — one wave cycle over 28px, tiled + scrolled to animate. */
+function waterWaveSvg(): string {
+  return `<svg xmlns='http://www.w3.org/2000/svg' width='28' height='8' viewBox='0 0 28 8'><path d='M0 5 Q 7 1 14 5 T 28 5' fill='none' stroke='${UI.waterCrest}' stroke-width='1.6'/></svg>`;
+}
+
+// The crest-scroll keyframe (translate one tile so a 200%-wide, repeat-x wave loops seamlessly).
+let waveStylesInjected = false;
+function injectWaveStyles(): void {
+  if (waveStylesInjected) return;
+  waveStylesInjected = true;
+  const tag = document.createElement('style');
+  tag.textContent = '@keyframes bmf-water-wave { from { transform: translateX(0); } to { transform: translateX(-28px); } }';
   document.head.appendChild(tag);
 }
 

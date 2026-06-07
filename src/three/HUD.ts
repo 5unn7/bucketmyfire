@@ -44,7 +44,7 @@ const HINT_VISIBLE_MS = 3600; // status hint flashes on, then auto-fades after t
 // The briefing card reads like a fireline dispatch slip: fielded SITUATION / TASK / WINDS rows, not a
 // prose paragraph. TASK + WINDS are DERIVED from the MissionDef so they can never drift from what the
 // mission actually is (the win rule, the seeded wind). Mono labels in the warm/fight register.
-const MONO = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace';
+const MONO = UI.fontMono; // the cockpit instrument face (JetBrains Mono) — one source via theme.ts
 const TIME_OF_DAY_LABEL: Record<string, string> = {
   dawn: 'DAWN',
   day: 'DAY',
@@ -325,7 +325,7 @@ export class HUD {
       position: 'relative',
       height: '6px',
       borderRadius: R.pill,
-      background: 'rgba(255,255,255,0.13)',
+      background: UI.track,
       overflow: 'hidden',
     });
     this.crewBarFill = el('div', {
@@ -363,7 +363,7 @@ export class HUD {
     this.hint = frosted({
       fontSize: FS.sm,
       fontWeight: FW.medium,
-      color: '#dff6ff',
+      color: UI.instrument,
       padding: '5px 12px',
       borderRadius: R.pill,
       whiteSpace: 'nowrap',
@@ -581,10 +581,10 @@ export class HUD {
       // WHERE to go; just the % otherwise, so the compact pod only widens when it actually matters.
       this.threatPod.num.textContent = threatHot && s.threatName ? `${s.threatName} ${pct}` : `${pct}`;
       this.threatPod.cell.title = s.threatName ?? '';
-      this.threatPod.svg.setAttribute('stroke', threatHot ? UI.warn : '#eaf6ff'); // one attribute flip, gated
+      this.threatPod.svg.setAttribute('stroke', threatHot ? UI.warn : UI.instrument); // one attribute flip, gated
       this.threatPod.num.style.color = threatHot ? UI.warn : UI.text;
       this.threatPod.cell.style.textShadow = threatHot ? `0 0 8px ${UI.warn}` : 'none';
-      setPodBar(this.threatPod, threat, threatHot ? UI.warn : '#ffb24a', threatHot); // fills toward red as the fire closes in
+      setPodBar(this.threatPod, threat, threatHot ? UI.warn : UI.commsAmber, threatHot); // fills toward red as the fire closes in
     }
     // Crew aboard (delivery/evac missions only): an icon + the count in the cabin (0/1), with the
     // base bar reading as a filled/empty seat. The animated BOARDING/DISEMBARKING bar lives below the
@@ -633,9 +633,7 @@ export class HUD {
       tickEvery: 100,
       labelEvery: 500,
       pxPerTick: 17,
-      warn: s.raFt < LOW_AGL_FT, // low warning keys off true height above the surface
-      vsi: s.vertSpeed,
-      ra: s.raFt, // radar altitude readout (the landing number)
+      warn: s.raFt < LOW_AGL_FT, // low warning keys off true height above the surface (reddens the chip)
     });
 
     this.radar.draw(s);
@@ -678,7 +676,7 @@ export class HUD {
         borderRadius: R.sm,
       });
       const mark = t.failed ? '✕' : t.done ? '✓' : t.kind === 'constraint' ? '◆' : '○';
-      const col = t.failed ? UI.warn : t.done ? UI.accent : 'rgba(231,247,255,0.85)';
+      const col = t.failed ? UI.warn : t.done ? UI.accent : UI.textCool;
       row.appendChild(el('div', { color: col, fontWeight: FW.bold, width: '12px' }, mark));
       row.appendChild(el('div', { color: col, flex: '1' }, t.label));
       let val = '';
@@ -691,7 +689,7 @@ export class HUD {
       // gated on reduced-motion. Purely visual; no layout shift (background only).
       if (advanced && !prefersReducedMotion()) {
         row.style.transition = 'none';
-        row.style.backgroundColor = t.done ? UI.accentFill : 'rgba(103,232,255,0.22)';
+        row.style.backgroundColor = t.done ? UI.accentFill : UI.accentFlash;
         requestAnimationFrame(() => {
           row.style.transition = 'background-color 0.6s ease';
           row.style.backgroundColor = 'transparent';
@@ -788,7 +786,7 @@ export class HUD {
   pushComms(speaker: CommsSpeaker, text: string, urgency: CommsUrgency): void {
     text = this.personalize(text);
     const color =
-      speaker === 'warning' || urgency === 'alert' ? UI.warn : speaker === 'crew' ? '#ffb24a' : speaker === 'pilot' ? UI.text : UI.accent;
+      speaker === 'warning' || urgency === 'alert' ? UI.warn : speaker === 'crew' ? UI.commsAmber : speaker === 'pilot' ? UI.text : UI.accent;
     const line = frosted({
       padding: '4px 9px',
       borderLeft: `2px solid ${color}`,
@@ -826,7 +824,7 @@ export class HUD {
    * Pre-flight DISPATCH SLIP (the arc's opening): a frosted modal over the frozen scene styled like a
    * fireline dispatch slip — a mono header strip, the mission no. + name + threat pips, then fielded
    * SITUATION / TASK / WINDS rows (TASK + WINDS derived from the def so they can't drift from the real
-   * scenario), and a BEGIN FLIGHT button. Warm/fight register chrome, cyan action. Game keeps the sim +
+   * scenario), and a Fly button. Warm/fight register chrome, cyan action. Game keeps the sim +
    * clock paused until `onBegin` fires. Dismissed on BEGIN or a tap on the scrim.
    */
   showBriefing(def: MissionDef, onBegin: () => void): void {
@@ -894,7 +892,7 @@ export class HUD {
     body.appendChild(field('WINDS', briefWindPhrase(def.wind?.strengthScale)));
     body.appendChild(rule());
 
-    const begin = bannerButton('BEGIN FLIGHT ▸', 'primary', () => {
+    const begin = bannerButton('Fly ▸', 'primary', () => {
       scrim.remove();
       onBegin();
     });
@@ -996,9 +994,7 @@ export class HUD {
       tickEvery: number;
       labelEvery: number;
       pxPerTick: number;
-      warn?: boolean;
-      vsi?: number;
-      ra?: number; // radar altitude (ft) — small readout under the box (altitude tape)
+      warn?: boolean; // low-altitude caution → reddens the chip + numerals (keys off true AGL)
     },
   ): void {
     const w = TAPE_W;
@@ -1006,27 +1002,46 @@ export class HUD {
     const cy = h / 2;
     const pxPerUnit = o.pxPerTick / o.tickEvery;
     const accent = o.warn ? UI.warn : UI.accent;
-    const baseX = o.side === 'right' ? w - 5 : 5; // ladder spine on the inner edge
-    const dir = o.side === 'right' ? -1 : 1; // ticks grow outward (away from the heli)
+    const accentRgb = o.warn ? '255,93,77' : '103,232,255'; // UI.warn / UI.accent rgb — for alpha-faded canvas strokes
+    const inner = o.side === 'right' ? w : 0; // tape edge facing the heli (screen centre)
+    const baseX = o.side === 'right' ? w - 7 : 7; // ladder spine just inside the inner edge
+    const dir = o.side === 'right' ? -1 : 1; // ticks grow outward, away from the heli
     ctx.clearRect(0, 0, w, h);
 
-    // Faint legibility column behind the ladder, fading top/bottom.
-    const strip = ctx.createLinearGradient(0, 0, 0, h);
-    strip.addColorStop(0, 'rgba(6,12,18,0)');
-    strip.addColorStop(0.5, 'rgba(6,12,18,0.30)');
-    strip.addColorStop(1, 'rgba(6,12,18,0)');
-    ctx.fillStyle = strip;
-    const sx = o.side === 'right' ? w - 34 : 0;
-    ctx.fillRect(sx, 0, 34, h);
+    // 1) Recessed tape band — a soft dark well behind the ladder, faded top & bottom so the ladder
+    //    floats into the scene (the same recessed-bezel language as the instrument strip's chambers).
+    const bandW = 42;
+    const bandX = o.side === 'right' ? w - bandW : 0;
+    const band = ctx.createLinearGradient(0, 0, 0, h);
+    band.addColorStop(0, 'rgba(8,13,18,0)');
+    band.addColorStop(0.5, 'rgba(8,13,18,0.46)');
+    band.addColorStop(1, 'rgba(8,13,18,0)');
+    ctx.fillStyle = band;
+    ctx.fillRect(bandX, 0, bandW, h);
 
-    // Section caption at the top.
+    // 2) Inner "live rail" — a thin cyan accent line on the edge facing the heli, faded top/bottom.
+    //    It brackets the flight view and ties both tapes to the aircraft (cyan = live instrument).
+    const rail = ctx.createLinearGradient(0, 0, 0, h);
+    rail.addColorStop(0, `rgba(${accentRgb},0)`);
+    rail.addColorStop(0.5, `rgba(${accentRgb},0.42)`);
+    rail.addColorStop(1, `rgba(${accentRgb},0)`);
+    ctx.strokeStyle = rail;
+    ctx.lineWidth = 1;
+    const railX = inner + (o.side === 'right' ? -0.5 : 0.5);
+    ctx.beginPath();
+    ctx.moveTo(railX, 8);
+    ctx.lineTo(railX, h - 8);
+    ctx.stroke();
+
+    // 3) Unit caption at the top — small, dim, the same uppercase voice as the strip labels.
     ctx.textBaseline = 'middle';
     ctx.textAlign = o.side === 'right' ? 'right' : 'left';
     ctx.fillStyle = UI.dim;
-    ctx.font = '600 10px ' + UI.font;
-    ctx.fillText(o.name, baseX, 9);
+    ctx.font = '700 9px ' + MONO;
+    ctx.fillText(o.name, baseX, 10);
 
-    // Scrolling ladder: ticks + labels, positioned continuously from the live value.
+    // 4) Scrolling ladder: faint minor ticks, longer/brighter major ticks + a numeral. The rungs
+    //    nearest centre are skipped so they never collide with the value chip.
     const topVal = o.value + cy / pxPerUnit;
     const botVal = o.value - cy / pxPerUnit;
     const first = Math.ceil(botVal / o.tickEvery) * o.tickEvery;
@@ -1034,83 +1049,67 @@ export class HUD {
     for (let t = first; t <= topVal; t += o.tickEvery) {
       if (t < 0) continue;
       const y = cy + (o.value - t) * pxPerUnit;
-      if (y < 16 || y > h - 6) continue;
+      if (y < 18 || y > h - 8) continue;
+      if (Math.abs(y - cy) < 14) continue; // keep the rungs clear of the centre value chip
       const fade = 1 - Math.min(1, Math.abs(y - cy) / (cy + 8)); // dim toward the edges
       const major = Math.round(t) % o.labelEvery === 0;
-      ctx.strokeStyle = `rgba(255,255,255,${(major ? 0.55 : 0.28) * (0.4 + 0.6 * fade)})`;
+      ctx.strokeStyle = `rgba(255,255,255,${(major ? 0.5 : 0.2) * (0.35 + 0.65 * fade)})`;
       ctx.beginPath();
       ctx.moveTo(baseX, y);
-      ctx.lineTo(baseX + dir * (major ? 12 : 6), y);
+      ctx.lineTo(baseX + dir * (major ? 11 : 5), y);
       ctx.stroke();
       if (major) {
-        ctx.fillStyle = `rgba(226,244,255,${0.5 + 0.5 * fade})`;
-        ctx.font = '500 11px ' + UI.font;
-        ctx.fillText(`${t}`, baseX + dir * 16, y);
+        ctx.fillStyle = `rgba(226,244,255,${0.45 + 0.5 * fade})`;
+        ctx.font = '500 11px ' + MONO;
+        ctx.fillText(`${t}`, baseX + dir * 15, y);
       }
     }
 
-    // Center readout: a pointer aimed at the heli + a boxed live value.
-    const boxW = 44;
-    const boxH = 24;
-    const bx = o.side === 'right' ? w - boxW : 0;
+    // 5) Live value chip — a clean rounded readout shaped like a tag: rounded outer corners, a pointer
+    //    on the inner edge aimed at the heli. Recessed fill + a cyan hairline + a soft glow.
+    const boxW = 46;
+    const boxH = 26;
     const by = cy - boxH / 2;
-    const tip = o.side === 'right' ? w : 0; // chevron points toward the heli (screen center)
-    const tipBase = o.side === 'right' ? w - 7 : 7;
+    const r = 5;
+    const pb = o.side === 'right' ? w - 7 : 7; // pointer base x (just inside the inner edge)
+    const ox = o.side === 'right' ? w - boxW : boxW; // outer edge x (the rounded corners live here)
     ctx.beginPath();
-    ctx.moveTo(o.side === 'right' ? bx : boxW, by);
     if (o.side === 'right') {
-      ctx.lineTo(tipBase, by);
-      ctx.lineTo(tip, cy);
-      ctx.lineTo(tipBase, by + boxH);
-      ctx.lineTo(bx, by + boxH);
+      ctx.moveTo(ox + r, by);
+      ctx.lineTo(pb, by);
+      ctx.lineTo(inner, cy); // tip toward the heli
+      ctx.lineTo(pb, by + boxH);
+      ctx.lineTo(ox + r, by + boxH);
+      ctx.arcTo(ox, by + boxH, ox, by + boxH - r, r);
+      ctx.lineTo(ox, by + r);
+      ctx.arcTo(ox, by, ox + r, by, r);
     } else {
-      ctx.lineTo(tipBase, by);
-      ctx.lineTo(tip, cy);
-      ctx.lineTo(tipBase, by + boxH);
-      ctx.lineTo(boxW, by + boxH);
+      ctx.moveTo(inner, cy); // tip toward the heli
+      ctx.lineTo(pb, by);
+      ctx.lineTo(ox - r, by);
+      ctx.arcTo(ox, by, ox, by + r, r);
+      ctx.lineTo(ox, by + boxH - r);
+      ctx.arcTo(ox, by + boxH, ox - r, by + boxH, r);
+      ctx.lineTo(pb, by + boxH);
     }
     ctx.closePath();
-    ctx.fillStyle = 'rgba(6,12,18,0.78)';
+    ctx.fillStyle = UI.field; // recessed readout fill (the form-field / sunken-well token)
     ctx.fill();
     ctx.strokeStyle = accent;
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 1.25;
     ctx.shadowColor = accent;
-    ctx.shadowBlur = 6;
+    ctx.shadowBlur = 5;
     ctx.stroke();
     ctx.shadowBlur = 0;
 
-    // Always show the number (reddened when low) — keeping it readable matters for
-    // landing; the RA line + color carry the low caution instead of hiding the value.
+    // The number — bold, centred in the chip body (reddened when low; never hidden — you land on it).
     ctx.fillStyle = o.warn ? UI.warn : '#fff';
-    ctx.font = '700 17px ' + UI.font;
+    ctx.font = '700 16px ' + MONO;
     ctx.textAlign = 'center';
-    ctx.fillText(`${Math.round(o.value)}`, bx + boxW / 2, cy + 1);
-
-    // VSI under the box (altitude tape only).
-    if (o.vsi !== undefined) {
-      const vs = o.vsi; // ft/min
-      let txt = '— LVL';
-      let col = UI.dim;
-      if (vs > 50) {
-        txt = `▲${Math.round(vs / 10) * 10}`;
-        col = UI.accent;
-      } else if (vs < -50) {
-        txt = `▼${Math.abs(Math.round(vs / 10) * 10)}`;
-        col = '#ffc36b';
-      }
-      ctx.fillStyle = col;
-      ctx.font = '600 11px ' + UI.font;
-      ctx.textAlign = o.side === 'right' ? 'right' : 'left';
-      ctx.fillText(txt, baseX, by + boxH + 14);
-    }
-
-    // Radar altitude (true height above the surface below) — the landing number.
-    if (o.ra !== undefined) {
-      ctx.fillStyle = o.warn ? UI.warn : 'rgba(231,247,255,0.85)';
-      ctx.font = '600 11px ' + UI.font;
-      ctx.textAlign = o.side === 'right' ? 'right' : 'left';
-      ctx.fillText(`R ${Math.round(o.ra)}`, baseX, by + boxH + 28);
-    }
+    ctx.fillText(`${Math.round(o.value)}`, (ox + pb) / 2, cy + 1);
+    // (The VSI ft/min + "R" radar-altitude readouts were removed — the altitude tape is now just the
+    //  clean ladder + value chip, symmetric with the speed tape. The low-altitude red chip carries the
+    //  caution that the RA line used to spell out.)
   }
 }
 
@@ -1201,7 +1200,7 @@ function makePod(iconSvg: string, withBar = false): Pod {
       bottom: '2px',
       height: '2.5px',
       borderRadius: R.xs,
-      background: 'rgba(255,255,255,0.13)',
+      background: UI.track,
       overflow: 'hidden',
     });
     barFill = el('div', {

@@ -73,7 +73,7 @@ const CSS = `
 .bmf-app .sec .stamp.link{ cursor:pointer; color:var(--menu); border-color:var(--menu-soft); }
 
 .bmf-app .appbar{ display:flex; align-items:center; gap:12px; min-height:44px; margin-bottom:6px; }
-.bmf-app .iconbtn{ width:36px; height:36px; flex:0 0 auto; border-radius:var(--r-sm); border:1px solid var(--stroke); background:var(--card-soft); color:var(--dim); display:grid; place-items:center; cursor:pointer; transition:border-color .14s, color .14s, transform .14s; }
+.bmf-app .iconbtn{ width:44px; height:44px; flex:0 0 auto; border-radius:var(--r-sm); border:1px solid var(--stroke); background:var(--card-soft); color:var(--dim); display:grid; place-items:center; cursor:pointer; transition:border-color .14s, color .14s, transform .14s; }
 .bmf-app .iconbtn:hover{ color:var(--ember-hi); border-color:var(--warm-stroke); transform:translateY(-1px); }
 .bmf-app .iconbtn svg{ width:17px; height:17px; }
 .bmf-app .appbar .ttl{ font-size:var(--fs-title); font-weight:var(--fw-heavy); letter-spacing:.04em; text-transform:uppercase; }
@@ -133,6 +133,10 @@ const CSS = `
 .bmf-app .artcard .scrim{ position:absolute; inset:0; z-index:1; pointer-events:none;
   background:linear-gradient(180deg, rgba(8,6,4,0.05) 0%, rgba(8,6,4,0.1) 32%, rgba(6,4,3,0.8) 74%, rgba(4,3,2,0.95) 100%), linear-gradient(90deg, rgba(4,3,2,0.6) 0%, transparent 46%); }
 .bmf-app .artcard .inner{ position:relative; z-index:3; padding:15px 16px 18px; display:flex; flex-direction:column; }
+/* auto-layout: the title/body/footer stack sits at the BASE of the poster (margin-top:auto), one gap
+   between its rows — no spacer div, no per-element margins. Shared by the Map + Hangar poster cards. */
+.bmf-app .artcard .pc-stack{ margin-top:auto; display:flex; flex-direction:column; gap:11px; }
+.bmf-app .artcard .pc-title{ font-size:var(--fs-display); }
 .bmf-app .brackets{ position:absolute; inset:11px; z-index:2; pointer-events:none; }
 .bmf-app .brackets i{ position:absolute; width:15px; height:15px; border-color:var(--menu-soft); opacity:.6; }
 .bmf-app .brackets i:nth-child(1){ top:0; left:0; border-top:2px solid; border-left:2px solid; }
@@ -143,19 +147,18 @@ const CSS = `
 .bmf-app .chip.ghost{ color:var(--ember-hi); background:rgba(8,6,4,0.55); border:1px solid var(--warm-stroke); box-shadow:none; font-weight:var(--fw-bold); }
 .bmf-app .chip svg{ width:11px; height:11px; }
 .bmf-app .chip.reg{ letter-spacing:.12em; } /* region pin pill — looser tracking so the place name stays readable */
-.bmf-app .pill{ font-family:var(--mono); font-size:var(--fs-tag); letter-spacing:.1em; text-transform:uppercase; padding:5px 11px; border-radius:var(--r-pill); background:var(--menu-fill); border:1px solid var(--menu-soft); color:var(--menu); font-weight:var(--fw-bold); white-space:nowrap; }
-.bmf-app .pill.ok{ color:var(--ok); border-color:var(--ok-50); background:var(--ok-12); }
-.bmf-app .pill.locked{ color:var(--dim); border-color:var(--hair); background:var(--recess); }
-.bmf-app .pill.soon{ color:var(--menu); border-color:var(--menu-soft); background:var(--menu-fill); }
 
 .bmf-app .ctx-row{ display:flex; flex-wrap:wrap; gap:7px; }
-.bmf-app .ctx{ display:inline-flex; align-items:center; gap:5px; font-family:var(--mono); font-size:var(--fs-micro); letter-spacing:.1em; text-transform:uppercase; font-weight:var(--fw-bold); color:var(--dim); padding:5px 9px; border-radius:var(--r-pill); background:var(--recess); border:1px solid var(--hair); }
+.bmf-app .ctx{ display:inline-flex; align-items:center; gap:5px; font-family:var(--mono); font-size:var(--fs-micro); letter-spacing:.1em; text-transform:uppercase; font-weight:var(--fw-bold); color:var(--dim); padding:5px 9px; border-radius:var(--r-sm); background:var(--recess); border:1px solid var(--hair); }
 .bmf-app .ctx.hot{ color:var(--ember-hi); border-color:var(--warm-stroke); background:var(--ember-10); }
 .bmf-app .ctx svg{ width:12px; height:12px; }
 
-.bmf-app .grank{ display:flex; align-items:baseline; gap:7px; padding:5px 11px; border-radius:var(--r-pill); background:var(--menu-fill); border:1px solid var(--menu-soft); }
-.bmf-app .grank b{ font-family:var(--mono); font-size:var(--fs-lg); font-weight:var(--fw-bold); color:var(--menu); }
-.bmf-app .grank span{ font-family:var(--mono); font-size:var(--fs-micro); letter-spacing:.22em; text-transform:uppercase; color:var(--faint); font-weight:var(--fw-bold); }
+/* the global-rank readout is a .badge variant — inherits the canonical radius/border/tone, but sits in
+   the dossier header beside the 36px .iconbtns, so it matches THEIR height (not the 26px status-pill
+   height) to keep that row flush. It just swaps the single uppercase label for a #number + tiny caption. */
+.bmf-app .grank{ gap:7px; height:36px; padding:0 13px; }
+.bmf-app .grank b{ font-size:var(--fs-lg); font-weight:var(--fw-bold); color:var(--menu); }
+.bmf-app .grank span{ font-size:var(--fs-micro); letter-spacing:.22em; color:var(--faint); }
 
 .bmf-app .rank{ display:inline-flex; align-items:center; gap:6px; font-family:var(--mono); font-size:var(--fs-tag); font-weight:var(--fw-bold); letter-spacing:.16em; text-transform:uppercase; color:var(--rk,var(--rank)); padding:3px 9px 3px 7px; white-space:nowrap;
   background:repeating-linear-gradient(45deg, rgba(255,160,51,0.12) 0 2px, transparent 2px 4px), rgba(255,160,51,0.10);
@@ -170,8 +173,6 @@ const CSS = `
 .bmf-app .glyph.flicker svg path{ animation:bmf-glyph 2.8s ease-in-out infinite; }
 @keyframes bmf-glyph{ 0%,100%{opacity:1;transform:scale(1)} 45%{opacity:.82;transform:scale(.97)} 70%{opacity:.95} }
 
-.bmf-app .streak{ display:inline-flex; align-items:center; gap:6px; font-family:var(--mono); font-size:var(--fs-tag); font-weight:var(--fw-bold); letter-spacing:.1em; text-transform:uppercase; color:var(--ember-hi); padding:6px 10px; border-radius:var(--r-pill); background:var(--warm-glass); border:1px solid var(--warm-stroke); white-space:nowrap; }
-.bmf-app .streak svg{ width:11px; height:13px; } .bmf-app .streak svg path{ fill:var(--fire); }
 
 /* Daily Burn card: a COMPACT dispatch slip — brand-mark glyph at left (same logo as the dossier),
    collapsible. The whole header row is the toggle; the body holds the brief + resets/Fly. Default
@@ -188,8 +189,6 @@ const CSS = `
 .bmf-app .dbrief{ margin-top:13px; font-size:var(--fs-body); line-height:1.45; color:rgba(255,255,255,0.86);
   padding-left:11px; border-left:3px solid var(--fire);
   display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
-.bmf-app .done-badge{ display:inline-flex; align-items:center; gap:5px; font-family:var(--mono); font-size:var(--fs-tag); font-weight:var(--fw-bold); letter-spacing:.1em; text-transform:uppercase; color:var(--ok); padding:6px 10px; border-radius:var(--r-pill); background:var(--ok-12); border:1px solid var(--ok-50); white-space:nowrap; }
-.bmf-app .done-badge svg{ width:12px; height:12px; }
 
 .bmf-app .stars{ display:inline-flex; gap:3px; } .bmf-app .stars svg{ width:15px; height:15px; }
 .bmf-app .stars .on{ fill:var(--menu); stroke:none; filter:drop-shadow(0 0 5px var(--gold-70)); }
@@ -240,7 +239,7 @@ const CSS = `
 .bmf-app .cslide.locked .artcard{ filter:grayscale(.5) brightness(.72); }
 .bmf-app .cslide:not(.active):hover{ opacity:.66; }
 
-.bmf-app .cnav{ position:absolute; top:46%; transform:translateY(-50%); z-index:6; width:42px; height:42px; border-radius:50%; display:grid; place-items:center; cursor:pointer; color:var(--ember-hi); padding:0;
+.bmf-app .cnav{ position:absolute; top:46%; transform:translateY(-50%); z-index:6; width:44px; height:44px; border-radius:50%; display:grid; place-items:center; cursor:pointer; color:var(--ember-hi); padding:0;
   background:rgba(10,13,16,0.74); border:1px solid var(--warm-stroke); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
   box-shadow:0 6px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06); transition:transform .14s, background .14s, opacity .22s; }
 .bmf-app .cnav svg{ width:20px; height:20px; }
@@ -353,7 +352,7 @@ const CSS = `
 .bmf-app .modal-head .mglyph svg{ width:17px; height:17px; }
 .bmf-app .modal-head .mtitle{ font-size:var(--fs-hero); font-weight:var(--fw-heavy); letter-spacing:.01em; color:#fff; }
 .bmf-app .modal-head .msub{ font-family:var(--mono); font-size:var(--fs-micro); letter-spacing:.16em; text-transform:uppercase; color:var(--faint); margin-top:3px; }
-.bmf-app .modal-head .mclose{ width:32px; height:32px; flex:0 0 auto; border-radius:var(--r-sm); border:1px solid var(--stroke); background:var(--card-soft); color:var(--dim); display:grid; place-items:center; cursor:pointer; transition:border-color .14s, color .14s; }
+.bmf-app .modal-head .mclose{ width:44px; height:44px; flex:0 0 auto; border-radius:var(--r-sm); border:1px solid var(--stroke); background:var(--card-soft); color:var(--dim); display:grid; place-items:center; cursor:pointer; transition:border-color .14s, color .14s; }
 .bmf-app .modal-head .mclose:hover{ color:var(--text); border-color:var(--stroke-strong); } .bmf-app .modal-head .mclose svg{ width:16px; height:16px; }
 .bmf-app .modal-body .mtext{ font-size:var(--fs-sm); line-height:1.55; color:var(--dim); margin:0; }
 .bmf-app .modal-actions{ display:flex; gap:10px; margin-top:18px; } .bmf-app .modal-actions .btn{ flex:1; }

@@ -27,6 +27,8 @@
     "bake:heightmap": "node scripts/bake-heightmap.mjs"
   },
   "dependencies": {
+    "@fontsource-variable/jetbrains-mono": "^5.2.8",
+    "@fontsource-variable/saira": "^5.2.11",
     "@supabase/realtime-js": "^2.107.0",
     "three": "0.184.0"
   },

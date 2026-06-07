@@ -9,6 +9,11 @@
  * standalone site is attributable. Degrades to a quiet "offline" note when Supabase isn't configured.
  */
 import { submitLead, isConfigured } from '../three/leaderboard/client';
+import { injectFonts } from '../three/ui/fonts';
+
+// Same self-hosted brand type as the game (Saira display + JetBrains Mono), so the merch site and the
+// game read as one product. shop.html's `--font` var points at 'Saira Variable'; this loads the woff2.
+injectFonts();
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ONLINE = isConfigured();
