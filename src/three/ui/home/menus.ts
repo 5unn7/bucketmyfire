@@ -18,7 +18,6 @@ import { getCloudLink } from '../../leaderboard/cloudSave';
 import { openCloudSave } from '../CloudSave';
 import { resetProgress, getProgress, bestScore, bestStars, isUnlocked } from '../../missions/progress';
 import { missionPoster } from '../missionArt';
-import { buildFreeForAll } from '../../missions/freeforall';
 import { openLeaderboard } from '../Leaderboard';
 import { injectHomeStyles, spawnEmbers } from './styles';
 import { posterCard } from './posterCard';
@@ -374,7 +373,11 @@ function heliSlide(h: CatalogItem, cleared: number): string {
     .map((s) => `<div class="spec"><span class="name">${s.label}</span><span class="track"><i style="width:${Math.round(s.value * 100)}%"></i></span></div>`)
     .join('');
   const badge = unlocked ? `<span class="badge ok">Flyable</span>` : `<span class="badge locked">Locked</span>`;
-  const backdrop = `<div class="heli-art"><span class="grid"></span><span class="ring"></span><span class="mark">${ic('heli')}</span><span class="livery" aria-hidden="true">${FLAME}</span></div>`;
+  // Key-art render of the airframe over a boreal wildfire (profile.imageUrl) full-bleed behind the
+  // scrim; falls back to the procedural "hangar bay" art when a heli has no render yet.
+  const backdrop = h.imageUrl
+    ? `<img class="img" src="${h.imageUrl}" alt="">`
+    : `<div class="heli-art"><span class="grid"></span><span class="ring"></span><span class="mark">${ic('heli')}</span><span class="livery" aria-hidden="true">${FLAME}</span></div>`;
   return posterCard({
     locked: !unlocked,
     cardClass: 'heli',
@@ -408,20 +411,27 @@ export function openCoop(): void {
     const sel = ok && h.id === picked;
     const sub = ok ? h.tagline : `Clear ${h.unlockAfter}`;
     const flag = sel ? `<span class="hc-flag">${ic('check')}</span>` : ok ? '' : `<span class="hc-flag">${ic('lock')}</span>`;
+    // Key-art render fills the tile when present; else the procedural ring + heli mark.
+    const art = h.imageUrl
+      ? `<img class="img" src="${h.imageUrl}" alt="">`
+      : `<span class="hc-ring"></span><span class="hc-mark">${ic('heli')}</span>`;
     return `<button class="helicard${sel ? ' sel' : ''}${ok ? '' : ' locked'}" style="--accent:${h.accent};" data-heli="${h.id}"${ok ? '' : ' data-locked'}>
-      <span class="hc-art"><span class="hc-ring"></span><span class="hc-mark">${ic('heli')}</span></span>
+      <span class="hc-art">${art}</span>
       <span class="hc-name">${h.name}</span>
       <span class="hc-sub">${sub}</span>${flag}
     </button>`;
   };
-  const body = `<div style="margin-top:8px;">
+  // Single-viewport, NO SCROLL (CLAUDE.md): `.osky` is a flex column that fits the pad above the rail —
+  // the CTA group is pinned to the base (margin-top:auto), and short phones compress via styles.ts.
+  // Title lives in the overlay's top bar (the appbar shows "Open Skies") — no duplicate body headline.
+  const body = `<div class="osky">
     <span class="chip">${ic('fire')}Free-for-all</span>
-    <h1 class="h-big" style="margin-top:13px;">Open Skies</h1>
-    <p class="muted" style="margin-top:9px;font-size:var(--fs-body);line-height:1.5;max-width:34ch;">Same map, same fires, everyone at once. The fire never stops — knock down all you can and climb the board.</p>
-    <div class="sec" style="margin-top:17px;"><span class="tag">Your aircraft</span><span class="line"></span></div>
+    <p class="muted osky-sub">Open fire. Fly with your friends, show your skills and earn points.</p>
+    <div class="sec"><span class="tag">Your aircraft</span><span class="line"></span></div>
     <div class="heligrid">${HELIS.map(heliCard).join('')}</div>
-    <button class="btn ember block" style="margin-top:16px;" data-ffa>${ic('play')}Join</button>
-    <button class="btn ghost block" style="margin-top:10px;" data-ffa-board>${ic('trophy')}Today's board</button>
+    <div class="osky-cta">
+      <button class="btn ember block" data-ffa>${ic('play')}Join</button>
+    </div>
   </div>`;
   const { root } = overlay('coop', 'Open Skies', body);
   // Aircraft selection: one delegated handler repaints the grid so the chosen card lights up and the
@@ -441,9 +451,6 @@ export function openCoop(): void {
     url.searchParams.set('heli', picked); // fly the chosen airframe (main.ts honours ?heli=)
     location.assign(url.toString());
   });
-  // Live standings for today's shared free-for-all (its own per-day board, keyed by the ffa session id).
-  const ffa = buildFreeForAll(new Date());
-  root.querySelector('[data-ffa-board]')?.addEventListener('click', () => openLeaderboard([...menuCatalog, ffa], ffa.id));
 }
 
 // ============================ SETTINGS (minimal) ============================

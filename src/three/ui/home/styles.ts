@@ -274,6 +274,9 @@ const CSS = `
 /* Brand flame livery mark — a small ember roundel on the airframe (fills via .flame → flameGrad). */
 .bmf-app .artcard.heli .heli-art .livery{ position:absolute; right:18px; top:72px; width:23px; height:28px; z-index:2; opacity:.7; }
 .bmf-app .artcard.heli .heli-art .livery svg{ width:100%; height:100%; }
+/* When a heli has key-art (profile.imageUrl), frame the AIRFRAME — sits upper-mid, so pull focus
+   above the map default (50% 34%) so the fuselage reads under the badge row and the title scrim. */
+.bmf-app .artcard.heli .img{ object-position:50% 42%; }
 
 .bmf-app .specgrid{ display:grid; grid-template-columns:1fr 1fr; gap:8px 16px; margin:11px 0 2px; }
 .bmf-app .specgrid .spec{ grid-template-columns:50px 1fr; gap:8px; margin:0; }
@@ -283,8 +286,8 @@ const CSS = `
    Each card is a real <button>: a tinted procedural hangar tile + name + tagline, with a selected
    (ember) and a locked (dimmed + lock corner) state. All colour comes from the accent var + tokens. */
 .bmf-app .heligrid{ display:grid; grid-template-columns:repeat(3,1fr); gap:9px; margin-top:11px; }
-.bmf-app .helicard{ position:relative; display:flex; flex-direction:column; align-items:center; gap:7px;
-  padding:11px 7px 12px; border-radius:var(--r-lg); border:1px solid var(--stroke); background:var(--card-bg); color:var(--text);
+.bmf-app .helicard{ position:relative; display:flex; flex-direction:column; align-items:stretch; gap:8px; min-height:0;
+  padding:9px 9px 11px; border-radius:var(--r-lg); border:1px solid var(--stroke); background:var(--card-bg); color:var(--text);
   font:inherit; cursor:pointer; text-align:center; overflow:hidden; -webkit-tap-highlight-color:transparent;
   transition:border-color .16s ease, box-shadow .22s ease, transform .12s ease; }
 .bmf-app .helicard:hover{ border-color:var(--warm-stroke); transform:translateY(-2px); }
@@ -293,12 +296,16 @@ const CSS = `
   box-shadow:inset 0 0 0 1px var(--menu-soft), 0 0 22px var(--ember-22); }
 .bmf-app .helicard.locked{ cursor:default; filter:grayscale(.55) brightness(.66); }
 .bmf-app .helicard.locked:hover{ border-color:var(--stroke); transform:none; }
-.bmf-app .helicard .hc-art{ position:relative; width:100%; aspect-ratio:1.85/1; border-radius:var(--r-sm); overflow:hidden; display:grid; place-items:center;
-  background:radial-gradient(92% 84% at 50% 30%, color-mix(in srgb, var(--accent) 50%, transparent), transparent 70%), var(--metal); }
-.bmf-app .helicard .hc-ring{ position:absolute; top:50%; left:50%; width:62px; height:62px; transform:translate(-50%,-50%); border-radius:50%;
+/* The art tile is the hero: it FILLS the card's available height (the grid flexes to the viewport, below),
+   so the portrait key-art render reads at full size instead of a thin letterbox crop. */
+.bmf-app .helicard .hc-art{ position:relative; width:100%; flex:1 1 auto; min-height:72px; border-radius:var(--r-md); overflow:hidden; display:grid; place-items:center;
+  background:radial-gradient(92% 84% at 50% 28%, color-mix(in srgb, var(--accent) 50%, transparent), transparent 70%), var(--metal); }
+/* Key-art render fills the tile (portrait crop through the fuselage); else the procedural ring + mark. */
+.bmf-app .helicard .hc-art .img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:50% 32%; }
+.bmf-app .helicard .hc-ring{ position:absolute; top:50%; left:50%; width:50%; aspect-ratio:1; max-width:120px; transform:translate(-50%,-50%); border-radius:50%;
   border:1px dashed color-mix(in srgb, var(--accent) 60%, transparent); opacity:.5; animation:bmf-rotor 9s linear infinite; }
 .bmf-app .helicard .hc-mark{ position:relative; display:grid; place-items:center; color:var(--text); }
-.bmf-app .helicard .hc-mark svg{ width:42px; height:42px; }
+.bmf-app .helicard .hc-mark svg{ width:36%; height:auto; max-width:84px; aspect-ratio:1; }
 .bmf-app .helicard .hc-name{ font-size:var(--fs-meta); font-weight:var(--fw-bold); line-height:1.16; color:var(--text);
   min-height:calc(1.16em * 2); display:flex; align-items:center; justify-content:center; }
 .bmf-app .helicard .hc-sub{ font-family:var(--mono); font-size:var(--fs-micro); letter-spacing:.08em; text-transform:uppercase; color:var(--dim); }
@@ -306,6 +313,38 @@ const CSS = `
 .bmf-app .helicard .hc-flag{ position:absolute; top:7px; right:7px; width:19px; height:19px; border-radius:50%; display:grid; place-items:center; color:var(--faint); }
 .bmf-app .helicard .hc-flag svg{ width:12px; height:12px; }
 .bmf-app .helicard.sel .hc-flag{ background:var(--menu); color:var(--cta-ink); box-shadow:0 0 10px var(--ember-35); }
+
+/* Open Skies — single-viewport, NO PAGE SCROLL (CLAUDE.md hard rule). The pad becomes a flex column
+   locked to the viewport (overflow:hidden); the .osky column flows top-down, and the short-height
+   tiers below compress the title / subtitle / hangar tiles so the Join button always stays in view —
+   the content never overruns into a scroll. */
+.bmf-app .pad:has(> .osky){ display:flex; flex-direction:column; overflow:hidden; }
+.bmf-app .osky{ flex:1 1 auto; min-height:0; display:flex; flex-direction:column; padding-top:6px; }
+.bmf-app .osky .osky-title{ margin-top:13px; }
+.bmf-app .osky .osky-sub{ margin-top:9px; font-size:var(--fs-body); line-height:1.5; max-width:34ch;
+  display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+.bmf-app .osky .sec{ margin:15px 2px 0; }
+.bmf-app .osky .heligrid{ margin-top:10px; }
+.bmf-app .osky .osky-cta{ padding-top:16px; }
+@media (max-height:800px){
+  .bmf-app .osky .osky-title{ font-size:var(--fs-display); margin-top:11px; }
+  .bmf-app .osky .hc-art{ aspect-ratio:2.2/1; }
+  .bmf-app .osky .osky-cta{ padding-top:11px; }
+}
+@media (max-height:680px){
+  .bmf-app .osky{ padding-top:2px; }
+  .bmf-app .osky .osky-sub{ -webkit-line-clamp:2; margin-top:7px; }
+  .bmf-app .osky .sec{ margin:11px 2px 0; }
+  .bmf-app .osky .hc-art{ aspect-ratio:2.7/1; }
+  .bmf-app .osky .hc-mark svg{ width:34px; height:34px; }
+  .bmf-app .osky .hc-ring{ width:52px; height:52px; }
+  .bmf-app .osky .hc-name{ min-height:0; }
+}
+@media (max-height:600px){
+  .bmf-app .osky .osky-sub{ display:none; }
+  .bmf-app .osky .hc-art{ aspect-ratio:3.2/1; }
+  .bmf-app .osky .hc-ring{ display:none; }
+}
 
 /* ===== mission card LIST (accordion) — copy on the left, art on the right, gradient fade left =====
    One vertical stack; the active mission expands (reveals its CTA), collapsed cards keep ALL their
@@ -489,6 +528,12 @@ const CSS = `
   .bmf-app .cslide .artcard.heli .inner{ min-height:396px; }
   .bmf-app .cnav{ width:46px; height:46px; } .bmf-app .cnav svg{ width:22px; height:22px; }
 }
+/* Open Skies feature rows — desktop-only fill for the lobby's left column (hidden on phone so the
+   single-viewport stack the other layout assumes stays tight). Shown via the desktop .osky grid. */
+.bmf-app .osky-feats{ display:none; }
+.bmf-app .osky-feat{ display:flex; align-items:center; gap:11px; font-size:var(--fs-sm); color:var(--dim); }
+.bmf-app .osky-feat svg{ width:18px; height:18px; flex:0 0 auto; color:var(--ember-hi); }
+
 /* ===== desktop: 2-column home dashboard · flanked-hero carousels · floating dock rail ===== */
 @media (min-width:1040px){
   /* Single-viewport dashboard: profile spans the top (auto row), daily + continue fill the rest
@@ -500,26 +545,58 @@ const CSS = `
   .bmf-app.home .z-daily{ grid-column:1; grid-row:2; align-self:start; }
   .bmf-app.home .z-cont{ grid-column:2; grid-row:2; min-height:0; }
   .bmf-app.home .sec{ margin-top:0; }
-  /* Menu overlays: a wide centred column; the carousel becomes a chevron-flanked hero. */
+  /* Menu overlays (Settings · Open Skies): a wide centred column. */
   .bmf-app:not(.home):not(.newpilot) .pad{ max-width:760px;
     padding-top:calc(env(safe-area-inset-top) + 30px); padding-bottom:120px; }
-  .bmf-app .carousel{ margin:8px -22px 0; } .bmf-app .ctrack{ padding-left:22px; padding-right:22px; }
-  .bmf-app .cslide{ flex:0 0 min(58%,480px); }
-  .bmf-app .cslide .artcard .inner{ min-height:418px; }
-  .bmf-app .cslide .artcard.heli .inner{ min-height:452px; }
-  .bmf-app .cnav{ width:52px; height:52px; } .bmf-app .cnav svg{ width:24px; height:24px; }
-  .bmf-app .cnav.prev{ left:-8px; } .bmf-app .cnav.next{ right:-8px; }
-  .bmf-app .artcard.heli .heli-art .mark svg{ width:140px; height:140px; }
-  .bmf-app .artcard.heli .heli-art .ring{ width:188px; height:188px; top:24px; }
+  /* Carousels (Campaign region picker · Hangar) become a GRID on desktop — every card visible at
+     once, no chevrons, no per-view paging. Maps (4) and aircraft (3) each fit one balanced row that
+     fills the wider column, so a desktop stops reading like a stretched phone. The carousel JS still
+     runs (it just centres/marks-active a non-scrolling track) — the grid overrides all cards to full
+     opacity/scale, so .active is a no-op here. */
+  .bmf-app:not(.home):not(.newpilot) .pad:has(> .carousel){ max-width:1180px; display:flex; flex-direction:column; }
+  /* Centre the single row of cards in the space below the title (margin:auto, not justify-content,
+     so a short window can still scroll to reach the top card instead of clipping it). */
+  .bmf-app .pad:has(> .carousel) > .carousel{ margin:auto 0; width:100%; }
+  .bmf-app .ctrack{ display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));
+    gap:22px; overflow:visible; scroll-snap-type:none; padding:4px 2px 2px; }
+  .bmf-app .cslide{ flex:initial; width:auto; opacity:1; transform:none; cursor:default; }
+  .bmf-app .cslide.active{ transform:none; }
+  .bmf-app .cslide .artcard{ height:100%; }
+  .bmf-app .cslide .artcard .inner{ min-height:400px; }
+  .bmf-app .cslide .artcard.heli .inner{ min-height:420px; }
+  .bmf-app .cnav, .bmf-app .dots{ display:none; }
+  .bmf-app .artcard.heli .heli-art .mark svg{ width:118px; height:118px; }
+  .bmf-app .artcard.heli .heli-art .ring{ width:150px; height:150px; top:18px; }
+  /* Mission drill-down: a 2-up grid with every CTA revealed inline (the phone accordion's
+     one-open-at-a-time focus isn't needed when there's room to show them all at once). */
+  .bmf-app:not(.home):not(.newpilot) .pad:has(> .mlist){ max-width:1080px; }
+  .bmf-app .mlist{ display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:16px; align-content:start; margin-top:16px; }
+  .bmf-app .mcard .mexpand{ grid-template-rows:1fr; }
+  .bmf-app .mcard .mbody{ max-width:80%; }
+  /* Open Skies — a 2-column desktop LOBBY (pitch left · aircraft picker + Join right) built from the
+     SAME flat .osky markup the phone stacks: grid-template-areas place each child by name, so no
+     markup change is needed. The pitch's desktop-only feature rows (.osky-feats) fill the left column. */
+  .bmf-app:not(.home):not(.newpilot) .pad:has(> .osky){ max-width:1020px; overflow-y:auto; }
+  .bmf-app .osky{ flex:initial; margin:auto 0; display:grid; align-content:center; column-gap:46px; row-gap:0;
+    grid-template-columns:1fr 1.08fr;
+    grid-template-areas:"chip sec" "title grid" "sub grid" "feats cta"; }
+  .bmf-app .osky > .chip{ grid-area:chip; align-self:center; }
+  .bmf-app .osky > .osky-title{ grid-area:title; font-size:var(--fs-mega); margin-top:12px; }
+  .bmf-app .osky > .osky-sub{ grid-area:sub; max-width:42ch; margin-top:14px; font-size:var(--fs-md); -webkit-line-clamp:unset; }
+  .bmf-app .osky > .osky-feats{ grid-area:feats; align-self:start; display:flex; flex-direction:column; gap:13px; margin-top:24px; }
+  .bmf-app .osky > .sec{ grid-area:sec; margin:0; align-self:center; }
+  .bmf-app .osky > .heligrid{ grid-area:grid; margin-top:16px; align-self:start; gap:14px; }
+  .bmf-app .osky > .osky-cta{ grid-area:cta; display:flex; gap:12px; padding-top:20px; align-self:end; }
+  .bmf-app .osky > .osky-cta .btn{ flex:1; margin-top:0; }
   /* Floating dock rail — shared by the hub AND every menu overlay so it reads the same everywhere. */
   .bmf-app .rail{ left:50%; right:auto; transform:translateX(-50%); bottom:18px; width:auto; min-width:540px; height:auto; padding-bottom:0;
     border:1px solid var(--bevel-top); border-radius:var(--r-xl); box-shadow:0 14px 44px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.06); }
   .bmf-app .rail .keys{ max-width:none; height:66px; }
 }
-/* ===== large desktop: cap the column so the hero carousel never sprawls ===== */
+/* ===== large desktop: cap the centred grids so the cards never sprawl on huge monitors ===== */
 @media (min-width:1320px){
-  .bmf-app:not(.home):not(.newpilot) .pad{ max-width:820px; }
-  .bmf-app .cslide{ flex:0 0 520px; }
+  .bmf-app:not(.home):not(.newpilot) .pad:has(> .carousel){ max-width:1220px; }
+  .bmf-app:not(.home):not(.newpilot) .pad:has(> .mlist){ max-width:1120px; }
 }
 `;
 

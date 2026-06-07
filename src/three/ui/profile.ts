@@ -68,6 +68,11 @@ export const MAPS: CatalogItem[] = mapCards().map((c) => ({
 // starts on the trainer and earns the heavier ships: the 205 is open, the 212 unlocks after
 // the first two missions (in time for the first real wall), and the Black Hawk for the last three
 // (the set-piece + finale). (Additive — clearing a tier never takes an earlier airframe away.)
+//
+// `imageUrl` is a cinematic key-art render of each airframe in its livery over a boreal wildfire
+// (public/images/heli/, BASE_URL-prefixed here so the data stays portable across static hosts) —
+// the pickers show it full-bleed behind the scrim, with the procedural "hangar bay" art as fallback.
+const HELI_ART = import.meta.env.BASE_URL + 'images/heli/';
 export const HELIS: CatalogItem[] = [
   {
     id: 'bell-205a1',
@@ -77,6 +82,7 @@ export const HELIS: CatalogItem[] = [
     available: true,
     accent: '#c8362a',
     glyph: '🚁',
+    imageUrl: HELI_ART + 'Bell205A1.webp',
     specs: [
       { label: 'Speed', value: 0.55 },
       { label: 'Agility', value: 0.85 },
@@ -93,6 +99,7 @@ export const HELIS: CatalogItem[] = [
     unlockAfter: 2, // earned at Mission 3 — the first real wall (Hold the Line)
     accent: '#d8a12a',
     glyph: '🚁',
+    imageUrl: HELI_ART + 'Bell212.webp',
     specs: [
       { label: 'Speed', value: 0.7 },
       { label: 'Agility', value: 0.62 },
@@ -109,6 +116,7 @@ export const HELIS: CatalogItem[] = [
     unlockAfter: 5, // unlocks from Mission 6 (Three Towns, the set-piece) through After Burn + the finale
     accent: '#5b6b50',
     glyph: '🚁',
+    imageUrl: HELI_ART + 'UH60.webp',
     specs: [
       { label: 'Speed', value: 0.95 },
       { label: 'Agility', value: 0.4 },
