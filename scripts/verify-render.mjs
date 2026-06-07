@@ -80,6 +80,15 @@ const ROUTES = [
     ready: () => window.__game && window.__game.debug,
     settle: 2500, // fire keeps burning; any late program compile surfaces
     drive: async (page) => {
+      // (0) Dismiss the pre-flight DISPATCH briefing. ?autostart skips the cold-start spool but NOT the
+      // briefing card — until BEGIN is tapped, Game holds `inBriefing` and the whole sim (fire spread,
+      // scoop/drop, spray) stays FROZEN, so the scoop→drop below would emit nothing. Tap BEGIN, then go.
+      await page.evaluate(() => {
+        const begin = [...document.querySelectorAll('button,[role=button]')].find((b) => /begin/i.test(b.innerText || ''));
+        if (begin) begin.click();
+      });
+      await sleep(300);
+
       // (a) Ignite a wall of fire ahead of the nose so the fire/smoke/ember/light/heat-haze/bloom/
       // god-ray paths actually run (not just the empty-terrain shaders) — the staging .og-shot.cjs used.
       await page.evaluate(() => {
@@ -117,15 +126,27 @@ const ROUTES = [
         // path is gated this mission (e.g. a non-water payload) — it's the same ShaderMaterial either way.
         if (g.spray && g.bucketSim) {
           const b = g.bucketSim.position;
-          for (let k = 0; k < 4; k++) g.spray.emit(b.x, b.y, b.z, 0, 0);
+          for (let k = 0; k < 24; k++) g.spray.emit(b.x, b.y, b.z, 0, 0);
         }
       });
-      // One render frame so the freshly-emitted spray draws (compiling its program) — latch that it showed.
-      await sleep(400);
+      // Latch that the spray BECAME visible for at least one frame (its ShaderMaterial compiled). Under
+      // slow headless swiftshader the now-running sim ages a one-shot burst out within a few frames, so
+      // poll across short windows AND re-emit each tick — we only need a single visible frame, not a held
+      // plume. (`visible = anyAlive` flips true the frame a live particle exists.)
       await page.evaluate(() => {
-        window.__sprayShown = !!(window.__game && window.__game.spray && window.__game.spray.points.visible);
+        window.__sprayShown = false;
       });
-      await sleep(1400); // let the pour continue + fall, so a late spray program compile surfaces too
+      for (let i = 0; i < 12 && !(await page.evaluate(() => window.__sprayShown)); i++) {
+        await page.evaluate(() => {
+          const g = window.__game;
+          if (g && g.spray && g.bucketSim) {
+            const b = g.bucketSim.position;
+            for (let k = 0; k < 24; k++) g.spray.emit(b.x, b.y, b.z, 0, 0);
+          }
+          if (g && g.spray && g.spray.points.visible) window.__sprayShown = true;
+        });
+        await sleep(150);
+      }
     },
     check: async (page) => {
       const r = await page.evaluate(() => {
