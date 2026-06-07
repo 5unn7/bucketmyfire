@@ -1,6 +1,6 @@
 /**
- * Shared menu building blocks — extracted from the old single-page MissionSelect so the new
- * guided flow (ui/flow/*) and the mission carousel can reuse them without duplication. These are
+ * Shared menu building blocks — extracted from the old single-page MissionSelect so the shared
+ * component kit (ui/components/*) and other screens can reuse them without duplication. These are
  * the small, presentation-only pieces (step labels, stat tiles, star pips, the pilot career strip,
  * the co-op teaser, the credits footer, the horizontal-scroll styles) that several screens share.
  *

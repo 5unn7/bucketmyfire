@@ -1,13 +1,13 @@
 /**
  * HomeScreen — the branded main-menu HUB (replaces the title→wizard landing). A warm "fight"-register
  * dispatch board: pilot dossier (callsign · rank · career · global rank · XP), the Daily Burn, the
- * Continue-mission card, and a fixed bottom RAIL (Home · Co-op · Maps · Hangar · Board · Shop ·
- * Settings). Single-viewport / no-scroll per CLAUDE.md.
+ * Continue-mission card (with Board + Settings buttons on the dossier card itself), and a fixed
+ * bottom RAIL (Home · Campaign · Co-op · Hangar · Shop). Single-viewport / no-scroll per CLAUDE.md.
  *
  * Pure DOM over the shared `.bmf-app` stylesheet (styles.ts) — no Three. Rail tabs open the existing
- * pages where they exist (Board → leaderboard, Shop → shop) and lightweight branded panels for the
- * rest (menus.ts); navigation that reloads (Continue → ?m=, Daily → ?daily, Campaign) comes in via
- * the `HomeNav` callbacks so main.ts stays the routing authority.
+ * branded panels (menus.ts): Campaign drills theatre → mission, Shop is its own screen; Board +
+ * Settings moved OFF the rail onto the dossier card. Navigation that reloads (Continue → ?m=, Daily
+ * → ?daily, a sortie's Fly) comes in via the `HomeNav` callbacks so main.ts stays the routing authority.
  */
 import type { MissionDef } from '../../missions/types';
 import { loadProfile } from '../profile';
@@ -17,7 +17,7 @@ import { dailyStreak } from '../../missions/streak';
 import { missionPoster } from '../missionArt';
 import { careerScore, rankFor, nextRankProgress } from '../../missions/rank';
 import { isConfigured, fetchCareerStanding } from '../../leaderboard/client';
-import { setMenuCatalog, navigateRail } from './menus';
+import { setMenuCatalog, navigateRail, openSettings, openBoard } from './menus';
 import { railNav } from './rail';
 import { injectHomeStyles, spawnEmbers } from './styles';
 import { DEFS, FLAME, FLAME_ONLY, HELMET, ic } from './icons';
@@ -25,7 +25,6 @@ import { DEFS, FLAME, FLAME_ONLY, HELMET, ic } from './icons';
 export interface HomeNav {
   onContinue: (missionId: string) => void; // boot a campaign mission (?m=)
   onDaily: () => void; // boot today's Daily Burn (?daily)
-  onCampaign: () => void; // open the full mission select
 }
 
 const STAR = (on: boolean): string =>
@@ -38,7 +37,9 @@ export class HomeScreen {
 
   constructor(parent: HTMLElement, private catalog: MissionDef[], private nav: HomeNav) {
     injectHomeStyles();
-    setMenuCatalog(catalog); // seed the rail router (Board tab opens the leaderboard with it)
+    // Seed the rail router: the catalog (Campaign/Board read it) + the boot hook the mission cards
+    // call to fly a sortie (onContinue → ?m= page-reload nav, owned by main.ts).
+    setMenuCatalog(catalog, nav.onContinue);
     this.root = document.createElement('div');
     this.root.className = 'bmf-app home';
     this.root.innerHTML = DEFS + this.markup();
@@ -92,7 +93,11 @@ export class HomeScreen {
   <header class="card warm cut rise d1">
     <div class="row between">
       <div class="brand">${FLAME}</div>
-      ${grank}
+      <div class="row" style="gap:8px;">
+        ${grank}
+        <button class="iconbtn" data-act="board" aria-label="Leaderboard">${ic('trophy')}</button>
+        <button class="iconbtn" data-act="settings" aria-label="Settings">${ic('settings')}</button>
+      </div>
     </div>
     <div class="row rise" style="gap:13px;margin-top:12px;">
       <div class="helmet"><div class="clip">${HELMET}<span class="sheen"></span></div></div>
@@ -187,7 +192,11 @@ ${railNav('home')}`;
       case 'daily':
         return this.nav.onDaily();
       case 'campaign':
-        return this.nav.onCampaign();
+        return navigateRail('campaign'); // theatre → mission drilldown (the rail's Campaign tab)
+      case 'board':
+        return openBoard();
+      case 'settings':
+        return openSettings();
     }
   }
 

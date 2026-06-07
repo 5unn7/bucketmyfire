@@ -1,17 +1,20 @@
 /**
- * Rail-menu overlays opened from the Home bottom rail. Board → openLeaderboard and Shop → openShop
- * reuse the existing pages; this file supplies the rest as focused, branded full-screen panels on
- * the shared `.bmf-app` stylesheet:
- *   - Maps   — region/theatre picker (Saskatchewan live + coming-soon), saves profile.mapId
- *   - Hangar — aircraft picker (3 helis, specs, unlock gates), saves profile.heliId
- *   - Co-op  — coming-soon teaser (stub)
- *   - Settings — sound + reduced-motion toggles, callsign, region, reset progress (minimal)
+ * Rail-menu overlays opened from the Home bottom rail. Shop → openShop reuses the existing page;
+ * this file supplies the rest as focused, branded full-screen panels on the shared `.bmf-app`
+ * stylesheet:
+ *   - Campaign — theatre picker (Saskatchewan live + coming-soon) that DRILLS INTO that map's
+ *                missions (openMissions): pick a sortie, fly it. Missions now live inside the map.
+ *   - Hangar   — aircraft picker (3 helis, specs, unlock gates), saves profile.heliId
+ *   - Co-op    — coming-soon teaser (stub)
+ *   - Settings — sound + reduced-motion toggles, callsign, region, reset progress (off the rail
+ *                now; opened from the Home profile card). Board (leaderboard) likewise.
  * Each is a back-to-Home overlay (Home stays mounted underneath). No-scroll / single-viewport.
  */
 import type { MissionDef } from '../../missions/types';
 import { HELIS, MAPS, isHeliUnlocked, missionsCleared, loadProfile, saveProfile, type Profile, type CatalogItem } from '../profile';
 import { isConfigured } from '../../leaderboard/client';
-import { resetProgress } from '../../missions/progress';
+import { resetProgress, getProgress, bestScore, bestStars, isUnlocked } from '../../missions/progress';
+import { missionPoster } from '../missionArt';
 import { openLeaderboard } from '../Leaderboard';
 import { openShop } from '../ShopScreen';
 import { injectHomeStyles, spawnEmbers } from './styles';
@@ -29,15 +32,18 @@ function currentProfile(): Profile {
 // whole time you're "in the menus". The hub seeds the catalog (Board needs it) and tracks the one
 // open overlay so tapping another rail tab swaps panels in place instead of stacking them.
 let menuCatalog: MissionDef[] = [];
+let flyMission: ((id: string) => void) | null = null;
 let activeOverlay: { key: string; close: () => void } | null = null;
 
-/** HomeScreen seeds the campaign catalog so the rail's Board tab can open the leaderboard. */
-export function setMenuCatalog(catalog: MissionDef[]): void {
+/** HomeScreen seeds the campaign catalog (the Campaign/Board surfaces read it) and the boot hook the
+ *  mission cards call to fly a sortie (a page-reload campaign nav owned by main.ts). */
+export function setMenuCatalog(catalog: MissionDef[], onFly?: (id: string) => void): void {
   menuCatalog = catalog;
+  if (onFly) flyMission = onFly;
 }
 
 /** Route a rail tap: close the current panel (if any), then open the target. `home` just falls back
- *  to the hub mounted underneath. Board/Shop are their own immersive screens (no rail of their own). */
+ *  to the hub mounted underneath. Shop is its own immersive screen (no rail of its own). */
 export function navigateRail(key: string): void {
   if (activeOverlay && activeOverlay.key === key) return; // already on this panel
   const prev = activeOverlay;
@@ -45,19 +51,21 @@ export function navigateRail(key: string): void {
   switch (key) {
     case 'home':
       return; // hub is underneath
-    case 'maps':
-      return openMaps();
+    case 'campaign':
+      return openCampaign();
     case 'hangar':
       return openHangar();
     case 'coop':
       return openCoop();
-    case 'settings':
-      return openSettings();
-    case 'board':
-      return openLeaderboard(menuCatalog);
     case 'shop':
       return openShop();
   }
+}
+
+/** Board (leaderboard) — off the rail now; opened from the Home profile card. */
+export function openBoard(): void {
+  activeOverlay?.close();
+  openLeaderboard(menuCatalog);
 }
 
 /** Build a focused full-screen overlay WITH the persistent bottom rail (`key` = its active tab).
@@ -181,25 +189,27 @@ function wireCarousel(root: HTMLElement, initial: number, onActive?: (i: number)
   return center;
 }
 
-// ============================ MAPS ============================
-export function openMaps(): void {
+// ============================ CAMPAIGN (theatre → missions) ============================
+// The Campaign rail tab. Step 1 = pick a theatre (map); step 2 = pick a sortie INSIDE that map
+// (openMissions). Selecting a live map persists it (profile.mapId) and drills in; the future maps
+// stay locked "coming soon" teasers.
+export function openCampaign(): void {
   const pro = currentProfile();
   const slides = MAPS.map((m) => {
     const selected = m.id === pro.mapId && m.available;
+    const count = m.available ? missionsForMap(m.id).length : 0;
     const cover = m.imageUrl
       ? `<img class="img" src="${m.imageUrl}" alt="">`
       : `<div class="fallback"><b>${m.name.slice(0, 2).toUpperCase()}</b></div>`;
     const badge = m.available
       ? `<span class="pill ${selected ? 'ok' : ''}">${selected ? 'Selected' : 'Live'}</span>`
       : `<span class="pill soon">Soon</span>`;
-    const stats = m.stats
-      ? `<div class="ctx-row" style="margin-top:11px;"><span class="ctx">${ic('map')}${m.stats.area}</span><span class="ctx">${ic('droplet')}${m.stats.lakes}</span></div>`
+    const stats = m.available
+      ? `<div class="ctx-row" style="margin-top:11px;">${m.stats ? `<span class="ctx">${ic('map')}${m.stats.area}</span><span class="ctx">${ic('droplet')}${m.stats.lakes}</span>` : ''}<span class="ctx hot">${ic('fire')}${count} sorties</span></div>`
       : '';
     const cta = !m.available
       ? `<button class="btn ghost block is-disabled" style="margin-top:15px;">${ic('lock')}Coming soon</button>`
-      : selected
-        ? `<button class="btn ghost block is-disabled" style="margin-top:15px;">${ic('check')}Selected theatre</button>`
-        : `<button class="btn primary block" style="margin-top:15px;" data-map="${m.id}">${ic('play')}Deploy here</button>`;
+      : `<button class="btn primary block" style="margin-top:15px;" data-map="${m.id}">${ic('play')}${selected ? 'Choose a sortie' : 'Deploy here'}</button>`;
     return `<article class="cslide${m.available ? '' : ' locked'}">
       <div class="artcard">
         ${cover}<div class="scrim"></div><div class="brackets"><i></i><i></i><i></i></div>
@@ -214,15 +224,88 @@ export function openMaps(): void {
   });
 
   const initial = Math.max(0, MAPS.findIndex((m) => m.id === pro.mapId && m.available));
-  const { root, close } = overlay('maps', 'Maps', 'Choose a theatre', carousel(slides, 'Theatre'));
+  const { root, close } = overlay('campaign', 'Campaign', 'Choose a theatre', carousel(slides, 'Theatre'));
   wireCarousel(root, initial);
   root.querySelectorAll<HTMLElement>('[data-map]').forEach((b) =>
     b.addEventListener('click', (e) => {
       e.stopPropagation(); // don't let the slide's re-centre handler swallow the pick
-      saveProfile({ ...currentProfile(), mapId: b.dataset.map! });
+      const id = b.dataset.map!;
+      saveProfile({ ...currentProfile(), mapId: id });
       close();
+      openMissions(id);
     }),
   );
+}
+
+/** Campaign sorties set in a given map (defaults to the live map for legacy defs with no `map`). */
+function missionsForMap(mapId: string): MissionDef[] {
+  return menuCatalog.filter((m) => (m.map ?? MAPS[0].id) === mapId);
+}
+
+// ============================ MISSIONS (inside a map) ============================
+// Step 2 of Campaign: a carousel of the chosen map's sorties — poster, brief, best run, fly action.
+// Back returns to the theatre picker (not straight to Home), so the map→mission drill reads as one
+// flow. FLY boots the sortie via the seeded campaign-nav hook (page reload, the existing router).
+export function openMissions(mapId: string): void {
+  const all = missionsForMap(mapId);
+  const map = MAPS.find((m) => m.id === mapId);
+  const completed = new Set(getProgress().completed);
+  const nextId = all.find((m) => isUnlocked(m, all) && !completed.has(m.id))?.id ?? null;
+
+  const slides = all.map((m) => {
+    const unlocked = isUnlocked(m, all);
+    const done = completed.has(m.id);
+    const isNext = m.id === nextId;
+    const best = bestScore(m.id);
+    const stars = bestStars(m.id);
+    const num = String(m.index + 1).padStart(2, '0');
+    const poster = missionPoster(m.id);
+    const cover = poster ? `<img class="img" src="${poster}" alt="">` : `<div class="fallback"><b>${num}</b></div>`;
+    const badge = !unlocked
+      ? `<span class="pill locked">${ic('lock')}Locked</span>`
+      : isNext
+        ? `<span class="pill">Next up</span>`
+        : done
+          ? `<span class="pill ok">${ic('check')}Cleared</span>`
+          : `<span class="pill">Ready</span>`;
+    const starRow = `<span class="stars">${star(stars >= 1)}${star(stars >= 2)}${star(stars >= 3)}</span>`;
+    const scoreLine = best != null
+      ? `<span class="mono" style="font-size:var(--fs-meta);color:rgba(255,255,255,0.78);">Best <b style="color:var(--menu);font-weight:var(--fw-bold)">${best.toLocaleString('en-US')}</b></span>`
+      : `<span class="mono" style="font-size:var(--fs-meta);color:var(--faint);">Not flown yet</span>`;
+    const cta = !unlocked
+      ? `<button class="btn ghost block is-disabled" style="margin-top:14px;">${ic('lock')}Clear earlier sorties</button>`
+      : `<button class="btn primary block" style="margin-top:14px;" data-fly="${m.id}">${ic('play')}${done ? 'Replay sortie' : 'Fly sortie'}</button>`;
+    return `<article class="cslide${unlocked ? '' : ' locked'}">
+      <div class="artcard">
+        ${cover}<div class="scrim"></div><div class="brackets"><i></i><i></i><i></i></div>
+        <div class="inner">
+          <div class="row between"><span class="chip ghost">Mission ${num}</span>${badge}</div>
+          <div class="grow"></div>
+          <h2 class="h-big">${m.name}</h2>
+          <p class="clamp2" style="margin-top:8px;font-size:var(--fs-body);line-height:1.42;color:rgba(255,255,255,0.84);max-width:32ch;">${m.tagline ?? m.brief}</p>
+          <div class="row" style="gap:12px;margin-top:11px;">${starRow}${scoreLine}</div>
+          ${cta}
+        </div>
+      </div></article>`;
+  });
+
+  const initial = Math.max(0, all.findIndex((m) => m.id === nextId));
+  const { root } = overlay('campaign', map?.name ?? 'Campaign', `${all.length} sorties · hardest last`, carousel(slides, 'Sortie'));
+  wireCarousel(root, initial);
+  // Back goes to the theatre picker so the drill reads map → mission (the overlay's default close()
+  // — which returns to Home — still fires first, so this just re-opens Campaign on top).
+  root.querySelector('[data-x]')?.addEventListener('click', () => openCampaign());
+  root.querySelectorAll<HTMLElement>('[data-fly]').forEach((b) =>
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      flyMission?.(b.dataset.fly!);
+    }),
+  );
+}
+
+/** Small inline star pip (matches HomeScreen's medal styling via the shared `.stars` CSS). */
+function star(on: boolean): string {
+  return `<svg class="${on ? 'on' : 'off'}" viewBox="0 0 24 24"><path d="M12 2l2.9 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77 5.82 21l1.18-6.88-5-4.87 7.1-1.01z"/></svg>`;
 }
 
 // ============================ HANGAR ============================
@@ -273,7 +356,7 @@ function heliSlide(h: CatalogItem, cleared: number): string {
   const badge = unlocked ? `<span class="pill ok">Flyable</span>` : `<span class="pill locked">Locked</span>`;
   return `<article class="cslide${unlocked ? '' : ' locked'}">
     <div class="artcard heli" data-heli="${h.id}" style="--accent:${h.accent};">
-      <div class="heli-art"><span class="grid"></span><span class="ring"></span><span class="mark">${ic('heli')}</span></div>
+      <div class="heli-art"><span class="grid"></span><span class="ring"></span><span class="mark">${ic('heli')}</span><span class="livery" aria-hidden="true">${FLAME}</span></div>
       <div class="scrim"></div><div class="brackets"><i></i><i></i><i></i></div>
       <div class="inner">
         <div class="row between"><span class="chip ghost">${h.tagline}</span>${badge}</div>

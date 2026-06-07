@@ -1,6 +1,7 @@
 import type { MissionDef } from '../../missions/types';
 import { UI, FS, FW, R, el, div, prefersReducedMotion } from '../theme';
 import { makeButton } from '../components';
+import { makeBrandIcon, makeBrandWordmark } from '../brandLogo';
 import { loadProfile, missionsCleared } from '../profile';
 import { openShop } from '../ShopScreen';
 import { signalFirstFrame } from '../../splashSignal';
@@ -14,7 +15,7 @@ import { signalFirstFrame } from '../../splashSignal';
  * Pure DOM, no WebGL (the old 3D AttractScene + GitHub-grid wordmark were removed), so the home
  * boots instantly. The background image is preloaded; the cold-start splash holds until it's ready
  * (with a timeout fallback) so the home fades in fully painted rather than flashing the fallback.
- * Pressing PLAY tears it down and calls `onPlay` (mounts MenuFlow). `main.ts` is unchanged.
+ * Pressing PLAY tears it down and calls `onPlay` (routes to the HomeScreen hub / NewPilot gate).
  */
 
 // Key-art background — a `public/` asset, referenced through BASE_URL so it resolves under any
@@ -106,29 +107,27 @@ export class TitleScreen {
       pointerEvents: 'none',
     });
 
-    // Typographic ember wordmark (system font, ember-gradient fill + glow) — pinned TOP-RIGHT of the
-    // frame as a corner mark; a dark drop-shadow under the ember glow keeps it legible over the fire.
-    const word = el('h1', {
+    // Brand logo lockup — the official bucket-drop flame ICON beside the "BUCKET MY FIRE" WORDMARK
+    // (inline vector, brandLogo.ts), pinned TOP-RIGHT of the frame as a corner mark. White over the
+    // fire art with a dark + ember drop-shadow: legible against the flames, still carrying the warmth.
+    const word = div({
       position: 'absolute',
       top: 'max(18px, env(safe-area-inset-top))',
       right: 'max(20px, env(safe-area-inset-right))',
-      margin: '0',
-      textAlign: 'right',
-      whiteSpace: 'nowrap',
-      fontWeight: FW.black,
-      letterSpacing: '0.04em',
-      lineHeight: '0.92',
-      fontSize: 'clamp(20px, 4.4vw, 36px)',
-      background: `linear-gradient(176deg, ${UI.emberHi} 0%, ${UI.ember} 52%, ${UI.fire} 100%)`,
-      backgroundClip: 'text',
-      color: 'transparent',
+      display: 'flex',
+      alignItems: 'center',
+      gap: 'clamp(8px, 1.6vw, 13px)',
       filter: 'drop-shadow(0 2px 10px rgba(0,0,0,0.7)) drop-shadow(0 2px 18px rgba(255,106,44,0.45))',
       pointerEvents: 'none',
     });
-    word.style.setProperty('-webkit-background-clip', 'text');
-    word.style.setProperty('-webkit-text-fill-color', 'transparent');
+    word.setAttribute('role', 'img');
     word.setAttribute('aria-label', 'Bucket My Fire');
-    word.textContent = 'BUCKET MY FIRE';
+
+    const markBox = div({ height: 'clamp(30px, 6.2vw, 50px)', aspectRatio: '149.7 / 184.72', flex: 'none' });
+    markBox.appendChild(makeBrandIcon('white'));
+    const wordmarkBox = div({ height: 'clamp(21px, 4.2vw, 35px)', aspectRatio: '302 / 161.26', flex: 'none' });
+    wordmarkBox.appendChild(makeBrandWordmark('white'));
+    word.append(markBox, wordmarkBox);
     frame.appendChild(word);
 
     const hook = div(

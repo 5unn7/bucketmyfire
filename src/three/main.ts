@@ -5,7 +5,6 @@ import { Composer } from './postfx/Composer';
 import { loadEnvironment, applyEnvironment } from './render/Environment';
 import { ENV } from './config';
 import { shouldAutostart, defaultProfile } from './ui/Onboarding';
-import { MenuFlow } from './ui/flow/MenuFlow';
 import { HomeScreen } from './ui/home/HomeScreen';
 import { NewPilotScreen } from './ui/home/NewPilot';
 import { TitleScreen } from './ui/title/TitleScreen';
@@ -22,7 +21,7 @@ import type { MissionDef } from './missions/types';
 import type { EndScreenHooks } from './HUD';
 
 /**
- * 3D entry point + campaign router. The home screen (the MenuFlow pre-flight wizard) is the DEFAULT
+ * 3D entry point + campaign router. The home screen (the HomeScreen hub) is the DEFAULT
  * landing for everyone — new and returning. A mission runs only when the URL carries `?m=<id>`: picking a
  * mission, advancing (next), and retrying all navigate via `?m=` and reload, so a refresh resumes
  * the current mission with no Three.js teardown, while a fresh visit to the bare URL always lands
@@ -116,9 +115,6 @@ function routeMission(): void {
           url.searchParams.set('daily', '1');
           url.searchParams.delete('m');
           location.assign(url.toString());
-        },
-        onCampaign: () => {
-          new MenuFlow(container, CAMPAIGN, (id) => gotoCampaign(id), { skipToMissions: true });
         },
       });
     };

@@ -2,10 +2,10 @@
  * Boot helpers for the campaign router (main.ts).
  *
  * The interactive first-run flow that used to live here (the `runWelcome` identity gate and the
- * legacy `runOnboarding` picker) has moved into the guided pre-flight wizard, `ui/flow/MenuFlow.ts`
- * — Screen 1 of that flow IS the identity gate now. What remains here are the two tiny pure helpers
- * the router still needs: whether to bypass the menu for headless QA, and the profile to fly with
- * when it does.
+ * legacy `runOnboarding` picker) has moved into the HomeScreen hub (`ui/home/`) — the `NewPilot`
+ * gate is the identity step now, and the hub's rail owns aircraft/map/campaign selection. What
+ * remains here are the two tiny pure helpers the router still needs: whether to bypass the menu for
+ * headless QA, and the profile to fly with when it does.
  */
 
 import { Profile, MAPS, HELIS, firstAvailable, loadProfile } from './profile';

@@ -71,6 +71,9 @@ const CSS = `
 .bmf-app .back{ width:38px; height:38px; flex:0 0 auto; border-radius:var(--r-sm); border:1px solid var(--stroke); background:var(--card-soft); color:var(--text); display:grid; place-items:center; cursor:pointer; transition:border-color .14s, transform .14s; }
 .bmf-app .back:hover{ border-color:var(--menu-soft); transform:translateY(-1px); }
 .bmf-app .back svg{ width:18px; height:18px; }
+.bmf-app .iconbtn{ width:36px; height:36px; flex:0 0 auto; border-radius:var(--r-sm); border:1px solid var(--stroke); background:var(--card-soft); color:var(--dim); display:grid; place-items:center; cursor:pointer; transition:border-color .14s, color .14s, transform .14s; }
+.bmf-app .iconbtn:hover{ color:var(--ember-hi); border-color:var(--warm-stroke); transform:translateY(-1px); }
+.bmf-app .iconbtn svg{ width:17px; height:17px; }
 .bmf-app .appbar .ttl{ font-size:var(--fs-title); font-weight:var(--fw-heavy); letter-spacing:.04em; text-transform:uppercase; }
 .bmf-app .appbar .sub{ font-family:var(--mono); font-size:var(--fs-micro); letter-spacing:.18em; text-transform:uppercase; color:var(--faint); margin-top:2px; }
 
@@ -233,6 +236,9 @@ const CSS = `
 @keyframes bmf-rotor{ to{ transform:translateX(-50%) rotate(360deg); } }
 .bmf-app .artcard.heli .heli-art .mark{ position:absolute; top:36px; left:0; right:0; display:grid; place-items:center; }
 .bmf-app .artcard.heli .heli-art .mark svg{ width:112px; height:112px; color:#fff; opacity:.94; filter:drop-shadow(0 8px 26px rgba(0,0,0,0.6)); }
+/* Brand flame livery mark — a small ember roundel on the airframe (fills via .flame → flameGrad). */
+.bmf-app .artcard.heli .heli-art .livery{ position:absolute; right:18px; top:72px; width:23px; height:28px; z-index:2; opacity:.7; }
+.bmf-app .artcard.heli .heli-art .livery svg{ width:100%; height:100%; }
 
 .bmf-app .specgrid{ display:grid; grid-template-columns:1fr 1fr; gap:8px 16px; margin:11px 0 2px; }
 .bmf-app .specgrid .spec{ grid-template-columns:50px 1fr; gap:8px; margin:0; }
@@ -312,7 +318,7 @@ const CSS = `
 @media (min-width:740px){
   .bmf-app.home .pad{ max-width:620px; }
   .bmf-app.home .artcard .inner{ min-height:300px; }
-  /* Menu overlays (Maps · Hangar · Co-op · Settings) get the same roomier centred column. */
+  /* Menu overlays (Campaign · Hangar · Co-op · Settings) get the same roomier centred column. */
   .bmf-app:not(.home):not(.newpilot) .pad{ max-width:600px; }
   /* The hero carousel grows into a bigger card with more peek + larger chevrons. */
   .bmf-app .cslide{ flex:0 0 min(72%,440px); }

@@ -14,12 +14,10 @@ export interface RailItem {
 
 export const RAIL: RailItem[] = [
   { key: 'home', label: 'Home', icon: 'home' },
+  { key: 'campaign', label: 'Campaign', icon: 'map' },
   { key: 'coop', label: 'Co-op', icon: 'users' },
-  { key: 'maps', label: 'Maps', icon: 'map' },
   { key: 'hangar', label: 'Hangar', icon: 'heli' },
-  { key: 'board', label: 'Board', icon: 'trophy' },
   { key: 'shop', label: 'Shop', icon: 'shop' },
-  { key: 'settings', label: 'Settings', icon: 'settings' },
 ];
 
 /** The bottom-rail nav markup with `active` highlighted. Buttons carry `data-rail="<key>"`. */
