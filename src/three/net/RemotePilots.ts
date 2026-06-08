@@ -330,7 +330,7 @@ export class RemotePilots {
 /** Shortest-path angle interpolation (so a ghost yaws the short way through ±π, never the long way). */
 function lerpAngle(a: number, b: number, t: number): number {
   const tau = Math.PI * 2;
-  let d = ((b - a) % tau + tau + Math.PI) % tau - Math.PI;
+  const d = ((b - a) % tau + tau + Math.PI) % tau - Math.PI;
   return a + d * t;
 }
 
