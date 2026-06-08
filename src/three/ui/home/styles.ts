@@ -210,19 +210,24 @@ const CSS = `
    Burn cell so its base lines up with the Continue mission card (the "aligned" goal — see the desktop
    grid block below). On phone/tablet it flows directly under the daily slip; it's gated OUT only on the
    shortest viewports so the single-viewport no-scroll law still holds (CLAUDE.md). The whole card is ONE
-   tap target. GLASSY RED: a frosted, translucent fire/ember wash (warm "fight" register, hottest end) +
-   backdrop blur so it POPS against the dark hub — built from tokens only (no new colour literals). ===== */
+   tap target. GRADIENT GLASS: an almost-transparent red-tinted pane (faint fire/ember diagonal wash over
+   a backdrop blur) with a specular highlight that SWIPES across on a loop — built from tokens only. ===== */
 .bmf-app.home .shop-sec{ display:none; } /* section label only rides the desktop dashboard; phone/tablet show the banner alone */
-.bmf-app .shopbanner{ display:flex; width:100%; margin-top:11px; align-items:center; gap:13px; text-align:left; font:inherit; color:var(--text);
+.bmf-app .shopbanner{ position:relative; overflow:hidden; display:flex; width:100%; margin-top:11px; align-items:center; gap:13px; text-align:left; font:inherit; color:var(--text);
   cursor:pointer; -webkit-tap-highlight-color:transparent; transition:transform .14s ease, border-color .14s ease, box-shadow .22s ease; }
-/* Glassy red — translucent fire/ember gradient over a backdrop blur (one glass layer). Overrides the
-   .card metal fill (3-class specificity, sourced after .card.warm so it wins). */
-.bmf-app .shopbanner.card{ border-color:var(--warm-stroke); backdrop-filter:var(--blur); -webkit-backdrop-filter:var(--blur);
-  background:
-    radial-gradient(140% 180% at 100% 120%, var(--ember-50), transparent 62%),
-    linear-gradient(145deg, var(--fire-28) 0%, var(--ember-42) 48%, var(--fire-55) 100%);
-  box-shadow:var(--shadow-card), inset 0 1px 0 var(--bevel-top), 0 0 26px var(--ember-30); }
-.bmf-app .shopbanner:hover{ transform:translateY(-2px); border-color:var(--warm-stroke); box-shadow:var(--shadow-card), inset 0 1px 0 var(--bevel-top), 0 0 34px var(--ember-40); }
+/* Almost-transparent gradient glass — a low-alpha fire/ember tint is the ONLY fill (no metal base), so
+   the blurred hub shows through. Overrides the .card metal fill (3-class specificity, sourced after
+   .card.warm so it wins). */
+.bmf-app .shopbanner.card{ border-color:var(--stroke); backdrop-filter:var(--blur); -webkit-backdrop-filter:var(--blur);
+  background:linear-gradient(135deg, var(--fire-16) 0%, var(--ember-10) 50%, transparent 92%);
+  box-shadow:var(--shadow-card), inset 0 1px 0 var(--bevel-top); }
+/* Swipe reflection — a thin specular streak that sweeps left→right and rests off-frame; mix-blend screen
+   so it only LIGHTENS the glass. Clipped by the .card.cut polygon + overflow:hidden, so it never spills. */
+.bmf-app .shopbanner::after{ content:""; position:absolute; inset:0; z-index:2; pointer-events:none; mix-blend-mode:screen;
+  background:linear-gradient(112deg, transparent 42%, var(--text-subtle) 50%, transparent 58%);
+  transform:translateX(-130%); animation:bmf-swipe 5.5s ease-in-out 1.2s infinite; }
+@keyframes bmf-swipe{ 0%{transform:translateX(-130%);} 22%{transform:translateX(130%);} 100%{transform:translateX(130%);} }
+.bmf-app .shopbanner:hover{ transform:translateY(-2px); border-color:var(--warm-stroke); box-shadow:var(--shadow-card), inset 0 1px 0 var(--bevel-top), 0 0 30px var(--ember-30); }
 .bmf-app .shopbanner:active{ transform:translateY(-1px); }
 .bmf-app .sb-ic{ width:40px; height:40px; flex:0 0 auto; display:grid; place-items:center; border-radius:var(--r-sm);
   border:1px solid var(--warm-stroke); background:radial-gradient(circle at 40% 30%, var(--warm-38), var(--card-bg));
@@ -234,10 +239,12 @@ const CSS = `
 .bmf-app .sb-go{ flex:0 0 auto; display:grid; place-items:center; width:26px; height:26px; color:var(--ember-hi); transition:color .14s ease, transform .14s ease; }
 .bmf-app .sb-go svg{ width:18px; height:18px; }
 .bmf-app .shopbanner:hover .sb-go{ color:var(--text); transform:translateX(2px); }
-/* Shortest viewports — drop the banner (and on short phones its sub line) so the hub never scrolls.
-   z-daily-scoped (0,4,0) so it also beats the desktop dashboard's reveal on a short desktop window. */
-@media (max-height:760px){ .bmf-app.home .z-daily .sb-sub{ display:none; } }
-@media (max-height:670px){ .bmf-app.home .z-daily .shop-sec, .bmf-app.home .z-daily .shopbanner{ display:none; } }
+/* Shortest viewports — drop the banner (and on short phones its sub line) so the single-column stack
+   never scrolls. Scoped to the PHONE/TABLET layout (max-width:1039px) only: the desktop 2-column
+   dashboard (≥1040px) has a dedicated left-column slot for the banner, so it must stay visible there
+   even on short laptop windows (1366×768 etc.) — never hidden by a height gate. */
+@media (max-width:1039px) and (max-height:760px){ .bmf-app.home .sb-sub{ display:none; } }
+@media (max-width:1039px) and (max-height:670px){ .bmf-app.home .shopbanner{ display:none; } }
 
 .bmf-app .stars{ display:inline-flex; gap:3px; } .bmf-app .stars svg{ width:15px; height:15px; }
 .bmf-app .stars .on{ fill:var(--menu); stroke:none; filter:drop-shadow(0 0 5px var(--gold-70)); }
@@ -364,32 +371,40 @@ const CSS = `
 .bmf-app .helicard .hc-flag svg{ width:12px; height:12px; }
 .bmf-app .helicard.sel .hc-flag{ background:var(--menu); color:var(--cta-ink); box-shadow:0 0 10px var(--ember-35); }
 
-/* Open Skies — single-viewport, NO PAGE SCROLL (CLAUDE.md hard rule). The pad becomes a flex column
-   locked to the viewport (overflow:hidden); the .osky column flows top-down with the aircraft grid as
-   the flexible hero, and the short-height tier below sheds the subtitle so the Join button always
-   stays in view — the content never overruns into a scroll. */
+/* Open Skies — single-viewport, NO PAGE SCROLL (CLAUDE.md hard rule). The body owns the title +
+   subtitle hero, so the overlay appbar is hidden for this screen. The pad is a flex column locked to
+   the viewport; the PITCH sits at top, the PICK fills the rest with the aircraft grid as its flexible
+   hero, so the Join button always stays in view. On desktop (below) the two become a 2-column lobby. */
+.bmf-app .pad:has(> .osky) .appbar{ display:none; }
 .bmf-app .pad:has(> .osky){ display:flex; flex-direction:column; overflow:hidden; }
-.bmf-app .osky{ flex:1 1 auto; min-height:0; display:flex; flex-direction:column; padding-top:6px; }
-.bmf-app .osky .osky-sub{ margin-top:9px; font-size:var(--fs-body); line-height:1.5; max-width:36ch;
+.bmf-app .osky{ flex:1 1 auto; min-height:0; display:flex; flex-direction:column; padding-top:8px; }
+.bmf-app .osky-pitch{ flex:0 0 auto; }
+.bmf-app .osky-pick{ flex:1 1 auto; min-height:0; display:flex; flex-direction:column; }
+.bmf-app .osky-title{ margin-top:11px; }
+.bmf-app .osky-sub{ margin-top:6px; font-size:var(--fs-title); font-weight:var(--fw-bold); color:var(--ember-hi); letter-spacing:.01em; }
+.bmf-app .osky-desc{ margin-top:8px; font-size:var(--fs-body); line-height:1.5; color:var(--dim); max-width:42ch;
   display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
-.bmf-app .osky .sec{ margin:15px 2px 0; }
-/* The aircraft grid is the HERO: it flexes to fill all height between the "Your aircraft" header and
-   the Join button, so the cards (and their portrait key-art) grow as large as the viewport allows.
-   No-scroll is then guaranteed by construction — short phones just shrink the cards, never overflow. */
-.bmf-app .osky .heligrid{ margin-top:11px; flex:1 1 auto; min-height:0; grid-template-rows:1fr; }
-.bmf-app .osky .osky-cta{ padding-top:16px; }
-/* Short phones: tighten the rhythm (keep the full two-line subtitle) so the cards stay as large as
-   possible. The grid flex-fills, so the extra subtitle line is absorbed by the cards, never a scroll. */
-@media (max-height:680px){
-  .bmf-app .osky{ padding-top:2px; }
-  .bmf-app .osky .osky-sub{ margin-top:6px; }
-  .bmf-app .osky .sec{ margin:10px 2px 0; }
-  .bmf-app .osky .osky-cta{ padding-top:11px; }
-  .bmf-app .osky .hc-name{ min-height:0; }
+.bmf-app .osky-feats{ margin-top:11px; display:flex; flex-direction:column; gap:9px; }
+.bmf-app .osky-feat{ display:flex; align-items:center; gap:10px; font-size:var(--fs-sm); font-weight:var(--fw-semibold); color:var(--text); }
+.bmf-app .osky-feat svg{ width:17px; height:17px; flex:0 0 auto; color:var(--ember-hi); }
+.bmf-app .osky-pick .sec{ margin:14px 2px 0; }
+/* The aircraft grid is the HERO on phone: it flexes to fill all height between the "Your aircraft"
+   header and the Join button, so the cards (and their portrait key-art) grow as large as the viewport
+   allows. No-scroll is then guaranteed by construction — short phones shrink the cards, never overflow. */
+.bmf-app .osky-pick .heligrid{ margin-top:11px; flex:1 1 auto; min-height:0; grid-template-rows:1fr; }
+.bmf-app .osky-cta{ padding-top:14px; }
+/* Short phones: shed the supporting copy so the cards + Join keep their room (no scroll). */
+@media (max-height:760px){
+  .bmf-app .osky-desc{ -webkit-line-clamp:1; }
+  .bmf-app .osky-feats{ display:none; }
 }
-/* Only on extreme-short landscape do we drop the subtitle, to guarantee the Join button clears. */
-@media (max-height:460px){
-  .bmf-app .osky .osky-sub{ display:none; }
+@media (max-height:650px){
+  .bmf-app .osky-title{ font-size:var(--fs-display); margin-top:6px; }
+  .bmf-app .osky-desc{ display:none; }
+  .bmf-app .osky-pick .sec{ margin-top:10px; }
+}
+@media (max-height:520px){
+  .bmf-app .osky-sub{ display:none; }
 }
 
 /* ===== mission card LIST (accordion) — copy on the left, art on the right, gradient fade left =====
@@ -556,7 +571,7 @@ const CSS = `
 
 @media (prefers-reduced-motion: reduce){
   .bmf-app .rise{ opacity:1 !important; transform:none !important; animation:none !important; }
-  .bmf-app .helmet .sheen,.bmf-app .mote,.bmf-app .glyph.flicker svg path,.bmf-app .crt-streak,.bmf-app .artcard.heli .heli-art .ring,.bmf-app .cslide.active .artcard.map .img,.bmf-app.home .bar > i{ animation:none !important; }
+  .bmf-app .helmet .sheen,.bmf-app .mote,.bmf-app .glyph.flicker svg path,.bmf-app .crt-streak,.bmf-app .artcard.heli .heli-art .ring,.bmf-app .cslide.active .artcard.map .img,.bmf-app.home .bar > i,.bmf-app .shopbanner::after{ animation:none !important; }
   .bmf-app .cslide{ opacity:1 !important; transform:none !important; }
   .bmf-app.home .artcard[data-act]:hover .img{ transform:none !important; } /* no cinematic zoom under reduced-motion */
   .bmf-app .embers{ display:none; }
@@ -619,16 +634,23 @@ const CSS = `
   .bmf-app .mlist{ display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:16px; align-content:start; margin-top:16px; }
   .bmf-app .mcard .mexpand{ grid-template-rows:1fr; }
   .bmf-app .mcard .mbody{ max-width:80%; }
-  /* Open Skies — a wide centred single-column lobby (the old 2-col split is gone now the pitch is just
-     the chip + tagline). The aircraft cards take a fixed portrait aspect here — the desktop column is
-     far taller than a phone viewport, so the phone's flex-fill would over-stretch them — and the stack
-     centres vertically; the pad may scroll as a desktop-only safety net. */
-  .bmf-app:not(.home):not(.newpilot) .pad:has(> .osky){ max-width:680px; overflow-y:auto; }
-  .bmf-app .osky{ justify-content:center; }
-  .bmf-app .osky .osky-sub{ font-size:var(--fs-md); max-width:46ch; -webkit-line-clamp:2; }
-  .bmf-app .osky .heligrid{ flex:0 0 auto; gap:16px; grid-template-rows:auto; }
+  /* Open Skies — a 2-column desktop LOBBY: the pitch (title · subtitle · what-it-is · teaser) on the
+     left, the aircraft picker + Join on the right. Two wrapper columns (not a flat grid) so neither
+     side's row heights couple to the other; centred + filling the width instead of a phone column. */
+  .bmf-app:not(.home):not(.newpilot) .pad:has(> .osky){ max-width:1000px; overflow-y:auto; }
+  .bmf-app .osky{ flex:initial; margin:auto 0; display:grid; grid-template-columns:1fr 1.04fr; column-gap:48px; align-items:center; }
+  .bmf-app .osky-pitch{ align-self:center; }
+  .bmf-app .osky-title{ font-size:var(--fs-mega); }
+  .bmf-app .osky-sub{ margin-top:9px; font-size:var(--fs-hero); -webkit-line-clamp:unset; }
+  .bmf-app .osky-desc{ margin-top:13px; max-width:40ch; -webkit-line-clamp:unset; }
+  .bmf-app .osky-feats{ margin-top:20px; gap:12px; }
+  .bmf-app .osky-feat{ font-size:var(--fs-md); }
+  .bmf-app .osky-pick{ flex:initial; display:block; min-height:0; }
+  .bmf-app .osky-pick .sec{ margin-top:0; }
+  .bmf-app .osky-pick .heligrid{ flex:initial; margin-top:14px; gap:14px; grid-template-rows:auto; }
   .bmf-app .osky .hc-art{ flex:0 0 auto; aspect-ratio:3/4; min-height:0; }
-  .bmf-app .osky .osky-cta .btn{ margin-top:0; }
+  .bmf-app .osky-cta{ padding-top:18px; }
+  .bmf-app .osky-cta .btn{ margin-top:0; max-width:340px; }
   /* Floating dock rail — shared by the hub AND every menu overlay so it reads the same everywhere. */
   .bmf-app .rail{ left:50%; right:auto; transform:translateX(-50%); bottom:18px; width:auto; min-width:540px; height:auto; padding-bottom:0;
     border:1px solid var(--bevel-top); border-radius:var(--r-xl); box-shadow:0 14px 44px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.06); }

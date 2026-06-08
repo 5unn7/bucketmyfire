@@ -421,16 +421,26 @@ export function openCoop(): void {
       <span class="hc-sub">${sub}</span>${flag}
     </button>`;
   };
-  // Single-viewport, NO SCROLL (CLAUDE.md): `.osky` is a flex column that fits the pad above the rail —
-  // the CTA group is pinned to the base (margin-top:auto), and short phones compress via styles.ts.
-  // Title lives in the overlay's top bar (the appbar shows "Open Skies") — no duplicate body headline.
+  // Open Skies lobby. Two blocks: the PITCH (title · subtitle · what-it-is) and the PICK (aircraft +
+  // Join). On the phone they stack in a single no-scroll column (the aircraft grid is the flexible
+  // hero); on desktop styles.ts lays them out side-by-side as a 2-column lobby. The body owns the
+  // title + subtitle hero, so the overlay appbar is hidden for this screen (styles.ts).
   const body = `<div class="osky">
-    <span class="chip">${ic('fire')}Free-for-all</span>
-    <p class="muted osky-sub">Fly with your friends, showcase your skills and earn points.</p>
-    <div class="sec"><span class="tag">Your aircraft</span><span class="line"></span></div>
-    <div class="heligrid">${HELIS.map(heliCard).join('')}</div>
-    <div class="osky-cta">
-      <button class="btn ember block" data-ffa>${ic('play')}Join</button>
+    <div class="osky-pitch">
+      <span class="chip">${ic('fire')}Free-for-all</span>
+      <h2 class="h-big osky-title">Open Skies</h2>
+      <p class="osky-sub">Real-time flying for all.</p>
+      <p class="osky-desc">Bring friends, showcase your skill, earn points.</p>
+      <div class="osky-feats">
+        <div class="osky-feat">${ic('target')}<span>Hidden tricks and points to find</span></div>
+      </div>
+    </div>
+    <div class="osky-pick">
+      <div class="sec"><span class="tag">Your aircraft</span><span class="line"></span></div>
+      <div class="heligrid">${HELIS.map(heliCard).join('')}</div>
+      <div class="osky-cta">
+        <button class="btn ember block" data-ffa>${ic('play')}Join</button>
+      </div>
     </div>
   </div>`;
   const { root } = overlay('coop', 'Open Skies', body);
