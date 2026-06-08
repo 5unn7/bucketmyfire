@@ -3,9 +3,7 @@
  * storefront (shop.bucketmyfire.com) in a new tab (see ../storeLink); this file supplies the rest as focused,
  * branded full-screen panels on the shared `.bmf-app`
  * stylesheet:
- *   - Campaign — region picker (Saskatchewan live + coming-soon) that DRILLS INTO that map's
- *                missions (openMissions): pick a mission, fly it. Missions now live inside the map.
- *   - Hangar   — aircraft picker (3 helis, specs, unlock gates), saves profile.heliId
+ *   - Hangar   — aircraft picker (3 helis, specs, points-unlock gates), saves profile.heliId
  *   - Open Skies — the open-world dispatch shift (openCoop): routes to ?province, the live map you hold
  *   - Settings — sound + reduced-motion toggles, callsign, region, reset progress (off the rail
  *                now; opened from the Home profile card). Board (leaderboard) likewise.
@@ -13,7 +11,7 @@
  */
 import type { MissionDef } from '../../missions/types';
 import {
-  HELIS, MAPS, isHeliUnlocked, missionsCleared, loadProfile, saveProfile,
+  HELIS, isHeliUnlocked, missionsCleared, loadProfile, saveProfile,
   availablePoints, heliCost, buyHeli, type Profile, type CatalogItem,
 } from '../profile';
 import { isConfigured, fetchMissionTop } from '../../leaderboard/client';
@@ -21,8 +19,7 @@ import { provinceSessionId } from '../../province/buildProvince';
 import { PROVINCE_COPY } from '../../province/strings';
 import { getCloudLink } from '../../leaderboard/cloudSave';
 import { openCloudSave } from '../CloudSave';
-import { resetProgress, getProgress, bestScore, bestStars, isUnlocked } from '../../missions/progress';
-import { missionPoster } from '../missionArt';
+import { resetProgress } from '../../missions/progress';
 import { openLeaderboard } from '../Leaderboard';
 import { injectHomeStyles, spawnEmbers } from './styles';
 import { posterCard } from './posterCard';
@@ -42,33 +39,23 @@ function currentProfile(): Profile {
 // whole time you're "in the menus". The hub seeds the catalog (Board needs it) and tracks the one
 // open overlay so tapping another rail tab swaps panels in place instead of stacking them.
 let menuCatalog: MissionDef[] = [];
-let flyMission: ((id: string) => void) | null = null;
 let activeOverlay: { key: string; close: () => void } | null = null;
-// The Campaign tab covers two views (region picker → mission list). With the back button gone, the
-// rail is the only way up, so we track which view is showing: tapping Campaign while on the mission
-// list drills back UP to the region picker instead of being a no-op.
-let campaignView: 'region' | 'missions' = 'region';
 
-/** HomeScreen seeds the campaign catalog (the Campaign/Board surfaces read it) and the boot hook the
- *  mission cards call to fly a mission (a page-reload campaign nav owned by main.ts). */
-export function setMenuCatalog(catalog: MissionDef[], onFly?: (id: string) => void): void {
+/** HomeScreen seeds the catalog the Board reads. The 8-mission campaign retired (the province is the
+ *  game now), so this is empty today — kept as the seam the Board + any future map content read. */
+export function setMenuCatalog(catalog: MissionDef[]): void {
   menuCatalog = catalog;
-  if (onFly) flyMission = onFly;
 }
 
 /** Route a rail tap: close the current panel (if any), then open the target. `home` just falls back
  *  to the hub mounted underneath. Shop opens the standalone storefront in a new tab. */
 export function navigateRail(key: string): void {
-  // Already on this panel — tapping its own tab is a no-op, EXCEPT the Campaign tab while on the
-  // mission list, where it drills back up to the region picker (the back button's old job).
-  if (activeOverlay && activeOverlay.key === key && !(key === 'campaign' && campaignView === 'missions')) return;
+  if (activeOverlay && activeOverlay.key === key) return; // tapping the active tab is a no-op
   const prev = activeOverlay;
   prev?.close();
   switch (key) {
     case 'home':
       return; // hub is underneath
-    case 'campaign':
-      return openCampaign();
     case 'hangar':
       return openHangar();
     case 'coop':
@@ -201,141 +188,10 @@ function wireCarousel(root: HTMLElement, initial: number, onActive?: (i: number)
   return center;
 }
 
-// ============================ CAMPAIGN (region → missions) ============================
-// The Campaign rail tab. Step 1 = pick a region (map); step 2 = pick a mission INSIDE that map
-// (openMissions). Selecting a live map persists it (profile.mapId) and drills in; the future maps
-// stay locked "coming soon" teasers.
-export function openCampaign(): void {
-  const pro = currentProfile();
-  const slides = MAPS.map((m) => {
-    const selected = m.id === pro.mapId && m.available;
-    const count = m.available ? missionsForMap(m.id).length : 0;
-    const backdrop = m.imageUrl
-      ? `<img class="img" src="${m.imageUrl}" alt="">`
-      : `<div class="fallback"><b>${m.name.slice(0, 2).toUpperCase()}</b></div>`;
-    const badge = m.available
-      ? `<span class="badge ${selected ? 'ok' : ''}">${selected ? 'Selected' : 'Live'}</span>`
-      : `<span class="badge">Soon</span>`;
-    const body = m.available
-      ? `<div class="ctx-row">${m.stats ? `<span class="ctx">${ic('map')}${m.stats.area}</span><span class="ctx">${ic('droplet')}${m.stats.lakes}</span>` : ''}<span class="ctx hot">${ic('fire')}${count} missions</span></div>`
-      : '';
-    const footer = !m.available
-      ? `<button class="btn ghost block is-disabled">${ic('lock')}Coming soon</button>`
-      : `<button class="btn primary block" data-map="${m.id}">${ic('play')}Enter</button>`;
-    return posterCard({ locked: !m.available, cardClass: 'map', backdrop, tagline: m.tagline, badge, title: m.name, body, footer });
-  });
-
-  campaignView = 'region';
-  const initial = Math.max(0, MAPS.findIndex((m) => m.id === pro.mapId && m.available));
-  const { root, close } = overlay('campaign', 'Campaign', carousel(slides));
-  wireCarousel(root, initial);
-  root.querySelectorAll<HTMLElement>('[data-map]').forEach((b) =>
-    b.addEventListener('click', (e) => {
-      e.stopPropagation(); // don't let the slide's re-centre handler swallow the pick
-      const id = b.dataset.map!;
-      saveProfile({ ...currentProfile(), mapId: id });
-      close();
-      openMissions(id);
-    }),
-  );
-}
-
-/** Campaign missions set in a given map (defaults to the live map for legacy defs with no `map`). */
-function missionsForMap(mapId: string): MissionDef[] {
-  return menuCatalog.filter((m) => (m.map ?? MAPS[0].id) === mapId);
-}
-
-// ============================ MISSIONS (inside a map) ============================
-// Step 2 of Campaign: a vertical CARD LIST of the chosen map's missions (accordion). Every card
-// carries its full copy — number, name, tagline, badge, stars, best run — with the poster anchored
-// RIGHT behind a left-to-right scrim so the text stays legible. The "next up" card opens EXPANDED,
-// revealing its fly CTA (+ fuller brief); tapping any other card expands it in turn. Back returns to
-// the region picker so the drill reads map → mission. FLY boots via the seeded campaign-nav hook.
-export function openMissions(mapId: string): void {
-  const all = missionsForMap(mapId);
-  const map = MAPS.find((m) => m.id === mapId);
-  const completed = new Set(getProgress().completed);
-  const nextId = all.find((m) => isUnlocked(m, all) && !completed.has(m.id))?.id ?? null;
-
-  const cards = all.map((m) => {
-    const unlocked = isUnlocked(m, all);
-    const done = completed.has(m.id);
-    const isNext = m.id === nextId;
-    const best = bestScore(m.id);
-    const stars = bestStars(m.id);
-    const num = String(m.index + 1).padStart(2, '0');
-    const poster = missionPoster(m.id);
-    const art = poster ? `<img class="img" src="${poster}" alt="">` : `<div class="fallback"><b>${num}</b></div>`;
-    const badge = !unlocked
-      ? `<span class="badge locked">${ic('lock')}Locked</span>`
-      : isNext
-        ? `<span class="badge">${ic('play')}Next up</span>`
-        : done
-          ? `<span class="badge ok">${ic('check')}Cleared</span>`
-          : `<span class="badge">Ready</span>`;
-    const starRow = `<span class="stars">${star(stars >= 1)}${star(stars >= 2)}${star(stars >= 3)}</span>`;
-    const scoreLine = best != null
-      ? `<span class="mscore mono">Best <b>${best.toLocaleString('en-US')}</b></span>`
-      : `<span class="mscore mono tbd">Not flown yet</span>`;
-    // The fuller brief only shows in the expanded body, and only when it adds to the always-on tagline.
-    const fuller = m.tagline && m.brief && m.brief !== m.tagline ? `<p class="mbrief">${m.brief}</p>` : '';
-    const cta = !unlocked
-      ? `<button class="btn ghost block is-disabled">${ic('lock')}Clear earlier missions</button>`
-      : `<button class="btn primary block" data-fly="${m.id}">${ic('play')}${done ? 'Replay mission' : 'Fly mission'}</button>`;
-    return `<article class="mcard${isNext ? ' active' : ''}${unlocked ? '' : ' locked'}" data-mid="${m.id}" role="button" tabindex="0" aria-expanded="${isNext}">
-      <div class="mart">${art}</div><div class="mfade"></div>
-      <div class="mhead"><span class="chip ghost">Mission ${num}</span>${badge}</div>
-      <div class="mbody">
-        <h3 class="mname">${m.name}</h3>
-        <p class="mtag">${m.tagline ?? m.brief}</p>
-        <div class="mmeta">${starRow}${scoreLine}</div>
-        <div class="mexpand"><div>${fuller}${cta}</div></div>
-      </div></article>`;
-  });
-
-  campaignView = 'missions';
-  const { root } = overlay('campaign', map?.name ?? 'Campaign', `<div class="mlist">${cards.join('')}</div>`);
-  wireMissionList(root);
-}
-
-/** Wire the mission card list: tapping a card expands it (accordion — one open at a time); the
- *  active card's CTA flies. The "next up" card starts expanded; on open we nudge it into view. */
-function wireMissionList(root: HTMLElement): void {
-  const cards = Array.from(root.querySelectorAll<HTMLElement>('.mcard'));
-  const expand = (card: HTMLElement): void => {
-    cards.forEach((c) => {
-      const on = c === card;
-      c.classList.toggle('active', on);
-      c.setAttribute('aria-expanded', String(on));
-    });
-    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  };
-  cards.forEach((card) => {
-    card.addEventListener('click', (e) => {
-      const fly = (e.target as HTMLElement).closest<HTMLElement>('[data-fly]');
-      if (fly) {
-        e.stopPropagation();
-        flyMission?.(fly.dataset.fly!);
-        return;
-      }
-      if (!card.classList.contains('active')) expand(card);
-    });
-    card.addEventListener('keydown', (e) => {
-      if (e.key !== 'Enter' && e.key !== ' ') return;
-      e.preventDefault();
-      if (!card.classList.contains('active')) expand(card);
-      else card.querySelector<HTMLElement>('[data-fly]')?.click();
-    });
-  });
-  // Bring the initially-expanded (next up) card into view without animation.
-  const active = cards.find((c) => c.classList.contains('active'));
-  active?.scrollIntoView({ block: 'nearest' });
-}
-
-/** Small inline star pip (matches HomeScreen's medal styling via the shared `.stars` CSS). */
-function star(on: boolean): string {
-  return `<svg class="${on ? 'on' : 'off'}" viewBox="0 0 24 24"><path d="M12 2l2.9 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77 5.82 21l1.18-6.88-5-4.87 7.1-1.01z"/></svg>`;
-}
+// The 8-mission CAMPAIGN region→mission pickers (openCampaign / openMissions) were removed in the
+// Living Province cutover — the province is the front door now (the home hero + the Open Skies lobby),
+// and the campaign mission DATA is gone (maps/saskatchewan has no `missions`). The Hangar + Open Skies
+// lobby below are unchanged.
 
 // ============================ HANGAR ============================
 export function openHangar(): void {
@@ -364,18 +220,15 @@ export function openHangar(): void {
       const unlocked = isHeliUnlocked(h, cleared);
       const foot = el.querySelector('.heli-foot')!;
       if (!unlocked) {
-        // Locked: the campaign gate is always shown; if the airframe has a price, offer the buy path
-        // too — a live, affordable button (Unlock · N pts) or a dimmed shortfall (Need N pts).
+        // Locked: with the campaign retired, aircraft unlock by POINTS only — show the buy path: an
+        // affordable button (Unlock · N pts) or a dimmed shortfall (Need N pts). (The trainer is free.)
         const cost = heliCost(h);
-        const gate = `<button class="btn ghost block is-disabled">${ic('lock')}Clear ${h.unlockAfter} missions</button>`;
-        let buy = '';
-        if (cost > 0) {
-          const afford = availablePoints() >= cost;
-          buy = afford
+        const afford = availablePoints() >= cost;
+        foot.innerHTML = cost > 0
+          ? afford
             ? `<button class="btn primary block" data-buy="${id}">${ic('spark')}Unlock · ${cost.toLocaleString()} pts</button>`
-            : `<button class="btn ghost block is-disabled">${ic('spark')}Need ${cost.toLocaleString()} pts</button>`;
-        }
-        foot.innerHTML = gate + buy;
+            : `<button class="btn ghost block is-disabled">${ic('spark')}Need ${cost.toLocaleString()} pts</button>`
+          : `<button class="btn ghost block is-disabled">${ic('lock')}Locked</button>`;
       } else if (id === sel) {
         foot.innerHTML = `<button class="btn ghost block is-disabled">${ic('check')}Equipped</button>`;
       } else {
@@ -434,10 +287,10 @@ function heliSlide(h: CatalogItem, cleared: number): string {
  *  (a reload boot owned by main.ts), mirroring the Daily Burn nav. (The flat `?ffa` free-for-all is
  *  superseded by this and stays reachable only by URL.) */
 export function openCoop(): void {
-  // The shift respects the campaign unlock ladder — you fly the airframes
-  // you've EARNED, the same gate as the Hangar. Default the pick to the pilot's saved heli (loadProfile
-  // already clamps a locked save back to the trainer), falling back to the first unlocked airframe so a
-  // ?heli= override or stale pick can never seed a locked selection.
+  // You fly the airframes you've UNLOCKED (the trainer is free; the heavier ships cost points — the
+  // same gate as the Hangar). Default the pick to the pilot's saved heli (loadProfile already clamps a
+  // locked save back to the trainer), falling back to the first unlocked airframe so a ?heli= override
+  // or stale pick can never seed a locked selection.
   const cleared = missionsCleared();
   const unlocked = (h: CatalogItem): boolean => isHeliUnlocked(h, cleared);
   let picked = currentProfile().heliId || HELIS[0].id;
@@ -447,7 +300,7 @@ export function openCoop(): void {
   const heliCard = (h: (typeof HELIS)[number]): string => {
     const ok = unlocked(h);
     const sel = ok && h.id === picked;
-    const sub = ok ? h.tagline : `Clear ${h.unlockAfter}`;
+    const sub = ok ? h.tagline : `${heliCost(h).toLocaleString()} pts`;
     const flag = sel ? `<span class="hc-flag">${ic('check')}</span>` : ok ? '' : `<span class="hc-flag">${ic('lock')}</span>`;
     // Key-art render fills the tile when present; else the procedural ring + heli mark.
     const art = h.imageUrl
@@ -631,7 +484,7 @@ function confirmReset(host: HTMLElement, onConfirm: () => void): void {
     glyph: ic('trash'),
     danger: true,
     body:
-      `<p class="mtext">Wipes your ranks, best scores, stars and aircraft unlocks. You'll start the campaign from the first sortie.</p>` +
+      `<p class="mtext">Wipes your rank, best scores and aircraft unlocks. You'll start over from Recruit.</p>` +
       `<div class="modal-actions"><button class="btn ghost" data-cancel>Keep my progress</button>` +
       `<button class="btn danger" data-confirm>Reset everything</button></div>`,
   });

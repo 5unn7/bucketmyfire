@@ -27,7 +27,6 @@ import { UI, FS, FW, R } from './theme';
 import { openModal, type ModalHandle } from './components/Modal';
 import { makeButton, type ButtonHandle } from './components/Button';
 import { resetTutorial } from './coach/coachStore';
-import { CAMPAIGN } from '../missions/catalog';
 
 const SEEN_KEY = 'bmf.help.seen.v1';
 
@@ -62,7 +61,7 @@ const STEPS: Step[] = [
   { glyph: '🚁', title: 'Fly the nose', body: 'Steer where the nose points and add throttle along it. She carries her weight, so ease off early to stop.', tone: 'cyan' },
   { glyph: '💧', title: 'Fill the bucket', body: 'Descend low over a lake until the slung bucket dips in. It fills on its own (see below).', tone: 'water' },
   { glyph: '🔥', title: 'Drop on the fire', body: 'Line up over the flames and hit DROP. Fly straight and level so the water lands true.', tone: 'fire' },
-  { glyph: '🏠', title: 'Keep it off the cabins', body: 'Keep fires off the cabins and finish each mission’s objectives (top-left). When a FUEL gauge shows, land at a base before it runs dry.', tone: 'cyan' },
+  { glyph: '🏠', title: 'Keep it off the cabins', body: 'Keep fires off the cabins. Dispatch calls in new fires as they break out; get there before they reach the towns. When a FUEL gauge shows, land at a base before it runs dry.', tone: 'cyan' },
 ];
 
 /** A control row: an action and the touch + keyboard ways to do it. */
@@ -369,9 +368,10 @@ export class HelpModal {
     const hint = h('p', { className: 'bmf-help-hint', textContent: 'Swipe or use the dots · reopen anytime with “?” · Esc to close' });
     Object.assign(m.footer.style, { flexDirection: 'column', alignItems: 'stretch', gap: '8px', justifyContent: 'flex-start' });
     m.footer.append(nav, hint);
-    // Replay the interactive coach: clear its "done" flag and route to the first campaign mission,
-    // where the coach gate re-fires. A plain navigation (not the dev-gated in-place switch) so it
-    // works in prod too.
+    // Replay the interactive coach: clear its "done" flag and re-fly the guided first shift — the
+    // Living Province ONBOARDING arc (the campaign retired, so the coach now teaches on the province).
+    // `?onboard=1` forces the arc on regardless of career.onboarded. A plain navigation (not the
+    // dev-gated in-place switch) so it works in prod too.
     const replay = makeButton({
       label: '↻ Replay guided first flight',
       variant: 'secondary',
@@ -381,7 +381,11 @@ export class HelpModal {
       onClick: () => {
         resetTutorial();
         const url = new URL(window.location.href);
-        url.searchParams.set('m', CAMPAIGN[0].id);
+        url.searchParams.delete('m');
+        url.searchParams.delete('daily');
+        url.searchParams.delete('ffa');
+        url.searchParams.set('province', '1');
+        url.searchParams.set('onboard', '1');
         url.searchParams.delete('autostart');
         url.searchParams.delete('qa');
         window.location.assign(url.toString());

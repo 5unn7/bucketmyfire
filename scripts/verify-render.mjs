@@ -6,7 +6,7 @@
  * render" DOM checks:
  *
  *   1. Title screen (/)            — its own renderer + attract-scene shaders; PLAY control present.
- *   2. Mission (/?autostart&qa)    — boots CAMPAIGN[0]; wait for __game.debug + first frame, ignite a
+ *   2. Mission (/?autostart&qa)    — boots the Living Province; wait for __game.debug + first frame, ignite a
  *                                     blaze, settle a few seconds so fire/smoke/ember/heat-haze/bloom/
  *                                     god-ray shaders compile + run; canvas + readable debug state.
  *   3. Component kit (/?kit)       — the shared UI kit gallery; cheap DOM-present + no-error check.

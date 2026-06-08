@@ -106,7 +106,6 @@ function routeMission(): void {
   // also lands here directly). Returning pilot → HomeScreen; new pilot → the registration gate.
   const openHome = (): void => {
     new HomeScreen(container, CAMPAIGN, {
-      onContinue: (id) => gotoCampaign(id),
       onDaily: () => {
         const url = new URL(location.href);
         url.searchParams.set('daily', '1');
@@ -153,11 +152,16 @@ function routeMission(): void {
     return;
   }
 
-  let selectedId = params.get('m');
-  if (!selectedId && shouldAutostart()) selectedId = CAMPAIGN[0].id;
+  // The linear campaign is retired — the Living Province is the game's one open-world mode now. A
+  // resolvable `?m=<id>` is still honoured (none exist today), but headless QA (`?autostart`) and any
+  // stale campaign deep-link both boot the province so the harness + old bookmarks land on a live game.
+  const selectedId = params.get('m');
+  const selected = selectedId ? missionById(selectedId) : undefined;
 
-  if (selectedId) {
-    bootMission(missionById(selectedId) ?? CAMPAIGN[0]);
+  if (selected) {
+    bootMission(selected);
+  } else if (shouldAutostart() || selectedId) {
+    bootMission(buildProvince(new Date(), params.get('region') ?? undefined));
   } else if (hasNamedProfile()) {
     // Returning pilot (saved callsign) → straight to the HomeScreen hub, no title cinematic in the way.
     // The home hub is the DEFAULT landing for everyone who's already played.

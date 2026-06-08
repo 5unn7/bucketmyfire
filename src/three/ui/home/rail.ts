@@ -14,7 +14,6 @@ export interface RailItem {
 
 export const RAIL: RailItem[] = [
   { key: 'home', label: 'Home', icon: 'home' },
-  { key: 'campaign', label: 'Campaign', icon: 'map' },
   { key: 'coop', label: 'Open Skies', icon: 'fire' },
   { key: 'hangar', label: 'Hangar', icon: 'garage' },
   { key: 'shop', label: 'Shop', icon: 'shop' },

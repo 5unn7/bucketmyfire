@@ -68,7 +68,6 @@ import { button, UI, FW } from './ui/theme';
 import { coached, coachBump } from './ui/hints';
 import { CoachDirector } from './ui/coach/CoachDirector';
 import { tutorialDone, markTutorialDone } from './ui/coach/coachStore';
-import { CAMPAIGN } from './missions/catalog';
 import type { MissionDef, MissionSignals, MissionAction, ZonePlacement, ScoreTally, TrackerItem } from './missions/types';
 import type { EndScreenHooks } from './HUD';
 import { seedFires, structurePlan, crewZones, resolveCrewZone, igniteFromPlacement, backburnLine } from './missions/scenario';
@@ -328,10 +327,10 @@ export class Game {
     // the open dispatch schedule). main resolves this from career.onboarded (+ a ?onboard dogfood override),
     // and only ever sets it for `living` missions.
     const onboarding = opts.onboarding ?? false;
-    // Interactive first-flight coach (control pulses): the TRUE first campaign mission of a brand-new pilot,
-    // OR a new pilot's first Living Province shift (the province is now the front door, so it must teach the
-    // controls too). Never under headless QA — it would interfere with the verify:render scoop→drop autopilot.
-    this.coach = new CoachDirector(!opts.disableCoach && !tutorialDone() && (mission.id === CAMPAIGN[0].id || (!!mission.living && onboarding)));
+    // Interactive first-flight coach (control pulses): a new pilot's first Living Province shift — the
+    // province is the front door now (the campaign retired), so it teaches the controls. Never under
+    // headless QA — it would interfere with the verify:render scoop→drop autopilot.
+    this.coach = new CoachDirector(!opts.disableCoach && !tutorialDone() && !!mission.living && onboarding);
     this.end = end;
     // Cold start (every mission) unless a headless QA boot opts out (?qa / ?autostart): then the
     // aircraft is already running and airborne at origin, so the existing autopilot/teleport flows

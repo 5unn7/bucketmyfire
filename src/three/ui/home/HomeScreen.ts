@@ -1,21 +1,21 @@
 /**
  * HomeScreen — the branded main-menu HUB (replaces the title→wizard landing). A warm "fight"-register
- * dispatch board: pilot dossier (callsign · rank · career · global rank · XP), the Daily Burn, the
- * Continue-mission card (with Board + Settings buttons on the dossier card itself), and a fixed
- * bottom RAIL (Home · Campaign · Co-op · Hangar · Shop). Single-viewport / no-scroll per CLAUDE.md.
+ * dispatch board: pilot dossier (callsign · rank · career · global rank · XP), the Daily Burn, and the
+ * PROVINCE front door (the game's one open-world mode — the campaign retired), with Board + Settings
+ * on the dossier card and a fixed bottom RAIL (Home · Open Skies · Hangar · Shop). Single-viewport /
+ * no-scroll per CLAUDE.md.
  *
  * Pure DOM over the shared `.bmf-app` stylesheet (styles.ts) — no Three. Rail tabs open the existing
- * branded panels (menus.ts): Campaign drills region → mission, Shop is its own screen; Board +
- * Settings moved OFF the rail onto the dossier card. Navigation that reloads (Continue → ?m=, Daily
- * → ?daily, a mission's Fly) comes in via the `HomeNav` callbacks so main.ts stays the routing authority.
+ * branded panels (menus.ts): Open Skies is the province lobby, Shop is its own screen; Board + Settings
+ * moved OFF the rail onto the dossier card. Navigation that reloads (Daily → ?daily, the province's Fly)
+ * comes in via the `HomeNav` callbacks / the rail so main.ts stays the routing authority.
  */
 import type { MissionDef } from '../../missions/types';
 import { loadProfile, MAPS } from '../profile';
-import { getProgress, bestScore, bestStars, isUnlocked } from '../../missions/progress';
 import { buildDailyMission, dailyDateLabel } from '../../missions/daily';
 import { dailyStreak } from '../../missions/streak';
 import { hasCompletedDaily, dailyResetCountdown } from '../../missions/dailyPlay';
-import { missionPoster } from '../missionArt';
+import { PROVINCE_COPY } from '../../province/strings';
 import { careerScore, rankFor, nextRankProgress } from '../../missions/rank';
 import { isConfigured, fetchCareerStanding } from '../../leaderboard/client';
 import { setMenuCatalog, navigateRail, openSettings, openBoard } from './menus';
@@ -24,23 +24,18 @@ import { injectHomeStyles, spawnEmbers } from './styles';
 import { DEFS, FLAME, FLAME_ONLY, HELMET, ic } from './icons';
 
 export interface HomeNav {
-  onContinue: (missionId: string) => void; // boot a campaign mission (?m=)
   onDaily: () => void; // boot today's Daily Burn (?daily)
 }
-
-const STAR = (on: boolean): string =>
-  `<svg class="${on ? 'on' : 'off'}" viewBox="0 0 24 24"><path d="M12 2l2.9 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77 5.82 21l1.18-6.88-5-4.87 7.1-1.01z"/></svg>`;
 
 export class HomeScreen {
   private root: HTMLDivElement;
   private disposed = false;
-  private nextId = '';
 
-  constructor(parent: HTMLElement, private catalog: MissionDef[], private nav: HomeNav) {
+  constructor(parent: HTMLElement, catalog: MissionDef[], private nav: HomeNav) {
     injectHomeStyles();
-    // Seed the rail router: the catalog (Campaign/Board read it) + the boot hook the mission cards
-    // call to fly a mission (onContinue → ?m= page-reload nav, owned by main.ts).
-    setMenuCatalog(catalog, nav.onContinue);
+    // Seed the rail router: the catalog the Board reads (now empty — the campaign retired; the board
+    // keys off the live province/daily ids). No mission-fly hook anymore (no campaign cards to fly).
+    setMenuCatalog(catalog);
     this.root = document.createElement('div');
     this.root.className = 'bmf-app home';
     this.root.innerHTML = DEFS + this.markup();
@@ -61,27 +56,16 @@ export class HomeScreen {
   private markup(): string {
     const profile = loadProfile();
     const name = (profile?.name || 'Pilot').toUpperCase();
-    const prog = getProgress();
-    const cleared = prog.completed.length;
 
     const pts = careerScore();
     const rank = rankFor(pts);
     const np = nextRankProgress(pts);
     const xpLine = np.next ? `${np.next.name} in ${np.remaining.toLocaleString('en-US')}` : 'Top rank';
 
-    // Saskatchewan is the only map with missions today; treat the catalog as the campaign.
-    const campaign = this.catalog;
-    const next = campaign.find((m) => isUnlocked(m, campaign) && !prog.completed.includes(m.id)) ?? campaign[campaign.length - 1];
-    this.nextId = next.id;
-    const total = campaign.length;
-    const num = String(next.index + 1).padStart(2, '0');
-    // Region the mission is set in (shares ids with the MAPS picker; omitted `map` → default SK) — shown
-    // as a pin pill on the card so "Mission 04" carries WHERE it is, not just its number.
-    const region = MAPS.find((mm) => mm.id === (next.map ?? MAPS[0].id))?.name ?? MAPS[0].name;
-    const poster = missionPoster(next.id);
-    const stars = bestStars(next.id);
-    const best = bestScore(next.id);
-    const campFrac = total > 0 ? Math.round((cleared / total) * 100) : 0;
+    // The home hero is the PROVINCE front door now (the campaign retired — the province IS the game).
+    // Backdrop = the region's map-card art; the copy is the locked creative-director slate (strings.ts).
+    const regionName = MAPS[0].name;
+    const provinceImg = MAPS[0].imageUrl;
 
     const daily = buildDailyMission(new Date());
     const streak = dailyStreak(new Date());
@@ -158,26 +142,18 @@ export class HomeScreen {
   </div>
 
   <div class="zone z-cont">
-  <!-- continue mission -->
-  <div class="sec rise d3"><span class="tag">Continue</span><span class="line"></span><span class="stamp link" data-act="campaign">Campaign ›</span></div>
-  <article class="artcard rise d3" data-act="continue">
-    ${poster ? `<img class="img" src="${poster}" alt="">` : `<div class="fallback"><b>${num}</b></div>`}
+  <!-- the province front door — the game's one open-world mode (pick aircraft → fly the shift) -->
+  <div class="sec rise d3"><span class="tag">Dispatch</span><span class="line"></span><span class="stamp">${regionName}</span></div>
+  <article class="artcard rise d3" data-act="province">
+    ${provinceImg ? `<img class="img" src="${provinceImg}" alt="">` : `<div class="fallback"><b>SK</b></div>`}
     <div class="scrim"></div>
     <div class="brackets"><i></i><i></i><i></i></div>
     <div class="inner">
-      <div class="row" style="gap:7px;"><span class="chip">Mission ${num}</span><span class="chip ghost reg">${ic('pin')}${region}</span></div>
+      <div class="row" style="gap:7px;"><span class="chip">${FLAME_ONLY}${PROVINCE_COPY.chip}</span><span class="chip ghost reg">${ic('pin')}${regionName}</span></div>
       <div class="grow" style="min-height:8px;"></div>
-      <h2 class="h-big">${next.name}</h2>
-      <p class="clamp2 contbrief" style="margin-top:8px;font-size:var(--fs-body);line-height:1.42;color:var(--text-subtle);max-width:32ch;text-shadow:0 1px 6px rgba(0,0,0,0.75);">${next.tagline ?? next.brief}</p>
-      <div class="row" style="gap:12px;margin-top:11px;">
-        <span class="stars">${STAR(stars >= 1)}${STAR(stars >= 2)}${STAR(stars >= 3)}</span>
-        <span class="mono" style="font-size:var(--fs-meta);color:var(--text-subtle);">${best != null ? `Best <b style="color:var(--menu);font-weight:var(--fw-bold)">${best.toLocaleString('en-US')}</b>` : 'Not flown yet'}</span>
-      </div>
-      <div class="contprog" style="margin-top:11px;">
-        <div class="barrow"><span class="l">Campaign</span><span class="r">${cleared} / ${total} cleared</span></div>
-        <div class="bar"><i style="width:${campFrac}%"></i></div>
-      </div>
-      <button class="btn primary block" style="margin-top:14px;" data-act="continue">${ic('play')}${best != null ? 'Replay mission' : 'Fly mission'}</button>
+      <h2 class="h-big">${PROVINCE_COPY.headline}</h2>
+      <p class="clamp2" style="margin-top:8px;font-size:var(--fs-body);line-height:1.42;color:var(--text-subtle);max-width:32ch;text-shadow:0 1px 6px rgba(0,0,0,0.75);">${PROVINCE_COPY.sub}</p>
+      <button class="btn ember block" style="margin-top:14px;" data-act="province">${ic('play')}${PROVINCE_COPY.cta}</button>
     </div>
   </article>
   </div>
@@ -207,12 +183,10 @@ ${railNav('home')}`;
 
   private act(name: string): void {
     switch (name) {
-      case 'continue':
-        return this.nav.onContinue(this.nextId);
+      case 'province':
+        return navigateRail('coop'); // open the province lobby (pick aircraft → Fly)
       case 'daily':
         return this.nav.onDaily();
-      case 'campaign':
-        return navigateRail('campaign'); // region → mission drilldown (the rail's Campaign tab)
       case 'shop':
         return navigateRail('shop'); // opens the standalone bucketmyfire storefront in a new tab
       case 'board':
