@@ -180,8 +180,9 @@ export default defineConfig({
     chunkSizeWarningLimit: 1500,
     rollupOptions: {
       // Multi-page: build ONLY these two. Vite does not auto-discover other root *.html, so the
-      // dev-only heli-preview.html / icons-preview.html stay out of dist/. `shop` is the standalone
-      // merch landing page (src/shop/) — it shares no graph with the game beyond the tiny lead client.
+      // dev-only heli-preview.html / icons-preview.html stay out of dist/. `shop` is now a static
+      // redirect page (shop.html) that forwards to the standalone storefront at shop.bucketmyfire.com
+      // — it shares no graph with the game (the old in-bundle waitlist + src/shop/ were retired).
       input: {
         main: path.resolve(ROOT, 'index.html'),
         shop: path.resolve(ROOT, 'shop.html'),

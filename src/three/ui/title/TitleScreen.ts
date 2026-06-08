@@ -3,6 +3,7 @@ import { UI, HOME, FS, FW, R, el, div, prefersReducedMotion } from '../theme';
 import { makeButton } from '../components';
 import { makeBrandIcon, makeBrandWordmark, brandIconUrl } from '../brandLogo';
 import { loadProfile, missionsCleared } from '../profile';
+import { openStore } from '../storeLink';
 import { signalFirstFrame } from '../../splashSignal';
 
 /**
@@ -161,8 +162,8 @@ export class TitleScreen {
     play.style.pointerEvents = 'auto';
     hero.appendChild(play);
 
-    // Secondary — Shop leaves the game for the standalone BMF Gear website (a real context switch).
-    const shop = makeButton({ label: 'Shop', icon: '🛍', variant: 'secondary', register: 'fight', onClick: () => { window.location.href = '/shop.html'; } });
+    // Secondary — Shop opens the standalone bucketmyfire storefront in a new tab (keeps the game up).
+    const shop = makeButton({ label: 'Shop', icon: '🛍', variant: 'secondary', register: 'fight', onClick: () => openStore() });
     shop.el.style.pointerEvents = 'auto';
     hero.appendChild(shop.el);
 

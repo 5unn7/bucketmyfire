@@ -214,7 +214,7 @@ ${railNav('home')}`;
       case 'campaign':
         return navigateRail('campaign'); // region → mission drilldown (the rail's Campaign tab)
       case 'shop':
-        return navigateRail('shop'); // leaves the game for the standalone /shop.html merch site
+        return navigateRail('shop'); // opens the standalone bucketmyfire storefront in a new tab
       case 'board':
         return openBoard();
       case 'settings':

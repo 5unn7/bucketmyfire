@@ -2,8 +2,8 @@
  * Self-hosted brand type — Saira Variable (display / UI) + JetBrains Mono Variable (the cockpit
  * instrument face). Latin `wght`-axis woff2 ONLY (the lean subset), imported as Vite assets so the
  * hashed, cache-busted files ride the build with no CDN call — matching the offline-capable,
- * no-tracker ethos. One injector, shared by BOTH entry points (the game shell `main.ts` and the
- * standalone shop `shop/main.ts`), so the whole product speaks one type system.
+ * no-tracker ethos. One injector for the game shell (`main.ts`), so the whole product speaks one
+ * type system. (The standalone merch site now lives at shop.bucketmyfire.com, off this bundle.)
  *
  * The @font-face declarations mirror @fontsource's own (weight range + woff2-variations format +
  * latin unicode-range) but point at the bundled URLs. The family names match the `--font` / `--mono`

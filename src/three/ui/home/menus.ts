@@ -1,6 +1,6 @@
 /**
- * Rail-menu overlays opened from the Home bottom rail. Shop NAVIGATES to the standalone /shop.html
- * merch website (a real context switch, not an overlay); this file supplies the rest as focused,
+ * Rail-menu overlays opened from the Home bottom rail. Shop opens the standalone bucketmyfire
+ * storefront (shop.bucketmyfire.com) in a new tab (see ../storeLink); this file supplies the rest as focused,
  * branded full-screen panels on the shared `.bmf-app`
  * stylesheet:
  *   - Campaign — region picker (Saskatchewan live + coming-soon) that DRILLS INTO that map's
@@ -28,6 +28,7 @@ import { injectHomeStyles, spawnEmbers } from './styles';
 import { posterCard } from './posterCard';
 import { railNav } from './rail';
 import { DEFS, FLAME, ic } from './icons';
+import { openStore } from '../storeLink';
 import { validateCallsign, MAX_CALLSIGN } from '../callsign';
 
 const MUTE_KEY = 'bmf.audio.muted.v1';
@@ -56,7 +57,7 @@ export function setMenuCatalog(catalog: MissionDef[], onFly?: (id: string) => vo
 }
 
 /** Route a rail tap: close the current panel (if any), then open the target. `home` just falls back
- *  to the hub mounted underneath. Shop LEAVES the game for the standalone /shop.html website. */
+ *  to the hub mounted underneath. Shop opens the standalone storefront in a new tab. */
 export function navigateRail(key: string): void {
   // Already on this panel — tapping its own tab is a no-op, EXCEPT the Campaign tab while on the
   // mission list, where it drills back up to the region picker (the back button's old job).
@@ -73,7 +74,7 @@ export function navigateRail(key: string): void {
     case 'coop':
       return openCoop();
     case 'shop':
-      window.location.href = '/shop.html'; // a real context switch to the merch website
+      openStore(); // opens the standalone bucketmyfire storefront in a new tab
       return;
   }
 }
