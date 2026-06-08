@@ -9,7 +9,6 @@
 
 import { UI, FS, FW, R, GRADE, el, frosted, scrim, prefersReducedMotion } from '../ui/theme';
 import { shareScoreCard } from '../ui/shareCard';
-import { dailyStreak } from '../missions/streak';
 import { bestScore } from '../missions/progress';
 import { CAMPAIGN } from '../missions/catalog';
 import { bannerButton, fmtTime } from './common';
@@ -266,7 +265,6 @@ export class EndScreen {
       stars: s.debrief?.breakdown?.stars ?? undefined,
       won: s.won,
       callsign: this.pilotName || undefined,
-      streak: dailyStreak(), // Daily Burn comeback-loop flex; the card shows it only from 2 days on
     });
     if (outcome === 'shared' || outcome === 'failed') return; // native sheet handled it / nothing to confirm
     const orig = btn.textContent;

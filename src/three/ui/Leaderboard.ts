@@ -11,10 +11,10 @@ import {
   type MissionEntry,
   type CareerEntry,
 } from '../leaderboard/client';
-import { dailyMissionId, dailyDateLabel, isDailyId } from '../missions/daily';
-import { dailyStreak, bestDailyStreak } from '../missions/streak';
+import { dailyDateLabel } from '../missions/daily';
+import { provinceSessionId, isProvinceId } from '../province/buildProvince';
 import { UI, BOARD, FS, FW, R, div, setBlur } from './theme';
-import { makeTabs, makeIconButton, makeStat } from './components';
+import { makeTabs, makeIconButton } from './components';
 
 /**
  * Global leaderboard overlay — an **F1 broadcast timing-tower** rendered in the game's WARM "fight"
@@ -96,8 +96,8 @@ class Leaderboard {
     this.catalog = catalog;
     this.myName = (loadProfile()?.name ?? '').trim();
     this.myClient = getClientId();
-    // Open on the Daily board when launched from a daily end-screen; otherwise the all-time Total.
-    this.active = initialMissionId && isDailyId(initialMissionId) ? 'daily' : 'total';
+    // Open on Today's board when launched from a province end-screen; otherwise the all-time Total.
+    this.active = initialMissionId && isProvinceId(initialMissionId) ? 'daily' : 'total';
 
     this.root = div({
       position: 'fixed',
@@ -125,9 +125,9 @@ class Leaderboard {
     const panel = div({ maxWidth: '640px', margin: '0 auto', position: 'relative' });
     panel.appendChild(this.header());
 
-    // Two boards: TOTAL (career + daily combined) and today's DAILY BURN. A WARM-register segmented
-    // switch (gold accent) replaces the old flat scroll of one tab per mission.
-    const tabs = makeTabs(['Total', '🔥 Daily Burn'], (i) => {
+    // Two boards: TOTAL (all-time career) and TODAY (the shared per-day Open Skies / province race). A
+    // WARM-register segmented switch (gold accent) replaces the old flat scroll of one tab per mission.
+    const tabs = makeTabs(['Total', '🔥 Today'], (i) => {
       const next: Board2 = i === 0 ? 'total' : 'daily';
       if (next === this.active) return;
       this.active = next;
@@ -203,7 +203,7 @@ class Leaderboard {
 
   /** The localStorage snapshot key for the active board — daily movement is per-day. */
   private snapKey(): string {
-    return this.active === 'daily' ? `daily:${dailyMissionId(new Date())}` : 'total';
+    return this.active === 'daily' ? `daily:${provinceSessionId(new Date())}` : 'total';
   }
 
   /** Fetch + render the active board. A request token guards against out-of-order responses. */
@@ -228,8 +228,8 @@ class Leaderboard {
         }
         this.renderBoard(ranked, total || ranked.length, standing, false);
       } else {
-        // Today's Daily Burn — its own board, keyed by the date-stamped mission id.
-        const id = dailyMissionId(new Date());
+        // Today's shared race — the per-day Open Skies / province board, keyed by the date-stamped session id.
+        const id = provinceSessionId(new Date());
         const { rows, total } = await fetchMissionTop(id, 25);
         if (token !== this.reqToken) return;
         const ranked = rows.map((r, i) => this.fromMission(r, i + 1));
@@ -265,8 +265,8 @@ class Leaderboard {
       empty.appendChild(
         this.note(
           daily
-            ? 'No runs on today’s burn yet — clear it and set the pace.'
-            : 'No runs yet — fly a mission and be the first on the board.',
+            ? 'No runs today. Fly the shift and set the pace.'
+            : 'No runs yet. Fly a mission and be the first on the board.',
         ),
       );
       const local = this.localPanel();
@@ -328,8 +328,8 @@ class Leaderboard {
 
   // --- Daily header ----------------------------------------------------------
 
-  /** The Daily Burn strip above its board: today's date + the player's local streak (works offline —
-   *  the streak is client-side). Frames the daily as a recurring race, not just another mission. */
+  /** Today's-race strip above its board: the label + date + how it's ranked. Frames the per-day Open
+   *  Skies / province board as a recurring race, not just another mission. */
   private dailyHeader(): HTMLDivElement {
     const card = div({
       display: 'flex',
@@ -346,17 +346,10 @@ class Leaderboard {
     setBlur(card);
 
     const left = div({ minWidth: '0' });
-    left.appendChild(div({ fontSize: FS.label, fontWeight: FW.heavy, letterSpacing: '2px', color: UI.fire }, '🔥 DAILY BURN'));
+    left.appendChild(div({ fontSize: FS.label, fontWeight: FW.heavy, letterSpacing: '2px', color: UI.fire }, '🔥 TODAY'));
     left.appendChild(div({ fontSize: FS.title, fontWeight: FW.heavy, marginTop: '2px' }, dailyDateLabel(new Date())));
     left.appendChild(div({ fontSize: FS.meta, color: UI.dim, marginTop: '2px' }, 'One shared map · ranked by score, then time'));
     card.appendChild(left);
-
-    const streak = dailyStreak();
-    const best = bestDailyStreak();
-    const tiles = div({ display: 'flex', gap: '22px', flex: 'none' });
-    tiles.appendChild(makeStat({ label: 'Day streak', value: streak > 0 ? `${streak}🔥` : '—', align: 'center' }));
-    tiles.appendChild(makeStat({ label: 'Best', value: best > 0 ? `${best}` : '—', align: 'center' }));
-    card.appendChild(tiles);
     return card;
   }
 
@@ -579,8 +572,8 @@ class Leaderboard {
    * otherwise. Returns null when there's nothing recorded yet (a fresh pilot sees just the note).
    */
   private localPanel(): HTMLDivElement | null {
-    // The daily's streak already rides in the daily header, and daily wins aren't kept in the
-    // progress store, so the daily tab has no separate "your device" SCORE panel.
+    // The Today tab is the shared per-day race; its standing already rides in the table + the sticky
+    // YOU row, so it has no separate "your device" SCORE panel (that's the all-time Total tab's job).
     if (this.active === 'daily') return null;
 
     const prog = getProgress();

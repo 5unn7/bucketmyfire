@@ -1,20 +1,15 @@
 /**
- * HomeScreen — the branded main-menu HUB (replaces the title→wizard landing). A warm "fight"-register
- * dispatch board: pilot dossier (callsign · rank · career · global rank · XP), the Daily Burn, and the
- * PROVINCE front door (the game's one open-world mode — the campaign retired), with Board + Settings
- * on the dossier card and a fixed bottom RAIL (Home · Open Skies · Hangar · Shop). Single-viewport /
- * no-scroll per CLAUDE.md.
+ * HomeScreen — the branded main-menu HUB. A warm "fight"-register dispatch board: the pilot dossier
+ * (callsign · rank · career · global rank · XP) + the PROVINCE Mission card (the game's open-world front
+ * door), with the gear promo below and a fixed bottom RAIL (Home · Open Skies · Solo · Hangar · Shop).
+ * Single-viewport / no-scroll per CLAUDE.md.
  *
- * Pure DOM over the shared `.bmf-app` stylesheet (styles.ts) — no Three. Rail tabs open the existing
- * branded panels (menus.ts): Open Skies is the province lobby, Shop is its own screen; Board + Settings
- * moved OFF the rail onto the dossier card. Navigation that reloads (Daily → ?daily, the province's Fly)
- * comes in via the `HomeNav` callbacks / the rail so main.ts stays the routing authority.
+ * Pure DOM over the shared `.bmf-app` stylesheet (styles.ts) — no Three. The Mission card + rail tabs open
+ * the branded panels (menus.ts): Open Skies is the live shared lobby, Solo picks a map to fly alone, Shop
+ * is its own screen; Board + Settings live on the dossier card. main.ts stays the routing authority.
  */
 import type { MissionDef } from '../../missions/types';
 import { loadProfile, MAPS } from '../profile';
-import { buildDailyMission, dailyDateLabel } from '../../missions/daily';
-import { dailyStreak } from '../../missions/streak';
-import { hasCompletedDaily, dailyResetCountdown } from '../../missions/dailyPlay';
 import { PROVINCE_COPY } from '../../province/strings';
 import { careerScore, rankFor, nextRankProgress } from '../../missions/rank';
 import { isConfigured, fetchCareerStanding } from '../../leaderboard/client';
@@ -23,15 +18,11 @@ import { railNav } from './rail';
 import { injectHomeStyles, spawnEmbers } from './styles';
 import { DEFS, FLAME, FLAME_ONLY, HELMET, ic } from './icons';
 
-export interface HomeNav {
-  onDaily: () => void; // boot today's Daily Burn (?daily)
-}
-
 export class HomeScreen {
   private root: HTMLDivElement;
   private disposed = false;
 
-  constructor(parent: HTMLElement, catalog: MissionDef[], private nav: HomeNav) {
+  constructor(parent: HTMLElement, catalog: MissionDef[]) {
     injectHomeStyles();
     // Seed the rail router: the catalog the Board reads (now empty — the campaign retired; the board
     // keys off the live province/daily ids). No mission-fly hook anymore (no campaign cards to fly).
@@ -67,13 +58,6 @@ export class HomeScreen {
     const regionName = MAPS[0].name;
     const provinceImg = MAPS[0].imageUrl;
 
-    const daily = buildDailyMission(new Date());
-    const streak = dailyStreak(new Date());
-    // Retry until cleared, then locked: while today's burn is unbeaten the card stays actionable ("Fly
-    // today" — retry as many times as it takes). Once CLEARED it locks to a "resets in Xh" / "Cleared"
-    // state; the brief stays readable, it just can't be re-flown until midnight.
-    const dailyCleared = hasCompletedDaily();
-
     // A neutral loading skeleton, never a "#–" stub (which reads as broken for the async beat). loadGlobalRank()
     // settles it to a real "#N Global" or drops the badge when there's no standing yet.
     const grank = isConfigured() ? `<div class="badge grank loading" aria-hidden="true"><span class="sk"></span></div>` : '';
@@ -105,46 +89,10 @@ export class HomeScreen {
     </div>
   </header>
 
-  <div class="zone z-daily">
-  <!-- daily burn — compact dispatch slip: leads with the brand mark (same logo as the dossier),
-       no ignition pill; clearing today's burn flips it to a "Cleared · resets in Xh" locked state. -->
-  <div class="sec rise d2"><span class="tag">Daily Burn</span><span class="line"></span></div>
-  <section class="card warm cut crt daily rise d2"><span class="crt-streak"></span>
-    <div class="drow">
-      <div class="glyph flicker">${FLAME}</div>
-      <div class="grow">
-        <div class="row between" style="gap:8px;">
-          <div class="mono" style="font-size:var(--fs-lg);font-weight:var(--fw-bold);letter-spacing:.06em;color:var(--text);">${dailyDateLabel(new Date()).toUpperCase()}</div>
-          ${dailyCleared ? `<span class="badge ok">${ic('check')}Cleared</span>` : `<span class="badge fire">${FLAME_ONLY}${streak}-day</span>`}
-        </div>
-        <p class="dbrief">${daily.brief}</p>
-        <div class="row between" style="margin-top:11px;gap:10px;">
-          <span class="ctx">${ic('clock')}${dailyCleared ? `Resets in ${dailyResetCountdown()}` : 'Resets midnight'}</span>
-          ${dailyCleared
-            ? `<button class="btn ember sm locked" disabled>${ic('lock')}Cleared today</button>`
-            : `<button class="btn ember sm" data-act="daily">${ic('play')}Fly today</button>`}
-        </div>
-      </div>
-    </div>
-  </section>
-  <!-- shop banner — DESKTOP-ONLY promo, pinned to the BOTTOM of the Today's Burn column so its base
-       lines up with the Continue mission card. The whole card opens the /shop.html merch site; hidden
-       on phone/tablet, where the single-viewport stack has no spare room. -->
-  <div class="sec shop-sec rise d3"><span class="tag">BMF Gear</span><span class="line"></span><span class="stamp">Coming soon</span></div>
-  <button class="shopbanner card warm cut rise d3" data-act="shop" aria-label="Open the BMF Gear store">
-    <span class="sb-ic">${ic('shop')}</span>
-    <span class="sb-copy">
-      <span class="sb-title">Wear the fight.</span>
-      <span class="sb-sub">Crew-grade gear, printed on demand.</span>
-    </span>
-    <span class="sb-go">${ic('chevron-right')}</span>
-  </button>
-  </div>
-
   <div class="zone z-cont">
-  <!-- the province front door — the game's one open-world mode (pick aircraft → fly the shift) -->
-  <div class="sec rise d3"><span class="tag">Dispatch</span><span class="line"></span><span class="stamp">${regionName}</span></div>
-  <article class="artcard rise d3" data-act="province">
+  <!-- the province MISSION CARD — the game's open-world front door (pick aircraft → fly the shift) -->
+  <div class="sec rise d2"><span class="tag">Dispatch</span><span class="line"></span><span class="stamp">${regionName}</span></div>
+  <article class="artcard rise d2" data-act="province">
     ${provinceImg ? `<img class="img" src="${provinceImg}" alt="">` : `<div class="fallback"><b>SK</b></div>`}
     <div class="scrim"></div>
     <div class="brackets"><i></i><i></i><i></i></div>
@@ -156,6 +104,20 @@ export class HomeScreen {
       <button class="btn ember block" style="margin-top:14px;" data-act="province">${ic('play')}${PROVINCE_COPY.cta}</button>
     </div>
   </article>
+  </div>
+
+  <div class="zone z-shop">
+  <!-- gear promo — opens the standalone bucketmyfire storefront. Desktop shows the section label; the
+       banner shows on phone/tablet too and drops only on the shortest viewports (styles.ts). -->
+  <div class="sec shop-sec rise d3"><span class="tag">BMF Gear</span><span class="line"></span><span class="stamp">Coming soon</span></div>
+  <button class="shopbanner card warm cut rise d3" data-act="shop" aria-label="Open the BMF Gear store">
+    <span class="sb-ic">${ic('shop')}</span>
+    <span class="sb-copy">
+      <span class="sb-title">Wear the fight.</span>
+      <span class="sb-sub">Crew-grade gear, printed on demand.</span>
+    </span>
+    <span class="sb-go">${ic('chevron-right')}</span>
+  </button>
   </div>
 
 </div>
@@ -185,8 +147,6 @@ ${railNav('home')}`;
     switch (name) {
       case 'province':
         return navigateRail('coop'); // open the province lobby (pick aircraft → Fly)
-      case 'daily':
-        return this.nav.onDaily();
       case 'shop':
         return navigateRail('shop'); // opens the standalone bucketmyfire storefront in a new tab
       case 'board':

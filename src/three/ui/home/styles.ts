@@ -48,7 +48,7 @@ const CSS = `
   padding-top:calc(env(safe-area-inset-top) + 12px); padding-bottom:calc(var(--rail-h) + env(safe-area-inset-bottom) + 12px); }
 .bmf-app.home .pad > header{ flex:0 0 auto; }
 .bmf-app.home .zone{ display:flex; flex-direction:column; }
-.bmf-app.home .z-daily{ flex:0 0 auto; }
+.bmf-app.home .z-shop{ flex:0 0 auto; }
 .bmf-app.home .z-cont{ flex:0 0 auto; }
 .bmf-app.home .sec{ margin:0 2px 8px; }
 .bmf-app.home .z-cont .artcard{ min-height:200px; }
@@ -613,22 +613,15 @@ const CSS = `
   .bmf-app .cnav{ width:46px; height:46px; } .bmf-app .cnav svg{ width:22px; height:22px; }
 }
 
-/* ===== desktop: 2-column home dashboard · flanked-hero carousels · floating dock rail ===== */
+/* ===== desktop: centred single-column home · flanked-hero carousels · floating dock rail ===== */
 @media (min-width:1040px){
-  /* Single-viewport dashboard: profile spans the top (auto row), daily + continue fill the rest
-     (1fr row). overflow:hidden + a padding-bottom that clears the floating dock rail = the Continue
-     card's Fly button never sits under the rail. */
-  .bmf-app.home .pad{ max-width:1000px; display:grid; grid-template-columns:380px 1fr; grid-template-rows:auto minmax(0,1fr);
-    column-gap:24px; row-gap:8px; overflow:hidden; padding-top:calc(env(safe-area-inset-top) + 28px); padding-bottom:120px; }
-  .bmf-app.home .pad > header{ grid-column:1 / -1; grid-row:1; }
-  /* Stretch the Today's Burn cell to the FULL row height so its trailing BMF Gear banner can bottom-
-     align with the Continue card. The daily slip stays content-sized at the top (no flex-grow); the
-     shop section's margin-top:auto absorbs the slack and drops the banner onto the row's base line. */
-  .bmf-app.home .z-daily{ grid-column:1; grid-row:2; align-self:stretch; }
-  .bmf-app.home .z-cont{ grid-column:2; grid-row:2; min-height:0; }
-  .bmf-app.home .sec{ margin-top:0; }
-  .bmf-app.home .shop-sec{ display:flex; margin-top:auto; }
-  .bmf-app.home .shopbanner{ margin-top:0; }
+  /* Single centred column — the Profile dossier + the PROVINCE Mission card + the gear promo. (Was a
+     2-column dashboard whose left column held the retired Daily Burn; with that gone the home is a
+     clean Profile + Mission-card stack.) overflow-y:auto + padding clear the floating dock rail. */
+  .bmf-app.home .pad{ max-width:680px; display:flex; flex-direction:column; gap:13px; overflow-y:auto;
+    padding-top:calc(env(safe-area-inset-top) + 30px); padding-bottom:120px; }
+  .bmf-app.home .artcard .inner{ min-height:320px; }
+  .bmf-app.home .shop-sec{ display:flex; }
   /* Menu overlays (Settings · Open Skies): a wide centred column. */
   .bmf-app:not(.home):not(.newpilot) .pad{ max-width:760px;
     padding-top:calc(env(safe-area-inset-top) + 30px); padding-bottom:120px; }

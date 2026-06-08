@@ -17,7 +17,6 @@
 import { FireSystem, fireGridFor, CELL_U } from '../src/three/sim/FireSystem';
 import { MissionRuntime } from '../src/three/missions/MissionRuntime';
 import { CAMPAIGN } from '../src/three/missions/catalog';
-import { buildDailyMission, dailyMissionId } from '../src/three/missions/daily';
 import { run, build, isCompletable } from '../src/three/missions/oracle';
 import { generateMission } from '../src/three/missions/factory';
 import { MapContext } from '../src/three/missions/factory/MapContext';
@@ -227,29 +226,10 @@ console.log('\nRectangular-map completability (saskatchewan, true-shape)\n');
   console.log(`  ${res.win && !res.noopWins ? '✓' : '✗'} saskatchewan win@${res.elapsed.toFixed(0)}s score ${res.score} (firesInitial=${res.firesInitial}, noopWins=${res.noopWins})`);
 }
 
-// --- Daily Burn completability: a runtime-built daily challenge must be clearable on EVERY seed (it
-// reuses the same World+FireSystem+scorer). A perfect player has to seed fires and drive extinguishAll
-// to a verified win across a month of seeds — proving the procedural daily never grows an impossible or
-// empty map. Baked into the gate so a tuning change to buildDailyMission can't silently break it. ---
-console.log('\nDaily Burn completability (30 seeds)\n');
-const DAILY_DAYS = 30;
-const dailyEpoch = Date.UTC(2026, 0, 1); // fixed start → deterministic probe
-let dailyWon = 0;
-for (let i = 0; i < DAILY_DAYS; i++) {
-  const date = new Date(dailyEpoch + i * 86_400_000);
-  const dm = buildDailyMission(date);
-  const { r, elapsed } = run(dm, 'play');
-  const seeded = r.firesInitial > 0;
-  const won = r.runtime.state === 'won' && r.runtime.verified;
-  if (won && seeded) dailyWon++;
-  ok(`${dailyMissionId(date)}: fires seeded`, seeded, `firesInitial=${r.firesInitial}`);
-  ok(`${dailyMissionId(date)}: completable`, won && seeded, `state=${r.runtime.state} @${elapsed.toFixed(0)}s`);
-  // Every rendered daily fire must be in-province (the random spots' centroids must not drift past the rim).
-  const drig = build(dm);
-  const dOff = drig.fire.active().filter((f) => !drig.world.isInProvince(f.x, f.z)).length;
-  ok(`${dailyMissionId(date)}: fires in-province`, dOff === 0, `${dOff} off-province`);
-}
-console.log(`  ${dailyWon}/${DAILY_DAYS} daily seeds cleared by a perfect player`);
+// (The standalone Daily Burn MODE was retired — the province / Open Skies is the one open-world loop. Its
+// completability coverage lived on the `extinguish` archetype, which the FACTORY section below still drives
+// across 30 seeds, so nothing is lost. The `dailySeed`/`dayNumberUTC` helpers remain as the per-day world
+// seed for Open Skies + the province.)
 
 // --- Mission FACTORY (Slice 3): force each archetype across several seeds and prove construct-correctness:
 // a perfect player WINS, fires seed + land IN-PROVINCE, and the extinguish-objective archetypes are

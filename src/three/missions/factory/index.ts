@@ -53,8 +53,8 @@ export function generateMission(opts: GenerateOpts, ctx?: MapContext): MissionDe
   const intensity = opts.intensity ?? rolledIntensity;
   const out = arche.build(r, intensity, ctx);
   const timeOfDay = TIMES[Math.floor(r() * TIMES.length)];
-  // A 'daily'-kind def carries a `daily-`-prefixed id so it FAILS SAFE under isDailyId (keeps daily wins out
-  // of campaign unlocks) even if a caller forgets to stamp the date id. buildDailyMission overrides it anyway.
+  // A 'daily'-kind def carries a `daily-`-prefixed id so it FAILS SAFE under isDailyId (keeps generated
+  // wins out of campaign unlocks) even if a caller forgets to stamp the id.
   const idPrefix = opts.kind === 'daily' ? 'daily-gen' : `gen-${opts.kind}`;
   return {
     id: `${idPrefix}-${opts.seed >>> 0}`,

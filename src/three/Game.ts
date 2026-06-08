@@ -56,9 +56,6 @@ import { HealthSim } from './sim/HealthSim';
 import { MissionRuntime } from './missions/MissionRuntime';
 import { MissionDirector } from './missions/MissionDirector';
 import { recordWin, recordScore, getProgress } from './missions/progress';
-import { isDailyId } from './missions/daily';
-import { recordDailyClear } from './missions/streak';
-import { markDailyCompleted } from './missions/dailyPlay';
 import { newlyUnlockedHelis, markColdStartSeen } from './ui/profile';
 import { submitScore, getClientId } from './leaderboard/client';
 import type { OpenSkiesNet, DouseEvent } from './net/openSkies';
@@ -2419,16 +2416,6 @@ export class Game {
       // screen. (recordWin only grows the count on a FIRST clear, so a replay announces nothing.)
       const clearedBefore = getProgress().completed.length;
       recordWin(this.mission.id, this.finalScore, this.runtime.completion());
-      // Daily Burn streak (audit VISION-3): a clear today extends the consecutive-UTC-day chain. The
-      // streak store is idempotent per UTC day, so a same-day replay (or a per-frame outcome latch)
-      // never double-counts. Gated to daily ids so a campaign clear can't bump the daily streak.
-      // Daily Burn is retry-until-cleared: the WIN both extends the streak AND locks today's burn so it
-      // can't be re-flown until the next UTC midnight (the home card + ?daily route gate on this). A loss
-      // never reaches here, so retries stay open until the clear.
-      if (isDailyId(this.mission.id)) {
-        recordDailyClear();
-        markDailyCompleted();
-      }
       const clearedAfter = getProgress().completed.length;
       this.newlyUnlocked = newlyUnlockedHelis(clearedBefore, clearedAfter).map((h) => ({ name: h.name, tagline: h.tagline }));
       // Global leaderboard (optional): fire-and-forget — submitScore never throws and no-ops
