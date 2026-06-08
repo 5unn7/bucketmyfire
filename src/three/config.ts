@@ -1736,8 +1736,8 @@ export const FFA = {
   pointsPerFire: 50, // score awarded per fire knocked down with water
   pointsPerHit: 6, // small bonus per EFFECTIVE drop (rewards steady, accurate work between kills)
   pointsPerBridge: 250, // stunt bonus for cleanly threading UNDER a bridge deck (the "crazy move")
-  fireMilestone: 10, // in-flight "fires out  N/M" readout rounds the target up to the next multiple of this
-  scoreMilestone: 500, // ditto for the live "score  N/M" readout — keeps the counters always chasing
+  fireMilestone: 10, // reserved — a separate fires-knocked-down readout (the in-flight HUD now shows ONE counter: Points)
+  scoreMilestone: 500, // the live "Points  N/M" readout rounds the target up to the next multiple of this — keeps it always chasing
   boardEverySec: 45, // push the running score to the shared per-day board this often (so others see you climb)
   // Live presence (Slice 3): broadcast your heli pose over a Supabase Realtime channel so OTHER pilots
   // appear as ghosts in your sky (code-split; degrades to solo when Supabase is unconfigured).

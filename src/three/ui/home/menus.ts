@@ -12,7 +12,10 @@
  * Each is a back-to-Home overlay (Home stays mounted underneath). No-scroll / single-viewport.
  */
 import type { MissionDef } from '../../missions/types';
-import { HELIS, MAPS, isHeliUnlocked, missionsCleared, loadProfile, saveProfile, type Profile, type CatalogItem } from '../profile';
+import {
+  HELIS, MAPS, isHeliUnlocked, missionsCleared, loadProfile, saveProfile,
+  availablePoints, heliCost, buyHeli, type Profile, type CatalogItem,
+} from '../profile';
 import { isConfigured } from '../../leaderboard/client';
 import { getCloudLink } from '../../leaderboard/cloudSave';
 import { openCloudSave } from '../CloudSave';
@@ -263,14 +266,14 @@ export function openMissions(mapId: string): void {
     const badge = !unlocked
       ? `<span class="badge locked">${ic('lock')}Locked</span>`
       : isNext
-        ? `<span class="badge">Next up</span>`
+        ? `<span class="badge">${ic('play')}Next up</span>`
         : done
           ? `<span class="badge ok">${ic('check')}Cleared</span>`
           : `<span class="badge">Ready</span>`;
     const starRow = `<span class="stars">${star(stars >= 1)}${star(stars >= 2)}${star(stars >= 3)}</span>`;
     const scoreLine = best != null
-      ? `<span class="mono" style="font-size:var(--fs-meta);color:rgba(255,255,255,0.78);">Best <b style="color:var(--menu);font-weight:var(--fw-bold)">${best.toLocaleString('en-US')}</b></span>`
-      : `<span class="mono" style="font-size:var(--fs-meta);color:var(--faint);">Not flown yet</span>`;
+      ? `<span class="mscore mono">Best <b>${best.toLocaleString('en-US')}</b></span>`
+      : `<span class="mscore mono tbd">Not flown yet</span>`;
     // The fuller brief only shows in the expanded body, and only when it adds to the always-on tagline.
     const fuller = m.tagline && m.brief && m.brief !== m.tagline ? `<p class="mbrief">${m.brief}</p>` : '';
     const cta = !unlocked
@@ -278,8 +281,8 @@ export function openMissions(mapId: string): void {
       : `<button class="btn primary block" data-fly="${m.id}">${ic('play')}${done ? 'Replay mission' : 'Fly mission'}</button>`;
     return `<article class="mcard${isNext ? ' active' : ''}${unlocked ? '' : ' locked'}" data-mid="${m.id}" role="button" tabindex="0" aria-expanded="${isNext}">
       <div class="mart">${art}</div><div class="mfade"></div>
+      <div class="mhead"><span class="chip ghost">Mission ${num}</span>${badge}</div>
       <div class="mbody">
-        <div class="mhead"><span class="chip ghost">Mission ${num}</span>${badge}</div>
         <h3 class="mname">${m.name}</h3>
         <p class="mtag">${m.tagline ?? m.brief}</p>
         <div class="mmeta">${starRow}${scoreLine}</div>
@@ -340,6 +343,16 @@ export function openHangar(): void {
   const initial = Math.max(0, HELIS.findIndex((h) => h.id === currentProfile().heliId));
   const { root } = overlay('hangar', 'Hangar', body);
 
+  // Spendable-balance chip in the appbar (right of the title) — the wallet you unlock aircraft from.
+  // Repainted after every purchase so the player sees the points drain immediately.
+  const bal = document.createElement('div');
+  bal.className = 'pts-bal';
+  const paintBalance = (): void => {
+    bal.innerHTML = `${ic('spark')}<b>${availablePoints().toLocaleString()}</b><span>pts</span>`;
+  };
+  paintBalance();
+  root.querySelector('.appbar')?.appendChild(bal);
+
   const refresh = (): void => {
     const sel = currentProfile().heliId;
     root.querySelectorAll<HTMLElement>('[data-heli]').forEach((el) => {
@@ -348,7 +361,18 @@ export function openHangar(): void {
       const unlocked = isHeliUnlocked(h, cleared);
       const foot = el.querySelector('.heli-foot')!;
       if (!unlocked) {
-        foot.innerHTML = `<button class="btn ghost block is-disabled">${ic('lock')}Clear ${h.unlockAfter} missions</button>`;
+        // Locked: the campaign gate is always shown; if the airframe has a price, offer the buy path
+        // too — a live, affordable button (Unlock · N pts) or a dimmed shortfall (Need N pts).
+        const cost = heliCost(h);
+        const gate = `<button class="btn ghost block is-disabled">${ic('lock')}Clear ${h.unlockAfter} missions</button>`;
+        let buy = '';
+        if (cost > 0) {
+          const afford = availablePoints() >= cost;
+          buy = afford
+            ? `<button class="btn primary block" data-buy="${id}">${ic('spark')}Unlock · ${cost.toLocaleString()} pts</button>`
+            : `<button class="btn ghost block is-disabled">${ic('spark')}Need ${cost.toLocaleString()} pts</button>`;
+        }
+        foot.innerHTML = gate + buy;
       } else if (id === sel) {
         foot.innerHTML = `<button class="btn ghost block is-disabled">${ic('check')}Equipped</button>`;
       } else {
@@ -359,6 +383,16 @@ export function openHangar(): void {
       b.addEventListener('click', (e) => {
         e.stopPropagation();
         saveProfile({ ...currentProfile(), heliId: b.dataset.pick! });
+        refresh();
+      }),
+    );
+    root.querySelectorAll<HTMLElement>('[data-buy]').forEach((b) =>
+      b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const h = HELIS.find((x) => x.id === b.dataset.buy);
+        if (!h || !buyHeli(h).ok) return; // buyHeli enforces affordability; a blocked buy is a no-op
+        saveProfile({ ...currentProfile(), heliId: h.id }); // bought it → equip it (it's now flyable)
+        paintBalance(); // the spend just drained the wallet
         refresh();
       }),
     );

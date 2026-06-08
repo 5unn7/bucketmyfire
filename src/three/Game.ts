@@ -55,7 +55,7 @@ import { FuelSim } from './sim/FuelSim';
 import { HealthSim } from './sim/HealthSim';
 import { MissionRuntime } from './missions/MissionRuntime';
 import { MissionDirector } from './missions/MissionDirector';
-import { recordWin, getProgress } from './missions/progress';
+import { recordWin, recordScore, getProgress } from './missions/progress';
 import { isDailyId } from './missions/daily';
 import { recordDailyClear } from './missions/streak';
 import { markDailyCompleted } from './missions/dailyPlay';
@@ -286,6 +286,7 @@ export class Game {
   private ffaSpawnTimer = 0; // seconds since the last ambient fire top-up (vs FFA.spawnEverySec)
   private ffaBoardTimer = 0; // seconds since the last shared-board score push (vs FFA.boardEverySec)
   private ffaScore = 0; // live cumulative free-for-all score (fires knocked down + accurate-drop bonus)
+  private ffaLastDoused = 0; // doused count at the last frame — diff drives the per-douse "+N" points pop
   // Open Skies live presence (Slice 3): the realtime transport + ghost-pilot view (both code-split,
   // lazily created when endless AND Supabase is configured; null otherwise → solo, no ghosts).
   private openSkies: OpenSkiesNet | null = null;
@@ -2101,6 +2102,14 @@ export class Game {
       this.scoreDropsEffective * FFA.pointsPerHit +
       this.bridgePasses * FFA.pointsPerBridge;
 
+    // Points collection: each fire you knock down banks points — pop a "+N" on the radio the instant the
+    // douse lands so the single live "Points" counter visibly pays out (the objective row also flashes).
+    if (this.fireSystem.doused > this.ffaLastDoused) {
+      const gained = (this.fireSystem.doused - this.ffaLastDoused) * FFA.pointsPerFire;
+      this.ffaLastDoused = this.fireSystem.doused;
+      this.hud.pushComms('dispatch', `Fire out  +${gained}`, 'info');
+    }
+
     // Push the running score to the shared per-day board on a cadence so others see you climb live.
     // submitScore is fire-and-forget + no-ops when Supabase is unconfigured (board reads "offline").
     // The board view (mission_best) takes each pilot's MAX, and ffaScore only grows → the latest push
@@ -2112,9 +2121,13 @@ export class Game {
     }
   }
 
-  /** Post the live free-for-all score to today's shared Open Skies board (fire-and-forget). */
+  /** Post the live free-for-all score to today's shared Open Skies board (fire-and-forget) AND bank it
+   *  locally so the points earned here feed careerScore() → the spendable wallet (heli unlocks). The
+   *  local record keeps the per-day MAX under the ffa id and never enters `completed[]`, so an endless
+   *  run grows your points without ever inflating the mission-clear count that gates aircraft. */
   private postFfaScore(): void {
     if (!this.endless || this.ffaScore <= 0) return;
+    recordScore(this.mission.id, this.ffaScore); // bank points → wallet (best-only, unlock-safe)
     void submitScore({ pilot: this.pilotName ?? 'Pilot', missionId: this.mission.id, score: this.ffaScore, timeS: this.missionElapsed });
   }
 
@@ -2184,17 +2197,12 @@ export class Game {
     }
   }
 
-  /** The live in-flight readout for Open Skies — reuses the objective checklist (it climbs + flashes on
-   *  each douse). STABLE labels (no objPrev leak over a long session); milestone targets keep both
-   *  counters always "chasing" so they never latch done and the run stays endless. */
+  /** The live in-flight readout for Open Skies — a SINGLE objective: the points counter. Extinguish
+   *  fires, earn points; the row climbs and flashes on each douse (renderObjectives). A milestone
+   *  target keeps it always "chasing" so it never latches done and the run stays endless. */
   private ffaTracker(): TrackerItem[] {
-    const out = this.fireSystem.doused;
-    const fireTarget = (Math.floor(out / FFA.fireMilestone) + 1) * FFA.fireMilestone;
     const scoreTarget = (Math.floor(this.ffaScore / FFA.scoreMilestone) + 1) * FFA.scoreMilestone;
-    return [
-      { label: 'Fires knocked down', current: out, target: fireTarget, done: false, failed: false, kind: 'goal' },
-      { label: 'Score', current: this.ffaScore, target: scoreTarget, done: false, failed: false, kind: 'goal' },
-    ];
+    return [{ label: 'Points', current: this.ffaScore, target: scoreTarget, done: false, failed: false, kind: 'goal' }];
   }
 
   /** Build the on-screen mute toggle (mounted under the radar). A round glass button that flips the

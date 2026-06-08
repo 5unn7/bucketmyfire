@@ -54,6 +54,8 @@ const STROKE: Record<string, string> = {
   pin: '<path d="M12 22s7-7.6 7-13a7 7 0 1 0-14 0c0 5.4 7 13 7 13z"/><circle cx="12" cy="9" r="2.5"/>',
   trash: '<path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M7 7l1 14h8l1-14"/><path d="M10 11v6M14 11v6"/>',
   edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+  // Earned-points spark — the spendable career-points currency (Hangar unlock economy).
+  spark: '<path d="M12 3l1.7 5.8L19 10l-5.3 1.2L12 17l-1.7-5.8L5 10l5.3-1.2z"/>',
 };
 
 /** Inline a stroke icon as an HTML string (24px viewBox, currentColor). */

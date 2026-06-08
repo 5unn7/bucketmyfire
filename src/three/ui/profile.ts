@@ -14,7 +14,8 @@
  * the hangar) render a locked card with the requirement until it's met.
  */
 
-import { getProgress } from '../missions/progress';
+import { getProgress, getPurchasedHelis, recordHeliPurchase } from '../missions/progress';
+import { careerScore } from '../missions/rank';
 import { mapCards } from '../maps/registry';
 import { cleanCallsign } from './callsign';
 
@@ -47,6 +48,10 @@ export interface CatalogItem {
   /** Campaign gate (helis): missions that must be CLEARED before this airframe is
    *  flyable. 0/undefined → open from the start. See isHeliUnlocked(). */
   unlockAfter?: number;
+  /** Career-points PRICE (helis): the alternative unlock path — buy the airframe with points instead
+   *  of waiting for the campaign gate. 0/undefined → not purchasable (only the mission gate opens it).
+   *  Spent against the wallet (availablePoints = career points − points already spent). See buyHeli(). */
+  cost?: number;
 }
 
 // --- Maps -------------------------------------------------------------------
@@ -64,10 +69,12 @@ export const MAPS: CatalogItem[] = mapCards().map((c) => ({
 // the airframe AND how it flies/carries/survives. The spec bars below illustrate that class:
 // 205 = slow/forgiving/small, 212 = medium, UH-60 = fast/big/twitchy/tough.
 //
-// They are GATED by campaign progress (`unlockAfter` = missions to clear), so a new pilot
-// starts on the trainer and earns the heavier ships: the 205 is open, the 212 unlocks after
-// the first two missions (in time for the first real wall), and the Black Hawk for the last three
-// (the set-piece + finale). (Additive — clearing a tier never takes an earlier airframe away.)
+// They unlock TWO ways (either suffices): by campaign progress (`unlockAfter` = missions to clear) OR
+// by SPENDING career points (`cost`). A new pilot starts on the trainer and earns the heavier ships —
+// the 205 is open, the 212 unlocks after the first two missions (in time for the first real wall), and
+// the Black Hawk for the last three (the set-piece + finale) — but a points-rich pilot stuck on a gate
+// can buy the next airframe early. (Additive — clearing a tier never takes an earlier airframe away,
+// and a points purchase is permanent.) The mission gate stays the "free" path; `cost` is the shortcut.
 //
 // `imageUrl` is a cinematic key-art render of each airframe in its livery over a boreal wildfire
 // (public/images/heli/, BASE_URL-prefixed here so the data stays portable across static hosts) —
@@ -97,6 +104,7 @@ export const HELIS: CatalogItem[] = [
     blurb: 'The Twin-Pac sister of the Huey — more power, a bigger belly, and a tougher airframe. A balanced step up from the 205: faster and carries more, still steady in the gusts off the lakes.',
     available: true,
     unlockAfter: 2, // earned at Mission 3 — the first real wall (Hold the Line)
+    cost: 5000, // …or buy it early with career points (the spend-to-unlock path)
     accent: '#d8a12a',
     glyph: '🚁',
     imageUrl: HELI_ART + 'Bell212.webp',
@@ -114,6 +122,7 @@ export const HELIS: CatalogItem[] = [
     blurb: 'A big four-blade utility ship: the fastest, biggest tank (double the 205), and toughest airframe. But heavy and twitchy down low — all that momentum overshoots, so it takes a confident hand. Supreme range and payload for an experienced pilot.',
     available: true,
     unlockAfter: 5, // unlocks from Mission 6 (Three Towns, the set-piece) through After Burn + the finale
+    cost: 15000, // …or buy it early with career points (a steep but reachable shortcut to the top ship)
     accent: '#5b6b50',
     glyph: '🚁',
     imageUrl: HELI_ART + 'UH60.webp',
@@ -144,12 +153,66 @@ export function missionsCleared(): number {
 }
 
 /**
- * Is a helicopter flyable right now? It must exist (`available`) AND the campaign must have
- * cleared at least `unlockAfter` missions (default 0 → open from the start). Pass a pre-read
- * `cleared` count when gating a whole picker grid so it doesn't re-hit storage per card.
+ * Is a helicopter flyable right now? It must exist (`available`) AND be unlocked by EITHER path:
+ * the campaign gate (cleared ≥ `unlockAfter`, default 0 → open from the start) OR a career-points
+ * purchase. Pass a pre-read `cleared` count and `purchased` list when gating a whole picker grid so
+ * it doesn't re-hit storage per card.
  */
-export function isHeliUnlocked(heli: CatalogItem, cleared: number = missionsCleared()): boolean {
-  return heli.available && cleared >= (heli.unlockAfter ?? 0);
+export function isHeliUnlocked(
+  heli: CatalogItem,
+  cleared: number = missionsCleared(),
+  purchased: string[] = getPurchasedHelis(),
+): boolean {
+  return heli.available && (cleared >= (heli.unlockAfter ?? 0) || purchased.includes(heli.id));
+}
+
+// --- Career-points economy (spend-to-unlock) --------------------------------
+// The wallet is derived, never stored: career points (Σ best-per-mission, the same lifetime total the
+// rank ladder reads) MINUS the points already spent on aircraft. Storing only the purchase LIST (in
+// missions/progress) and deriving "spent" from the cost table keeps the wallet self-consistent — a
+// cloud merge that unions purchases can never desync a separately-stored balance. Career points
+// themselves are untouched by spending (rank reflects lifetime achievement, not your current balance).
+
+/** A heli's career-points price (0 = not purchasable — only its mission gate opens it). */
+export function heliCost(heli: CatalogItem): number {
+  return heli.cost ?? 0;
+}
+
+/** Points already spent on aircraft = Σ cost of every purchased heli still in the catalog. */
+export function spentPoints(purchased: string[] = getPurchasedHelis()): number {
+  return HELIS.reduce((sum, h) => (purchased.includes(h.id) ? sum + heliCost(h) : sum), 0);
+}
+
+/** The spendable wallet: lifetime career points minus everything already spent on aircraft. */
+export function availablePoints(): number {
+  return Math.max(0, careerScore() - spentPoints());
+}
+
+/** Was this airframe unlocked by SPENDING points (vs the campaign gate)? Drives the "bought" copy. */
+export function isHeliPurchased(heli: CatalogItem, purchased: string[] = getPurchasedHelis()): boolean {
+  return purchased.includes(heli.id);
+}
+
+/** Result of attempting a points purchase — `ok` plus a reason code for the UI to message. */
+export type BuyResult = { ok: boolean; reason?: 'unavailable' | 'owned' | 'free' | 'priceless' | 'funds' };
+
+/**
+ * Buy a helicopter with career points. Validates the whole gate here (the single chokepoint both the
+ * Hangar and any future surface route through): the ship must be sellable, not already owned, priced,
+ * and affordable against the live wallet. On success it records the purchase (idempotent) so the heli
+ * is permanently flyable. Never throws — a blocked buy returns `ok:false` with a reason.
+ */
+export function buyHeli(heli: CatalogItem): BuyResult {
+  if (!heli.available) return { ok: false, reason: 'unavailable' };
+  const cleared = missionsCleared();
+  const purchased = getPurchasedHelis();
+  if (purchased.includes(heli.id)) return { ok: false, reason: 'owned' };
+  if (cleared >= (heli.unlockAfter ?? 0)) return { ok: false, reason: 'free' }; // already earned the free way
+  const cost = heliCost(heli);
+  if (cost <= 0) return { ok: false, reason: 'priceless' };
+  if (availablePoints() < cost) return { ok: false, reason: 'funds' };
+  recordHeliPurchase(heli.id);
+  return { ok: true };
 }
 
 /**

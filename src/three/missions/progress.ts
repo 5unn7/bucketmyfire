@@ -14,6 +14,7 @@ export interface Progress {
   completed: string[]; // mission ids cleared at least once
   best: Record<string, number>; // mission id → best score
   completions: Record<string, CompletionRecord>; // mission id → best run's sub-task breakdown
+  purchasedHelis: string[]; // heli ids unlocked by SPENDING career points (the points-economy path)
 }
 
 function load(): Progress {
@@ -21,12 +22,19 @@ function load(): Progress {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const p = JSON.parse(raw) as Partial<Progress>;
-      return { completed: p.completed ?? [], best: p.best ?? {}, completions: p.completions ?? {} };
+      return {
+        completed: p.completed ?? [],
+        best: p.best ?? {},
+        completions: p.completions ?? {},
+        // Helis bought with points — an alternative unlock path alongside campaign progress. An old
+        // save predating the economy has no field → no purchases (defaults to mission-gating only).
+        purchasedHelis: Array.isArray(p.purchasedHelis) ? p.purchasedHelis.filter((x) => typeof x === 'string') : [],
+      };
     }
   } catch {
     /* storage unavailable — fall through to defaults */
   }
-  return { completed: [], best: {}, completions: {} };
+  return { completed: [], best: {}, completions: {}, purchasedHelis: [] };
 }
 
 function save(p: Progress): void {
@@ -58,6 +66,39 @@ export function recordWin(id: string, score: number, completion?: CompletionReco
   save(p);
 }
 
+/** The heli ids the pilot has bought with career points (the spend-to-unlock path). */
+export function getPurchasedHelis(): string[] {
+  return load().purchasedHelis;
+}
+
+/**
+ * Permanently unlock a helicopter by SPENDING career points. Records the id (idempotent — a second
+ * call is a no-op) so the spend can never double-charge. Affordability is enforced by the caller
+ * (ui/profile.buyHeli, which knows the cost table + wallet); this just persists the unlock.
+ */
+export function recordHeliPurchase(id: string): void {
+  const p = load();
+  if (!p.purchasedHelis.includes(id)) {
+    p.purchasedHelis.push(id);
+    save(p);
+  }
+}
+
+/**
+ * Bank a best score for an id WITHOUT touching the linear-unlock ledger — the endless modes (Open
+ * Skies free-for-all) earn career points but must NOT enter `completed[]`, which gates helicopters
+ * (that count is for CLEARED campaign missions only). Keeps the per-id MAX so a session's points
+ * feed careerScore() → the spendable wallet, but a long Open Skies run can never inflate unlocks.
+ */
+export function recordScore(id: string, score: number): void {
+  if (!(score > 0)) return;
+  const p = load();
+  if (!(id in p.best) || score > p.best[id]) {
+    p.best[id] = score;
+    save(p);
+  }
+}
+
 /** Wipe ALL campaign progress (completions, best scores, ledger) — Settings → Reset. */
 export function resetProgress(): void {
   try {
@@ -79,7 +120,7 @@ export function getCompletion(id: string): CompletionRecord | null {
  * pilot profile / cloud link live under separate keys and are untouched.
  */
 export function clearCampaign(): void {
-  save({ completed: [], best: {}, completions: {} });
+  save({ completed: [], best: {}, completions: {}, purchasedHelis: [] });
 }
 
 /** The full progress snapshot (for cloud-save upload). Same shape `recordWin` maintains. */
@@ -99,11 +140,16 @@ export function importProgress(incoming: Partial<Progress>): void {
   const inCompleted = Array.isArray(incoming.completed) ? incoming.completed : [];
   const inBest = incoming.best && typeof incoming.best === 'object' ? incoming.best : {};
   const inCompletions = incoming.completions && typeof incoming.completions === 'object' ? incoming.completions : {};
+  const inPurchased = Array.isArray(incoming.purchasedHelis) ? incoming.purchasedHelis : [];
 
   const out: Progress = {
     completed: Array.from(new Set([...cur.completed, ...inCompleted.filter((id) => typeof id === 'string')])),
     best: { ...cur.best },
     completions: { ...cur.completions },
+    // Heli purchases are additive (union): a cloud restore can only ever ADD unlocks, never revoke a
+    // ship you've already bought. (Career points are the same max-per-mission union, so the wallet a
+    // merge produces can't go negative against the purchases it carries.)
+    purchasedHelis: Array.from(new Set([...cur.purchasedHelis, ...inPurchased.filter((id) => typeof id === 'string')])),
   };
 
   for (const [id, score] of Object.entries(inBest)) {

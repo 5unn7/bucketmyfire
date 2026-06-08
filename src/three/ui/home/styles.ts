@@ -448,9 +448,11 @@ const CSS = `
   background:linear-gradient(90deg, var(--card-bg) 0%, var(--card-bg) 34%, rgba(10,14,18,0.80) 55%, rgba(10,14,18,0.20) 80%, transparent 100%),
     linear-gradient(0deg, rgba(5,8,11,0.55) 0%, transparent 42%); }
 .bmf-app .mcard.locked .mart{ filter:grayscale(.6) brightness(.6); }
-.bmf-app .mcard .mbody{ position:relative; z-index:2; padding:13px 15px; max-width:74%; }
-.bmf-app .mcard .mhead{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
-.bmf-app .mcard .mname{ font-size:var(--fs-lg); font-weight:var(--fw-black); line-height:1.1; color:#fff; margin-top:10px; }
+/* header spans the FULL card (above the 74% body) so the badge auto-layouts flush to the top-right
+   corner — the chip flows left, the badge right via space-between, both over the art's top edge. */
+.bmf-app .mcard .mhead{ position:relative; z-index:2; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:13px 15px 0; }
+.bmf-app .mcard .mbody{ position:relative; z-index:2; padding:10px 15px 13px; max-width:74%; }
+.bmf-app .mcard .mname{ font-size:var(--fs-lg); font-weight:var(--fw-black); line-height:1.1; color:#fff; }
 .bmf-app .mcard .mtag{ font-size:var(--fs-meta); line-height:1.42; color:var(--text-subtle); margin-top:6px; max-width:32ch; }
 .bmf-app .mcard .mmeta{ display:flex; align-items:center; gap:12px; margin-top:10px; }
 /* run readout — token-only (was inline-styled in menus.ts): subtle body white + the gold best score */
