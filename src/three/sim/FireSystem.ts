@@ -472,8 +472,12 @@ export class FireSystem {
    *
    * Returns a REUSED `DouseResult` (no allocation) so the caller can give honest hit feedback. Stays
    * numbers-only — the engine-agnostic sim boundary holds.
+   *
+   * `countDoused` (default true) gates whether extinguished cells accrue to the cumulative `doused`
+   * counter that drives scoring/containment. Open Skies REPLAYS a peer's broadcast douse with it false:
+   * the fire still goes out on our field, but the kill credits THEM, not us.
    */
-  douse(x: number, z: number, radius: number, litres: number, effMul = 1): DouseResult {
+  douse(x: number, z: number, radius: number, litres: number, effMul = 1, countDoused = true): DouseResult {
     const res = this._douseResult;
     res.heatRemoved = 0;
     res.heatPresent = 0;
@@ -516,7 +520,7 @@ export class FireSystem {
           // above the lock — an edge clip or a thin/high drop) keeps its heat and re-flares (slowly now).
           if (after <= DROP_PHYSICS.extinguishLock) {
             after = 0;
-            this.extinguishedCells++;
+            if (countDoused) this.extinguishedCells++; // a replayed peer douse puts the cell out but credits THEM
             res.cellsExtinguished++;
             this.scorch[i] = 1;
           }

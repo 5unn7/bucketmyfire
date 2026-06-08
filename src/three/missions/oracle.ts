@@ -69,7 +69,7 @@ export function build(mission: MissionDef): Rig {
   // regionId the oracle would grow a NON-anchored world while the game grows the anchored one — the
   // completability gate would test a different map than ships. (Anchored-placement parity.)
   const world = new World(mission.seed, { regionId: mission.map, pins: mission.places, homeBase: mission.homeBase });
-  const wind = new Wind(mission.wind?.angle, mission.wind?.strengthScale ?? 1);
+  const wind = new Wind(mission.seed, mission.wind?.angle, mission.wind?.strengthScale ?? 1);
   // Per-axis fire-site bounds + rectangular fire grid (square map → both = WORLD3D.size/2−40, byte-identical).
   const fireBoundX = world.sizeX / 2 - 40;
   const fireBoundZ = world.sizeZ / 2 - 40;

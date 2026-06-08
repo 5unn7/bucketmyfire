@@ -61,7 +61,7 @@ import { recordDailyClear } from './missions/streak';
 import { markDailyCompleted } from './missions/dailyPlay';
 import { newlyUnlockedHelis, markColdStartSeen } from './ui/profile';
 import { submitScore, getClientId } from './leaderboard/client';
-import type { OpenSkiesNet } from './net/openSkies';
+import type { OpenSkiesNet, DouseEvent } from './net/openSkies';
 import type { RemotePilots } from './net/RemotePilots';
 import { cloudAutoSave } from './leaderboard/cloudSave';
 import { button, UI, FW } from './ui/theme';
@@ -292,6 +292,12 @@ export class Game {
   private openSkies: OpenSkiesNet | null = null;
   private remotePilots: RemotePilots | null = null;
   private ffaNetSendTimer = 0; // seconds since the last own-pose broadcast (vs 1/FFA.netSendHz)
+  // Pending douse to broadcast (Open Skies): accumulate this window's released water at the latest impact
+  // centre, then flush ONE event on the pose cadence so peers extinguish the same fire (released=0 → none owed).
+  private readonly netDouse: DouseEvent = { cx: 0, cz: 0, radius: 0, released: 0, densityMul: 1 };
+  // Set when a replayed peer douse mutates the fire field while we're frozen → force the next fire-field
+  // repack so the terrain char/glow/scar doesn't lag the (correctly-vanishing) flame meshes.
+  private fireFieldDirty = false;
   private ffaInvuln = 0; // post-respawn collision immunity (s) — can't be re-killed by a ship camping the pad
   private missionElapsed = 0; // seconds the mission has been active (stops on win/lose)
   private readonly end?: EndScreenHooks;
@@ -345,7 +351,7 @@ export class Game {
     // and the river VALLEYS are already shaped into the terrain. Read them here to build the meshes/colliders
     // below; empty off-SK / when disabled. (The deck-riding road draping uses these too — see roadSurfaceAt.)
     const bridgeSites = this.world.bridgeSites();
-    this.wind = new Wind(mission.wind?.angle, mission.wind?.strengthScale ?? 1);
+    this.wind = new Wind(mission.seed, mission.wind?.angle, mission.wind?.strengthScale ?? 1);
     this.fauna = new Fauna(this.scene, this.world);
     this.depotXZ = (() => {
       const base = this.world.getCommunity('base'); // 'base' = the HOME base (largest lake, cold-start)
@@ -1272,7 +1278,13 @@ export class Game {
       if (this.heliSim.crashLanded) this.detonate(this.crashCause ?? 'tree');
     } else if (!frozen) {
       this.missionElapsed += dt; // mission clock (drives survive/timeout; stops on win/lose)
-      this.wind.update(dtMs);
+      // Open Skies (endless): drive the wind off a SHARED wall-clock so peers sample the same wind from one
+      // clock → fire fronts drift together and a peer's douse tends to land on the blaze we both see. The
+      // wind noise is slow by design, so the only inexactness — each device reading its own (sub-second-
+      // skewed) wall clock — moves the wind imperceptibly; exact identity would need a negotiated clock,
+      // which isn't warranted while the douse itself is broadcast at resolved world coords. Solo/campaign/
+      // daily omit the clock → a private local-elapsed one (still fully seed-deterministic for the gates).
+      this.wind.update(dtMs, this.endless ? Date.now() / 1000 : undefined);
       // AGL flight: the altitude band rides the World floor under the heli, and a
       // full bucket flies heavy (weight coupling).
       const floorY = this.landingFloorAt(this.heliSim.position.x, this.heliSim.position.z);
@@ -1477,9 +1489,14 @@ export class Game {
       if (this.runtime.state !== 'active') this.latchOutcome();
     }
     // C5: repack the live fire field into the shared DataTexture the terrain chars/glows from —
-    // the continuous burn the player sees. O(cells) memcpy after the sim steps; skipped while
-    // frozen (won/lost) since the field can't change then — no wasted per-frame work.
-    if (!frozen) this.fireField.pack(this.fireSystem.fieldView());
+    // the continuous burn the player sees. O(cells) memcpy after the sim steps; skipped while frozen
+    // (won/lost) since the field normally can't change then — EXCEPT a replayed peer douse (Open Skies,
+    // stepPresence runs even while frozen), which sets `fireFieldDirty` so the char/glow/scar follow the
+    // extinguished cells within a frame instead of lagging until we unfreeze.
+    if (!frozen || this.fireFieldDirty) {
+      this.fireField.pack(this.fireSystem.fieldView());
+      this.fireFieldDirty = false;
+    }
     // Sync the fixed fire-mesh pool to the sim's active fires (burned-out + put-out vanish).
     // C4: a fire within the wash radius of a low heli gets fanned (cosmetic flame whip).
     const activeFires = this.fireSystem.active();
@@ -2185,6 +2202,18 @@ export class Game {
           (this.netLeaking ? FFA.poseFlagDropping : 0),
         score: this.ffaScore,
       });
+      // Flush this window's douse (if any water poured) so peers knock down the same fire we just hit.
+      if (this.netDouse.released > 0) {
+        this.openSkies.sendDouse(this.netDouse);
+        this.netDouse.released = 0;
+      }
+    }
+    // Replay peer douses onto OUR fire field (countDoused=false → the kill credits them, not us). The big
+    // seeded fires sit at the same XZ on every client, so a remote pour lands on the blaze we both see; a
+    // douse over a fire that only exists on their field harmlessly wets empty ground here.
+    for (const d of this.openSkies.drainDouses()) {
+      this.fireSystem.douse(d.cx, d.cz, d.radius, d.released, d.densityMul, false);
+      this.fireFieldDirty = true; // a peer put fire out on our field → repack even if we're frozen
     }
     this.remotePilots.sync(this.openSkies.remotes(), dt);
 
@@ -3050,6 +3079,16 @@ export class Game {
     }
     const p = this.resolveDrop(this.bucketSim.position.x, this.bucketSim.position.z, this.bucketSim.position.y);
     const res = this.fireSystem.douse(p.cx, p.cz, p.radius, released, p.densityMul);
+    // Open Skies: stash this pour into the pending broadcast (latest centre, accumulated litres) so peers
+    // replay it onto their own fire field — flushed on the pose cadence in stepPresence.
+    if (this.openSkies && released > 0) {
+      const nd = this.netDouse;
+      nd.cx = p.cx;
+      nd.cz = p.cz;
+      nd.radius = p.radius;
+      nd.densityMul = p.densityMul;
+      nd.released += released;
+    }
     const t = this.dropTally;
     t.heatRemoved += res.heatRemoved; // cumulative across the pour
     if (res.heatPresent > t.peakHeatPresent) t.peakHeatPresent = res.heatPresent; // peak (don't double-count cells)

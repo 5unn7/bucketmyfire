@@ -37,14 +37,36 @@ export interface RemoteState extends OwnPose {
   recv: number; // performance.now() at receipt
 }
 
+/**
+ * A water-drop douse, broadcast so peers can knock the SAME fire down on their OWN field. Open Skies runs
+ * an independent fire sim per client (only the seeded fires are shared), so without this a remote pour
+ * visibly sprays but never changes your ground. The dropping client resolves the geometry once (its
+ * wind-drifted impact centre + height-scaled footprint + litres released) and shares the RESULT; each peer
+ * simply replays `fireSystem.douse(...)` at that spot. Pure numbers — no Three / DOM, like everything here.
+ */
+export interface DouseEvent {
+  cx: number; // resolved impact centre X (world units)
+  cz: number; // resolved impact centre Z
+  radius: number; // footprint radius
+  released: number; // litres released into this douse
+  densityMul: number; // height/coverage density multiplier the dropper applied
+}
+
 /** The live transport handle Game drives. All methods are best-effort + never throw. */
 export interface OpenSkiesNet {
   readonly self: { id: string; name: string; heli: string };
   sendPose(p: OwnPose): void;
+  sendDouse(d: DouseEvent): void; // broadcast a resolved douse so peers extinguish the same fire
+  drainDouses(): DouseEvent[]; // peer douses received since the last call (cleared on read)
   remotes(): RemoteState[]; // live (non-stale) remote pilots; prunes on read
   count(): number;
   close(): void;
 }
+
+// Hard cap on the unread-douse backlog: drain runs every frame, so this only bites if a frame stalls; it
+// bounds memory rather than ever letting a burst pile up unboundedly.
+const MAX_DOUSE_BACKLOG = 64;
+const NO_DOUSES: DouseEvent[] = [];
 
 const URL_BASE = (import.meta.env.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
 const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ?? '';
@@ -69,6 +91,7 @@ export function connectOpenSkies(
 ): OpenSkiesNet | null {
   if (!openSkiesConfigured()) return null;
   const peers = new Map<string, RemoteState>();
+  let douses: DouseEvent[] = []; // peer douses received but not yet replayed onto our fire field
   let subscribed = false; // gate sends until the WS JOIN completes — else send() falls back to a REST POST
   let client: RealtimeClient;
   let channel: RealtimeChannel;
@@ -96,6 +119,18 @@ export function connectOpenSkies(
         recv: nowMs(),
       });
     });
+    channel.on('broadcast', { event: 'douse' }, (msg) => {
+      const p = (msg as { payload?: Record<string, unknown> }).payload;
+      if (!p || p.id === self.id) return; // ignore our own echo (self:false already drops it; belt + braces)
+      douses.push({
+        cx: num(p.cx),
+        cz: num(p.cz),
+        radius: num(p.radius),
+        released: num(p.released),
+        densityMul: num(p.densityMul),
+      });
+      if (douses.length > MAX_DOUSE_BACKLOG) douses.splice(0, douses.length - MAX_DOUSE_BACKLOG);
+    });
     // Track JOIN state: only push poses once SUBSCRIBED. Any other status (joining / CHANNEL_ERROR /
     // CLOSED / TIMED_OUT) leaves `subscribed` false, so sendPose drops the pose instead of triggering
     // realtime-js's per-call REST fallback + console.warn (a 12 Hz flood if the WS never joins).
@@ -116,6 +151,20 @@ export function connectOpenSkies(
       } catch {
         /* best-effort */
       }
+    },
+    sendDouse(d: DouseEvent): void {
+      if (!subscribed) return; // drop until the WS JOIN lands — avoids the REST flood (same gate as poses)
+      try {
+        void ch.send({ type: 'broadcast', event: 'douse', payload: { ...d, id: self.id } });
+      } catch {
+        /* best-effort */
+      }
+    },
+    drainDouses(): DouseEvent[] {
+      if (douses.length === 0) return NO_DOUSES; // no alloc on the common empty frame
+      const out = douses;
+      douses = [];
+      return out;
     },
     remotes(): RemoteState[] {
       const cut = nowMs() - staleMs;
@@ -141,6 +190,7 @@ export function connectOpenSkies(
         /* ignore */
       }
       peers.clear();
+      douses = [];
     },
   };
 }
