@@ -72,7 +72,7 @@ import { CAMPAIGN } from './missions/catalog';
 import type { MissionDef, MissionSignals, MissionAction, ZonePlacement, ScoreTally, TrackerItem } from './missions/types';
 import type { EndScreenHooks } from './HUD';
 import { seedFires, structurePlan, crewZones, resolveCrewZone, igniteFromPlacement, backburnLine } from './missions/scenario';
-import { ProvinceMode, type TownPin } from './province/ProvinceMode';
+import { ProvinceMode, type TownPin, type ShiftResult } from './province/ProvinceMode';
 import { provinceTownRefs } from './province/buildProvince';
 import { markFlown as markProvinceFlown, recordShift as recordProvinceShift, type ShiftSummary } from './province/career';
 import { WORLD3D, FLIGHT, STARTUP, BUCKET3D, DROP_PHYSICS, DROP_FX, FIREHEAD, CAMERA, FIRE3D, WATER, WASH, SPRAY, SMOKE, EMBERS, INSTRUMENTS, ROADS, MISSIONS, FFA, PROVINCE, COMMUNITIES, SETTLEMENT3D, HELIPAD, SCORE, FOREST, TREE_TEX, STRUCT_FIRE, CRASH, BRIDGE, resolveHeliClass } from './config';
@@ -299,6 +299,7 @@ export class Game {
   private readonly provTownPins: TownPin[] = []; // reused each frame → no per-frame radar-pin allocation
   private provFlownMarked = false; // career.markFlown fired once per shift (first board push)
   private provShiftRecorded = false; // career.recordShift fired once per shift (at stand-down)
+  private provShiftResult: ShiftResult | null = null; // the end-of-shift tally (cached once) → the SHIFT REPORT debrief
   // Open Skies live presence (Slice 3): the realtime transport + ghost-pilot view (both code-split,
   // lazily created when endless AND Supabase is configured; null otherwise → solo, no ghosts).
   private openSkies: OpenSkiesNet | null = null;
@@ -1990,6 +1991,8 @@ export class Game {
       // Living Province: the in-flight shift readout (swaps the objective checklist) + radar town-status pins.
       shift: this.living && this.province ? this.province.shift() : undefined,
       townPins: this.living && this.province ? this.province.townPins(this.provTownPins) : undefined,
+      shiftReport: this.provShiftResult ?? undefined, // set once the shift ends → the SHIFT REPORT debrief
+
       // Crew aboard count + live board/disembark dwell → the strip's crew icon + the BOARDING bar.
       crew: this.crew
         ? {
@@ -2225,6 +2228,19 @@ export class Game {
         markProvinceFlown(this.mission.map ?? 'saskatchewan');
       }
     }
+    // Shift COMPLETE ⇒ a WIN: the pilot rode out the whole quota of calls. Freeze the sim and show the
+    // shift-report debrief (the achievement payoff). Reputation already banked via postFfaScore on cadence;
+    // bank the final tally + log the graded shift once.
+    if (r.justComplete && !this.lost && !this.won) {
+      this.won = true;
+      this.finalScore = this.province.reputation;
+      if (!this.provFlownMarked) {
+        this.provFlownMarked = true;
+        markProvinceFlown(this.mission.map ?? 'saskatchewan');
+      }
+      this.postFfaScore();
+      this.logProvinceShift();
+    }
     if (r.justStoodDown && !this.lost && !this.won) {
       this.lost = true; // freezes the sim → the end banner shows (main.ts wires province retry/menu)
       this.finalScore = this.province.reputation;
@@ -2234,19 +2250,21 @@ export class Game {
   }
 
   /** Append this shift to the career season log (once per run). The reputation itself already banked
-   *  through postFfaScore → recordScore; this records the open-world META (towns held, calls, outcome). */
+   *  through postFfaScore → recordScore; this records the open-world META (grade, outcome, calls, towns). */
   private logProvinceShift(): void {
     if (this.provShiftRecorded || !this.province) return;
     this.provShiftRecorded = true;
-    const readout = this.province.shift();
+    const res = this.province.shiftResult();
+    this.provShiftResult = res; // cache for the SHIFT REPORT debrief (the end screen reads it from setState)
     const sum: ShiftSummary = {
       region: this.mission.map ?? 'saskatchewan',
-      reputation: this.province.reputation,
-      townsStanding: readout.townsStanding,
-      townsTotal: readout.townsTotal,
-      answered: this.province.answered,
-      missed: this.province.missed,
-      stoodDown: this.province.stoodDown,
+      reputation: res.reputation,
+      grade: res.grade,
+      completed: res.completed,
+      callsHeld: res.callsHeld,
+      callsTotal: res.callsTotal,
+      townsStanding: res.townsStanding,
+      townsTotal: res.townsTotal,
     };
     recordProvinceShift(sum);
   }

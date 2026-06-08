@@ -21,6 +21,9 @@ export const PROVINCE_COPY = {
     'New fires keep breaking out. Dispatch will call you to each one. Scoop from the nearest lake and put them out before they reach the towns.',
   situation: 'Open patrol. Fires break out and dispatch calls. The towns are counting on you.',
 
+  // --- Shift complete (rode out the whole quota of calls) — the achievement beat ---
+  shiftComplete: "That's the shift, Water-1. The province held. Good flying.",
+  shiftReportTitle: 'SHIFT REPORT',
   // --- Stand-down (overrun) — dispatcher closes the loop straight, no sugar ---
   standDown: 'Too many got past us. Stand down, Water-1. We fly again tomorrow.',
 

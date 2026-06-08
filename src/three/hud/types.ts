@@ -6,7 +6,7 @@
  * all three so every existing `import … from './HUD'` keeps working unchanged.
  */
 
-import type { TrackerItem, ScoreBreakdown } from '../missions/types';
+import type { TrackerItem, ScoreBreakdown, ScoreGrade } from '../missions/types';
 
 export interface HudState {
   water: number;
@@ -47,6 +47,10 @@ export interface HudState {
   // panel when `shift` is set, and the radar draws a ring per town coloured by status.
   shift?: { health: number; reputation: number; townsStanding: number; townsTotal: number; activeCalls: number };
   townPins?: { x: number; z: number; status: 'standing' | 'threatened' | 'damaged' }[];
+  // Living Province end-of-shift DEBRIEF (the achievement payoff). Present only when a province shift has
+  // ended (won = rode out the quota; lost = overrun) → the end screen renders the SHIFT REPORT (grade,
+  // calls held, towns saved, the reputation banked) instead of the campaign score breakdown.
+  shiftReport?: { completed: boolean; grade: ScoreGrade; callsHeld: number; callsTotal: number; townsStanding: number; townsTotal: number; reputation: number };
   fuel?: number; // 0..1 tank fraction (undefined → no FuelSim → fuel gauge hidden)
   fuelLow?: boolean; // gauge flashes (below reserve)
   zones?: { x: number; z: number; active: boolean; done: boolean; home: boolean; lost?: boolean }[]; // crew landing zones (radar blips); `home` = the always-marked base, `lost` = the fire reached the family

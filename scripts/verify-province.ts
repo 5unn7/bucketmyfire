@@ -12,8 +12,8 @@ import { build } from '../src/three/missions/oracle';
 import { igniteFromPlacement } from '../src/three/missions/scenario';
 import { DispatchDirector, type DispatchTown, type DispatchEvent } from '../src/three/province/DispatchDirector';
 import { OnboardingScript } from '../src/three/province/OnboardingScript';
-import { ProvinceMode } from '../src/three/province/ProvinceMode';
-import { ProvinceState, type ProvinceSignals } from '../src/three/province/ProvinceState';
+import { ProvinceMode, type ShiftResult } from '../src/three/province/ProvinceMode';
+import { ProvinceState, shiftGrade, type ProvinceSignals } from '../src/three/province/ProvinceState';
 import { buildProvince, provinceTownRefs } from '../src/three/province/buildProvince';
 import { buildShiftRecord, type ShiftSummary } from '../src/three/province/career';
 import { PROVINCE_COPY } from '../src/three/province/strings';
@@ -90,14 +90,14 @@ ok('dispatch schedule is frame-rate independent', JSON.stringify(fine) === JSON.
 ok('same seed → identical sequence', JSON.stringify(runSeq(def.seed, 1)) === JSON.stringify(runSeq(def.seed, 1)));
 ok('different seed → different sequence', JSON.stringify(runSeq(def.seed, 1)) !== JSON.stringify(runSeq((def.seed ^ 0x1234) >>> 0, 1)));
 
-// ── 3. Calls emerge + escalate (cadence faster late than early) ──
+// ── 3. A BOUNDED shift: exactly `shiftCalls` calls then quiet, cadence accelerating toward the end ──
 {
   const all = runSeq(def.seed, 0.5).map((s) => parseFloat(s.split('@')[1]));
-  ok('calls actually emerge over a shift', all.length >= 20, `n=${all.length}`);
+  ok('a shift issues exactly shiftCalls calls then goes quiet', all.length === PROVINCE.shiftCalls, `n=${all.length} cap=${PROVINCE.shiftCalls}`);
   ok('first call near firstCallSec', all.length > 0 && Math.abs(all[0] - PROVINCE.firstCallSec) < 1);
-  const early = all.filter((t) => t < 120).length;
-  const late = all.filter((t) => t >= HORIZON - 120).length;
-  ok('fire weather escalates (more calls late than early)', late > early, `early=${early} late=${late}`);
+  const firstGap = all[1] - all[0];
+  const lastGap = all[all.length - 1] - all[all.length - 2];
+  ok('cadence accelerates (later calls come faster)', lastGap < firstGap, `first=${firstGap.toFixed(1)} last=${lastGap.toFixed(1)}`);
 }
 
 // ── 4. No off-province ignitions: every event placement resolves onto real in-province land ──
@@ -111,7 +111,7 @@ ok('different seed → different sequence', JSON.stringify(runSeq(def.seed, 1)) 
     }
   }
   const off = rig.fire.active().filter((f) => !rig.world.isInProvince(f.x, f.z));
-  ok('dispatch fires light (placements resolve)', lit >= 20, `lit=${lit}`);
+  ok('dispatch fires light (placements resolve)', lit === PROVINCE.shiftCalls, `lit=${lit}`);
   ok('no fire ignites off-province', off.length === 0, `off=${off.length}`);
 }
 
@@ -243,15 +243,54 @@ function runOnboarding(answerMode: 'perfect' | 'none'): { events: DispatchEvent[
   ok('the handoff capstone is deferred to the first open call', capstoneAt > handoffAt, `capstone=${capstoneAt} handoff=${handoffAt}`);
 }
 
+// ── 8b. The ACHIEVEMENT loop: a competent pilot COMPLETES the bounded shift (a graded WIN); a no-answer
+//       pilot is overrun (a D loss); the grade thresholds hold. Drives ProvinceMode like Game does. ──
+{
+  const sig = (t: number, doused: number): ProvinceSignals => ({ shiftElapsed: t, doused, dropsEffective: 0, structuresAlive: rig.structures.total, structuresTotal: rig.structures.total });
+
+  // Perfect pilot: every issued call knocked down at once (doused always exceeds the quota).
+  const win = new ProvinceMode(def.seed, towns, false);
+  let winRes: ShiftResult | null = null;
+  let completeAt = -1;
+  for (let t = 1; t <= HORIZON && completeAt < 0; t += 1) {
+    if (win.update(sig(t, t * 1000)).justComplete) {
+      completeAt = t;
+      winRes = win.shiftResult();
+    }
+  }
+  ok('a competent pilot COMPLETES the bounded shift', completeAt > 0, `completeAt=${completeAt}`);
+  ok('the shift caps at shiftCalls', winRes !== null && winRes.callsTotal === PROVINCE.shiftCalls, `callsTotal=${winRes?.callsTotal}`);
+  ok('a completed shift is a WIN graded S/A', winRes !== null && winRes.completed && (winRes.grade === 'S' || winRes.grade === 'A'), `grade=${winRes?.grade}`);
+
+  // No-answer pilot: overrun → stood down (a loss), graded D.
+  const loss = new ProvinceMode(def.seed, towns, false);
+  let lossRes: ShiftResult | null = null;
+  let stoodAt = -1;
+  for (let t = 1; t <= HORIZON && stoodAt < 0; t += 1) {
+    if (loss.update(sig(t, 0)).justStoodDown) {
+      stoodAt = t;
+      lossRes = loss.shiftResult();
+    }
+  }
+  ok('a no-answer pilot is overrun (stood down past the floor)', stoodAt >= PROVINCE.minShiftSec, `stoodAt=${stoodAt}`);
+  ok('an overrun shift is a LOSS graded D', lossRes !== null && !lossRes.completed && lossRes.grade === 'D', `grade=${lossRes?.grade}`);
+
+  // Grade thresholds (pure).
+  ok('shiftGrade: flawless → S', shiftGrade(12, 12, 5, 5, 1, false) === 'S');
+  ok('shiftGrade: overrun → D regardless', shiftGrade(12, 12, 5, 5, 1, true) === 'D');
+  ok('shiftGrade: middling → B/C', ['B', 'C'].includes(shiftGrade(8, 12, 4, 5, 0.6, false)));
+  ok('shiftGrade: nothing held → D', shiftGrade(0, 12, 0, 5, 0.2, false) === 'D');
+}
+
 // ── 9. Career season-log record shaping (PURE — the store's localStorage path is browser-only) ──
 {
-  const sum: ShiftSummary = { region: 'saskatchewan', reputation: 1234.6, townsStanding: 5, townsTotal: 7, answered: 9, missed: 2, stoodDown: true };
+  const sum: ShiftSummary = { region: 'saskatchewan', reputation: 1234.6, grade: 'A', completed: true, callsHeld: 9, callsTotal: 12, townsStanding: 5, townsTotal: 7 };
   const rec = buildShiftRecord(sum, 20300);
-  ok('career record carries region + day', rec.region === 'saskatchewan' && rec.day === 20300);
+  ok('career record carries region + day + grade', rec.region === 'saskatchewan' && rec.day === 20300 && rec.grade === 'A');
   ok('career record rounds reputation', rec.reputation === 1235, `rep=${rec.reputation}`);
-  ok('career record passes the tally + outcome through', rec.townsStanding === 5 && rec.townsTotal === 7 && rec.answered === 9 && rec.missed === 2 && rec.stoodDown === true);
-  const neg = buildShiftRecord({ region: 'x', reputation: -50, townsStanding: -1, townsTotal: 0, answered: -3, missed: -1, stoodDown: 0 as unknown as boolean }, 1);
-  ok('career record clamps negatives + coerces stoodDown', neg.reputation === 0 && neg.townsStanding === 0 && neg.answered === 0 && neg.missed === 0 && neg.stoodDown === false);
+  ok('career record passes the tally + outcome through', rec.completed === true && rec.callsHeld === 9 && rec.callsTotal === 12 && rec.townsStanding === 5 && rec.townsTotal === 7);
+  const neg = buildShiftRecord({ region: 'x', reputation: -50, grade: 'D', completed: false, callsHeld: -3, callsTotal: -1, townsStanding: -1, townsTotal: 0 }, 1);
+  ok('career record clamps negatives + carries the loss', neg.reputation === 0 && neg.callsHeld === 0 && neg.callsTotal === 0 && neg.townsStanding === 0 && neg.completed === false);
 }
 
 // ── Summary ──

@@ -11,6 +11,7 @@
  * record SHAPING (`buildShiftRecord`) is a PURE function so the Node gate can assert it without storage.
  */
 import { dayNumberUTC } from '../missions/daily';
+import type { ScoreGrade } from '../missions/types';
 
 const KEY = 'bmf.career.v1';
 const LOG_MAX = 20; // keep the most recent N shifts (the season log); older ones drop off
@@ -20,22 +21,24 @@ export interface ShiftRecord {
   region: string; // region id flown (e.g. "saskatchewan")
   day: number; // UTC day number (dayNumberUTC) the shift was flown
   reputation: number; // reputation banked that shift
+  grade: ScoreGrade; // S..D — how the shift went (D when overrun)
+  completed: boolean; // rode out the whole shift (win) vs. overrun (loss)
+  callsHeld: number; // dispatch calls knocked down
+  callsTotal: number; // dispatch calls issued
   townsStanding: number; // towns still standing at end of shift
   townsTotal: number;
-  answered: number; // dispatch calls held
-  missed: number; // dispatch calls lost
-  stoodDown: boolean; // true if the province overran you (vs. you left it standing)
 }
 
-/** The live end-of-shift snapshot Game hands the store (region + the ProvinceMode tally). */
+/** The live end-of-shift snapshot Game hands the store (region + the ProvinceMode shift result). */
 export interface ShiftSummary {
   region: string;
   reputation: number;
+  grade: ScoreGrade;
+  completed: boolean;
+  callsHeld: number;
+  callsTotal: number;
   townsStanding: number;
   townsTotal: number;
-  answered: number;
-  missed: number;
-  stoodDown: boolean;
 }
 
 export interface Career {
@@ -53,11 +56,12 @@ export function buildShiftRecord(s: ShiftSummary, day: number): ShiftRecord {
     region: s.region,
     day,
     reputation: Math.max(0, Math.round(s.reputation)),
+    grade: s.grade,
+    completed: !!s.completed,
+    callsHeld: Math.max(0, Math.round(s.callsHeld)),
+    callsTotal: Math.max(0, Math.round(s.callsTotal)),
     townsStanding: Math.max(0, Math.round(s.townsStanding)),
     townsTotal: Math.max(0, Math.round(s.townsTotal)),
-    answered: Math.max(0, Math.round(s.answered)),
-    missed: Math.max(0, Math.round(s.missed)),
-    stoodDown: !!s.stoodDown,
   };
 }
 

@@ -13,6 +13,7 @@ import { dailyStreak } from '../missions/streak';
 import { bestScore } from '../missions/progress';
 import { CAMPAIGN } from '../missions/catalog';
 import { bannerButton, fmtTime } from './common';
+import { PROVINCE_COPY } from '../province/strings';
 import type { HudState, EndScreenHooks } from './types';
 import type { MissionDef, ScoreBreakdown, ScoreGrade } from '../missions/types';
 
@@ -89,6 +90,11 @@ export class EndScreen {
       transition: reduce ? 'none' : 'opacity 0.34s ease, transform 0.34s cubic-bezier(0.16,1,0.3,1)',
     });
 
+    // Living Province → a SHIFT REPORT debrief (grade · calls held · towns · the reputation banked, counted
+    // up). Everything else on this screen (scrim, the button rows, share) is shared below the branch.
+    if (s.shiftReport) {
+      this.renderShiftReport(card, s);
+    } else {
     const who = this.pilotName ?? 'pilot';
     const d = s.debrief;
     // A crash isn't a tactical "mission failed" — you wrecked the aircraft. Read that true at a glance;
@@ -208,6 +214,7 @@ export class EndScreen {
     // Progression payoff: a win that just crossed a heli's campaign gate celebrates it here, so the
     // reward isn't invisible until the player wanders back to the aircraft carousel.
     if (s.won && s.unlocked && s.unlocked.length) card.appendChild(unlockCallout(s.unlocked));
+    }
 
     if (this.end) {
       // Primary action row — the obvious next move (advance / retry) + back to the menu.
@@ -267,6 +274,67 @@ export class EndScreen {
       btn.textContent = orig;
     }, 1600);
   }
+
+  /**
+   * The Living Province SHIFT REPORT debrief — the achievement payoff for a bounded shift. The region is
+   * the eyebrow, the outcome the headline (SHIFT COMPLETE / STOOD DOWN), then the grade medal, a box score
+   * (calls held · towns standing), and the reputation banked COUNTED UP so the points visibly land. Warm
+   * "fight" register, token-only (no campaign breakdown / unlock / best-bar).
+   */
+  private renderShiftReport(card: HTMLElement, s: HudState): void {
+    const r = s.shiftReport!;
+    const who = this.pilotName ?? 'pilot';
+    if (this.missionName) {
+      card.appendChild(
+        el('div', { fontSize: FS.label, fontWeight: FW.bold, letterSpacing: '3px', textTransform: 'uppercase', color: UI.dim }, this.missionName),
+      );
+    }
+    const headline = r.completed ? 'SHIFT COMPLETE' : 'STOOD DOWN';
+    const headColor = r.completed ? UI.ok : UI.warn;
+    card.appendChild(
+      el('div', { fontSize: FS.banner, fontWeight: FW.heavy, letterSpacing: '0.5px', marginTop: this.missionName ? '5px' : '0', lineHeight: '1.05', color: headColor, textShadow: `0 0 16px ${headColor}55` }, headline),
+    );
+    card.appendChild(metaLine(PROVINCE_COPY.shiftReportTitle));
+    card.appendChild(gradeMedal(r.grade, null));
+    const sub = r.completed
+      ? r.townsStanding >= r.townsTotal
+        ? `Held the whole province, ${who}. Not a town lost.`
+        : `You rode out the shift, ${who}. Some got through, but the province stands.`
+      : `The province got away from us, ${who}. Regroup and fly again.`;
+    card.appendChild(el('div', { fontSize: FS.md, marginTop: '8px', lineHeight: '1.5', color: UI.textCool, maxWidth: '32ch', marginLeft: 'auto', marginRight: 'auto' }, sub));
+    const stats = el('div', { marginTop: '14px', display: 'inline-flex', flexDirection: 'column', gap: '4px', padding: '10px 16px', borderRadius: R.md, background: UI.recess, border: `1px solid ${UI.stroke}`, fontSize: FS.body, color: UI.textCool });
+    const row = (k: string, v: string): void => {
+      const rr = el('div', { display: 'flex', justifyContent: 'space-between', gap: '22px', minWidth: '190px' });
+      rr.appendChild(el('div', { color: UI.dim }, k));
+      rr.appendChild(el('div', { fontWeight: FW.bold }, v));
+      stats.appendChild(rr);
+    };
+    row('Calls held', `${r.callsHeld} / ${r.callsTotal}`);
+    if (r.townsTotal > 0) row('Towns standing', `${r.townsStanding} / ${r.townsTotal}`);
+    card.appendChild(stats);
+    card.appendChild(el('div', { fontSize: FS.label, fontWeight: FW.heavy, letterSpacing: '2px', color: UI.faint, marginTop: '12px', textTransform: 'uppercase' }, 'Reputation banked'));
+    const points = el('div', { fontSize: FS.display, fontWeight: FW.black, marginTop: '2px', color: UI.gold, textShadow: `0 0 18px ${UI.gold}40` }, '0');
+    card.appendChild(points);
+    countUp(points, r.reputation);
+  }
+}
+
+/** Count a number up from 0 to `target` (ease-out cubic) — the end-screen "see the points go up" beat.
+ *  Honours reduced-motion + non-positive totals by snapping straight to the value. */
+function countUp(elm: HTMLElement, target: number): void {
+  if (prefersReducedMotion() || target <= 0) {
+    elm.textContent = Math.max(0, Math.round(target)).toLocaleString();
+    return;
+  }
+  const dur = 900;
+  let start = -1;
+  const step = (t: number): void => {
+    if (start < 0) start = t;
+    const k = Math.min(1, (t - start) / dur);
+    elm.textContent = Math.round(target * (1 - Math.pow(1 - k, 3))).toLocaleString();
+    if (k < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
 }
 
 /** The "place · Mission N / total" sub-headline under the mission name — a quiet, letter-spaced meta

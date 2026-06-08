@@ -10,10 +10,21 @@
  * (Phase 2 will match douses to a call's actual fire.)
  */
 import { PROVINCE } from '../config';
+import type { ScoreGrade } from '../missions/types';
 import type { DispatchEvent } from './DispatchDirector';
 
 export type TownStatus = 'standing' | 'threatened' | 'damaged';
 export type CallStatus = 'active' | 'answered' | 'missed';
+
+/** Grade a finished shift S..D from how it went (PURE — the gate asserts the thresholds). Calls HELD is the
+ *  bulk of it (it's the job), towns standing + province health round it out; an overrun shift is a flat D. */
+export function shiftGrade(answered: number, total: number, townsStanding: number, townsTotal: number, health: number, stoodDown: boolean): ScoreGrade {
+  if (stoodDown) return 'D';
+  const callQ = total > 0 ? answered / total : 1;
+  const townQ = townsTotal > 0 ? townsStanding / townsTotal : 1;
+  const q = 0.55 * callQ + 0.3 * townQ + 0.15 * Math.max(0, Math.min(1, health));
+  return q >= 0.92 ? 'S' : q >= 0.78 ? 'A' : q >= 0.6 ? 'B' : q >= 0.4 ? 'C' : 'D';
+}
 
 interface Call {
   ev: DispatchEvent;
@@ -111,6 +122,10 @@ export class ProvinceState {
   }
   get activeCount(): number {
     return this.calls.filter((c) => c.status === 'active').length;
+  }
+  /** Total dispatch calls issued this shift (the shift-report denominator: "calls held X / total"). */
+  get totalCalls(): number {
+    return this.calls.length;
   }
   get activeCalls(): readonly DispatchEvent[] {
     return this.calls.filter((c) => c.status === 'active').map((c) => c.ev);

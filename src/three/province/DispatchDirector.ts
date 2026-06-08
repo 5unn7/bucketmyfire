@@ -86,7 +86,9 @@ export class DispatchDirector {
   update(shiftElapsed: number): DispatchEvent[] {
     const out: DispatchEvent[] = [];
     let guard = 0;
-    while (shiftElapsed >= this.nextAt && guard++ < 64) {
+    // A shift is a BOUNDED run of `shiftCalls` calls (the achievement cap): once the director has issued
+    // them all it goes quiet, and the shift COMPLETES when those calls are resolved (ProvinceState).
+    while (this.counter < PROVINCE.shiftCalls && shiftElapsed >= this.nextAt && guard++ < 64) {
       out.push(this.emit(this.counter, this.nextAt));
       this.counter++;
       const f = this.fwi(this.nextAt);
@@ -99,6 +101,12 @@ export class DispatchDirector {
   /** How many calls have been issued (diagnostics + the gate). */
   get issued(): number {
     return this.counter;
+  }
+
+  /** True once the shift's full quota of calls has gone out — no more will come (ProvinceMode watches this
+   *  plus "no active calls" to declare the shift COMPLETE). */
+  get exhausted(): boolean {
+    return this.counter >= PROVINCE.shiftCalls;
   }
 
   /** Build call #i, scheduled for time `at`. Pure: its RNG is keyed by (seed, i), so the call's town,

@@ -1777,8 +1777,12 @@ export const FFA = {
 // province/buildProvince.ts and the logic in province/DispatchDirector.ts + ProvinceState.ts. All
 // times are SHIFT seconds. Tuned so a calm opening gives reaction room and the peak overwhelms.
 export const PROVINCE = {
+  // --- Shift length (the ACHIEVEMENT loop): a "fly" is a BOUNDED shift of this many dispatch calls, not an
+  //     endless grind. The director stops after `shiftCalls`; once every call is resolved the shift COMPLETES
+  //     (a win + a grade + the shift-report debrief). Capping the calls is what gives a fly a finish line. ---
+  shiftCalls: 12, // dispatch calls in one shift → ~4-6 min of flying, then "shift complete"
   // --- Fire-weather escalation (FWI 0..1 climbs over the shift → meaner, more frequent calls) ---
-  fwiPeakSec: 600, // shift seconds to reach peak fire weather (FWI = 1); a linear ramp, then plateau
+  fwiPeakSec: 300, // shift seconds to reach peak fire weather (FWI = 1) — tuned so a 12-call shift CLIMAXES near its end
   firstCallSec: 12, // grace before the first dispatch call (let the pilot get airborne)
   callIntervalCalm: 26, // seconds between calls at FWI 0 (sparse, learnable)
   callIntervalPeak: 9, // seconds between calls at FWI 1 (relentless firestorm)

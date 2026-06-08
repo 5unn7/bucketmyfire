@@ -8,10 +8,10 @@
  * Engine-agnostic (numbers/POJOs only). Game stays the only Three-touching layer: it builds the town
  * list (from `MapContext`), feeds the snapshot, executes the returned actions, and reads the tracker.
  */
-import type { MissionAction } from '../missions/types';
+import type { MissionAction, ScoreGrade } from '../missions/types';
 import { DispatchDirector, type DispatchTown, type DispatchEvent } from './DispatchDirector';
 import { OnboardingScript } from './OnboardingScript';
-import { ProvinceState, type ProvinceSignals, type TownStatus } from './ProvinceState';
+import { ProvinceState, shiftGrade, type ProvinceSignals, type TownStatus } from './ProvinceState';
 import { PROVINCE_COPY } from './strings';
 
 /** A radar marker for one protected town, coloured by its live status (the HUD draws it). A town under an
@@ -34,8 +34,20 @@ export interface ShiftReadout {
 
 export interface ProvinceUpdate {
   actions: readonly MissionAction[]; // comms + ignite bundles to run via Game.runMissionAction
-  justStoodDown: boolean; // the frame the province was overrun → Game ends the shift
+  justStoodDown: boolean; // the frame the province was overrun → Game ends the shift as a LOSS
+  justComplete: boolean; // the frame the shift's last call resolved → Game ends the shift as a WIN
   justOnboarded: boolean; // the frame the teaching arc hands off → Game marks the pilot onboarded
+}
+
+/** The end-of-shift tally for the debrief + the career log (Game reads it when the shift ends). */
+export interface ShiftResult {
+  completed: boolean; // rode out the whole quota of calls (win) vs overrun (loss)
+  grade: ScoreGrade;
+  callsHeld: number;
+  callsTotal: number;
+  townsStanding: number;
+  townsTotal: number;
+  reputation: number;
 }
 
 export class ProvinceMode {
@@ -46,6 +58,7 @@ export class ProvinceMode {
   private readonly state: ProvinceState;
   private readonly towns: readonly DispatchTown[];
   private ended = false;
+  private outcome: 'none' | 'complete' | 'stooddown' = 'none'; // how the shift ended (win vs overrun)
 
   constructor(seed: number, towns: readonly DispatchTown[], onboarding = false) {
     this.seed = seed;
@@ -92,20 +105,46 @@ export class ProvinceMode {
     }
     this.state.update(s);
 
+    // Outcome (checked once, stand-down LOSS takes precedence over a same-frame complete). Stand-down =
+    // overrun (health hit 0 past the fairness floor). Complete = the director issued its whole quota AND
+    // every call is resolved → the pilot rode out the shift: a WIN with a grade (the achievement beat).
     let justStoodDown = false;
+    let justComplete = false;
     if (!this.ended && this.state.standDown(s.shiftElapsed)) {
       this.ended = true;
+      this.outcome = 'stooddown';
       justStoodDown = true;
       actions.push({ do: 'comms', speaker: 'dispatch', text: PROVINCE_COPY.standDown, urgency: 'alert' });
+    } else if (!this.ended && !this.onboard && this.director?.exhausted && this.state.totalCalls > 0 && this.state.activeCount === 0) {
+      this.ended = true;
+      this.outcome = 'complete';
+      justComplete = true;
+      actions.push({ do: 'comms', speaker: 'dispatch', text: PROVINCE_COPY.shiftComplete, urgency: 'info' });
     }
-    return { actions, justStoodDown, justOnboarded };
+    return { actions, justStoodDown, justComplete, justOnboarded };
   }
 
   get reputation(): number {
     return this.state.reputation;
   }
   get stoodDown(): boolean {
-    return this.ended;
+    return this.outcome === 'stooddown';
+  }
+  get completed(): boolean {
+    return this.outcome === 'complete';
+  }
+
+  /** The end-of-shift tally for the debrief + the career log. Grade falls to D when overrun. */
+  shiftResult(): ShiftResult {
+    return {
+      completed: this.outcome === 'complete',
+      grade: shiftGrade(this.state.answeredCount, this.state.totalCalls, this.state.townsStanding, this.state.townsTotal, this.state.health, this.outcome === 'stooddown'),
+      callsHeld: this.state.answeredCount,
+      callsTotal: this.state.totalCalls,
+      townsStanding: this.state.townsStanding,
+      townsTotal: this.state.townsTotal,
+      reputation: this.state.reputation,
+    };
   }
   /** Dispatch calls held / lost this shift — the season-log tally (province/career.ts). */
   get answered(): number {
