@@ -11,7 +11,7 @@
  */
 import type { MissionDef } from '../../missions/types';
 import {
-  HELIS, isHeliUnlocked, missionsCleared, loadProfile, saveProfile,
+  HELIS, MAPS, isHeliUnlocked, missionsCleared, loadProfile, saveProfile,
   availablePoints, heliCost, buyHeli, type Profile, type CatalogItem,
 } from '../profile';
 import { isConfigured, fetchMissionTop } from '../../leaderboard/client';
@@ -60,6 +60,8 @@ export function navigateRail(key: string): void {
       return openHangar();
     case 'coop':
       return openCoop();
+    case 'solo':
+      return openSolo();
     case 'shop':
       openStore(); // opens the standalone bucketmyfire storefront in a new tab
       return;
@@ -352,6 +354,8 @@ export function openCoop(): void {
     url.searchParams.delete('m');
     url.searchParams.delete('daily');
     url.searchParams.delete('ffa');
+    url.searchParams.delete('solo'); // the live world is shared — never a solo round
+    url.searchParams.delete('region'); // everyone flies the same canonical map (no per-user region)
     url.searchParams.set('province', '1');
     url.searchParams.set('heli', picked); // fly the chosen airframe (main.ts honours ?heli=)
     location.assign(url.toString());
@@ -366,6 +370,52 @@ export function openCoop(): void {
     chip.textContent = `${board.total} LIVE`;
     if (dot) chip.prepend(dot);
   }).catch(() => { /* best-effort */ });
+}
+
+// ============================ SOLO (pick a map, fly alone) ============================
+/** Solo — the manual "pick a map, fly alone" path. A map carousel; the chosen map boots a PRIVATE
+ *  province round (`?province&region=&solo=1`): the SAME live dispatch + generated category missions +
+ *  points, but no ghost pilots and off the shared board (your own pace). Future maps appear here as they
+ *  ship — today only Saskatchewan is flyable, the rest are "coming soon" teasers. (The live, shared,
+ *  rotating world is the Open Skies tab; this is the solo counterpart.) */
+export function openSolo(): void {
+  const pro = currentProfile();
+  const slides = MAPS.map((m) => {
+    const selected = m.id === pro.mapId && m.available;
+    const backdrop = m.imageUrl
+      ? `<img class="img" src="${m.imageUrl}" alt="">`
+      : `<div class="fallback"><b>${m.name.slice(0, 2).toUpperCase()}</b></div>`;
+    const badge = m.available
+      ? `<span class="badge ${selected ? 'ok' : ''}">${selected ? 'Selected' : 'Live'}</span>`
+      : `<span class="badge">Soon</span>`;
+    const body = m.available && m.stats
+      ? `<div class="ctx-row"><span class="ctx">${ic('map')}${m.stats.area}</span><span class="ctx">${ic('droplet')}${m.stats.lakes}</span></div>`
+      : '';
+    const footer = !m.available
+      ? `<button class="btn ghost block is-disabled">${ic('lock')}Coming soon</button>`
+      : `<button class="btn ember block" data-solo-map="${m.id}">${ic('play')}Fly solo</button>`;
+    return posterCard({ locked: !m.available, cardClass: 'map', backdrop, tagline: m.tagline, badge, title: m.name, body, footer });
+  });
+
+  const initial = Math.max(0, MAPS.findIndex((m) => m.id === pro.mapId && m.available));
+  const { root } = overlay('solo', 'Solo', carousel(slides));
+  wireCarousel(root, initial);
+  root.querySelectorAll<HTMLElement>('[data-solo-map]').forEach((b) =>
+    b.addEventListener('click', (e) => {
+      e.stopPropagation(); // don't let the slide's re-centre handler swallow the pick
+      const id = b.dataset.soloMap!;
+      saveProfile({ ...currentProfile(), mapId: id }); // remember the picked map
+      const url = new URL(location.href);
+      url.searchParams.delete('m');
+      url.searchParams.delete('daily');
+      url.searchParams.delete('ffa');
+      url.searchParams.set('province', '1');
+      url.searchParams.set('region', id); // fly the chosen map
+      url.searchParams.set('solo', '1'); // private round — no ghosts, off the shared board
+      url.searchParams.set('heli', currentProfile().heliId); // fly the saved airframe (loadProfile clamps locked → trainer)
+      location.assign(url.toString());
+    }),
+  );
 }
 
 // ============================ SETTINGS (minimal) ============================

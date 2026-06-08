@@ -222,6 +222,8 @@ function gotoCampaign(missionId: string | null): void {
   url.searchParams.delete('daily'); // leaving Daily Burn → never carry ?daily into a campaign/menu nav
   url.searchParams.delete('ffa'); // leaving Open Skies → never carry ?ffa into a campaign/menu nav
   url.searchParams.delete('province'); // leaving the Living Province → never carry ?province into a campaign/menu nav
+  url.searchParams.delete('solo'); // a solo flag is per-session — never leak it onto the menu/home URL
+  url.searchParams.delete('region'); // drop the picked map too; the home/menu is map-agnostic
   if (missionId) {
     url.searchParams.set('m', missionId);
   } else {
@@ -239,6 +241,9 @@ function gotoDaily(): void {
   url.searchParams.delete('m');
   url.searchParams.delete('autostart');
   url.searchParams.delete('ffa');
+  url.searchParams.delete('province');
+  url.searchParams.delete('solo');
+  url.searchParams.delete('region');
   url.searchParams.set('daily', '1');
   location.assign(url.toString());
 }
@@ -250,6 +255,9 @@ function gotoFfa(): void {
   url.searchParams.delete('m');
   url.searchParams.delete('autostart');
   url.searchParams.delete('daily');
+  url.searchParams.delete('province');
+  url.searchParams.delete('solo');
+  url.searchParams.delete('region');
   url.searchParams.set('ffa', '1');
   location.assign(url.toString());
 }
@@ -367,6 +375,9 @@ function buildAndRunMission(mission: MissionDef): Game {
   // career.onboarded — so a dogfood can re-see (or skip) a new pilot's guided first shift without wiping
   // localStorage. Absent → the real rule (off under headless qa; else on until the pilot's first shift).
   const onboardParam = params.get('onboard');
+  // Solo session (the map-pick "fly alone" path): `?solo=1` runs the province dispatch PRIVATELY — no
+  // ghost pilots, no shared board. Read once and passed to every (re)built Game so a retry stays solo.
+  const soloParam = params.get('solo') === '1';
   let profile = defaultProfile();
   if (heliOverride && HELI_MODELS[heliOverride]) profile = { ...profile, heliId: heliOverride };
   if (regionOverride) profile = { ...profile, mapId: regionOverride };
@@ -500,7 +511,7 @@ function buildAndRunMission(mission: MissionDef): Game {
         : onboardParam === '0'
           ? false
           : !params.has('qa') && !isOnboarded();
-    const g = new Game(container, tier, m, profile, makeEndHooks(m), { skipColdStart, disableCoach, onboarding });
+    const g = new Game(container, tier, m, profile, makeEndHooks(m), { skipColdStart, disableCoach, onboarding, solo: soloParam });
     // Debug/QA hook: lets a test harness read flight/game/mission state. On in dev always; in a prod
     // build only when `?qa` is present — re-pointed so a switched-to mission stays inspectable.
     if (import.meta.env.DEV || params.has('qa')) {

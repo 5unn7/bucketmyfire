@@ -303,6 +303,10 @@ export class Game {
   // lazily created when endless AND Supabase is configured; null otherwise → solo, no ghosts).
   private openSkies: OpenSkiesNet | null = null;
   private remotePilots: RemotePilots | null = null;
+  // Solo session (the map-pick "fly alone" path): a private endless/province round — no live presence
+  // (no ghost pilots) and no shared-board submit, so it never mixes with the live Open Skies world. Local
+  // points (career wallet) still bank exactly the same.
+  private solo = false;
   private ffaNetSendTimer = 0; // seconds since the last own-pose broadcast (vs 1/FFA.netSendHz)
   // Pending douse to broadcast (Open Skies): accumulate this window's released water at the latest impact
   // centre, then flush ONE event on the pose cadence so peers extinguish the same fire (released=0 → none owed).
@@ -320,9 +324,10 @@ export class Game {
     mission: MissionDef,
     profile?: Profile,
     end?: EndScreenHooks,
-    opts: { skipColdStart?: boolean; disableCoach?: boolean; onboarding?: boolean } = {},
+    opts: { skipColdStart?: boolean; disableCoach?: boolean; onboarding?: boolean; solo?: boolean } = {},
   ) {
     this.mission = mission;
+    this.solo = opts.solo ?? false; // map-pick solo round: no ghosts, no shared board (local points still bank)
     // Living Province onboarding (a brand-new pilot's first shift runs the reactive teaching arc instead of
     // the open dispatch schedule). main resolves this from career.onboarded (+ a ?onboard dogfood override),
     // and only ever sets it for `living` missions.
@@ -943,8 +948,9 @@ export class Game {
     }
     // Live presence (Slice 3): lazily connect the realtime channel + ghost-pilot view so OTHER players
     // appear in your sky. Dynamic-imported (the realtime client is code-split off the solo bundle) and a
-    // no-op when Supabase is unconfigured — the free-for-all stays fully playable solo either way.
-    if (this.endless) void this.initOpenSkies();
+    // no-op when Supabase is unconfigured — the free-for-all stays fully playable solo either way. A
+    // SOLO round (map-pick "fly alone") never connects — it's a deliberately private session, no ghosts.
+    if (this.endless && !this.solo) void this.initOpenSkies();
 
     this.chase = new ChaseCamera(aspect, this.world);
     this.input = new Input(container);
@@ -2274,8 +2280,10 @@ export class Game {
    *  run grows your points without ever inflating the mission-clear count that gates aircraft. */
   private postFfaScore(): void {
     if (!this.endless || this.ffaScore <= 0) return;
-    recordScore(this.mission.id, this.ffaScore); // bank points → wallet (best-only, unlock-safe)
-    void submitScore({ pilot: this.pilotName ?? 'Pilot', missionId: this.mission.id, score: this.ffaScore, timeS: this.missionElapsed });
+    recordScore(this.mission.id, this.ffaScore); // bank points → wallet (best-only, unlock-safe) — solo too
+    // A SOLO round stays off the shared per-day board (it's a private practice flight); the career wallet
+    // above still banks. The live Open Skies world is the only thing that competes on the board.
+    if (!this.solo) void submitScore({ pilot: this.pilotName ?? 'Pilot', missionId: this.mission.id, score: this.ffaScore, timeS: this.missionElapsed });
   }
 
   /** Lazily wire the live-presence layer: dynamic-import the (code-split) transport + ghost view,
