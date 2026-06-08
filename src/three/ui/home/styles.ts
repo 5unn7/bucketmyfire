@@ -4,8 +4,9 @@
  * token source — DESIGN.md) so the menu uses the same palette/scale as the rest of the UI. The
  * instrument "metal" gradients are local extras (derived, not brand tokens).
  *
- * SINGLE-VIEWPORT, NO-SCROLL (CLAUDE.md hard rule): `.bmf-app` is a fixed full-viewport flex column;
- * its content area fits above the fixed rail and only scrolls internally as a safety net.
+ * LAYOUT: `.bmf-app` is a fixed full-viewport flex column anchored above the fixed rail. The HOME hub
+ * pad scrolls vertically (its sections take their natural height); the other rail overlays stay
+ * single-viewport. (Phone/tablet only — the ≥1040px desktop dashboard is still a fixed 2-col grid.)
  */
 import { tokenDecls } from '../tokens';
 import { injectKitStyles } from '../components/base';
@@ -40,18 +41,17 @@ const CSS = `
   padding: calc(env(safe-area-inset-top) + 14px) 16px calc(var(--rail-h) + env(safe-area-inset-bottom) + 14px); }
 .bmf-app .pad::-webkit-scrollbar{ display:none; }
 
-/* ===== HOME hub: single-viewport, NO PAGE SCROLL (CLAUDE.md hard rule). The pad is a fixed flex
-   column that fits above the rail; the Continue art card is the flexible hero that absorbs all spare
-   height — and shrinks its IMAGE, never the layout, on short phones — so the hub never scrolls. */
-.bmf-app.home .pad{ display:flex; flex-direction:column; gap:11px; overflow:hidden;
+/* ===== HOME hub: SCROLLABLE column. Each section (dossier · daily · continue) takes its natural
+   height and the pad scrolls vertically when the stack overflows the viewport, above the fixed rail.
+   (Was a locked single-viewport flex column whose Continue card absorbed all spare height.) */
+.bmf-app.home .pad{ display:flex; flex-direction:column; gap:11px; overflow-y:auto;
   padding-top:calc(env(safe-area-inset-top) + 12px); padding-bottom:calc(var(--rail-h) + env(safe-area-inset-bottom) + 12px); }
 .bmf-app.home .pad > header{ flex:0 0 auto; }
-.bmf-app.home .zone{ display:flex; flex-direction:column; min-height:0; }
+.bmf-app.home .zone{ display:flex; flex-direction:column; }
 .bmf-app.home .z-daily{ flex:0 0 auto; }
-.bmf-app.home .z-cont{ flex:1 1 auto; }
+.bmf-app.home .z-cont{ flex:0 0 auto; }
 .bmf-app.home .sec{ margin:0 2px 8px; }
-.bmf-app.home .z-cont .artcard{ flex:1 1 auto; min-height:200px; }
-.bmf-app.home .z-cont .artcard .inner{ height:100%; min-height:0; }
+.bmf-app.home .z-cont .artcard{ min-height:200px; }
 
 .bmf-app .rise{ opacity:0; transform:translateY(14px); animation:bmf-rise .5s cubic-bezier(.16,.84,.3,1) forwards; }
 .bmf-app .d1{animation-delay:.04s} .bmf-app .d2{animation-delay:.11s} .bmf-app .d3{animation-delay:.18s} .bmf-app .d4{animation-delay:.26s}
@@ -338,6 +338,15 @@ const CSS = `
 .bmf-app .specgrid .spec{ grid-template-columns:50px 1fr; gap:8px; margin:0; }
 .bmf-app .specgrid .spec .name{ color:rgba(255,255,255,0.62); }
 
+/* Hangar points economy: the spendable-balance chip (right of the appbar title) + a foot that stacks
+   the "Clear N missions" gate over the "Unlock · N pts" buy button. All colour from tokens. */
+.bmf-app .pts-bal{ margin-left:auto; display:inline-flex; align-items:center; gap:6px; flex:0 0 auto;
+  padding:5px 11px; border-radius:var(--r-pill); background:var(--card-glass); border:1px solid var(--hair);
+  font-size:var(--fs-meta); font-weight:var(--fw-semibold); letter-spacing:.04em; color:var(--dim); white-space:nowrap; }
+.bmf-app .pts-bal svg{ width:14px; height:14px; color:var(--ember-hi); flex:none; }
+.bmf-app .pts-bal b{ color:var(--menu); font-weight:var(--fw-bold); }
+.bmf-app .heli-foot{ display:flex; flex-direction:column; gap:8px; }
+
 /* ===== Open Skies — aircraft picker as a 3-up grid of selectable card-buttons (warm "fight" register).
    Each card is a real <button>: a tinted procedural hangar tile + name + tagline, with a selected
    (ember) and a locked (dimmed + lock corner) state. All colour comes from the accent var + tokens. */
@@ -549,23 +558,16 @@ const CSS = `
   .bmf-app.newpilot #np-cta{ margin-top:14px !important; }
 }
 
-/* ===== HOME on most phones (≤820px tall — SE through the mid sizes, where a dynamic browser toolbar
-   eats height) — compress the FIXED parts (dossier + daily slip) and shed the campaign progress bar so
-   the Continue hero's copy + Fly button always fit, no scroll AND no clipped button. Tall phones
-   (≥844, plus PWA/standalone) skip this and keep the fuller card. ===== */
+/* ===== HOME on shorter phones (≤820px tall, where a dynamic browser toolbar eats height) — gently
+   compress the chrome (gaps, dossier padding, helmet) to shorten the scroll. Content is no longer
+   shed: the hub scrolls now, so the daily brief + campaign progress stay reachable. ===== */
 @media (max-height:820px){
   .bmf-app.home .pad{ gap:8px; padding-top:calc(env(safe-area-inset-top) + 9px); padding-bottom:calc(var(--rail-h) + env(safe-area-inset-bottom) + 9px); }
   .bmf-app.home header.card{ padding-top:12px; padding-bottom:12px; }
   .bmf-app.home .helmet{ width:48px; height:48px; }
   .bmf-app.home .sec{ margin:0 2px 6px; }
-  .bmf-app.home .dbrief{ -webkit-line-clamp:1; margin-top:8px; }
-  .bmf-app.home .z-cont .artcard{ min-height:168px; }
-  .bmf-app.home .z-cont .clamp2{ -webkit-line-clamp:1; }
-  /* The campaign progress bar is the lowest-priority line — shed it so the Fly button never clips. */
-  .bmf-app.home .contprog{ display:none; }
 }
 @media (max-height:600px){
-  .bmf-app.home .dbrief{ display:none; }
   .bmf-app.home .helmet{ width:42px; height:42px; }
 }
 
