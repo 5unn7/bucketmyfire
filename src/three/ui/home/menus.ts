@@ -16,7 +16,8 @@ import {
   HELIS, MAPS, isHeliUnlocked, missionsCleared, loadProfile, saveProfile,
   availablePoints, heliCost, buyHeli, type Profile, type CatalogItem,
 } from '../profile';
-import { isConfigured } from '../../leaderboard/client';
+import { isConfigured, fetchMissionTop } from '../../leaderboard/client';
+import { ffaSessionId } from '../../missions/freeforall';
 import { getCloudLink } from '../../leaderboard/cloudSave';
 import { openCloudSave } from '../CloudSave';
 import { resetProgress, getProgress, bestScore, bestStars, isUnlocked } from '../../missions/progress';
@@ -461,7 +462,10 @@ export function openCoop(): void {
   // title + subtitle hero, so the overlay appbar is hidden for this screen (styles.ts).
   const body = `<div class="osky">
     <div class="osky-pitch">
-      <span class="chip">${ic('fire')}Free-for-all</span>
+      <div class="ctx-row">
+        <span class="chip">${ic('fire')}Free-for-all</span>
+        <span class="chip ghost osky-live-chip" data-osky-live><span class="osky-live-dot"></span>LIVE</span>
+      </div>
       <h2 class="h-big osky-title">Open Skies</h2>
       <p class="osky-sub">Real-time flying for all.</p>
       <p class="osky-desc">Bring friends, showcase your skill, earn points.</p>
@@ -495,6 +499,16 @@ export function openCoop(): void {
     url.searchParams.set('heli', picked); // fly the chosen airframe (main.ts honours ?heli=)
     location.assign(url.toString());
   });
+  // Best-effort: fetch today's FFA pilot count from the board and surface it as a chip.
+  // fetchMissionTop returns {total:0} when unconfigured, so the badge only appears when real.
+  fetchMissionTop(ffaSessionId(new Date()), 1).then((board) => {
+    if (board.total < 1) return;
+    const chip = root.querySelector<HTMLElement>('[data-osky-live]');
+    if (!chip) return;
+    const dot = chip.querySelector('.osky-live-dot');
+    chip.textContent = `${board.total} LIVE`;
+    if (dot) chip.prepend(dot);
+  }).catch(() => { /* best-effort */ });
 }
 
 // ============================ SETTINGS (minimal) ============================

@@ -407,6 +407,10 @@ const CSS = `
 .bmf-app .osky-feats{ margin-top:11px; display:flex; flex-direction:column; gap:9px; }
 .bmf-app .osky-feat{ display:flex; align-items:center; gap:10px; font-size:var(--fs-sm); font-weight:var(--fw-semibold); color:var(--text); }
 .bmf-app .osky-feat svg{ width:17px; height:17px; flex:0 0 auto; color:var(--ember-hi); }
+.bmf-app .osky-live-chip{ gap:6px; }
+.bmf-app .osky-live-dot{ width:6px; height:6px; border-radius:50%; background:var(--ember); box-shadow:0 0 8px var(--ember), var(--ember-glow); flex:0 0 auto; animation:bmf-osky-pulse 1.8s ease-in-out infinite; }
+@keyframes bmf-osky-pulse{ 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.65)} }
+@media(prefers-reduced-motion:reduce){ .bmf-app .osky-live-dot{animation:none!important} }
 .bmf-app .osky-pick .sec{ margin:14px 2px 0; }
 /* The aircraft grid is the HERO on phone: it flexes to fill all height between the "Your aircraft"
    header and the Join button, so the cards (and their portrait key-art) grow as large as the viewport
