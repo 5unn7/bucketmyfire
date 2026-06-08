@@ -19,6 +19,7 @@ import { resetStaleStorage } from './storage/reset';
 import { installErrorBeacon } from './telemetry/errorBeacon';
 import { signalFirstFrame } from './splashSignal';
 import { showLoading, hideLoading } from './ui/LoadingOverlay';
+import { showBriefing } from './ui/Briefing';
 import { injectFonts } from './ui/fonts';
 import type { MissionDef } from './missions/types';
 import type { EndScreenHooks } from './HUD';
@@ -238,7 +239,50 @@ function gotoFfa(): void {
   location.assign(url.toString());
 }
 
+/**
+ * Smart lazy load: paint the Game UI (the pre-flight DISPATCH briefing) INSTANTLY, then build the
+ * World behind it. The briefing reads only from the MissionDef, so it shows BEFORE the heavy
+ * `new Game()` (World gen + terrain mesh + minimap). The cold-start splash hands off to this painted
+ * UI right away; the World builds while the pilot reads the slip, so launching a mission no longer
+ * stalls on a multi-second spinner. Tapping Fly calls `game.begin()`, which thaws the paused sim.
+ */
 function bootMission(mission: MissionDef): void {
+  let firstGame: Game | null = null; // the booted Game once built — the live one the briefing's Fly begins
+  let beginRequested = false; // pilot tapped Fly before the build landed (rare) — begin the instant it does
+  let dismissBriefing: () => void = () => {};
+  const requestBegin = (): void => {
+    if (firstGame) {
+      firstGame.begin(); // thaw the sim + arm the cold-start dial / cinematic fly-in (idempotent)
+      dismissBriefing();
+    } else {
+      beginRequested = true;
+    }
+  };
+  dismissBriefing = showBriefing(container, mission, defaultProfile().name, requestBegin);
+  // Hand the cold-start splash off to the painted briefing (mirrors the home-hub reveal): one frame so
+  // the briefing is real pixels before the splash fades, then build the World on the NEXT frame so its
+  // synchronous construction is hidden behind the interactive briefing, not the static splash.
+  requestAnimationFrame(() => {
+    signalFirstFrame();
+    requestAnimationFrame(() => {
+      const game = buildAndRunMission(mission);
+      firstGame = game;
+      // Headless QA / autostart expects a running, airborne aircraft, and the sim stays FROZEN behind
+      // the briefing (inBriefing) until begin() — so auto-begin the instant the Game exists. A pilot tap
+      // queued during the (thread-blocking) build also lands here.
+      if (params.has('qa') || params.has('autostart') || beginRequested) {
+        game.begin();
+        dismissBriefing();
+      }
+    });
+  });
+}
+
+/** Build the renderer + Game + composer + render loop for `mission` and return the freshly built Game.
+ *  Split out of `bootMission` so the pre-flight briefing can paint before this heavy synchronous work
+ *  (World gen + terrain mesh + minimap) runs. The returned Game is the FIRST one built — RETRY/NEXT
+ *  rebuild a new Game in place via `switchMission` below, which the render loop picks up live. */
+function buildAndRunMission(mission: MissionDef): Game {
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
   renderer.setSize(container.clientWidth, container.clientHeight);
   renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -500,4 +544,7 @@ function bootMission(mission: MissionDef): void {
       onLeaderboard: () => openLeaderboard(CAMPAIGN, m.id),
     };
   }
+
+  // Hand the freshly built Game back so the (external) pre-flight briefing's Fly button can begin it.
+  return game;
 }

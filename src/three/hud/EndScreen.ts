@@ -35,7 +35,7 @@ export class EndScreen {
   }
 
   /**
-   * Capture the mission context the debrief reads — called once from `HUD.showBriefing`, BEFORE the run
+   * Capture the mission context the debrief reads — called once from `HUD.setMissionContext`, BEFORE the run
    * (so `prevBest` is the score to beat, not this run's freshly-recorded one). Drives the hero headline
    * (the mission NAME), the "place · Mission N / total" meta line, and the new-best delta bar.
    */

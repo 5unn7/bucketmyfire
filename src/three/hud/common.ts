@@ -17,6 +17,17 @@ export function fmtTime(sec: number): string {
   return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
 }
 
+/**
+ * Personalize a radio/briefing line: the mission catalog + hardcoded callouts use "Water-1" as the
+ * pilot callsign placeholder (see missions/catalog.ts), so swap in the player's own callsign and
+ * Dispatch addresses them by name. No name (e.g. headless ?autostart) → the "Water-1" default rides
+ * through unchanged. Shared by the in-flight comms (HUD) and the pre-flight briefing (ui/Briefing).
+ */
+export function personalize(text: string, name?: string): string {
+  if (!name) return text;
+  return text.replace(/Water-1/g, () => name); // fn form: a "$"-bearing callsign can't trigger replace's special patterns
+}
+
 /** A pill button for the mission end banner + the pre-flight briefing. */
 export type BannerKind = 'primary' | 'secondary' | 'ghost' | 'store';
 /**

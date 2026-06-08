@@ -80,12 +80,14 @@ const ROUTES = [
     ready: () => window.__game && window.__game.debug,
     settle: 2500, // fire keeps burning; any late program compile surfaces
     drive: async (page) => {
-      // (0) Dismiss the pre-flight DISPATCH briefing. ?autostart skips the cold-start spool but NOT the
-      // briefing card — until BEGIN is tapped, Game holds `inBriefing` and the whole sim (fire spread,
-      // scoop/drop, spray) stays FROZEN, so the scoop→drop below would emit nothing. Tap BEGIN, then go.
+      // (0) Make sure the sim is THAWED. The pre-flight DISPATCH briefing now paints BEFORE the Game is
+      // built (instant UI; see main.ts bootMission), and under ?qa/?autostart the boot auto-calls
+      // game.begin() the instant the Game exists — so `inBriefing` is already false here and the sim
+      // (fire spread, scoop/drop, spray) is running. This click is a belt-and-suspenders fallback: if the
+      // auto-begin ever regresses, tapping the Fly button still dismisses the slip and thaws the sim.
       await page.evaluate(() => {
-        const begin = [...document.querySelectorAll('button,[role=button]')].find((b) => /begin/i.test(b.innerText || ''));
-        if (begin) begin.click();
+        const fly = [...document.querySelectorAll('button,[role=button]')].find((b) => /begin|fly/i.test(b.innerText || ''));
+        if (fly) fly.click();
       });
       await sleep(300);
 

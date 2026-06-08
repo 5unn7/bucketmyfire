@@ -936,21 +936,30 @@ export class Game {
     this.hud.mountUnderRadar(this.buildMuteButton());
     // C5: hand the radar the live fire field so it shades the burnt area (and the live front).
     this.hud.setBurnField(this.fireSystem.fieldView());
-    // The reactive arc opens with a pre-flight DISPATCH briefing card; the sim + mission clock stay
-    // paused (inBriefing) until the pilot hits BEGIN, then the authored 'start' beat radios in.
-    this.hud.showBriefing(this.mission, () => {
-      this.inBriefing = false;
-      // Cold start: the briefing hands off to the engine-start dial — hold it to spool the rotors
-      // before the aircraft will fly. (Already running under a QA skip → straight to flight.) Arm the
-      // cinematic fly-in here too: the camera snaps CLOSE to the parked heli and pulls out to the normal
-      // trail as the rotor spools, so the view settles into flight as the start cycle completes.
-      if (!this.engineStarted) {
-        this.hud.showEngineStart();
-        this.chase.beginIntro();
-      }
-      // First-time pilots are now taught by the interactive CoachDirector (driven in update once the
-      // rotors are up), not an auto-popped manual. The "?" reference modal stays reopenable anytime.
-    });
+    // The pre-flight DISPATCH briefing card no longer lives here — it's painted by `ui/Briefing.ts`
+    // BEFORE this Game is constructed (so the UI loads instantly while the World builds behind it; see
+    // main.ts bootMission). The sim + mission clock stay paused (inBriefing starts true) until that
+    // briefing's Fly button calls `begin()` below. We still capture the mission context for the
+    // end-screen / Share text here, exactly as showBriefing used to.
+    this.hud.setMissionContext(this.mission);
+  }
+
+  /**
+   * Thaw the sim and start the mission — the handoff from the (now external) pre-flight briefing. Sets
+   * `inBriefing = false` so update() steps physics + the mission clock, and for a cold start hands off
+   * to the engine-start dial + arms the cinematic fly-in (the camera snaps CLOSE to the parked heli and
+   * pulls out to the normal trail as the rotor spools). Idempotent: once flight has begun this is a
+   * no-op, so a double-tap on Fly (or a qa auto-begin racing a manual one) can't re-trigger the intro.
+   * First-time pilots are taught by the interactive CoachDirector (driven in update once the rotors are
+   * up), not an auto-popped manual; the "?" reference modal stays reopenable anytime.
+   */
+  begin(): void {
+    if (!this.inBriefing) return;
+    this.inBriefing = false;
+    if (!this.engineStarted) {
+      this.hud.showEngineStart();
+      this.chase.beginIntro();
+    }
   }
 
   /**

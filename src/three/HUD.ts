@@ -16,7 +16,7 @@
  * (backdrop blur), hairline strokes, one cyan accent, light type.
  */
 
-import type { TrackerItem, CommsSpeaker, CommsUrgency, MissionDef, Objective } from './missions/types';
+import type { TrackerItem, CommsSpeaker, CommsUrgency, MissionDef } from './missions/types';
 import type { FireFieldView } from './sim/FireSystem';
 import { UI, FS, FW, R, el, frosted, makeCanvas, clamp01, anchor, prefersReducedMotion } from './ui/theme';
 import { onLayout, type LayoutState } from './ui/layout';
@@ -25,7 +25,7 @@ import { EndScreen } from './hud/EndScreen';
 import { EngineStart } from './hud/engineStart';
 import { CoachOverlay } from './ui/coach/CoachOverlay';
 import type { CoachPrompt } from './ui/coach/CoachDirector';
-import { bannerButton, fmtTime, AIRFRAME_OK } from './hud/common';
+import { fmtTime, AIRFRAME_OK, personalize } from './hud/common';
 import type { HudState, EndScreenHooks, MapLabels } from './hud/types';
 
 // Re-exported so every existing `import { … } from './HUD'` keeps working unchanged.
@@ -40,58 +40,10 @@ const TAPE_H = 188; // jet tape canvas height (the scrolling window)
 const LOW_AGL_FT = 250; // altimeter reads LOW (red) below this AGL in feet
 const HINT_VISIBLE_MS = 3600; // status hint flashes on, then auto-fades after this (no permanent nag)
 
-// --- Pre-flight DISPATCH SLIP helpers ------------------------------------------------------------
-// The briefing card reads like a fireline dispatch slip: fielded SITUATION / TASK / WINDS rows, not a
-// prose paragraph. TASK + WINDS are DERIVED from the MissionDef so they can never drift from what the
-// mission actually is (the win rule, the seeded wind). Mono labels in the warm/fight register.
-const MONO = UI.fontMono; // the cockpit instrument face (JetBrains Mono) — one source via theme.ts
-const TIME_OF_DAY_LABEL: Record<string, string> = {
-  dawn: 'DAWN',
-  day: 'DAY',
-  noon: 'NOON',
-  overcast: 'OVERCAST',
-  golden: 'GOLDEN HR',
-  dusk: 'DUSK',
-};
-
-/** One terse TASK phrase per objective — derived so the slip can't contradict the real win rule. */
-function briefTaskPhrase(o: Objective): string {
-  switch (o.kind) {
-    case 'extinguishAll':
-      return 'Put every fire out.';
-    case 'extinguishCount':
-      return `Knock down ${o.n ?? 0} fires.`;
-    case 'deliver':
-      return o.label ?? `Work ${o.n ?? 0} zones.`;
-    case 'evacuate':
-      return o.label ?? `Lift ${o.n ?? 0} families clear.`;
-    case 'survive':
-      // Authored label wins (Open Skies' "Fly free…" reads better than a 1e9-second hold). Else the timer.
-      return o.label ?? (o.seconds ? `Hold the line ${Math.round(o.seconds)}s.` : 'Hold the line.');
-    case 'backburn':
-      return 'Lay the backburn line.';
-  }
-}
-
-/** PROTECT row — only present when the mission has a `protect` lose-condition. Label-first (authored),
- *  else derived from the structures-min so the slip never invents the stake. */
-function briefProtectPhrase(def: MissionDef): string | undefined {
-  const p = def.fails?.find((f) => f.kind === 'protect');
-  if (!p) return undefined;
-  if (p.label) return /[.!?]$/.test(p.label) ? p.label : `${p.label}.`;
-  if (p.all) return 'Keep every structure standing.';
-  return `Keep ${p.min ?? 1} structures standing.`;
-}
-
-/** WINDS row from the mission's wind-strength scale (1 = the config baseline when unset). */
-function briefWindPhrase(scale: number | undefined): string {
-  const s = scale ?? 1;
-  if (s <= 0.4) return 'Light, variable.';
-  if (s <= 0.8) return 'Light.';
-  if (s <= 1.1) return 'Moderate.';
-  if (s <= 1.4) return 'Strong, gusting.';
-  return 'Extreme — gusting hard.';
-}
+// The cockpit instrument face (JetBrains Mono) — one source via theme.ts; used by the flight tapes +
+// radar text below. (The pre-flight DISPATCH SLIP that also used it now lives in ui/Briefing.ts, so it
+// can paint instantly before the World/HUD are built — see main.ts bootMission.)
+const MONO = UI.fontMono;
 
 // Inject the warning-caption flash keyframes once (the GPWS-style "SINK RATE" / "PULL UP" / "TERRAIN"
 // alert pulses to read as urgent). Pattern mirrors ui/flow/chrome.ts. Reduced-motion users get a
@@ -763,19 +715,9 @@ export class HUD {
     this.alertEl.style.animation = prefersReducedMotion() ? 'none' : 'bmf-alert-pulse 0.7s ease-in-out infinite';
   }
 
-  // --- Radio comms + pre-flight briefing (the mission "experience" layer) ----
-
-  /**
-   * Personalize a radio/briefing line: the mission catalog + hardcoded callouts use "Water-1" as the
-   * pilot callsign placeholder (see missions/catalog.ts), so swap in the player's own callsign and
-   * Dispatch addresses them by name. No profile (e.g. headless ?autostart) → the "Water-1" default
-   * rides through unchanged.
-   */
-  private personalize(text: string): string {
-    const name = this.pilotName;
-    if (!name) return text;
-    return text.replace(/Water-1/g, () => name); // fn form: a "$"-bearing callsign can't trigger replace's special patterns
-  }
+  // --- Radio comms (the mission "experience" layer) --------------------------
+  // (The pre-flight DISPATCH SLIP moved to ui/Briefing.ts so it can paint before the World/HUD exist;
+  // `personalize` is now the shared helper in hud/common.ts, used by both the comms below and the slip.)
 
   /**
    * Post a radio line to the comms log: a slim frosted toast tagged DISPATCH / CREW / WARNING,
@@ -784,7 +726,7 @@ export class HUD {
    * stack is capped to a few visible lines so it never crowds the HUD.
    */
   pushComms(speaker: CommsSpeaker, text: string, urgency: CommsUrgency): void {
-    text = this.personalize(text);
+    text = personalize(text, this.pilotName);
     const color =
       speaker === 'warning' || urgency === 'alert' ? UI.warn : speaker === 'crew' ? UI.commsAmber : speaker === 'pilot' ? UI.text : UI.accent;
     const line = frosted({
@@ -821,95 +763,12 @@ export class HUD {
   }
 
   /**
-   * Pre-flight DISPATCH SLIP (the arc's opening): a frosted modal over the frozen scene styled like a
-   * fireline dispatch slip — a mono header strip, the mission no. + name + threat pips, then fielded
-   * SITUATION / TASK / WINDS rows (TASK + WINDS derived from the def so they can't drift from the real
-   * scenario), and a Fly button. Warm/fight register chrome, cyan action. Game keeps the sim +
-   * clock paused until `onBegin` fires. Dismissed on BEGIN or a tap on the scrim.
+   * Capture the mission context for the end-screen + Share text (name / place / index + prior best).
+   * This used to live inside `showBriefing`; the briefing card itself now paints from `ui/Briefing.ts`
+   * BEFORE the Game/HUD exist (so the UI is instant), so Game calls this directly in its constructor.
    */
-  showBriefing(def: MissionDef, onBegin: () => void): void {
-    this.endScreen.setContext(def); // capture name/place/index + prior best for the end-screen + Share text
-    const scrim = el('div', {
-      position: 'fixed',
-      inset: '0',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      background: 'rgba(4,8,12,0.55)',
-      backdropFilter: 'blur(6px) saturate(108%)', // blur the world so the briefing reads as the focus
-      zIndex: '30',
-      pointerEvents: 'auto',
-    });
-    scrim.style.setProperty('-webkit-backdrop-filter', 'blur(6px) saturate(108%)');
-    const card = frosted({ maxWidth: '420px', margin: '0 20px', padding: '0', borderRadius: R.xl, overflow: 'hidden' });
-
-    // Header strip — the dispatch banner. Mono, warm tint, ruled off from the body.
-    const head = el('div', {
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      padding: '11px 18px',
-      background: 'rgba(255,106,44,0.10)',
-      borderBottom: `1px solid ${UI.stroke}`,
-      fontFamily: MONO,
-      fontSize: FS.tag,
-      fontWeight: FW.bold,
-      letterSpacing: '2px',
-    });
-    head.appendChild(el('div', { color: UI.emberHi }, 'DISPATCH BRIEFING'));
-    head.appendChild(el('div', { color: UI.dim }, def.timeOfDay ? (TIME_OF_DAY_LABEL[def.timeOfDay] ?? '') : ''));
-    card.appendChild(head);
-
-    const body = el('div', { padding: '15px 18px 16px' });
-
-    // Mission number (mono, dim) over the title + threat pips.
-    body.appendChild(
-      el('div', { fontFamily: MONO, fontSize: FS.tag, fontWeight: FW.bold, letterSpacing: '2px', color: UI.dim, marginBottom: '3px' }, `MISSION ${String(def.index + 1).padStart(2, '0')}`),
-    );
-    const titleRow = el('div', { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' });
-    titleRow.appendChild(el('div', { fontSize: FS.title, fontWeight: FW.heavy, letterSpacing: '0.4px', textTransform: 'uppercase' }, def.name));
-    const pips = el('div', { display: 'flex', gap: '3px', flexShrink: '0' });
-    for (let i = 0; i < 5; i++) {
-      pips.appendChild(el('div', { width: '14px', height: '4px', borderRadius: R.pill, background: i < def.difficulty ? UI.fire : 'rgba(255,255,255,0.14)' }));
-    }
-    titleRow.appendChild(pips);
-    body.appendChild(titleRow);
-
-    // Hairline-ruled fielded rows — the "document" feel: a mono label gutter, dry value.
-    const rule = (): HTMLElement => el('div', { height: '1px', background: UI.stroke, margin: '12px 0' });
-    const field = (key: string, value: string): HTMLElement => {
-      const row = el('div', { display: 'flex', gap: '12px', alignItems: 'baseline', marginBottom: '9px' });
-      row.appendChild(el('div', { flex: '0 0 62px', fontFamily: MONO, fontSize: FS.tag, fontWeight: FW.bold, letterSpacing: '1.5px', color: UI.ember }, key));
-      row.appendChild(el('div', { flex: '1', fontSize: FS.sm, lineHeight: '1.42', color: UI.text }, value));
-      return row;
-    };
-
-    body.appendChild(rule());
-    body.appendChild(field('SITUATION', this.personalize(def.situation ?? def.tagline ?? def.brief)));
-    body.appendChild(field('TASK', def.objectives.map(briefTaskPhrase).join('  ·  ')));
-    const protect = briefProtectPhrase(def);
-    if (protect) body.appendChild(field('PROTECT', protect));
-    body.appendChild(field('WINDS', briefWindPhrase(def.wind?.strengthScale)));
-    body.appendChild(rule());
-
-    const begin = bannerButton('Fly ▸', 'primary', () => {
-      scrim.remove();
-      onBegin();
-    });
-    const actions = el('div', { display: 'flex', justifyContent: 'flex-end', marginTop: '2px' });
-    actions.appendChild(begin);
-    body.appendChild(actions);
-
-    card.appendChild(body);
-    scrim.appendChild(card);
-    // Tapping the scrim (outside the card) also begins — forgiving on mobile.
-    scrim.addEventListener('pointerdown', (e) => {
-      if (e.target === scrim) {
-        scrim.remove();
-        onBegin();
-      }
-    });
-    this.root.appendChild(scrim);
+  setMissionContext(def: MissionDef): void {
+    this.endScreen.setContext(def);
   }
 
   // --- Cold engine start (hold-to-spool dial) — delegated to the engineStart module --------
