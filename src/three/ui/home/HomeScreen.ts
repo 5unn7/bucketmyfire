@@ -90,7 +90,9 @@ export class HomeScreen {
     // state; the brief stays readable, it just can't be re-flown until midnight.
     const dailyCleared = hasCompletedDaily();
 
-    const grank = isConfigured() ? `<div class="badge grank"><b>#–</b><span>Global</span></div>` : '';
+    // A neutral loading skeleton, never a "#–" stub (which reads as broken for the async beat). loadGlobalRank()
+    // settles it to a real "#N Global" or drops the badge when there's no standing yet.
+    const grank = isConfigured() ? `<div class="badge grank loading" aria-hidden="true"><span class="sk"></span></div>` : '';
 
     return `
 <div class="scene"></div><div class="embers"></div>
@@ -122,16 +124,13 @@ export class HomeScreen {
   <div class="zone z-daily">
   <!-- daily burn — compact dispatch slip: leads with the brand mark (same logo as the dossier),
        no ignition pill; clearing today's burn flips it to a "Cleared · resets in Xh" locked state. -->
-  <div class="sec rise d2"><span class="tag">Daily Burn</span><span class="line"></span><span class="stamp">Shared fire</span></div>
+  <div class="sec rise d2"><span class="tag">Daily Burn</span><span class="line"></span></div>
   <section class="card warm cut crt daily rise d2"><span class="crt-streak"></span>
     <div class="drow">
       <div class="glyph flicker">${FLAME}</div>
       <div class="grow">
         <div class="row between" style="gap:8px;">
-          <div>
-            <div style="font-size:var(--fs-title);font-weight:var(--fw-black);">Today's Burn</div>
-            <div class="mono" style="font-size:var(--fs-tag);letter-spacing:.14em;color:var(--dim);margin-top:3px;">${dailyDateLabel(new Date()).toUpperCase()}</div>
-          </div>
+          <div class="mono" style="font-size:var(--fs-lg);font-weight:var(--fw-bold);letter-spacing:.06em;color:var(--text);">${dailyDateLabel(new Date()).toUpperCase()}</div>
           ${dailyCleared ? `<span class="badge ok">${ic('check')}Cleared</span>` : `<span class="badge fire">${FLAME_ONLY}${streak}-day</span>`}
         </div>
         <p class="dbrief">${daily.brief}</p>
@@ -224,14 +223,27 @@ ${railNav('home')}`;
   }
 
   private loadGlobalRank(): void {
+    const el = this.root.querySelector<HTMLElement>('.grank');
+    if (!el) return; // unconfigured → no badge was rendered
+    // Settle the loading skeleton to a real standing, or drop the badge when there's none yet — the dossier
+    // never carries a "#–" / perpetually-spinning placeholder.
+    const settle = (rank: number | null): void => {
+      if (this.disposed) return;
+      if (rank == null) {
+        el.remove();
+        return;
+      }
+      el.classList.remove('loading');
+      el.removeAttribute('aria-hidden');
+      el.innerHTML = `<b>#${rank}</b><span>Global</span>`;
+    };
     const p = loadProfile();
-    if (!isConfigured() || !p?.name) return;
+    if (!p?.name) {
+      settle(null);
+      return;
+    }
     fetchCareerStanding(p.name)
-      .then((s) => {
-        if (this.disposed || !s) return;
-        const el = this.root.querySelector('.grank');
-        if (el) el.innerHTML = `<b>#${s.rank}</b><span>Global</span>`;
-      })
-      .catch(() => {});
+      .then((s) => settle(s ? s.rank : null))
+      .catch(() => settle(null));
   }
 }

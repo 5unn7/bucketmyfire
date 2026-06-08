@@ -174,6 +174,13 @@ const CSS = `
 .bmf-app .grank{ gap:7px; height:36px; padding:0 13px; }
 .bmf-app .grank b{ font-size:var(--fs-lg); font-weight:var(--fw-bold); color:var(--menu); }
 .bmf-app .grank span{ font-size:var(--fs-micro); letter-spacing:.22em; color:var(--faint); }
+/* Loading skeleton: a neutral shimmer chip while the global standing fetches; settles to "#N Global" or is
+   removed (loadGlobalRank), so the dossier never paints a "#–" stub. */
+.bmf-app .grank.loading{ background:var(--recess); border-color:var(--hair); }
+.bmf-app .grank.loading .sk{ display:block; width:42px; height:10px; border-radius:var(--r-pill);
+  background:linear-gradient(90deg, var(--recess), var(--hair) 50%, var(--recess)); background-size:200% 100%;
+  animation:bmf-shimmer 1.25s ease-in-out infinite; }
+@keyframes bmf-shimmer{ 0%{ background-position:200% 0; } 100%{ background-position:-200% 0; } }
 
 .bmf-app .rank{ display:inline-flex; align-items:center; gap:6px; font-family:var(--mono); font-size:var(--fs-tag); font-weight:var(--fw-bold); letter-spacing:.16em; text-transform:uppercase; color:var(--rk,var(--rank)); padding:3px 9px 3px 7px; white-space:nowrap;
   background:repeating-linear-gradient(45deg, rgba(255,160,51,0.12) 0 2px, transparent 2px 4px), rgba(255,160,51,0.10);
@@ -201,6 +208,10 @@ const CSS = `
 .bmf-app .daily.collapsed .chev{ transform:rotate(-90deg); }
 .bmf-app .daily-body{ overflow:hidden; }
 .bmf-app .daily.collapsed .daily-body{ display:none; }
+/* Daily slip layout: brand-mark glyph at LEFT, the dispatch content (date · brief · resets/Fly) at right —
+   mirrors the dossier's helmet-left row so the two warm cards read as a family, with the daily clearly the
+   lighter secondary beneath the Continue poster hero. */
+.bmf-app .daily .drow{ display:flex; align-items:flex-start; gap:12px; }
 .bmf-app .dbrief{ margin-top:13px; font-size:var(--fs-body); line-height:1.45; color:rgba(255,255,255,0.86);
   padding-left:11px; border-left:3px solid var(--fire);
   display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
@@ -425,7 +436,7 @@ const CSS = `
   border-radius:var(--r-lg); border:1px solid var(--stroke-strong); background:var(--card-bg); color:inherit; font:inherit;
   box-shadow:var(--shadow-card); transition:border-color .18s, box-shadow .25s, transform .12s;
   clip-path:polygon(0 0,100% 0,100% calc(100% - 16px),calc(100% - 16px) 100%,0 100%); -webkit-tap-highlight-color:transparent; }
-.bmf-app .mcard:hover{ border-color:var(--warm-stroke); transform:translateY(-1px); }
+.bmf-app .mcard:hover{ border-color:var(--warm-stroke); transform:translateY(-2px); }
 .bmf-app .mcard.active{ border-color:var(--menu-soft); box-shadow:var(--shadow-card), 0 0 26px var(--ember-14); transform:none; }
 .bmf-app .mcard:focus-visible{ outline:none; border-color:var(--ember); box-shadow:0 0 0 3px var(--ember-22); }
 /* right-anchored art + the left-fading scrim that buys the copy its contrast */
@@ -440,13 +451,17 @@ const CSS = `
 .bmf-app .mcard .mbody{ position:relative; z-index:2; padding:13px 15px; max-width:74%; }
 .bmf-app .mcard .mhead{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
 .bmf-app .mcard .mname{ font-size:var(--fs-lg); font-weight:var(--fw-black); line-height:1.1; color:#fff; margin-top:10px; }
-.bmf-app .mcard .mtag{ font-size:var(--fs-meta); line-height:1.42; color:rgba(255,255,255,0.82); margin-top:6px; max-width:32ch; }
+.bmf-app .mcard .mtag{ font-size:var(--fs-meta); line-height:1.42; color:var(--text-subtle); margin-top:6px; max-width:32ch; }
 .bmf-app .mcard .mmeta{ display:flex; align-items:center; gap:12px; margin-top:10px; }
+/* run readout — token-only (was inline-styled in menus.ts): subtle body white + the gold best score */
+.bmf-app .mcard .mscore{ font-size:var(--fs-meta); color:var(--text-subtle); }
+.bmf-app .mcard .mscore b{ color:var(--menu); font-weight:var(--fw-bold); }
+.bmf-app .mcard .mscore.tbd{ color:var(--faint); }
 /* expand region — grid-rows trick animates the reveal without measuring height */
 .bmf-app .mcard .mexpand{ display:grid; grid-template-rows:0fr; transition:grid-template-rows .28s cubic-bezier(.16,.84,.3,1); }
 .bmf-app .mcard .mexpand > div{ overflow:hidden; min-height:0; }
 .bmf-app .mcard.active .mexpand{ grid-template-rows:1fr; }
-.bmf-app .mcard .mbrief{ font-size:var(--fs-meta); line-height:1.5; color:rgba(255,255,255,0.7); margin-top:11px; max-width:34ch; }
+.bmf-app .mcard .mbrief{ font-size:var(--fs-meta); line-height:1.5; color:var(--text-subtle); margin-top:11px; max-width:34ch; }
 .bmf-app .mcard .mexpand .btn{ margin-top:13px; max-width:300px; }
 
 /* ===== bottom rail ===== */
@@ -573,7 +588,7 @@ const CSS = `
 
 @media (prefers-reduced-motion: reduce){
   .bmf-app .rise{ opacity:1 !important; transform:none !important; animation:none !important; }
-  .bmf-app .helmet .sheen,.bmf-app .mote,.bmf-app .glyph.flicker svg path,.bmf-app .crt-streak,.bmf-app .artcard.heli .heli-art .ring,.bmf-app .cslide.active .artcard.map .img,.bmf-app.home .bar > i,.bmf-app .shopbanner::after{ animation:none !important; }
+  .bmf-app .helmet .sheen,.bmf-app .mote,.bmf-app .glyph.flicker svg path,.bmf-app .crt-streak,.bmf-app .artcard.heli .heli-art .ring,.bmf-app .cslide.active .artcard.map .img,.bmf-app.home .bar > i,.bmf-app .shopbanner::after,.bmf-app .grank.loading .sk{ animation:none !important; }
   .bmf-app .cslide{ opacity:1 !important; transform:none !important; }
   .bmf-app.home .artcard[data-act]:hover .img{ transform:none !important; } /* no cinematic zoom under reduced-motion */
   .bmf-app .embers{ display:none; }
