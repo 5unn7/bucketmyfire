@@ -72,7 +72,10 @@ import { CAMPAIGN } from './missions/catalog';
 import type { MissionDef, MissionSignals, MissionAction, ZonePlacement, ScoreTally, TrackerItem } from './missions/types';
 import type { EndScreenHooks } from './HUD';
 import { seedFires, structurePlan, crewZones, resolveCrewZone, igniteFromPlacement, backburnLine } from './missions/scenario';
-import { WORLD3D, FLIGHT, STARTUP, BUCKET3D, DROP_PHYSICS, DROP_FX, FIREHEAD, CAMERA, FIRE3D, WATER, WASH, SPRAY, SMOKE, EMBERS, INSTRUMENTS, ROADS, MISSIONS, FFA, COMMUNITIES, SETTLEMENT3D, HELIPAD, SCORE, FOREST, TREE_TEX, STRUCT_FIRE, CRASH, BRIDGE, resolveHeliClass } from './config';
+import { ProvinceMode, type TownPin } from './province/ProvinceMode';
+import { provinceTownRefs } from './province/buildProvince';
+import { markFlown as markProvinceFlown, recordShift as recordProvinceShift, type ShiftSummary } from './province/career';
+import { WORLD3D, FLIGHT, STARTUP, BUCKET3D, DROP_PHYSICS, DROP_FX, FIREHEAD, CAMERA, FIRE3D, WATER, WASH, SPRAY, SMOKE, EMBERS, INSTRUMENTS, ROADS, MISSIONS, FFA, PROVINCE, COMMUNITIES, SETTLEMENT3D, HELIPAD, SCORE, FOREST, TREE_TEX, STRUCT_FIRE, CRASH, BRIDGE, resolveHeliClass } from './config';
 
 // Instrument calibration factors (world units → real-world HUD units). Derived from
 // the FLIGHT caps so the gauges stay consistent if those are retuned.
@@ -287,6 +290,15 @@ export class Game {
   private ffaBoardTimer = 0; // seconds since the last shared-board score push (vs FFA.boardEverySec)
   private ffaScore = 0; // live cumulative free-for-all score (fires knocked down + accurate-drop bonus)
   private ffaLastDoused = 0; // doused count at the last frame — diff drives the per-douse "+N" points pop
+  // LIVING PROVINCE (mission.living): the open-world dispatch-driven shift. Reuses the endless plumbing
+  // (so `this.endless` is also true) but swaps the flat spawner for the ProvinceMode controller + a
+  // shift/stakes outcome. `province` is null for FFA/campaign/daily; set when mission.living.
+  private readonly living: boolean = false;
+  private province: ProvinceMode | null = null;
+  private provBoardTimer = 0; // seconds since the last shared-board reputation push (vs PROVINCE.boardEverySec)
+  private readonly provTownPins: TownPin[] = []; // reused each frame → no per-frame radar-pin allocation
+  private provFlownMarked = false; // career.markFlown fired once per shift (first board push)
+  private provShiftRecorded = false; // career.recordShift fired once per shift (at stand-down)
   // Open Skies live presence (Slice 3): the realtime transport + ghost-pilot view (both code-split,
   // lazily created when endless AND Supabase is configured; null otherwise → solo, no ghosts).
   private openSkies: OpenSkiesNet | null = null;
@@ -308,12 +320,17 @@ export class Game {
     mission: MissionDef,
     profile?: Profile,
     end?: EndScreenHooks,
-    opts: { skipColdStart?: boolean; disableCoach?: boolean } = {},
+    opts: { skipColdStart?: boolean; disableCoach?: boolean; onboarding?: boolean } = {},
   ) {
     this.mission = mission;
-    // Interactive first-flight coach: only the TRUE first mission of a brand-new pilot, never under
-    // headless QA (it would interfere with the verify:render scoop→drop autopilot + deploy gate).
-    this.coach = new CoachDirector(!opts.disableCoach && !tutorialDone() && mission.id === CAMPAIGN[0].id);
+    // Living Province onboarding (a brand-new pilot's first shift runs the reactive teaching arc instead of
+    // the open dispatch schedule). main resolves this from career.onboarded (+ a ?onboard dogfood override),
+    // and only ever sets it for `living` missions.
+    const onboarding = opts.onboarding ?? false;
+    // Interactive first-flight coach (control pulses): the TRUE first campaign mission of a brand-new pilot,
+    // OR a new pilot's first Living Province shift (the province is now the front door, so it must teach the
+    // controls too). Never under headless QA — it would interfere with the verify:render scoop→drop autopilot.
+    this.coach = new CoachDirector(!opts.disableCoach && !tutorialDone() && (mission.id === CAMPAIGN[0].id || (!!mission.living && onboarding)));
     this.end = end;
     // Cold start (every mission) unless a headless QA boot opts out (?qa / ?autostart): then the
     // aircraft is already running and airborne at origin, so the existing autopilot/teleport flows
@@ -782,7 +799,12 @@ export class Game {
     }
     // Seed the mission's fires at their chosen sites/sizes (vs the random sandbox seeding) via
     // the shared scenario resolver, then capture the active count as the "initial fires" baseline.
-    seedFires(this.world, this.fireSystem, this.mission, { vx: this.wind.vx, vz: this.wind.vz }, this.fireBoundX, this.fireBoundZ);
+    // EXCEPT a Living Province ONBOARDING shift starts on a clean slate: the teaching arc ignites the
+    // first fire itself, so the def's 2 opening bush fires are skipped — otherwise an off-script douse of
+    // an opener would prematurely advance the lesson narration (the arc paces on cumulative douses).
+    if (!(this.mission.living && onboarding)) {
+      seedFires(this.world, this.fireSystem, this.mission, { vx: this.wind.vx, vz: this.wind.vz }, this.fireBoundX, this.fireBoundZ);
+    }
     this.firesInitial = this.fireSystem.activeCount;
 
     // C3 stakes: cabins + lakeside depot. The mission drives placement explicitly (which
@@ -905,6 +927,20 @@ export class Game {
     // Open Skies: a never-met `survive` objective + no `fails` means the runtime never ends — Game's
     // endless driver (stepEndless) keeps fires coming and tallies the live free-for-all score.
     this.endless = !!this.mission.endless;
+    // Living Province: the open-world dispatch shift. The def also sets `endless` (so it inherits the
+    // shared-clock wind + respawn + presence + board), but Game runs a ProvinceMode instead of the flat
+    // spawner. Resolve the protectable towns straight off the built world (the cabins seeded above sit at
+    // these anchors), and hand them to the deterministic director.
+    this.living = !!this.mission.living;
+    if (this.living) {
+      const towns = provinceTownRefs(this.mission.map)
+        .map((ref) => {
+          const c = this.world.getCommunity(ref);
+          return c ? { ref, name: c.name, x: c.x, z: c.z } : null;
+        })
+        .filter((t): t is { ref: string; name: string; x: number; z: number } => t !== null);
+      this.province = new ProvinceMode(this.mission.seed, towns, onboarding);
+    }
     // Live presence (Slice 3): lazily connect the realtime channel + ghost-pilot view so OTHER players
     // appear in your sky. Dynamic-imported (the realtime client is code-split off the solo bundle) and a
     // no-op when Supabase is unconfigured — the free-for-all stays fully playable solo either way.
@@ -1473,7 +1509,8 @@ export class Game {
     // structures they reach. The MISSION decides win/lose (below), not these directly. ---
     if (!frozen) {
       this.fireSystem.update(dtMs, this.wind);
-      if (this.endless) this.stepEndless(dt); // Open Skies: top up fires + tally the live score
+      if (this.living) this.stepProvince(dt); // Living Province: emit dispatch calls + run the shift
+      else if (this.endless) this.stepEndless(dt); // Open Skies: top up fires + tally the live score
       this.structures.update(dtMs, this.fireSystem.active());
       const sig = this.missionSignals();
       this.runtime.update(sig);
@@ -1944,10 +1981,15 @@ export class Game {
       score: this.finalScore,
       // Campaign layer: live objective checklist, fuel gauge, crew landing-zone radar blips.
       // Open Skies swaps the goal/fail checklist for its live "fires out / score" readout.
-      objectives: this.endless ? this.ffaTracker() : this.runtime.tracker,
+      // Living Province uses the SHIFT panel (below), not the objective checklist; FFA uses the points
+      // tracker; the campaign uses the real objective ledger.
+      objectives: this.living ? undefined : this.endless ? this.ffaTracker() : this.runtime.tracker,
       fuel: this.fuelSim ? this.fuelSim.fuel : undefined,
       fuelLow: this.fuelSim ? this.fuelSim.low : undefined,
       zones: this.crew ? this.crew.views.map((v) => ({ x: v.x, z: v.z, active: v.active, done: v.done, home: v.home, lost: v.lost })) : undefined,
+      // Living Province: the in-flight shift readout (swaps the objective checklist) + radar town-status pins.
+      shift: this.living && this.province ? this.province.shift() : undefined,
+      townPins: this.living && this.province ? this.province.townPins(this.provTownPins) : undefined,
       // Crew aboard count + live board/disembark dwell → the strip's crew icon + the BOARDING bar.
       crew: this.crew
         ? {
@@ -2145,6 +2187,68 @@ export class Game {
       this.ffaBoardTimer = 0;
       this.postFfaScore();
     }
+  }
+
+  /**
+   * Living Province driver (parallel to stepEndless). Each frame: feed the world snapshot to ProvinceMode,
+   * which emits any due dispatch calls + folds them into the province memory; run the returned actions
+   * (comms + ignite) through the SAME action switch the campaign uses; mirror reputation into `ffaScore`
+   * so the existing board push + presence broadcast carry it; and, when the province is overrun, end the
+   * shift as a stood-down loss (banking the reputation earned). Runs only when `mission.living`.
+   */
+  private stepProvince(dt: number): void {
+    if (!this.province) return;
+    const r = this.province.update({
+      shiftElapsed: this.missionElapsed,
+      doused: this.fireSystem.doused,
+      dropsEffective: this.scoreDropsEffective,
+      structuresAlive: this.structures.aliveCount,
+      structuresTotal: this.structures.total,
+    });
+    for (let i = 0; i < r.actions.length; i++) this.runMissionAction(r.actions[i]);
+    // Reputation IS the score: feed the same field the shared-board push + presence broadcast read.
+    this.ffaScore = this.province.reputation;
+    // Teaching arc handed off ⇒ the pilot has been through the loop: mark onboarded NOW so it never
+    // replays, even if they leave before the 45s board push below (the early-leave re-onboard gap).
+    if (r.justOnboarded && !this.provFlownMarked) {
+      this.provFlownMarked = true;
+      markProvinceFlown(this.mission.map ?? 'saskatchewan');
+    }
+    this.provBoardTimer += dt;
+    if (this.provBoardTimer >= PROVINCE.boardEverySec) {
+      this.provBoardTimer = 0;
+      this.postFfaScore();
+      // First board push ⇒ a genuine shift: flip `onboarded` + log the region (covers a non-onboarding
+      // pilot whose handoff never fires). Idempotent + guarded, so it never double-counts with the above.
+      if (!this.provFlownMarked) {
+        this.provFlownMarked = true;
+        markProvinceFlown(this.mission.map ?? 'saskatchewan');
+      }
+    }
+    if (r.justStoodDown && !this.lost && !this.won) {
+      this.lost = true; // freezes the sim → the end banner shows (main.ts wires province retry/menu)
+      this.finalScore = this.province.reputation;
+      this.postFfaScore(); // bank the shift's reputation → wallet + board
+      this.logProvinceShift(); // append the season-log entry (once)
+    }
+  }
+
+  /** Append this shift to the career season log (once per run). The reputation itself already banked
+   *  through postFfaScore → recordScore; this records the open-world META (towns held, calls, outcome). */
+  private logProvinceShift(): void {
+    if (this.provShiftRecorded || !this.province) return;
+    this.provShiftRecorded = true;
+    const readout = this.province.shift();
+    const sum: ShiftSummary = {
+      region: this.mission.map ?? 'saskatchewan',
+      reputation: this.province.reputation,
+      townsStanding: readout.townsStanding,
+      townsTotal: readout.townsTotal,
+      answered: this.province.answered,
+      missed: this.province.missed,
+      stoodDown: this.province.stoodDown,
+    };
+    recordProvinceShift(sum);
   }
 
   /** Post the live free-for-all score to today's shared Open Skies board (fire-and-forget) AND bank it

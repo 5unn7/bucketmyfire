@@ -688,6 +688,60 @@ export class Radar {
       }
     }
 
+    // Living Province — town-status rings: a quiet ring marks every protected town so the province reads
+    // at a glance; a THREATENED town (an active town-threat dispatch call) glows warn + pulses (defend
+    // here); a DAMAGED town goes dim + slashed. Rationed: standing towns stay faint so threats pop, and
+    // only a threatened town earns an off-radar rim chevron (standing towns would just clutter the rim).
+    if (s.townPins) {
+      for (const t of s.townPins) {
+        const p = local(t.x, t.z);
+        const ox = p.x - R;
+        const oy = p.y - R;
+        if (Math.hypot(ox, oy) > effReach) {
+          if (t.status !== 'threatened') continue; // only the call that needs you gets a rim pointer
+          const a = Math.atan2(oy, ox);
+          ctx.save();
+          ctx.translate(R + Math.cos(a) * reach, R + Math.sin(a) * reach);
+          ctx.rotate(a);
+          ctx.fillStyle = UI.warn;
+          ctx.beginPath();
+          ctx.moveTo(3, 0);
+          ctx.lineTo(-3, -3);
+          ctx.lineTo(-3, 3);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+          continue;
+        }
+        ctx.save(); // isolate every branch's stroke/shadow/alpha so nothing leaks into the next blip
+        if (t.status === 'threatened') {
+          ctx.strokeStyle = UI.warn;
+          ctx.shadowColor = UI.warn;
+          ctx.shadowBlur = 8;
+          ctx.globalAlpha = 0.5 + 0.4 * wpPulse;
+          ctx.lineWidth = 1.8;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 7 + 1.5 * wpPulse, 0, Math.PI * 2);
+          ctx.stroke();
+        } else if (t.status === 'damaged') {
+          ctx.strokeStyle = UI.dim;
+          ctx.lineWidth = 1.4;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 5.5, 0, Math.PI * 2);
+          ctx.moveTo(p.x - 4, p.y + 4);
+          ctx.lineTo(p.x + 4, p.y - 4); // a small slash → "hit"
+          ctx.stroke();
+        } else {
+          ctx.strokeStyle = UI.faint; // standing: a quiet ring so your towns read without clutter
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+    }
+
     // Place names (A5) — drawn screen-UPRIGHT (the map under them is rotated, but text
     // must read level). Communities always; lake names only on the expanded radar (they'd
     // clutter the tight local view). A dark stroke keeps them legible over any terrain.

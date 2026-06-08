@@ -6,7 +6,7 @@
  *   - Campaign — region picker (Saskatchewan live + coming-soon) that DRILLS INTO that map's
  *                missions (openMissions): pick a mission, fly it. Missions now live inside the map.
  *   - Hangar   — aircraft picker (3 helis, specs, unlock gates), saves profile.heliId
- *   - Open Skies — the endless free-for-all (openCoop): routes to ?ffa, a same-map score race
+ *   - Open Skies — the open-world dispatch shift (openCoop): routes to ?province, the live map you hold
  *   - Settings — sound + reduced-motion toggles, callsign, region, reset progress (off the rail
  *                now; opened from the Home profile card). Board (leaderboard) likewise.
  * Each is a back-to-Home overlay (Home stays mounted underneath). No-scroll / single-viewport.
@@ -17,7 +17,8 @@ import {
   availablePoints, heliCost, buyHeli, type Profile, type CatalogItem,
 } from '../profile';
 import { isConfigured, fetchMissionTop } from '../../leaderboard/client';
-import { ffaSessionId } from '../../missions/freeforall';
+import { provinceSessionId } from '../../province/buildProvince';
+import { PROVINCE_COPY } from '../../province/strings';
 import { getCloudLink } from '../../leaderboard/cloudSave';
 import { openCloudSave } from '../CloudSave';
 import { resetProgress, getProgress, bestScore, bestStars, isUnlocked } from '../../missions/progress';
@@ -426,12 +427,13 @@ function heliSlide(h: CatalogItem, cleared: number): string {
   });
 }
 
-// ===================== OPEN SKIES (free-for-all) =====================
-/** Open Skies — the endless FREE-FOR-ALL (the planned co-op, reimagined as a same-map score race).
- *  Everyone flies the same daily-seeded Saskatchewan, the fires never stop, you build a personal score.
- *  Routes to `?ffa` (a reload boot owned by main.ts), mirroring the Daily Burn nav. */
+// ===================== OPEN SKIES (the open-world dispatch shift) =====================
+/** Open Skies — the open-world shift: everyone flies the same daily-seeded province, dispatch calls as
+ *  fires break out over a climbing fire-weather curve, and you hold the towns. Routes to `?province`
+ *  (a reload boot owned by main.ts), mirroring the Daily Burn nav. (The flat `?ffa` free-for-all is
+ *  superseded by this and stays reachable only by URL.) */
 export function openCoop(): void {
-  // Open Skies is a sandbox, but it still respects the campaign unlock ladder — you fly the airframes
+  // The shift respects the campaign unlock ladder — you fly the airframes
   // you've EARNED, the same gate as the Hangar. Default the pick to the pilot's saved heli (loadProfile
   // already clamps a locked save back to the trainer), falling back to the first unlocked airframe so a
   // ?heli= override or stale pick can never seed a locked selection.
@@ -463,21 +465,21 @@ export function openCoop(): void {
   const body = `<div class="osky">
     <div class="osky-pitch">
       <div class="ctx-row">
-        <span class="chip">${ic('fire')}Free-for-all</span>
+        <span class="chip">${ic('fire')}${PROVINCE_COPY.chip}</span>
         <span class="chip ghost osky-live-chip" data-osky-live><span class="osky-live-dot"></span>LIVE</span>
       </div>
-      <h2 class="h-big osky-title">Open Skies</h2>
-      <p class="osky-sub">Real-time flying for all.</p>
-      <p class="osky-desc">Bring friends, showcase your skill, earn points.</p>
+      <h2 class="h-big osky-title">${PROVINCE_COPY.headline}</h2>
+      <p class="osky-sub">${PROVINCE_COPY.sub}</p>
+      <p class="osky-desc">${PROVINCE_COPY.what}</p>
       <div class="osky-feats">
-        <div class="osky-feat">${ic('target')}<span>Hidden tricks and points to find</span></div>
+        <div class="osky-feat">${ic('target')}<span>${PROVINCE_COPY.feat}</span></div>
       </div>
     </div>
     <div class="osky-pick">
       <div class="sec"><span class="tag">Your aircraft</span><span class="line"></span></div>
       <div class="heligrid">${HELIS.map(heliCard).join('')}</div>
       <div class="osky-cta">
-        <button class="btn ember block" data-ffa>${ic('play')}Join</button>
+        <button class="btn ember block" data-fly>${ic('play')}${PROVINCE_COPY.cta}</button>
       </div>
     </div>
   </div>`;
@@ -491,17 +493,18 @@ export function openCoop(): void {
     picked = card.dataset.heli || picked;
     grid.innerHTML = HELIS.map(heliCard).join('');
   });
-  root.querySelector('[data-ffa]')?.addEventListener('click', () => {
+  root.querySelector('[data-fly]')?.addEventListener('click', () => {
     const url = new URL(location.href);
     url.searchParams.delete('m');
     url.searchParams.delete('daily');
-    url.searchParams.set('ffa', '1');
+    url.searchParams.delete('ffa');
+    url.searchParams.set('province', '1');
     url.searchParams.set('heli', picked); // fly the chosen airframe (main.ts honours ?heli=)
     location.assign(url.toString());
   });
-  // Best-effort: fetch today's FFA pilot count from the board and surface it as a chip.
+  // Best-effort: fetch today's province pilot count from the board and surface it as a chip.
   // fetchMissionTop returns {total:0} when unconfigured, so the badge only appears when real.
-  fetchMissionTop(ffaSessionId(new Date()), 1).then((board) => {
+  fetchMissionTop(provinceSessionId(new Date()), 1).then((board) => {
     if (board.total < 1) return;
     const chip = root.querySelector<HTMLElement>('[data-osky-live]');
     if (!chip) return;

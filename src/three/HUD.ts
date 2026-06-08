@@ -80,6 +80,7 @@ export class HUD {
   private readonly objPanel: HTMLDivElement; // campaign objective checklist (hidden in sandbox)
   private objSig = ''; // last-rendered objective signature (skip DOM churn when unchanged)
   private objPrev = new Map<string, { current: number; done: boolean }>(); // per-goal last state → flash on advance
+  private shiftSig = ''; // Living Province: last-rendered shift-readout signature (same panel, same dedup)
   // Crew board/disembark progress bar — a labelled fill that appears while landed on a zone
   // ("CREW BOARDING" climbing in / "CREW DISEMBARKING" stepping off). Hidden when not working a zone.
   private readonly crewBar: HTMLDivElement;
@@ -566,8 +567,10 @@ export class HUD {
 
     this.setHint(s.hint);
 
-    // Campaign objective checklist — rebuilt only when its rendered text changes (no per-frame churn).
-    this.renderObjectives(s.objectives);
+    // Living Province swaps the objective checklist for a SHIFT readout (province health + reputation +
+    // towns); the campaign/sandbox keeps the objective checklist. Same panel, same no-churn dedup.
+    if (s.shift) this.renderShift(s.shift);
+    else this.renderObjectives(s.objectives);
 
     // Jet scrolling tapes: airspeed in knots (left), altitude in feet (right) + VSI.
     this.drawTape(this.spdCtx, {
@@ -608,6 +611,7 @@ export class HUD {
       .join(';');
     if (sig === this.objSig) return;
     this.objSig = sig;
+    this.shiftSig = ''; // symmetric to renderShift: keep the shared panel's two renderers from leaking stale rows
 
     this.objPanel.style.display = '';
     this.objPanel.replaceChildren(label('OBJECTIVES'));
@@ -650,6 +654,44 @@ export class HUD {
     }
     this.objPrev = next;
     this.positionMessages(); // left column grew/changed — re-seat the hint below it
+  }
+
+  /** Living Province SHIFT readout — reuses the objective panel's container + footprint: a province-health
+   *  bar (cyan, warn when low) + reputation + towns-held + active-call count. Rebuilt only when a shown
+   *  value changes (same no-churn dedup as the objective checklist), so it's not a per-frame DOM cost. */
+  private renderShift(shift: NonNullable<HudState['shift']>): void {
+    const healthPct = Math.round(shift.health * 100);
+    const low = healthPct <= 33; // province in trouble → the bar + % go warn
+    const sig = `${shift.reputation}|${healthPct}|${shift.townsStanding}/${shift.townsTotal}|${shift.activeCalls}`;
+    if (sig === this.shiftSig) return;
+    this.shiftSig = sig;
+    this.objSig = ''; // keep the shared panel's two renderers from fighting if the mode ever flips
+
+    this.objPanel.style.display = '';
+    this.objPanel.replaceChildren(label('DISPATCH'));
+
+    // Province-health bar — the stood-down meter, made glanceable.
+    const barRow = el('div', { marginTop: '6px' });
+    const head = el('div', { display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', fontSize: FS.sm });
+    head.appendChild(el('div', { color: UI.textCool }, 'Province'));
+    head.appendChild(el('div', { color: low ? UI.warn : UI.accent, fontWeight: FW.bold }, `${healthPct}%`));
+    barRow.appendChild(head);
+    const track = el('div', { position: 'relative', height: '5px', marginTop: '4px', borderRadius: R.xs, background: UI.stroke, overflow: 'hidden' });
+    track.appendChild(el('div', { position: 'absolute', left: '0', top: '0', bottom: '0', width: `${healthPct}%`, background: low ? UI.warn : UI.accent }));
+    barRow.appendChild(track);
+    this.objPanel.appendChild(barRow);
+
+    const statRow = (lab: string, val: string, vcol: string): void => {
+      const row = el('div', { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginTop: '5px', fontSize: FS.sm });
+      row.appendChild(el('div', { color: UI.textCool }, lab));
+      row.appendChild(el('div', { color: vcol, fontWeight: FW.bold }, val));
+      this.objPanel.appendChild(row);
+    };
+    statRow('Reputation', shift.reputation.toLocaleString('en-US'), UI.accent);
+    statRow('Towns', `${shift.townsStanding}/${shift.townsTotal}`, shift.townsStanding < shift.townsTotal ? UI.warn : UI.text);
+    if (shift.activeCalls > 0) statRow('Active calls', String(shift.activeCalls), UI.warn);
+
+    this.positionMessages();
   }
 
   /**

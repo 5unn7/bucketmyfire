@@ -253,6 +253,13 @@ export interface MissionDef {
   // pairs this with a never-met `survive` objective + no `fails` so the runtime never ends. Omit → a normal
   // mission (byte-identical for the 8 campaign + daily defs, which never set it).
   endless?: boolean;
+  // LIVING PROVINCE (province/buildProvince.ts): the open-world "the map just opens" mode. Implies the
+  // endless plumbing (shared wall-clock wind, respawn-on-crash, presence, per-day board) but REPLACES the
+  // flat FFA spawner with a deterministic DispatchDirector that emits dispatch CALLS over a climbing
+  // fire-weather curve, and the bare points counter with a province "shift" (towns to hold, reputation,
+  // a stood-down fail when the province is overrun). `Game` reads this to build a `ProvinceMode`. Omit →
+  // a normal mission (the campaign/daily/FFA defs never set it). See docs plan + src/three/province/.
+  living?: boolean;
   fuel?: boolean; // enable the FuelSim range model
   fires: FirePlacement[];
   structures?: StructureSpec;

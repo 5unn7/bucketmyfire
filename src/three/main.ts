@@ -11,6 +11,8 @@ import { TitleScreen } from './ui/title/TitleScreen';
 import { CAMPAIGN, missionById } from './missions/catalog';
 import { buildDailyMission, isDailyId } from './missions/daily';
 import { buildFreeForAll, isFfaId } from './missions/freeforall';
+import { buildProvince, isProvinceId } from './province/buildProvince';
+import { isOnboarded } from './province/career';
 import { hasCompletedDaily } from './missions/dailyPlay';
 import { HELI_MODELS } from './meshes/heliModels';
 import { coldStartSeen, hasNamedProfile } from './ui/profile';
@@ -143,6 +145,14 @@ function routeMission(): void {
     return;
   }
 
+  // Living Province (?province): the open-world "the map just opens" mode — dispatch calls emerge over a
+  // climbing fire-weather curve and you hold the province's towns. `?region=` picks the map (default SK).
+  // Like Open Skies it's a shared daily seed (fair board + ghosts), re-enterable anytime.
+  if (params.has('province')) {
+    bootMission(buildProvince(new Date(), params.get('region') ?? undefined));
+    return;
+  }
+
   let selectedId = params.get('m');
   if (!selectedId && shouldAutostart()) selectedId = CAMPAIGN[0].id;
 
@@ -207,6 +217,7 @@ function gotoCampaign(missionId: string | null): void {
   const url = new URL(location.href);
   url.searchParams.delete('daily'); // leaving Daily Burn → never carry ?daily into a campaign/menu nav
   url.searchParams.delete('ffa'); // leaving Open Skies → never carry ?ffa into a campaign/menu nav
+  url.searchParams.delete('province'); // leaving the Living Province → never carry ?province into a campaign/menu nav
   if (missionId) {
     url.searchParams.set('m', missionId);
   } else {
@@ -236,6 +247,18 @@ function gotoFfa(): void {
   url.searchParams.delete('autostart');
   url.searchParams.delete('daily');
   url.searchParams.set('ffa', '1');
+  location.assign(url.toString());
+}
+
+/** Boot (or re-boot) the Living Province via `?province` (a reload, like the FFA restart) — the path after
+ *  a stood-down shift and the re-entry point. Preserves `?region` so you re-enter the same province. */
+function gotoProvince(): void {
+  const url = new URL(location.href);
+  url.searchParams.delete('m');
+  url.searchParams.delete('autostart');
+  url.searchParams.delete('daily');
+  url.searchParams.delete('ffa');
+  url.searchParams.set('province', '1');
   location.assign(url.toString());
 }
 
@@ -324,7 +347,7 @@ function buildAndRunMission(mission: MissionDef): Game {
   // before (#9) — after the first time it's a speed bump, so later missions boot engine-running.
   // Open Skies (free-for-all) ALWAYS boots in flight — "no start cycle" (it's a drop-in sandbox, and a
   // respawn is in-flight too). Campaign/daily keep the cold-start ritual for a first-time pilot.
-  const skipColdStart = params.has('qa') || params.has('autostart') || coldStartSeen() || isFfaId(mission.id);
+  const skipColdStart = params.has('qa') || params.has('autostart') || coldStartSeen() || isFfaId(mission.id) || isProvinceId(mission.id);
   // The interactive first-flight coach must be OFF under headless QA — it would interfere with the
   // verify:render scoop→drop autopilot (a hard CI deploy gate). Real boots leave it on; the Game
   // gates it further to a new pilot's first campaign mission.
@@ -336,6 +359,10 @@ function buildAndRunMission(mission: MissionDef): Game {
   // ?region=british-columbia). Unknown ids fall back to the default map (saskatchewan, now the
   // true-shape rectangular playfield) inside World.getRegion, so a typo can't crash the boot.
   const regionOverride = params.get('region');
+  // QA / dev: force the Living Province ONBOARDING arc on (`?onboard=1`) or off (`?onboard=0`) regardless of
+  // career.onboarded — so a dogfood can re-see (or skip) a new pilot's guided first shift without wiping
+  // localStorage. Absent → the real rule (off under headless qa; else on until the pilot's first shift).
+  const onboardParam = params.get('onboard');
   let profile = defaultProfile();
   if (heliOverride && HELI_MODELS[heliOverride]) profile = { ...profile, heliId: heliOverride };
   if (regionOverride) profile = { ...profile, mapId: regionOverride };
@@ -460,7 +487,16 @@ function buildAndRunMission(mission: MissionDef): Game {
   /** Construct a Game for `m` with its end-hooks + (dev/QA) debug handle. The renderer/composer/tier
    *  are the shared ones captured above — only the Game itself is per-mission. */
   function buildGame(m: MissionDef): Game {
-    const g = new Game(container, tier, m, profile, makeEndHooks(m), { skipColdStart, disableCoach });
+    // Onboarding only applies to the Living Province, and only a NEW pilot's first shift (career.onboarded
+    // flips after it). Resolved per-build so a RETRY after onboarding correctly drops the teaching arc.
+    const onboarding = !m.living
+      ? false
+      : onboardParam === '1'
+        ? true
+        : onboardParam === '0'
+          ? false
+          : !params.has('qa') && !isOnboarded();
+    const g = new Game(container, tier, m, profile, makeEndHooks(m), { skipColdStart, disableCoach, onboarding });
     // Debug/QA hook: lets a test harness read flight/game/mission state. On in dev always; in a prod
     // build only when `?qa` is present — re-pointed so a switched-to mission stays inspectable.
     if (import.meta.env.DEV || params.has('qa')) {
@@ -528,6 +564,17 @@ function buildAndRunMission(mission: MissionDef): Game {
         hasNext: false,
         onNext: () => gotoCampaign(null),
         onRetry: () => gotoFfa(), // restart the free-for-all
+        onMenu: () => gotoCampaign(null),
+        onLeaderboard: () => openLeaderboard([...CAMPAIGN, m], m.id),
+      };
+    }
+    // Living Province: the end screen is reached when the province is overrun (stood down). RETRY re-opens
+    // a fresh shift on today's province; MENU returns to the hub; the board is this province's per-day board.
+    if (isProvinceId(m.id)) {
+      return {
+        hasNext: false,
+        onNext: () => gotoCampaign(null),
+        onRetry: () => gotoProvince(), // fly the province again after a stand-down
         onMenu: () => gotoCampaign(null),
         onLeaderboard: () => openLeaderboard([...CAMPAIGN, m], m.id),
       };

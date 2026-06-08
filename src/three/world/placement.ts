@@ -16,9 +16,16 @@ export class Placement {
    * Flammable "fuel" at (x, z) in 0..1 — high in dense forest, low in open meadow,
    * ~0 on bare rock and water. Reuses the biome tree density (forest is fueled by its
    * trees), so fire naturally follows the forest the player can see.
+   *
+   * Off-province land (bounds-fit maps) is the lowered, fogged void past the real border:
+   * unburnable, so no fire can establish, spread, or drift its centroid out there. The outline
+   * mask already drops the GROUND there; this completes the intent for FUEL, matching the
+   * `isInProvince` guards `fireSite`/`fuelPointNear` already use — so a fire disc whose rim spills
+   * past the border can't catch the void. No-op on square maps (`isInProvince` → true).
    */
   fuelAt(x: number, z: number): number {
     if (this.world.isOverWater(x, z)) return 0;
+    if (!this.world.isInProvince(x, z)) return 0;
     return this.world.biomes.sample(x, z).treeDensity;
   }
 

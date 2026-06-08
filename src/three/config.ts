@@ -10,6 +10,14 @@ export const WORLD3D = {
   // the land (anchors spread ~1.4× further apart, lakes keep their absolute size → more dry ground, esp. La
   // Ronge). A side crossing is now ~70s at cruise (the map feels large). lakes/trees/fire-grid scale with this.
   seed: 1337, // one seed threads through noise/hydrology/placement/fire (determinism invariant)
+  // LOAD-PERF: World bakes the SMOOTH base-terrain noise (warp+FBM+ridged+uplands) into a grid ONCE at
+  // construction, then `baseHeight` bilinear-samples it — so the terrain mesh (~26k verts), fire grid, and
+  // forest scatter stop re-running the noise stack per query (the dominant cold-start cost). This is the
+  // grid cell size in world units; ~half the finest mesh segment (high tier ≈10u/seg over 2100u) keeps the
+  // interpolation error sub-decimetre on the low-relief boreal floor. The SHARP carves (lake basins, river
+  // channels, bridge valleys, pads, province falloff) stay EXACT per-call — only the smooth floor is gridded.
+  // Smaller = sharper + more memory (5u→~709KB / 4u→~1.1MB on the 2100u square). Read once at load.
+  baseGridCell: 5,
   // Carved lake basins: each lake's water sits in a smoothstepped bowl so "descend
   // to scoop" is identical everywhere (the Phase-1 keystone). All in world units,
   // measured relative to the lake's flat water surface.
@@ -1762,6 +1770,41 @@ export const FFA = {
   respawnInvulnSec: 2.5, // collision immunity right after a respawn → can't be re-killed instantly by a ship camping the pad
 } as const;
 
+// Living Province — the open-world "the map just opens" mode (province/). It REPLACES the flat FFA
+// spawner with a deterministic DispatchDirector (calls emerge over a climbing fire-weather curve) and
+// the bare points counter with a province SHIFT (towns to hold, reputation, a stood-down fail). This
+// block is PACING/BALANCE only; the scenario (seed, town structures, `living` flag) lives in
+// province/buildProvince.ts and the logic in province/DispatchDirector.ts + ProvinceState.ts. All
+// times are SHIFT seconds. Tuned so a calm opening gives reaction room and the peak overwhelms.
+export const PROVINCE = {
+  // --- Fire-weather escalation (FWI 0..1 climbs over the shift → meaner, more frequent calls) ---
+  fwiPeakSec: 600, // shift seconds to reach peak fire weather (FWI = 1); a linear ramp, then plateau
+  firstCallSec: 12, // grace before the first dispatch call (let the pilot get airborne)
+  callIntervalCalm: 26, // seconds between calls at FWI 0 (sparse, learnable)
+  callIntervalPeak: 9, // seconds between calls at FWI 1 (relentless firestorm)
+  townThreatChanceCalm: 0.2, // P(a call is a town-threat vs a bush spot fire) at FWI 0
+  townThreatChancePeak: 0.65, // …and at FWI 1 (the fire pushes on the towns as it grows)
+  townLineOffsetCalm: 85, // a town-threat fire starts this far from town at FWI 0 (more reaction distance).
+  townLineOffsetPeak: 55, // …and this close at FWI 1 (on the doorstep). Kept ≤ fuelPointNear's 90u recovery
+  //                         search so a border town's doorstep fire always snaps back onto in-province land.
+  // --- Reputation (banked → careerScore → rank/wallet, board-safe like FFA) ---
+  repPerFire: 50, // reputation per fire knocked down with water (matches FFA.pointsPerFire feel)
+  repPerHit: 6, // small bonus per effective drop (steady accurate work)
+  repPerCallAnswered: 120, // bonus for resolving a dispatch call (scaled by its severity)
+  // --- Province health (1 → 0 = stood down) ---
+  healthPerMiss: 0.12, // health lost when a call goes unanswered past its deadline (× 0.5+severity)
+  healthPerStructure: 0.08, // health lost per structure the fire destroys
+  callDeadlineCalm: 70, // seconds a call may sit unanswered before it counts as missed, at FWI 0
+  callDeadlinePeak: 40, // …and at FWI 1 (less slack when it's busy)
+  // --- Fairness floor (the gate asserts the province can't collapse before this on a calm start) ---
+  minShiftSec: 90, // a diligent-but-imperfect pilot can't be stood down before this many shift seconds
+  boardEverySec: 45, // push live reputation to the shared per-day board this often (mirrors FFA)
+  // --- Onboarding (a brand-new pilot's FIRST shift: a gentle, reactive scoop→drop→protect arc that
+  //     replaces the campaign's teaching, then hands off to the open regime; gated by career.onboarded) ---
+  onboardFirstSec: 8, // the first teaching call goes out this far in (room to spool up + lift off)
+  onboardMaxWaitSec: 35, // emit the NEXT teaching call by this long after the last even if unanswered (no soft-lock)
+} as const;
+
 // --- Live tuning registry (dev tooling) -------------------------------------
 // Every tunable block, by name. The dev slider panel (`dev/ConfigPanel.ts`, toggled with the
 // backtick key under `import.meta.env.DEV || ?qa || ?tune`) walks this to auto-generate a control
@@ -1772,7 +1815,7 @@ export const CONFIG_REGISTRY: Record<string, Record<string, unknown>> = {
   WORLD3D, MAPGEO, TERRAIN, LAKE_SHAPE, STREAM, BIOMES, FOREST,
   FLIGHT, STARTUP, WASH, INSTRUMENTS, BUCKET3D, DROP_PHYSICS, DROP_FX, FIREHEAD,
   HELI_CLASSES, HEALTH, CRASH, BRIDGE,
-  FIRE3D, STRUCTURES, STRUCT_FIRE, COMMUNITIES, SETTLEMENT3D, ROADS, SCORE, MISSIONS, FFA, FAUNA, HELIPAD, TERRAIN_TEX, TREE_TEX,
+  FIRE3D, STRUCTURES, STRUCT_FIRE, COMMUNITIES, SETTLEMENT3D, ROADS, SCORE, MISSIONS, FFA, PROVINCE, FAUNA, HELIPAD, TERRAIN_TEX, TREE_TEX,
   QUALITY, POSTFX, ENV, GODRAYS, GRADE, FIRELIGHT, EMBERS, AMBIENT_EMBERS,
   WATER, CLOUDS, SPRAY, SMOKE, HAZE, AUDIO, CAMERA, TITLE,
 };

@@ -42,6 +42,11 @@ export interface HudState {
   // Campaign layer: the live objective checklist + optional fuel gauge. Empty / undefined
   // in the open sandbox, so the mission UI simply doesn't render.
   objectives?: readonly TrackerItem[];
+  // Living Province layer (province/ProvinceMode): the in-flight SHIFT readout + radar town-status pins.
+  // Present only in the open-world dispatch mode; the HUD swaps the objective checklist for the shift
+  // panel when `shift` is set, and the radar draws a ring per town coloured by status.
+  shift?: { health: number; reputation: number; townsStanding: number; townsTotal: number; activeCalls: number };
+  townPins?: { x: number; z: number; status: 'standing' | 'threatened' | 'damaged' }[];
   fuel?: number; // 0..1 tank fraction (undefined → no FuelSim → fuel gauge hidden)
   fuelLow?: boolean; // gauge flashes (below reserve)
   zones?: { x: number; z: number; active: boolean; done: boolean; home: boolean; lost?: boolean }[]; // crew landing zones (radar blips); `home` = the always-marked base, `lost` = the fire reached the family

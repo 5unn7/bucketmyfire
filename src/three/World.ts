@@ -225,6 +225,18 @@ export class World {
    *  `groundHeightAt` (per terrain vertex) + placement guards point-in-polygon against this, so it must NOT
    *  re-project the lat/lon ring every call. Null = not yet built or no geo. */
   private cachedOutline: { x: number; z: number }[] | null = null;
+  /** Precomputed SMOOTH base-terrain grid (the warp+FBM+ridged+uplands noise stack, NO carves) baked once in
+   *  the ctor. `baseHeight` bilinear-samples it instead of re-running the noise per query, collapsing the
+   *  terrain-mesh / fire-grid / forest-scatter sweeps from N noise evals to N cheap samples. The sharp carves
+   *  (lakes/rivers/bridges/pads/province) stay exact in `groundHeightAt`. Frame mirrors AuthoredField:
+   *  minX/minZ = -size/2, per-axis cell so a 'bounds'-fit rectangle covers without skew. Null until built. */
+  private baseGrid: Float32Array | null = null;
+  private bgNx = 0;
+  private bgNz = 0;
+  private bgMinX = 0;
+  private bgMinZ = 0;
+  private bgCellX = 0;
+  private bgCellZ = 0;
 
   /**
    * @param seed world seed — threads through noise/hydrology/placement/fire RNG so the same
@@ -329,6 +341,13 @@ export class World {
       const p = this.project(b.lat, b.lon);
       return { x: p.x, z: p.z, kind: b.kind, rotationDeg: b.rotationDeg ?? 0 };
     });
+
+    // LOAD-PERF: bake the smooth base-terrain noise into a grid ONCE, now that every noise input (noise,
+    // profile, uplands, heightPatches, authoredTerrain) is final. From here on `baseHeight` bilinear-samples
+    // this grid, so scatterLakes/makeRivers/the terrain mesh/the fire grid stop re-running the noise stack.
+    // Built BEFORE scatterLakes — the first baseHeight consumer — so every caller (incl. each lake's once-
+    // sampled water level) reads the identical sampled floor the mesh later carves into (no waterline seam).
+    this.buildBaseGrid();
 
     // Lakes scattered across the world, count scaled to area so water density stays
     // constant as the map grows (the curated LAKES3D radii seed the size range). Each
@@ -1786,13 +1805,63 @@ export class World {
   // --- Base terrain ------------------------------------------------------------
 
   /**
-   * Pure base terrain height (no lakes) at world (x, z) — Track A1's seeded noise.
-   * Boreal-Shield recipe: domain-warp the coords (winding ridgelines), sample a
-   * low-relief FBM for the rolling base, add a ridged layer above a threshold for
-   * granite outcrops, then compress sub-waterline dips into flatter muskeg basins.
-   * Pure + deterministic, so the mesh and every height query stay in lockstep.
+   * Bake the smooth base-terrain noise (`baseHeightNoise`) into a grid covering the whole world rectangle,
+   * once, in the ctor. The cell is `WORLD3D.baseGridCell` world-units (≈half the finest mesh segment), per
+   * axis so a 'bounds'-fit rectangle (sizeX ≠ sizeZ) covers without skew. This is ONE noise sweep — the same
+   * cost as one existing terrain pass — after which every `baseHeight` query is an O(1) bilinear sample.
+   */
+  private buildBaseGrid(): void {
+    const cell = Math.max(1, WORLD3D.baseGridCell);
+    const nx = Math.max(2, Math.ceil(this.sizeX / cell) + 1);
+    const nz = Math.max(2, Math.ceil(this.sizeZ / cell) + 1);
+    this.bgNx = nx;
+    this.bgNz = nz;
+    this.bgMinX = -this.sizeX / 2;
+    this.bgMinZ = -this.sizeZ / 2;
+    this.bgCellX = this.sizeX / (nx - 1);
+    this.bgCellZ = this.sizeZ / (nz - 1);
+    const grid = new Float32Array(nx * nz);
+    for (let iz = 0; iz < nz; iz++) {
+      const wz = this.bgMinZ + iz * this.bgCellZ;
+      for (let ix = 0; ix < nx; ix++) {
+        const wx = this.bgMinX + ix * this.bgCellX;
+        grid[iz * nx + ix] = this.baseHeightNoise(wx, wz);
+      }
+    }
+    this.baseGrid = grid;
+  }
+
+  /**
+   * Base terrain height (no carves) at world (x, z): a bilinear sample of the precomputed `baseGrid` (built
+   * in the ctor before any consumer). Clamps to the grid edge — out-of-bounds reads the nearest cell, never
+   * extrapolates (safe: every sweep samples within [-size/2, +size/2], and the province falloff that owns
+   * the rim runs later in groundHeightAt and is LOWER-only). Falls back to the exact noise pre-bake (a safety
+   * net only — the invariant is the grid exists first). `groundHeightAt` carves lakes/rivers/etc. on top.
    */
   private baseHeight(x: number, z: number): number {
+    const g = this.baseGrid;
+    if (!g) return this.baseHeightNoise(x, z);
+    const nx = this.bgNx;
+    const fx = (x - this.bgMinX) / this.bgCellX;
+    const fz = (z - this.bgMinZ) / this.bgCellZ;
+    const ix = Math.max(0, Math.min(nx - 2, Math.floor(fx)));
+    const iz = Math.max(0, Math.min(this.bgNz - 2, Math.floor(fz)));
+    const tx = Math.max(0, Math.min(1, fx - ix));
+    const tz = Math.max(0, Math.min(1, fz - iz));
+    const a = g[iz * nx + ix];
+    const b = g[iz * nx + ix + 1];
+    const c = g[(iz + 1) * nx + ix];
+    const d = g[(iz + 1) * nx + ix + 1];
+    return (a * (1 - tx) + b * tx) * (1 - tz) + (c * (1 - tx) + d * tx) * tz;
+  }
+
+  /**
+   * Pure base terrain noise (no lakes) at world (x, z) — Track A1's seeded noise, and the determinism source
+   * of truth that fills `baseGrid`. Boreal-Shield recipe: domain-warp the coords (winding ridgelines), sample
+   * a low-relief FBM for the rolling base, add a ridged layer above a threshold for granite outcrops, then
+   * compress sub-waterline dips into flatter muskeg basins. Pure + deterministic.
+   */
+  private baseHeightNoise(x: number, z: number): number {
     const p = this.profile;
     const [wx, wz] = this.noise.warp(x, z, p.warpStrength, p.warpFrequency);
 
