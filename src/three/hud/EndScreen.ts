@@ -13,6 +13,7 @@ import { dailyStreak } from '../missions/streak';
 import { bestScore } from '../missions/progress';
 import { CAMPAIGN } from '../missions/catalog';
 import { bannerButton, fmtTime } from './common';
+import { openStore } from '../ui/storeLink';
 import { PROVINCE_COPY } from '../province/strings';
 import type { HudState, EndScreenHooks } from './types';
 import type { MissionDef, ScoreBreakdown, ScoreGrade } from '../missions/types';
@@ -228,10 +229,10 @@ export class EndScreen {
       if (this.end.onLeaderboard) row2.appendChild(bannerButton('🏆 LEADERBOARD', 'secondary', this.end.onLeaderboard));
       row2.appendChild(this.shareButton(s));
       card.appendChild(row2);
-      // Win-only merch hook — surfaced at the highest-intent moment (just won, grade glowing). Leaves
-      // the game for the standalone BMF Gear website (/shop.html) where the waitlist capture lives.
+      // Win-only merch hook — surfaced at the highest-intent moment (just won, grade glowing). Opens
+      // the standalone bucketmyfire storefront in a new tab (keeps the win screen behind it).
       if (s.won) {
-        const store = bannerButton('🪧 SQUADRON STORE', 'store', () => { window.location.href = '/shop.html'; });
+        const store = bannerButton('🪧 SQUADRON STORE', 'store', () => openStore());
         const storeRow = el('div', { display: 'flex', justifyContent: 'center', marginTop: shortVp ? '8px' : '12px' });
         storeRow.appendChild(store);
         card.appendChild(storeRow);
