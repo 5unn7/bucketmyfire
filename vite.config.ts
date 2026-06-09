@@ -212,12 +212,15 @@ export default defineConfig({
     sourcemap: false, // don't ship 3.9 MB of source maps (or full source) to prod
     chunkSizeWarningLimit: 1500,
     rollupOptions: {
-      // Single HTML entry: the content-first front door (index.html → src/hub.ts). The dev-only
-      // heli-preview.html / icons-preview.html are not root-discovered, so they stay out of dist/. The
-      // merch store is now a standalone site at shop.bucketmyfire.com (the old in-bundle shop.html
-      // redirect + src/shop/ were retired); the front door links out to it directly.
+      // Multi-page front door (clean URLs): the home (index.html → src/hub.ts), the Campaign showcase
+      // (campaign/index.html → src/campaign/main.ts), and Prepare (prepare/index.html → src/prepare/main.ts).
+      // Each is a light, crawlable static page that lazy-loads the ~1 MB game only on a play link. The
+      // merch store is a standalone site at shop.bucketmyfire.com; the dev-only heli/icons previews are not
+      // root-discovered, so they stay out of dist/.
       input: {
         main: path.resolve(ROOT, 'index.html'),
+        campaign: path.resolve(ROOT, 'campaign/index.html'),
+        prepare: path.resolve(ROOT, 'prepare/index.html'),
       },
     },
   },

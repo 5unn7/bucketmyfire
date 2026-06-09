@@ -2,588 +2,88 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <!-- Brand favicon: the bucket-drop flame mark (public/icon.svg), an SVG so the tab icon stays
-         crisp at any size. Home-screen installs use raster PNGs (apple-touch-icon.png + the manifest
-         icon-192/512) because iOS/Android ignore SVG there. All rasterized from the one icon.svg. -->
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
-    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="theme-color" content="#05080b" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <!-- iOS/Android home-screen icons need raster PNG (Safari ignores SVG apple-touch-icon). -->
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>Bucket My Fire — Live Wildfire Tracker &amp; Helicopter Fire-Fight Sim</title>
 
-    <!-- SEO + social share. Open Graph / Twitter cards make the link unfurl with a
-         title, blurb, and preview image on X / Discord / iMessage / Slack. og:image MUST be absolute. -->
     <meta
       name="description"
-      content="A live window onto real wildfire across Saskatchewan and Canada — agency-reported fires, area burned, and fire weather from CIFFC and CWFIS — plus a helicopter you can fly into the fight. Free in your browser."
+      content="The only live wildfire tracker you can fly into — agency-reported fires, area burned, and fire weather from CIFFC and CWFIS across Canada, plus a helicopter you fly into the fight. Free in your browser."
     />
     <link rel="canonical" href="https://bucketmyfire.com/" />
-
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Bucket My Fire" />
     <meta property="og:url" content="https://bucketmyfire.com/" />
     <meta property="og:title" content="Bucket My Fire — Live Wildfire Tracker &amp; Helicopter Fire-Fight Sim" />
     <meta
       property="og:description"
-      content="See real wildfire across Saskatchewan and Canada, live — then fly a helicopter into the fight. Real CIFFC + CWFIS data, free in your browser."
+      content="See real wildfire across Canada, live — then fly a helicopter into the fight. Real CIFFC + CWFIS data, free in your browser."
     />
     <meta property="og:image" content="https://bucketmyfire.com/og-image.jpg" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta
-      property="og:image:alt"
-      content="A helicopter with a slung water bucket flying over a burning northern forest."
-    />
-
+    <meta property="og:image:alt" content="A helicopter with a slung water bucket flying over a burning northern forest." />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Bucket My Fire — Live Wildfire Tracker &amp; Helicopter Fire-Fight Sim" />
-    <meta
-      name="twitter:description"
-      content="See real wildfire across Saskatchewan and Canada, live — then fly a helicopter into the fight. Real CIFFC + CWFIS data, free in your browser."
-    />
+    <meta name="twitter:description" content="See real wildfire across Canada, live — then fly a helicopter into the fight. Real CIFFC + CWFIS data, free in your browser." />
     <meta name="twitter:image" content="https://bucketmyfire.com/og-image.jpg" />
 
     <!-- SEO + AEO structured data (WebSite + VideoGame + FAQPage JSON-LD) is injected as a STATIC tag at
-         build time by the bmf-structured-data plugin in vite.config.ts (an inline ld+json here desyncs
-         Vite's HTML inline-proxy). -->
+         build time by the bmf-structured-data plugin in vite.config.ts. -->
 
-    <!--
-      CRITICAL FRONT-DOOR CSS — the cockpit shell, painted BEFORE any module JS parses (it can't read
-      theme.ts). It covers only the above-the-fold appbar + hero tile so the FIRST paint already reads as
-      the glass-cockpit dashboard. The few brand literals below are fallbacks under the SAME `--token`
-      names src/three/ui/tokens.ts emits; src/hub.ts then calls the kit's injectKitStyles() (the REAL
-      theme.ts tokens on :root + the .btn of record) and injectHubStyles() (the rest of the bento), so the
-      live page resolves the identical tokens the in-game home uses — one visual language, no drift.
-      Two registers (DESIGN.md): warm "fight" ember/gold for the hero + brand; cool mono "instrument" for
-      the live readouts. --metal* are the home's local instrument cosmetics (screen decoration, not tokens).
-    -->
+    <!-- Critical paint: the cockpit backdrop + token fallbacks, so the FIRST frame is the ember-lit glass
+         scene before src/hub.ts injects the REAL theme.ts tokens + the in-game home stylesheet (the same
+         components the hub uses: dossier sheen, cut cards, .shopbanner specular, squared badges). -->
     <style>
-      :root {
-        --ember: #ff6a2c;
-        --ember-hi: #ffc24a;
-        --menu: #ffc24a;
-        --fire: #ff7a45;
-        --text: rgba(255, 255, 255, 0.94);
-        --text-subtle: rgba(255, 255, 255, 0.82);
-        --dim: rgba(255, 255, 255, 0.45);
-        --faint: rgba(255, 255, 255, 0.34);
-        --card-bg: #0a0e12;
-        --stroke: rgba(255, 255, 255, 0.12);
-        --warm-stroke: rgba(255, 138, 110, 0.85);
-        --hair: rgba(255, 255, 255, 0.07);
-        --cta: linear-gradient(180deg, #ffd45e 0%, #efaa2b 100%);
-        --cta-hi: linear-gradient(180deg, #ffdd76 0%, #f4b441 100%);
-        --cta-ink: #3a2406;
-        --cta-glow: rgba(239, 170, 43, 0.42);
-        --shadow-card: 0 8px 30px rgba(0, 0, 0, 0.45);
-        --ember-12: rgba(255, 106, 44, 0.12);
-        --ember-22: rgba(255, 106, 44, 0.22);
-        --ember-35: rgba(255, 106, 44, 0.35);
-        --warm-38: rgba(255, 140, 60, 0.38);
-        --glow-80: rgba(255, 140, 50, 0.8);
-        --r-md: 12px;
-        --r-lg: 10px;
-        --r-xl: 18px;
-        --font: "Saira Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-        --mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-        --metal: linear-gradient(160deg, #22262a 0%, #15191d 40%, #0d1013 100%);
-        --metal-hi: linear-gradient(160deg, #2c3137 0%, #1a1e23 55%, #101317 100%);
-        --bevel-top: rgba(255, 255, 255, 0.14);
-      }
-      * {
-        box-sizing: border-box;
-      }
-      html,
-      body {
-        margin: 0;
-        padding: 0;
-        background: #05080b;
-        color: var(--text);
-        font-family: var(--font);
-        -webkit-font-smoothing: antialiased;
-        text-rendering: optimizeLegibility;
-        overflow-x: clip; /* clip the cockpit scene's full-bleed glow; vertical scroll + sticky still work */
-      }
-      /* The front door is a CONTENT page — it MAY scroll. body.bmf-playing re-locks the viewport when
-         "Fight the fire" enters the 3D game, exactly as the game expects (full-bleed, non-scrolling). */
-      body.bmf-playing {
-        overflow: hidden;
-        height: 100dvh;
-        touch-action: none;
-        overscroll-behavior: none;
-        -webkit-user-select: none;
-        user-select: none;
-      }
-      body.bmf-playing #game {
-        position: fixed;
-        inset: 0;
-        width: 100vw;
-        height: 100dvh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        overflow: hidden;
-      }
-      body.bmf-playing canvas {
-        display: block;
-      }
-      h1,
-      h2,
-      h3 {
-        margin: 0;
-        font-weight: 800;
-        letter-spacing: -0.01em;
-      }
-      @media (prefers-reduced-motion: reduce) {
-        *,
-        *::before,
-        *::after {
-          animation-duration: 0.001ms !important;
-          animation-iteration-count: 1 !important;
-          transition-duration: 0.001ms !important;
-          scroll-behavior: auto !important;
-        }
-      }
-
-      /* Cockpit backdrop — the same ember-lit dark scene the in-game home paints (ui/home/styles.ts). */
-      .fd-scene {
-        position: fixed;
-        inset: 0;
-        z-index: 0;
-        pointer-events: none;
-        background:
-          radial-gradient(130% 60% at 50% -8%, rgba(255, 106, 44, 0.2) 0%, rgba(255, 106, 44, 0.05) 30%, transparent 56%),
-          radial-gradient(150% 90% at 50% 118%, rgba(255, 120, 40, 0.1) 0%, transparent 52%),
-          linear-gradient(180deg, #0a0d10 0%, #0b0e10 42%, #07090b 100%);
-      }
-      .fd-scene::after {
-        content: "";
-        position: absolute;
-        inset: 0;
-        box-shadow: inset 0 0 160px 50px rgba(0, 0, 0, 0.7);
-      }
-      .fd-app {
-        position: relative;
-        z-index: 2;
-        max-width: 1080px;
-        margin: 0 auto;
-        padding: 0 max(14px, env(safe-area-inset-left)) calc(40px + env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-right));
-      }
-
-      /* ── Appbar (mono instrument header) ─────────────────────────────────── */
-      .fd-bar {
-        position: sticky;
-        top: 0;
-        z-index: 20;
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        min-height: 56px;
-        padding: 10px 2px;
-        background: linear-gradient(180deg, rgba(7, 10, 13, 0.92), rgba(7, 10, 13, 0.4));
-        backdrop-filter: blur(10px) saturate(120%);
-        -webkit-backdrop-filter: blur(10px) saturate(120%);
-        border-bottom: 1px solid var(--hair);
-      }
-      .fd-brand {
-        display: inline-flex;
-        align-items: center;
-        gap: 10px;
-        text-decoration: none;
-        color: var(--text);
-      }
-      .fd-brand .fd-glyph {
-        width: 34px;
-        height: 34px;
-        flex: 0 0 auto;
-        display: grid;
-        place-items: center;
-        border-radius: var(--r-md);
-        border: 1px solid var(--warm-stroke);
-        background: radial-gradient(circle at 40% 30%, var(--warm-38), rgba(10, 12, 14, 0.9));
-        box-shadow: inset 0 0 10px var(--ember-35), 0 0 14px var(--ember-12);
-      }
-      .fd-brand .fd-glyph img {
-        width: 17px;
-        height: 17px;
-        display: block;
-        filter: drop-shadow(0 0 4px var(--glow-80));
-      }
-      .fd-brand b {
-        font-family: var(--mono);
-        font-weight: 800;
-        font-size: 13px;
-        letter-spacing: 0.16em;
-        text-transform: uppercase;
-        white-space: nowrap;
-      }
-      /* On a phone the wordmark crowds the nav — show the flame glyph alone (the appbar stays one line). */
-      @media (max-width: 440px) {
-        .fd-brand b {
-          display: none;
-        }
-      }
-      .fd-bar .fd-spacer {
-        flex: 1;
-      }
-      .fd-bar-live {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        font-family: var(--mono);
-        font-size: 10px;
-        letter-spacing: 0.16em;
-        text-transform: uppercase;
-        color: var(--ok, #63d68a);
-        padding: 5px 9px;
-        border-radius: 6px;
-        border: 1px solid var(--hair);
-        background: rgba(8, 16, 22, 0.5);
-      }
-      .fd-bar-live::before {
-        content: "";
-        width: 7px;
-        height: 7px;
-        border-radius: 50%;
-        background: currentColor;
-        box-shadow: 0 0 7px currentColor;
-      }
-      .fd-bar-live.is-cached {
-        color: var(--caution, #ffc861);
-      }
-      .fd-bar-live.is-down {
-        color: var(--warn, #ff5d4d);
-      }
-      .fd-bar a.fd-navlink {
-        text-decoration: none;
-        color: var(--dim);
-        font-family: var(--mono);
-        font-size: 11px;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
-        font-weight: 700;
-        padding: 10px 11px;
-        min-height: 44px;
-        display: inline-flex;
-        align-items: center;
-      }
-      .fd-bar a.fd-navlink:hover {
-        color: var(--ember-hi);
-      }
-
-      /* ── Bento grid ──────────────────────────────────────────────────────── */
-      .fd-grid {
-        display: grid;
-        gap: 12px;
-        grid-template-columns: 1fr;
-        margin-top: 14px;
-      }
-      @media (min-width: 880px) {
-        .fd-grid {
-          grid-template-columns: repeat(3, 1fr);
-          align-items: start;
-        }
-        .fd-hero {
-          grid-column: span 2;
-        }
-        .fd-status {
-          grid-column: span 1;
-        }
-        .fd-map-tile,
-        .fd-prepare,
-        .fd-foot {
-          grid-column: 1 / -1;
-        }
-      }
-
-      /* ── Card of record (mirrors ui/home/styles.ts .card) ────────────────── */
-      .fd-card {
-        position: relative;
-        background: var(--metal-hi);
-        border: 1px solid var(--stroke);
-        border-top-color: var(--bevel-top);
-        border-radius: var(--r-md);
-        box-shadow: var(--shadow-card), inset 0 1px 0 rgba(255, 255, 255, 0.05);
-        padding: 16px 17px;
-      }
-      .fd-card.metal {
-        background: var(--metal);
-      }
-      .fd-card.warm {
-        background: radial-gradient(120% 140% at 82% 0%, var(--ember-12), transparent 55%), var(--metal-hi);
-        border-color: var(--warm-stroke);
-      }
-      .fd-card.cut {
-        clip-path: polygon(18px 0, 100% 0, 100% 100%, 0 100%, 0 18px);
-      }
-
-      /* corner reticle brackets ("target locked") */
-      .fd-brackets {
-        position: absolute;
-        inset: 10px;
-        z-index: 2;
-        pointer-events: none;
-      }
-      .fd-brackets i {
-        position: absolute;
-        width: 14px;
-        height: 14px;
-        border-color: var(--warm-stroke);
-        opacity: 0.6;
-      }
-      .fd-brackets i:nth-child(1) {
-        top: 0;
-        left: 0;
-        border-top: 2px solid;
-        border-left: 2px solid;
-      }
-      .fd-brackets i:nth-child(2) {
-        top: 0;
-        right: 0;
-        border-top: 2px solid;
-        border-right: 2px solid;
-      }
-      .fd-brackets i:nth-child(3) {
-        bottom: 0;
-        right: 0;
-        border-bottom: 2px solid;
-        border-right: 2px solid;
-      }
-
-      .fd-eyebrow {
-        margin: 0 0 13px;
-        font-family: var(--mono);
-        font-size: 10.5px;
-        letter-spacing: 0.26em;
-        text-transform: uppercase;
-        color: var(--menu);
-        font-weight: 700;
-      }
-
-      /* ── Hero tile ───────────────────────────────────────────────────────── */
-      .fd-hero {
-        min-height: 248px;
-        display: flex;
-        flex-direction: column;
-        padding: 22px 22px 20px;
-        overflow: hidden;
-      }
-      .fd-hero .fd-head {
-        position: relative;
-        z-index: 1;
-        font-size: clamp(27px, 5vw, 44px);
-        line-height: 1.05;
-        max-width: 17ch;
-        text-wrap: balance;
-        color: #fff;
-      }
-      .fd-hero .fd-head .fd-num {
-        color: var(--ember);
-        font-weight: 900;
-      }
-      .fd-hero .fd-sub {
-        position: relative;
-        z-index: 1;
-        margin: 14px 0 0;
-        font-size: clamp(14px, 1.7vw, 16px);
-        line-height: 1.5;
-        color: var(--text-subtle);
-        max-width: 44ch;
-      }
-      .fd-cta-row {
-        position: relative;
-        z-index: 1;
-        margin-top: auto;
-        padding-top: 22px;
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: 12px 20px;
-      }
-      .fd-link {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        text-decoration: none;
-        color: var(--ember-hi);
-        font-weight: 700;
-        font-size: 13.5px;
-        min-height: 44px;
-        appearance: none;
-        background: none;
-        border: 0;
-        padding: 0;
-        cursor: pointer;
-        font-family: var(--font);
-      }
-      .fd-link:hover {
-        color: var(--ember);
-      }
-
-      /* Minimal .btn fallback so the hero CTA paints styled before the kit loads (kit's .btn wins after). */
-      .btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 9px;
-        cursor: pointer;
-        font-family: var(--font);
-        font-weight: 800;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        line-height: 1;
-        border: 1px solid transparent;
-        border-radius: var(--r-lg);
-        padding: 16px 26px;
-        min-height: 54px;
-        font-size: 15px;
-      }
-      .btn.primary {
-        background: var(--cta);
-        color: var(--cta-ink);
-        box-shadow: 0 1px 0 rgba(255, 255, 255, 0.5) inset, 0 8px 20px var(--cta-glow);
-      }
+      :root { --ember: #ff6a2c; }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; background: #05080b; color: rgba(255,255,255,0.94);
+        font-family: "Saira Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        -webkit-font-smoothing: antialiased; overflow-x: clip; }
+      /* The front door is a CONTENT page — it scrolls. The game re-locks the viewport on entry. */
+      body.bmf-playing { overflow: hidden; height: 100dvh; touch-action: none; overscroll-behavior: none; }
+      body.bmf-playing #game { position: fixed; inset: 0; width: 100vw; height: 100dvh; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+      body.bmf-playing canvas { display: block; }
+      #fd-boot { position: fixed; inset: 0; z-index: 0; background:
+        radial-gradient(130% 60% at 50% -8%, rgba(255,106,44,0.2) 0%, rgba(255,106,44,0.05) 30%, transparent 56%),
+        radial-gradient(150% 90% at 50% 118%, rgba(255,120,40,0.1) 0%, transparent 52%),
+        linear-gradient(180deg, #0a0d10 0%, #0b0e10 42%, #07090b 100%); }
     </style>
   </head>
   <body>
+    <!-- Crawlable / no-JS fallback: the positioning claim + the real authorities. The interactive
+         glass-cockpit hub (and the 3D game) need JavaScript. -->
     <noscript>
-      <div style="padding: 28px 18px; max-width: 640px; margin: 0 auto; line-height: 1.6">
-        <h1 style="color: #ff6a2c">Bucket My Fire</h1>
+      <div style="position:relative;z-index:1;padding:28px 18px;max-width:680px;margin:0 auto;line-height:1.6">
+        <h1 style="color:#ff6a2c">Fight the fire.</h1>
+        <p>Watch real wildfire across Canada from CIFFC and CWFIS, then fly a helicopter into the fight. The live
+          fire map and the 3D game both need JavaScript; please enable it and reload.</p>
         <p>
-          A live window onto real wildfire across Saskatchewan and Canada — and a helicopter you can fly
-          into the fight. The live fire map and the 3D game both need JavaScript; please enable it and
-          reload.
+          <a style="color:#ffc24a" href="/campaign/">Campaign</a> ·
+          <a style="color:#ffc24a" href="/prepare/">Prepare</a> ·
+          <a style="color:#ffc24a" href="https://shop.bucketmyfire.com/">Shop</a> ·
+          <a style="color:#ffc24a" href="/blog/">Field Notes</a>
         </p>
-        <p>
-          For authoritative wildfire information, see
-          <a style="color: #ffc24a" href="https://ciffc.net/">CIFFC</a>,
-          <a style="color: #ffc24a" href="https://cwfis.cfs.nrcan.gc.ca/">CWFIS</a>, and
-          <a style="color: #ffc24a" href="https://www.saskalert.ca/">SaskAlert</a>.
+        <p>For authoritative wildfire information, see
+          <a style="color:#ffc24a" href="https://ciffc.net/">CIFFC</a>,
+          <a style="color:#ffc24a" href="https://cwfis.cfs.nrcan.gc.ca/">CWFIS</a>, and
+          <a style="color:#ffc24a" href="https://www.getprepared.gc.ca/">Get Prepared Canada</a>.
         </p>
       </div>
     </noscript>
 
-    <!-- The front door — a glass-cockpit BENTO dashboard, the same visual language as the in-game home.
-         This is HAND-AUTHORED static markup so a crawler + a cold first paint both see real words with
-         zero JS. src/hub.ts calls injectKitStyles() (real theme.ts tokens + the .btn of record), styles
-         the rest of the bento, hydrates #fd-head / the readouts with the live CIFFC numbers, mounts the
-         live map, and wires "Fight the fire" to lazy-load the 3D game. -->
-    <div id="game">
-      <div class="fd-scene" aria-hidden="true"></div>
-      <div class="fd-app">
-        <header class="fd-bar">
-          <a class="fd-brand" href="/" aria-label="Bucket My Fire — home">
-            <span class="fd-glyph"><img src="/brand/icon_white.svg" alt="" width="17" height="17" /></span>
-            <b>Bucket My Fire</b>
-          </a>
-          <span class="fd-spacer"></span>
-          <span class="fd-bar-live" id="fd-bar-live">Live</span>
-          <a class="fd-navlink" href="/blog/">Field Notes</a>
-          <a class="fd-navlink" href="#prepare" data-scroll>Prepare</a>
-          <a
-            class="fd-navlink"
-            href="https://shop.bucketmyfire.com/?utm_source=bucketmyfire&utm_medium=frontdoor&utm_campaign=nav"
-            >Shop</a
-          >
-        </header>
+    <div id="fd-boot" aria-hidden="true"></div>
+    <!-- The hub mounts the glass-cockpit home here (and lazy-loads the 3D game only on a play link). -->
+    <div id="game"></div>
 
-        <main class="fd-grid">
-          <!-- Hero tile — the fight register (warm). The keystone action + the live SK hook. -->
-          <section class="fd-hero fd-card warm cut">
-            <span class="fd-brackets" aria-hidden="true"><i></i><i></i><i></i></span>
-            <p class="fd-eyebrow">Live wildfire · Saskatchewan</p>
-            <h1 class="fd-head" id="fd-head">See the wildfire fight as it happens.</h1>
-            <p class="fd-sub" id="fd-sub">
-              Real fire data from CIFFC and CWFIS — and a helicopter you can fly into the fight.
-            </p>
-            <div class="fd-cta-row">
-              <button class="btn primary" id="fd-fight" type="button">Fight the fire</button>
-              <a class="fd-link" href="#livefire" data-scroll>See the live map ↓</a>
-            </div>
-          </section>
-
-          <!-- Status tile — the instrument register (cool / mono readouts), national CIFFC totals. -->
-          <section class="fd-status fd-card metal" id="fd-status">
-            <p class="fd-eyebrow cool">National · Canada</p>
-            <div class="fd-readouts">
-              <div class="fd-ro"><b id="ro-active">—</b><span>active fires</span></div>
-              <div class="fd-ro"><b id="ro-area">—</b><span>burned this year</span></div>
-              <div class="fd-ro"><b id="ro-prep">—</b><span>prep level</span></div>
-            </div>
-            <div class="fd-fresh" id="fd-fresh">source CIFFC + CWFIS</div>
-          </section>
-
-          <!-- Live wildfire map tile -->
-          <section class="fd-map-tile fd-card" id="livefire">
-            <div class="fd-sec"><span class="fd-sec-tag">Live wildfire map</span><i class="fd-sec-line"></i></div>
-            <div class="fd-map" id="fd-map">
-              <div class="fd-map-skel" id="fd-map-skel">Loading the live fire map…</div>
-            </div>
-            <div class="fd-map-foot">
-              <div class="fd-legend" id="fd-legend" aria-hidden="true"></div>
-              <button class="fd-link" type="button" data-fight>See it from the air → Fight the fire</button>
-            </div>
-          </section>
-
-          <!-- Prepare tile -->
-          <section class="fd-prepare" id="prepare">
-            <div class="fd-sec"><span class="fd-sec-tag">Prepare</span><i class="fd-sec-line"></i></div>
-            <div class="fd-prep-grid">
-              <a class="fd-card fd-prep" href="https://firesmartcanada.ca/" target="_blank" rel="noopener">
-                <span class="fd-prep-h">Know your risk</span>
-                <span class="fd-prep-b">How wildfire reaches a home, and what actually lowers the odds around yours.</span>
-                <span class="fd-prep-src">FireSmart Canada →</span>
-              </a>
-              <a class="fd-card fd-prep" href="https://www.getprepared.gc.ca/cnt/rsrcs/prprdnss-en.aspx" target="_blank" rel="noopener">
-                <span class="fd-prep-h">Make a plan &amp; a go-bag</span>
-                <span class="fd-prep-b">Build an emergency plan and a 72-hour kit before you ever need to leave.</span>
-                <span class="fd-prep-src">Get Prepared (Canada) →</span>
-              </a>
-              <a class="fd-card fd-prep" href="https://www.saskalert.ca/" target="_blank" rel="noopener">
-                <span class="fd-prep-h">Get the alerts</span>
-                <span class="fd-prep-b">Provincial wildfire alerts and evacuation orders, straight from the source.</span>
-                <span class="fd-prep-src">SaskAlert →</span>
-              </a>
-            </div>
-          </section>
-
-          <!-- Footer -->
-          <footer class="fd-foot" id="about">
-            <p class="fd-cause">
-              Bucket My Fire is a helicopter wildfire flight sim — and a window onto the real fire season
-              it's set in. The game is the hook; the data is real.
-            </p>
-            <p class="fd-disclaimer">
-              A window onto real data — not an emergency tool. Always follow official sources and local
-              authorities.
-            </p>
-            <p class="fd-sources">Sources: CWFIS (NRCan) · CIFFC · ECCC</p>
-            <div class="fd-foot-links">
-              <a href="/blog/">Field Notes</a>
-              <a href="https://shop.bucketmyfire.com/?utm_source=bucketmyfire&utm_medium=frontdoor&utm_campaign=footer">Wear the fight</a>
-              <a href="/privacy.html">Privacy</a>
-              <a href="/terms.html">Terms</a>
-            </div>
-          </footer>
-        </main>
-      </div>
-    </div>
-
-    <!-- Light front-door controller (NOT the game). Hydrates the live numbers, mounts the Leaflet map,
-         and lazy-loads the 3D game only when "Fight the fire" is tapped. A game/dev deep link (?province /
-         ?ffa / ?m= / ?autostart / ?qa / ?editor …) is detected here and handed straight to the game,
-         preserving every existing entry + the headless QA harness. -->
     <script type="module" src="/src/hub.ts"></script>
 
-    <!-- Visitor analytics: NONE here on purpose. The domain is proxied through Cloudflare with Web
-         Analytics enabled, so Cloudflare AUTO-INJECTS the privacy-first beacon at the edge — adding a
-         manual <script> beacon would double-count. If the site moves off the Cloudflare proxy, re-add it. -->
+    <!-- Visitor analytics: NONE here on purpose — Cloudflare Web Analytics auto-injects the privacy-first
+         beacon at the edge; a manual beacon would double-count. -->
   </body>
 </html>

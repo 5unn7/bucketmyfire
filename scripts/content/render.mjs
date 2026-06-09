@@ -113,6 +113,8 @@ async function writeOg(outArticleDir, article, log) {
 
 function sitemap(articles) {
   const urls = [{ loc: `${'https://bucketmyfire.com'}/`, changefreq: 'daily', priority: '1.0', lastmod: today() }];
+  urls.push({ loc: `https://bucketmyfire.com/campaign/`, changefreq: 'monthly', priority: '0.8', lastmod: today() });
+  urls.push({ loc: `https://bucketmyfire.com/prepare/`, changefreq: 'monthly', priority: '0.8', lastmod: today() });
   urls.push({ loc: `https://bucketmyfire.com/blog/`, changefreq: 'weekly', priority: '0.9', lastmod: today() });
   for (const id of Object.keys(PILLARS)) {
     if (articles.some((a) => a.pillar === id)) {
@@ -172,6 +174,19 @@ export async function buildContent({ root = ROOT, outDir, log = () => {} } = {})
   // Blog index
   fs.writeFileSync(path.join(outBlog, 'index.html'), indexPage(articles, css));
   log('  blog/');
+
+  // Blog manifest (the "Field Notes" carousel on the home + Prepare pages fetches this — see
+  // src/site/blogCarousel.ts). A small static JSON so the rail always reflects what's published, with
+  // no article metadata hand-mirrored into the app bundle.
+  const feed = articles.map((a) => ({
+    slug: a.slug,
+    title: a.title,
+    description: a.description,
+    pillarTitle: a.pillarTitle,
+    dateLabel: a.dateLabel,
+  }));
+  fs.writeFileSync(path.join(outBlog, 'index.json'), JSON.stringify(feed));
+  log(`  blog/index.json (${feed.length})`);
 
   // Sitemap (home + blog), overwriting the static public/ copy that Vite copied into dist/
   fs.writeFileSync(path.join(out, 'sitemap.xml'), sitemap(articles));
