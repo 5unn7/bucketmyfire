@@ -5,655 +5,85 @@
     <link rel="icon" type="image/svg+xml" href="./icon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#0a0605" />
-    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
     <title>BMF Gear — Wear the fight.</title>
 
-    <!-- SEO + social share. This is the standalone merch storefront (the game's structured-data
-         JSON-LD is scoped to index.html only — see vite.config.ts). -->
-    <meta
-      name="description"
-      content="BMF Gear — crew-grade wildfire gear from Bucket My Fire. Printed on demand, named for the sorties you flew. Get the drop."
-    />
-    <link rel="canonical" href="https://bucketmyfire.com/shop.html" />
-
-    <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="Bucket My Fire" />
-    <meta property="og:url" content="https://bucketmyfire.com/shop.html" />
-    <meta property="og:title" content="BMF Gear — Wear the fight." />
-    <meta
-      property="og:description"
-      content="Crew-grade wildfire gear, named for the sorties you flew. Printed on demand. Get the drop."
-    />
-    <meta property="og:image" content="https://bucketmyfire.com/og-image.jpg" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
-
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="BMF Gear — Wear the fight." />
-    <meta name="twitter:description" content="Crew-grade wildfire gear, named for the sorties you flew. Get the drop." />
-    <meta name="twitter:image" content="https://bucketmyfire.com/og-image.jpg" />
+    <!-- The merch store moved to its own property (shop.bucketmyfire.com — a headless
+         Medusa + Next.js storefront). This page is retired to a redirect so old links,
+         bookmarks, and the pre-launch waitlist URL all forward to the real store. -->
+    <link rel="canonical" href="https://shop.bucketmyfire.com/" />
+    <meta http-equiv="refresh" content="0; url=https://shop.bucketmyfire.com/" />
+    <meta name="robots" content="noindex, follow" />
 
     <style>
-      /* BMF Gear — the warm "fight" brand register as a real, scrolling website (NOT the game's
-         glass-cockpit no-scroll UI). Brand colours mirror theme.ts (ember/gold on warm-dark). */
       :root {
         --ember: #ff6a2c;
         --gold: #ffc24a;
-        --fire: #ff7a45;
         --bg0: #0a0605;
-        --bg1: #1a0f0a;
-        --plate: #100b08;
-        --card: #16100b;
-        --card-hi: #1d1610;
         --ink: rgba(255, 255, 255, 0.94);
         --dim: rgba(255, 255, 255, 0.56);
-        --faint: rgba(255, 255, 255, 0.4);
-        --hair: rgba(255, 255, 255, 0.1);
-        --warm-hair: rgba(255, 138, 110, 0.24);
-        --ok: #63d68a;
-        --warn: #ff5d4d;
-        --maxw: 600px;
         --font: 'Saira Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
       }
-
-      * {
-        box-sizing: border-box;
-      }
-      html {
-        -webkit-text-size-adjust: 100%;
-        scroll-behavior: smooth;
+      html,
+      body {
+        height: 100%;
+        margin: 0;
       }
       body {
-        margin: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        gap: 16px;
         font-family: var(--font);
         color: var(--ink);
-        background: var(--bg0);
-        line-height: 1.5;
-        -webkit-font-smoothing: antialiased;
-        text-rendering: optimizeLegibility;
-      }
-      a {
-        color: inherit;
-      }
-      .mark,
-      .tileflame {
-        fill: url(#flameGrad);
-        display: block;
-      }
-      .wrap {
-        width: 100%;
-        max-width: var(--maxw);
-        margin: 0 auto;
-        padding: 0 20px;
-      }
-
-      /* — Top bar — */
-      .topbar {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        padding-top: 16px;
-        padding-bottom: 16px;
-      }
-      .brand {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-      }
-      .brand .mark {
-        width: 26px;
-        height: 32px;
-        flex: none;
-        filter: drop-shadow(0 0 10px rgba(255, 106, 44, 0.4));
-      }
-      .brand img {
-        height: 15px;
-        width: auto;
-        opacity: 0.92;
-      }
-      .backlink {
-        font-size: 13px;
-        font-weight: 600;
-        color: var(--dim);
-        text-decoration: none;
-        white-space: nowrap;
-        transition: color 0.15s ease;
-      }
-      .backlink:hover {
-        color: var(--ink);
-      }
-
-      /* — Hero — */
-      .hero {
-        position: relative;
-        isolation: isolate;
+        background: radial-gradient(120% 90% at 50% 30%, #1a0f0a, var(--bg0));
         text-align: center;
-        padding: 52px 20px 48px;
-        overflow: hidden;
-      }
-      .hero::before {
-        content: '';
-        position: absolute;
-        inset: 0;
-        z-index: -2;
-        background: url('images/ui/homescreen-bg.webp') center 28% / cover no-repeat;
-        opacity: 0.55;
-      }
-      .hero::after {
-        content: '';
-        position: absolute;
-        inset: 0;
-        z-index: -1;
-        background: linear-gradient(180deg, rgba(8, 5, 4, 0.5) 0%, rgba(8, 5, 4, 0.82) 64%, var(--bg0) 100%);
+        padding: 24px;
       }
       .eyebrow {
         font-size: 11px;
         font-weight: 800;
         letter-spacing: 4px;
-        color: var(--gold);
         text-transform: uppercase;
+        color: var(--gold);
       }
       h1 {
-        margin: 12px 0 0;
-        font-size: clamp(38px, 11vw, 58px);
+        margin: 0;
+        font-size: clamp(28px, 8vw, 40px);
         font-weight: 900;
-        letter-spacing: -0.01em;
-        line-height: 0.98;
       }
-      .lede {
-        margin: 14px auto 0;
-        max-width: 30ch;
+      p {
+        margin: 0;
+        color: var(--dim);
         font-size: 15px;
-        color: var(--dim);
       }
-
-      /* — Email capture (shared, used in hero + waitlist) — */
-      .capture {
-        display: flex;
-        gap: 8px;
-        margin: 22px auto 0;
-        max-width: 420px;
-      }
-      .capture input {
-        flex: 1;
-        min-width: 0;
-        background: rgba(8, 5, 4, 0.66);
-        border: 1px solid var(--warm-hair);
-        border-radius: 11px;
-        padding: 14px 15px;
-        color: #fff;
-        font: inherit;
-        font-size: 15px;
-        outline: none;
-        transition: border-color 0.18s ease, box-shadow 0.18s ease;
-      }
-      .capture input::placeholder {
-        color: var(--faint);
-      }
-      .capture input:focus {
-        border-color: rgba(255, 194, 74, 0.7);
-        box-shadow: 0 0 0 3px rgba(255, 194, 74, 0.16);
-      }
-      .capture button {
-        flex: none;
-        border: none;
-        border-radius: 11px;
-        padding: 0 20px;
-        font: inherit;
-        font-size: 14px;
-        font-weight: 800;
-        letter-spacing: 0.03em;
-        text-transform: uppercase;
-        color: #3a2406;
-        background: linear-gradient(180deg, #ffd45e 0%, #efaa2b 100%);
-        box-shadow: 0 8px 24px rgba(239, 170, 43, 0.32);
-        cursor: pointer;
-        white-space: nowrap;
-        transition: transform 0.12s ease, box-shadow 0.2s ease, filter 0.15s ease;
-      }
-      .capture button:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 12px 30px rgba(239, 170, 43, 0.42);
-      }
-      .capture button:disabled {
-        cursor: default;
-        filter: saturate(0.6) brightness(0.9);
-        transform: none;
-        box-shadow: none;
-      }
-      .msg {
-        margin: 10px 2px 0;
-        min-height: 18px;
-        font-size: 12.5px;
-        font-weight: 600;
-        text-align: center;
-        color: var(--dim);
-      }
-      .msg[data-tone='ok'] {
-        color: var(--ok);
-      }
-      .msg[data-tone='warn'] {
-        color: var(--warn);
-      }
-      .capture-note {
-        margin: 8px 0 0;
-        font-size: 11.5px;
-        color: var(--faint);
-        text-align: center;
-      }
-
-      /* — Section scaffold — */
-      section.block {
-        padding: 36px 0;
-      }
-      .kicker {
-        font-size: 11px;
-        font-weight: 800;
-        letter-spacing: 3px;
-        text-transform: uppercase;
-        color: var(--gold);
-        text-align: center;
-      }
-      h2 {
-        margin: 8px 0 0;
-        font-size: 24px;
-        font-weight: 800;
-        text-align: center;
-      }
-      .sub {
-        margin: 10px auto 0;
-        max-width: 34ch;
-        font-size: 14px;
-        color: var(--dim);
-        text-align: center;
-      }
-
-      /* — Gear grid — */
-      .gear {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 14px;
-        margin-top: 24px;
-      }
-      /* — Poster card — the game's hero-card look (cslide/artcard) recreated in the shop's OWN tokens:
-         a full-bleed art tile under a bottom-weighted scrim + corner brackets, with the content stack
-         pinned to the base by AUTO-LAYOUT (margin-top:auto + gap). Used for the gear AND the waitlist. */
-      .poster {
-        position: relative;
-        display: flex;
-        flex-direction: column;
-        min-height: 244px;
-        border-radius: 16px;
-        overflow: hidden;
-        isolation: isolate;
-        border: 1px solid var(--hair);
-        background: var(--card);
-        /* rugged clipped corner, mirroring the game .artcard — no soft pill */
-        clip-path: polygon(0 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%);
-        transition: transform 0.14s ease, border-color 0.15s ease, box-shadow 0.2s ease;
-      }
-      .poster:hover {
-        transform: translateY(-3px);
-        border-color: var(--warm-hair);
-        box-shadow: 0 14px 40px rgba(0, 0, 0, 0.42);
-      }
-      .poster__art {
-        position: absolute;
-        inset: 0;
-        z-index: 0;
-        display: grid;
-        place-items: center;
-        background: radial-gradient(120% 105% at 50% 14%, rgba(255, 122, 69, 0.3), transparent 60%), var(--plate);
-      }
-      /* Per-product line-art silhouette (tee / patch / print / cap), stroked in the brand flame gradient. */
-      .poster__art .tileicon {
-        width: 64px;
-        height: 64px;
-        fill: none;
-        stroke: url(#flameGrad);
-        stroke-width: 2.2;
-        stroke-linecap: round;
-        stroke-linejoin: round;
-        opacity: 0.85;
-      }
-      .poster__scrim {
-        position: absolute;
-        inset: 0;
-        z-index: 1;
-        pointer-events: none;
-        background: linear-gradient(180deg, rgba(8, 5, 4, 0.05) 0%, rgba(8, 5, 4, 0.12) 34%, rgba(6, 4, 3, 0.82) 76%, rgba(4, 3, 2, 0.96) 100%);
-      }
-      .poster__brackets {
-        position: absolute;
-        inset: 11px;
-        z-index: 2;
-        pointer-events: none;
-      }
-      .poster__brackets i {
-        position: absolute;
-        width: 14px;
-        height: 14px;
-        border-color: var(--warm-hair);
-        opacity: 0.7;
-      }
-      .poster__brackets i:nth-child(1) { top: 0; left: 0; border-top: 2px solid; border-left: 2px solid; }
-      .poster__brackets i:nth-child(2) { top: 0; right: 0; border-top: 2px solid; border-right: 2px solid; }
-      .poster__brackets i:nth-child(3) { bottom: 0; left: 0; border-bottom: 2px solid; border-left: 2px solid; }
-      .poster__body {
-        position: relative;
-        z-index: 3;
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        padding: 13px 14px 15px;
-      }
-      .poster__top {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 8px;
-      }
-      .poster__tag {
-        font-size: 10px;
-        font-weight: 800;
-        letter-spacing: 1.6px;
-        text-transform: uppercase;
-        color: var(--gold);
-      }
-      /* AUTO LAYOUT: name / price / CTA pinned to the base of the poster, one gap between rows. */
-      .poster__stack {
-        margin-top: auto;
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 9px;
-      }
-      .poster__nm {
-        font-size: 18px;
-        font-weight: 900;
-        line-height: 1.06;
-      }
-      .poster__pr {
-        font-size: 13px;
-        font-weight: 800;
-        color: var(--gold);
-      }
-      .poster__cta {
+      a.go {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 100%;
-        border: 1px solid var(--warm-hair);
-        border-radius: 9px;
-        padding: 9px 12px;
-        font: inherit;
-        font-size: 12px;
+        margin-top: 6px;
+        padding: 13px 22px;
+        border-radius: 11px;
         font-weight: 800;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-        color: var(--gold);
-        background: rgba(255, 194, 74, 0.08);
-        text-decoration: none;
-        cursor: pointer;
-        transition: background 0.15s ease, border-color 0.15s ease, transform 0.12s ease;
-      }
-      .poster__cta:hover {
-        background: rgba(255, 194, 74, 0.16);
-        border-color: rgba(255, 194, 74, 0.5);
-        transform: translateY(-1px);
-      }
-      /* Wide variant — the waitlist funnel as a centered poster card. */
-      .poster--wide {
-        min-height: 300px;
-        scroll-margin-top: 16px;
-      }
-      .poster--wide .poster__body {
-        align-items: center;
-        justify-content: center;
-        text-align: center;
-        padding: 28px 22px;
-      }
-      .poster--wide .mark {
-        width: 30px;
-        height: 37px;
-        margin: 0 auto 10px;
-        filter: drop-shadow(0 0 12px rgba(255, 106, 44, 0.45));
-      }
-      /* Squared status pill (no round pills — brand rule); sits inline in the poster's top row. */
-      .badge {
-        font-size: 9px;
-        font-weight: 900;
-        letter-spacing: 1.5px;
-        text-transform: uppercase;
-        color: var(--gold);
-        background: rgba(255, 194, 74, 0.12);
-        border: 1px solid rgba(255, 194, 74, 0.4);
-        border-radius: 8px;
-        padding: 3px 8px;
-      }
-
-      /* — Story strip — */
-      .story {
-        text-align: center;
-        padding: 30px 0 8px;
-      }
-      .story p {
-        margin: 0 auto;
-        max-width: 26ch;
-        font-size: 19px;
-        font-weight: 700;
-        line-height: 1.35;
-      }
-      .story p span {
-        color: var(--dim);
-        font-weight: 500;
         font-size: 14px;
-        display: block;
-        margin-top: 10px;
-      }
-
-      /* — Footer — */
-      footer {
-        margin-top: 40px;
-        border-top: 1px solid var(--hair);
-        padding: 26px 0 36px;
-        text-align: center;
-      }
-      footer img {
-        height: 16px;
-        width: auto;
-        opacity: 0.7;
-      }
-      .flinks {
-        display: flex;
-        gap: 18px;
-        justify-content: center;
-        flex-wrap: wrap;
-        margin: 16px 0 14px;
-      }
-      .flinks a {
-        font-size: 13px;
-        font-weight: 600;
-        color: var(--dim);
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
         text-decoration: none;
-        transition: color 0.15s ease;
-      }
-      .flinks a:hover {
-        color: var(--ink);
-      }
-      .copy {
-        font-size: 11.5px;
-        color: var(--faint);
-      }
-
-      @media (max-width: 380px) {
-        .capture {
-          flex-direction: column;
-        }
-        .capture button {
-          padding: 13px 20px;
-        }
+        color: #3a2406;
+        background: linear-gradient(180deg, #ffd45e 0%, #efaa2b 100%);
+        box-shadow: 0 8px 24px rgba(239, 170, 43, 0.32);
       }
     </style>
-    <script type="module" crossorigin src="./assets/shop-CBpbmc-N.js"></script>
-    <link rel="modulepreload" crossorigin href="./assets/fonts-EkXAYhaT.js">
   </head>
   <body>
-    <!-- Brand flame gradient + reusable symbols (gold→ember), mirrored from ui/home/icons.ts. -->
-    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
-      <defs>
-        <linearGradient id="flameGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stop-color="#ffc24a" />
-          <stop offset="1" stop-color="#ff6a2c" />
-        </linearGradient>
-        <symbol id="bmf-flame" viewBox="0 0 149.7 184.72">
-          <path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z" />
-          <path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z" />
-        </symbol>
-        <symbol id="bmf-mark" viewBox="0 0 149.7 184.72">
-          <polygon points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09" />
-          <path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z" />
-          <path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z" />
-        </symbol>
-        <!-- Per-product line-art glyphs for the gear grid (stroke-only; inherit the flame gradient). -->
-        <symbol id="gear-tee" viewBox="0 0 48 48">
-          <path d="M18 8 L9.5 13.5 L13.5 20 L17 17.8 V40 H31 V17.8 L34.5 20 L38.5 13.5 L30 8 C28 11.5 20 11.5 18 8 Z" />
-        </symbol>
-        <symbol id="gear-patch" viewBox="0 0 48 48">
-          <path d="M24 7 L38 12 V23 C38 32 31.5 38.5 24 41 C16.5 38.5 10 32 10 23 V12 Z" />
-          <path d="M24 16.5 c1.8 3.6 4.6 4.6 4.6 8.4 a4.6 4.6 0 0 1 -9.2 0 c0 -2.8 2.2 -3.1 2.5 -5.5 1 0.9 1.9 0.9 2.1 -2.9 Z" />
-        </symbol>
-        <symbol id="gear-print" viewBox="0 0 48 48">
-          <rect x="9" y="11" width="30" height="26" rx="2" />
-          <circle cx="17.5" cy="20" r="2.6" />
-          <path d="M9.5 33 L18 25.5 L24.5 30 L31 24 L38.5 29.5" />
-        </symbol>
-        <symbol id="gear-cap" viewBox="0 0 48 48">
-          <path d="M12 29 a12 12 0 0 1 24 0 Z" />
-          <path d="M12 29 H41 a2.5 2.5 0 0 1 -2.5 2.9 H14.5 a2.5 2.5 0 0 1 -2.5 -2.9 Z" />
-          <circle cx="24" cy="17.4" r="1.3" />
-        </symbol>
-      </defs>
-    </svg>
-
-    <header class="topbar wrap">
-      <div class="brand">
-        <svg class="mark" aria-hidden="true"><use href="#bmf-mark" /></svg>
-        <img src="./brand/wordmark_white.svg" alt="bucketmyfire" />
-      </div>
-      <a class="backlink" href="/">← Back to the game</a>
-    </header>
-
-    <section class="hero">
-      <div class="wrap">
-        <div class="eyebrow">BMF Gear</div>
-        <h1>Wear the fight.</h1>
-        <p class="lede">Crew-grade gear, printed on demand. Coming soon.</p>
-        <form class="capture" data-capture novalidate>
-          <input type="email" inputmode="email" autocomplete="email" placeholder="you@example.com" aria-label="Email address" />
-          <button type="submit">Notify me</button>
-        </form>
-        <p class="msg" data-msg aria-live="polite"></p>
-        <p class="capture-note">One email when it drops. Nothing else.</p>
-      </div>
-    </section>
-
-    <section class="block wrap">
-      <div class="kicker">First run</div>
-      <h2>The gear</h2>
-      <p class="sub">Four pieces to start. Each printed on demand, named for a sortie.</p>
-      <div class="gear">
-        <article class="poster">
-          <div class="poster__art"><svg class="tileicon" aria-hidden="true"><use href="#gear-tee" /></svg></div>
-          <div class="poster__scrim"></div>
-          <span class="poster__brackets"><i></i><i></i><i></i></span>
-          <div class="poster__body">
-            <div class="poster__top"><span class="poster__tag">Tee</span><span class="badge">Soon</span></div>
-            <div class="poster__stack">
-              <div class="poster__nm">Hold the Line Tee</div>
-              <div class="poster__pr">$32</div>
-              <a class="poster__cta" href="#waitlist" data-notify>Notify me</a>
-            </div>
-          </div>
-        </article>
-        <article class="poster">
-          <div class="poster__art"><svg class="tileicon" aria-hidden="true"><use href="#gear-patch" /></svg></div>
-          <div class="poster__scrim"></div>
-          <span class="poster__brackets"><i></i><i></i><i></i></span>
-          <div class="poster__body">
-            <div class="poster__top"><span class="poster__tag">Patch</span><span class="badge">Soon</span></div>
-            <div class="poster__stack">
-              <div class="poster__nm">Hotshot Crew Patch</div>
-              <div class="poster__pr">$12</div>
-              <a class="poster__cta" href="#waitlist" data-notify>Notify me</a>
-            </div>
-          </div>
-        </article>
-        <article class="poster">
-          <div class="poster__art"><svg class="tileicon" aria-hidden="true"><use href="#gear-print" /></svg></div>
-          <div class="poster__scrim"></div>
-          <span class="poster__brackets"><i></i><i></i><i></i></span>
-          <div class="poster__body">
-            <div class="poster__top"><span class="poster__tag">Print</span><span class="badge">Soon</span></div>
-            <div class="poster__stack">
-              <div class="poster__nm">First Light Print</div>
-              <div class="poster__pr">$24</div>
-              <a class="poster__cta" href="#waitlist" data-notify>Notify me</a>
-            </div>
-          </div>
-        </article>
-        <article class="poster">
-          <div class="poster__art"><svg class="tileicon" aria-hidden="true"><use href="#gear-cap" /></svg></div>
-          <div class="poster__scrim"></div>
-          <span class="poster__brackets"><i></i><i></i><i></i></span>
-          <div class="poster__body">
-            <div class="poster__top"><span class="poster__tag">Cap</span><span class="badge">Soon</span></div>
-            <div class="poster__stack">
-              <div class="poster__nm">Tanker Cap</div>
-              <div class="poster__pr">$28</div>
-              <a class="poster__cta" href="#waitlist" data-notify>Notify me</a>
-            </div>
-          </div>
-        </article>
-      </div>
-
-      <div class="story">
-        <p>Every print is named for a sortie.<span>First Light. Hold the Line. The fires you flew.</span></p>
-      </div>
-    </section>
-
-    <section class="block wrap">
-      <article class="poster poster--wide" id="waitlist">
-        <div class="poster__art"></div>
-        <div class="poster__scrim"></div>
-        <span class="poster__brackets"><i></i><i></i><i></i></span>
-        <div class="poster__body">
-          <svg class="mark" aria-hidden="true"><use href="#bmf-mark" /></svg>
-          <div class="kicker">Get the drop</div>
-          <h2>Be first when it lands.</h2>
-          <p class="sub">One email the day the gear drops. The drop, then nothing else.</p>
-          <form class="capture" data-capture novalidate>
-            <input type="email" inputmode="email" autocomplete="email" placeholder="you@example.com" aria-label="Email address" />
-            <button type="submit">Notify me</button>
-          </form>
-          <p class="msg" data-msg aria-live="polite"></p>
-          <p class="capture-note">No spam. No noise. Just the drop.</p>
-        </div>
-      </article>
-    </section>
-
-    <footer>
-      <div class="wrap">
-        <img src="./brand/wordmark_white.svg" alt="bucketmyfire" />
-        <div class="flinks">
-          <a href="/">Play the game</a>
-          <a href="/privacy.html">Privacy</a>
-          <a href="/terms.html">Terms</a>
-        </div>
-        <div class="copy">© bucketmyfire — Marakana</div>
-      </div>
-    </footer>
-
+    <div class="eyebrow">BMF Gear</div>
+    <h1>Wear the fight.</h1>
+    <p>Taking you to the shop&hellip;</p>
+    <a class="go" href="https://shop.bucketmyfire.com/">Continue to the shop &rarr;</a>
+    <script>
+      // Belt-and-suspenders to the <meta refresh>: replace (no history entry) so Back returns
+      // to wherever the visitor came from, not into this redirect.
+      location.replace('https://shop.bucketmyfire.com/')
+    </script>
   </body>
 </html>
