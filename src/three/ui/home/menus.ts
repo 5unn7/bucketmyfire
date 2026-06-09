@@ -27,6 +27,9 @@ import { railNav } from './rail';
 import { DEFS, FLAME, ic } from './icons';
 import { openStore } from '../storeLink';
 import { validateCallsign, MAX_CALLSIGN } from '../callsign';
+import { fetchActiveFires } from '../../livefire/client';
+import { LIVEFIRE_COPY, LIVEFIRE_CREDIT, severityClass, severityLabel, relTime } from '../../livefire/strings';
+import type { LiveFire, LiveFireFeed } from '../../livefire/types';
 
 const MUTE_KEY = 'bmf.audio.muted.v1';
 
@@ -416,6 +419,88 @@ export function openSolo(): void {
       location.assign(url.toString());
     }),
   );
+}
+
+// ============================ LIVE WILDFIRES (the real-fire tracker) ============================
+/** One fire row — reuses the Settings `.srow` shape (icon · name · sub · trailing badge) so it
+ *  inherits the list styling. Severity maps onto an existing badge class (warm at the dangerous end). */
+function fireRow(f: LiveFire): string {
+  const rel = relTime(f.lastDetect);
+  return `<div class="srow">
+    <div class="ic">${ic('fire')}</div>
+    <div class="grow">
+      <div class="t">${LIVEFIRE_COPY.near(f.place)}</div>
+      <div class="s">${f.detections} detection${f.detections === 1 ? '' : 's'}${rel ? ` · ${rel}` : ''}</div>
+    </div>
+    <span class="${severityClass(f.severity)}">${severityLabel(f.severity)}</span>
+  </div>`;
+}
+
+/** A faint placeholder row while the first fetch settles (cache-warm loads skip this). */
+function fireSkeleton(): string {
+  return `<div class="srow"><div class="ic">${ic('fire')}</div><div class="grow"><div class="t"><span class="sk" style="width:9em"></span></div><div class="s"><span class="sk" style="width:6em"></span></div></div></div>`;
+}
+
+/**
+ * Wildfires — the live tracker. Pulls TODAY'S real Saskatchewan wildfire hotspots (last 24h) from
+ * CWFIS and lists them as active fires (nearest town · detections · severity). Best-effort: a warm
+ * cache paints instantly; offline/empty get their own honest states. Opened from the Home hub banner
+ * (like Board/Settings — not a rail tab). No-scroll: the list is capped to what fits.
+ */
+export function openLiveFires(): void {
+  activeOverlay?.close(); // opened directly (not via the rail) — clear any panel that was up
+  const body = `<div style="margin-top:8px;">
+    <div class="card">
+      <div class="srow">
+        <div class="ic">${ic('fire')}</div>
+        <div class="grow"><div class="t" data-lf-head>${LIVEFIRE_COPY.bannerLoading}</div><div class="s" data-lf-sub>${LIVEFIRE_COPY.sub}</div></div>
+        <button class="btn ghost sm" data-lf-refresh aria-label="Refresh">${ic('motion')}Refresh</button>
+      </div>
+    </div>
+    <div data-lf-list style="margin-top:12px;"><div class="card">${fireSkeleton()}${fireSkeleton()}${fireSkeleton()}</div></div>
+    <div class="s" style="margin-top:12px;text-align:center;opacity:.7;">${LIVEFIRE_CREDIT}</div>
+  </div>`;
+  const { root } = overlay('fires', LIVEFIRE_COPY.overlayTitle, body);
+
+  const headEl = root.querySelector<HTMLElement>('[data-lf-head]')!;
+  const subEl = root.querySelector<HTMLElement>('[data-lf-sub]')!;
+  const listEl = root.querySelector<HTMLElement>('[data-lf-list]')!;
+  const refreshBtn = root.querySelector<HTMLButtonElement>('[data-lf-refresh]')!;
+
+  const VIS = 8; // cap visible rows so the panel stays single-viewport / no-scroll
+  const render = (feed: LiveFireFeed): void => {
+    const n = feed.fires.length;
+    if (n === 0 && feed.source === 'offline') {
+      headEl.textContent = LIVEFIRE_COPY.offlineTitle;
+      subEl.textContent = LIVEFIRE_COPY.offlineBody;
+      listEl.innerHTML = '';
+      return;
+    }
+    if (n === 0) {
+      headEl.textContent = LIVEFIRE_COPY.emptyTitle;
+      subEl.textContent = LIVEFIRE_COPY.sub;
+      listEl.innerHTML = `<div class="card"><div class="srow"><div class="ic">${ic('check')}</div><div class="grow"><div class="s">${LIVEFIRE_COPY.emptyBody}</div></div></div></div>`;
+      return;
+    }
+    headEl.textContent = LIVEFIRE_COPY.head(n);
+    const upd = relTime(feed.fetchedAt);
+    subEl.textContent = upd ? `${LIVEFIRE_COPY.sub} · updated ${upd}` : LIVEFIRE_COPY.sub;
+    const rows = feed.fires.slice(0, VIS).map(fireRow).join('');
+    const more = n > VIS ? `<div class="s" style="margin-top:9px;text-align:center;">+${n - VIS} more active</div>` : '';
+    listEl.innerHTML = `<div class="card">${rows}</div>${more}`;
+  };
+
+  const load = (force: boolean): void => {
+    refreshBtn.disabled = true;
+    fetchActiveFires({ force })
+      .then(render)
+      .catch(() => render({ fires: [], totalDetections: 0, fetchedAt: 0, source: 'offline' }))
+      .finally(() => {
+        refreshBtn.disabled = false;
+      });
+  };
+  refreshBtn.addEventListener('click', () => load(true));
+  load(false);
 }
 
 // ============================ SETTINGS (minimal) ============================

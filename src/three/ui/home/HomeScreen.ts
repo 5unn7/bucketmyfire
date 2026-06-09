@@ -13,10 +13,12 @@ import { loadProfile, MAPS } from '../profile';
 import { PROVINCE_COPY } from '../../province/strings';
 import { careerScore, rankFor, nextRankProgress } from '../../missions/rank';
 import { isConfigured, fetchCareerStanding } from '../../leaderboard/client';
-import { setMenuCatalog, navigateRail, openSettings, openBoard } from './menus';
+import { setMenuCatalog, navigateRail, openSettings, openBoard, openLiveFires } from './menus';
 import { railNav } from './rail';
 import { injectHomeStyles, spawnEmbers } from './styles';
 import { DEFS, FLAME, FLAME_ONLY, HELMET, ic } from './icons';
+import { fetchActiveFires } from '../../livefire/client';
+import { LIVEFIRE_COPY } from '../../livefire/strings';
 
 export class HomeScreen {
   private root: HTMLDivElement;
@@ -35,6 +37,7 @@ export class HomeScreen {
     if (embers) spawnEmbers(embers, 13);
     this.wire();
     this.loadGlobalRank();
+    this.loadLiveFires();
   }
 
   dispose(): void {
@@ -106,6 +109,19 @@ export class HomeScreen {
   </article>
   </div>
 
+  <div class="zone z-fires">
+  <!-- live wildfire tracker — today's REAL Saskatchewan fires (CWFIS hotspots). The count settles
+       in via loadLiveFires(); the banner opens the full tracker overlay (openLiveFires). -->
+  <button class="shopbanner card warm cut rise d3" data-act="fires" aria-label="Live wildfire tracker">
+    <span class="sb-ic">${ic('fire')}</span>
+    <span class="sb-copy">
+      <span class="sb-title">${LIVEFIRE_COPY.title}</span>
+      <span class="sb-sub" data-lf-count>${LIVEFIRE_COPY.bannerLoading}</span>
+    </span>
+    <span class="sb-go">${ic('chevron-right')}</span>
+  </button>
+  </div>
+
   <div class="zone z-shop">
   <!-- gear promo — opens the standalone bucketmyfire storefront. Desktop shows the section label; the
        banner shows on phone/tablet too and drops only on the shortest viewports (styles.ts). -->
@@ -149,6 +165,8 @@ ${railNav('home')}`;
         return navigateRail('coop'); // open the province lobby (pick aircraft → Fly)
       case 'shop':
         return navigateRail('shop'); // opens the standalone bucketmyfire storefront in a new tab
+      case 'fires':
+        return openLiveFires(); // the live wildfire tracker overlay
       case 'board':
         return openBoard();
       case 'settings':
@@ -179,5 +197,23 @@ ${railNav('home')}`;
     fetchCareerStanding(p.name)
       .then((s) => settle(s ? s.rank : null))
       .catch(() => settle(null));
+  }
+
+  /** Settle the home banner's count line from the live CWFIS feed (best-effort, like loadGlobalRank).
+   *  Warm cache paints instantly; the banner stays tappable in every state (it's the entry point to
+   *  the full tracker overlay), so a quiet/offline result just softens the sub-line — never hides it. */
+  private loadLiveFires(): void {
+    const el = this.root.querySelector<HTMLElement>('[data-lf-count]');
+    if (!el) return;
+    fetchActiveFires()
+      .then((feed) => {
+        if (this.disposed) return;
+        const n = feed.fires.length;
+        el.textContent =
+          n > 0 ? LIVEFIRE_COPY.bannerSub(n) : feed.source === 'offline' ? LIVEFIRE_COPY.bannerOffline : LIVEFIRE_COPY.bannerQuiet;
+      })
+      .catch(() => {
+        if (!this.disposed) el.textContent = LIVEFIRE_COPY.bannerOffline;
+      });
   }
 }

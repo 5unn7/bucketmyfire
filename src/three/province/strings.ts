@@ -7,6 +7,12 @@
  * dispatcher voice in-world (the briefing + the stand-down). No em-dashes in shipped copy.
  */
 export const PROVINCE_COPY = {
+  // --- Brand line (warm "fight" register) — the umbrella over the whole hub. The GAME is the fight;
+  //     the live wildfire tracker (livefire/strings.ts → LIVEFIRE_COPY) is the learning. Honest by
+  //     design: you are not fighting real fires from a phone, you are learning how the real fire
+  //     behaves. The brand line of record: sits by the brand mark, never on a CTA. ---
+  brandLine: 'Fight the fire. Learn the fire.',
+
   // --- Home-hub / lobby hero (warm "fight" register) ---
   headline: 'The fires keep coming.', // the hub/lobby hero line
   sub: "You're the only pilot up here.", // hero sub
