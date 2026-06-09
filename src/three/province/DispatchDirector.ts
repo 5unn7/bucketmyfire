@@ -71,6 +71,9 @@ export class DispatchDirector {
     private readonly towns: readonly DispatchTown[],
     startAt = 0, // shift seconds the schedule begins from (the onboarding handoff passes the elapsed clock so
     //              the first open call lands `firstCallSec` AFTER teaching ends, not retroactively at 12s)
+    private readonly endless = false, // shared Open Skies: the calls NEVER stop (no `shiftCalls` cap, never
+    //                                   `exhausted`) so the live world is neverending. A SOLO round leaves this
+    //                                   false → a bounded shift (limited calls → "shift complete" → reset).
   ) {
     this.nextAt = startAt + PROVINCE.firstCallSec;
   }
@@ -86,9 +89,10 @@ export class DispatchDirector {
   update(shiftElapsed: number): DispatchEvent[] {
     const out: DispatchEvent[] = [];
     let guard = 0;
-    // A shift is a BOUNDED run of `shiftCalls` calls (the achievement cap): once the director has issued
-    // them all it goes quiet, and the shift COMPLETES when those calls are resolved (ProvinceState).
-    while (this.counter < PROVINCE.shiftCalls && shiftElapsed >= this.nextAt && guard++ < 64) {
+    // A bounded SOLO shift is a run of `shiftCalls` calls (the achievement cap): once the director has issued
+    // them all it goes quiet, and the shift COMPLETES when those calls are resolved (ProvinceState). The SHARED
+    // Open Skies world is `endless` — that cap is lifted, so the calls keep coming and the run never auto-ends.
+    while ((this.endless || this.counter < PROVINCE.shiftCalls) && shiftElapsed >= this.nextAt && guard++ < 64) {
       out.push(this.emit(this.counter, this.nextAt));
       this.counter++;
       const f = this.fwi(this.nextAt);
@@ -104,9 +108,10 @@ export class DispatchDirector {
   }
 
   /** True once the shift's full quota of calls has gone out — no more will come (ProvinceMode watches this
-   *  plus "no active calls" to declare the shift COMPLETE). */
+   *  plus "no active calls" to declare the shift COMPLETE). Always false in `endless` (Open Skies) mode, so
+   *  the shared world never auto-completes — it just keeps dispatching until the pilot is overrun or crashes. */
   get exhausted(): boolean {
-    return this.counter >= PROVINCE.shiftCalls;
+    return !this.endless && this.counter >= PROVINCE.shiftCalls;
   }
 
   /** Build call #i, scheduled for time `at`. Pure: its RNG is keyed by (seed, i), so the call's town,

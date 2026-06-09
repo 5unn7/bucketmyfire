@@ -57,17 +57,20 @@ export class ProvinceMode {
   private pendingHandoffComms = false; // capstone deferred to ride the FIRST open call (not stacked on beat 2)
   private readonly state: ProvinceState;
   private readonly towns: readonly DispatchTown[];
+  private readonly endless: boolean; // shared Open Skies: the dispatch never exhausts → the run is neverending.
+  //                                    A SOLO round leaves this false → a bounded shift (limited calls → reset).
   private ended = false;
   private outcome: 'none' | 'complete' | 'stooddown' = 'none'; // how the shift ended (win vs overrun)
 
-  constructor(seed: number, towns: readonly DispatchTown[], onboarding = false) {
+  constructor(seed: number, towns: readonly DispatchTown[], onboarding = false, endless = false) {
     this.seed = seed;
     this.towns = towns;
+    this.endless = endless;
     this.state = new ProvinceState(towns.map((t) => t.ref));
     // A brand-new pilot (career.onboarded false) flies the reactive teaching arc first; the open regime
     // is created at the handoff (so its first call lands AFTER teaching, via DispatchDirector startAt).
     this.onboard = onboarding ? new OnboardingScript(seed, towns) : null;
-    this.director = onboarding ? null : new DispatchDirector(seed, towns);
+    this.director = onboarding ? null : new DispatchDirector(seed, towns, 0, endless);
   }
 
   /** Advance one frame: emit any due dispatch calls (onboarding arc, then the open schedule), fold them +
@@ -84,7 +87,7 @@ export class ProvinceMode {
         if (this.onboard.done) {
           // Teaching's over: open the floodgates. The director continues the schedule from NOW so the
           // first open call lands a grace after the last lesson, not retroactively, then it climbs as ever.
-          this.director = new DispatchDirector(this.seed, this.towns, s.shiftElapsed);
+          this.director = new DispatchDirector(this.seed, this.towns, s.shiftElapsed, this.endless);
           this.onboard = null;
           this.pendingHandoffComms = true; // the capstone rides the first open call, not beat 2's frame
           justOnboarded = true; // Game marks the pilot onboarded (teaching complete → never replays)
@@ -108,6 +111,8 @@ export class ProvinceMode {
     // Outcome (checked once, stand-down LOSS takes precedence over a same-frame complete). Stand-down =
     // overrun (health hit 0 past the fairness floor). Complete = the director issued its whole quota AND
     // every call is resolved → the pilot rode out the shift: a WIN with a grade (the achievement beat).
+    // In `endless` (shared Open Skies) the director never reports `exhausted`, so the complete branch can
+    // never fire — the only end is a stand-down (or a heli crash in Game): the live world is neverending.
     let justStoodDown = false;
     let justComplete = false;
     if (!this.ended && this.state.standDown(s.shiftElapsed)) {

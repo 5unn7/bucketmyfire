@@ -282,6 +282,32 @@ function runOnboarding(answerMode: 'perfect' | 'none'): { events: DispatchEvent[
   ok('shiftGrade: nothing held → D', shiftGrade(0, 12, 0, 5, 0.2, false) === 'D');
 }
 
+// ── 8c. Open Skies vs Solo — the SHARED province is ENDLESS (the dispatch never exhausts, the run never
+//        auto-completes), while a SOLO round is the BOUNDED shift (limited calls → "shift complete"). ──
+{
+  const sigE = (t: number, doused: number): ProvinceSignals => ({ shiftElapsed: t, doused, dropsEffective: 0, structuresAlive: rig.structures.total, structuresTotal: rig.structures.total });
+
+  // An endless director keeps emitting calls well past `shiftCalls` and never reports `exhausted`.
+  const dEndless = new DispatchDirector(def.seed, towns, 0, true);
+  let issued = 0;
+  for (let t = 1; t <= HORIZON * 4; t += 1) issued += dEndless.update(t).length;
+  ok('Open Skies dispatch is endless (issues well past shiftCalls)', issued > PROVINCE.shiftCalls * 2, `issued=${issued} cap=${PROVINCE.shiftCalls}`);
+  ok('an endless director never reports exhausted', !dEndless.exhausted, `issued=${issued}`);
+
+  // The same seed/clock under the BOUNDED (solo) director stops at exactly the quota — the contrast that
+  // proves the endless flag is what lifts the cap (not a seed/town difference).
+  const dBounded = new DispatchDirector(def.seed, towns, 0, false);
+  let boundedIssued = 0;
+  for (let t = 1; t <= HORIZON * 4; t += 1) boundedIssued += dBounded.update(t).length;
+  ok('a SOLO (bounded) director stops at shiftCalls', boundedIssued === PROVINCE.shiftCalls && dBounded.exhausted, `issued=${boundedIssued}`);
+
+  // Endless ProvinceMode (shared Open Skies): a perfect pilot is NEVER handed "shift complete" — no reset.
+  const openSkies = new ProvinceMode(def.seed, towns, false, true);
+  let everComplete = false;
+  for (let t = 1; t <= HORIZON * 2; t += 1) if (openSkies.update(sigE(t, t * 1000)).justComplete) everComplete = true;
+  ok('Open Skies never auto-completes (endless — no reset)', !everComplete && !openSkies.completed);
+}
+
 // ── 9. Career season-log record shaping (PURE — the store's localStorage path is browser-only) ──
 {
   const sum: ShiftSummary = { region: 'saskatchewan', reputation: 1234.6, grade: 'A', completed: true, callsHeld: 9, callsTotal: 12, townsStanding: 5, townsTotal: 7 };
