@@ -18,7 +18,7 @@ import 'leaflet/dist/leaflet.css';
 import { UI } from '../ui/theme';
 import { LIVEFIRE } from '../config';
 import { radiusMetersForHa } from './normalize';
-import { FWI_WMS_URL, FWI_WMS_LAYER, GEOMET_WMS_URL, SMOKE_WMS_LAYER, SMOKE_WMS_STYLE, isLiveFireEnabled } from './client';
+import { FWI_WMS_URL, FWI_WMS_LAYER, fwiForecastTime, GEOMET_WMS_URL, SMOKE_WMS_LAYER, SMOKE_WMS_SLD, isLiveFireEnabled } from './client';
 import type { Hotspot, FireSeverity, FireStage, ReportedFire, BurnPolygon, AlertItem, AlertLevel, BanArea, BanType } from './types';
 
 /** The toggleable data layers. */
@@ -49,12 +49,127 @@ const BAN_COLOR: Record<BanType, string> = { Ban: UI.warn, Restriction: UI.cauti
 
 const CARTO_DARK = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
 
+/**
+ * A flicker-free animated WMS forecast layer — the smoke trail's smoothness.
+ *
+ * The naive approach (one WMS layer whose TIME param is reset per frame) STROBES: Leaflet drops the old
+ * tiles the instant the param changes and shows nothing until the new ones load, so each hourly step
+ * blanks the column. This double-buffers it: two WMS layers on two dedicated panes (so opacity is one CSS
+ * transition over the whole frame, not per-tile). `showFrame()` loads the next hour into the BACK buffer
+ * and only crossfades — back pane fades up, front pane fades down — once those tiles have loaded. Result:
+ * the plume MORPHS hour-to-hour instead of flashing, and the playback loop's wrap (+48 h → now) dissolves
+ * like any other step. A request token means fast scrubbing always lands on the latest frame.
+ */
+class SmokeForecastLayer {
+  private a: L.TileLayer.WMS;
+  private b: L.TileLayer.WMS;
+  private frontIsA = false; // which buffer is currently lit; flips on every committed crossfade
+  private frame: string | null = null; // the TIME currently shown (front buffer), null when hidden/blank
+  private pending: string | null = null; // latest requested TIME (re-applied on show; wins a fast scrub)
+  private shown = false;
+  private token = 0; // bumped per request — a stale buffer 'load' that fires late checks this and bails
+  private onState?: (loading: boolean) => void;
+
+  constructor(
+    private map: L.Map,
+    url: string,
+    layer: string,
+    sld: string,
+    opacity: number, // the layer's own (constant) opacity; the crossfade rides the pane opacity 0↔1
+    fadeMs: number,
+  ) {
+    const mk = (paneName: string): L.TileLayer.WMS => {
+      this.map.createPane(paneName);
+      const pane = this.map.getPane(paneName)!;
+      pane.style.zIndex = '250'; // above the basemap + FWI (tilePane 200), below the canvas dots (overlayPane 400)
+      pane.style.opacity = '0'; // start dark; the crossfade drives this 0↔1
+      pane.style.transition = `opacity ${fadeMs}ms ease`;
+      pane.style.pointerEvents = 'none'; // never swallow a tap meant for a fire dot underneath
+      return L.tileLayer.wms(url, {
+        layers: layer,
+        styles: '', // empty — the custom SLD below supplies the (white→grey) styling
+        sld_body: sld, // GeoMet honors SLD_BODY → server renders our smoke-true ramp (not the blue AQI default)
+        format: 'image/png',
+        transparent: true,
+        version: '1.3.0',
+        // 512px tiles (vs the 256 default) → ~4× FEWER GetMap requests per frame. GeoMet resets connections
+        // (ERR_CONNECTION_RESET) under a burst of small-tile requests, which left rectangular GAPS in the
+        // smoke — the "glitch". Fewer, larger tiles fit the browser's per-host concurrency in one wave, so
+        // they load whole, and there are fewer seams to begin with.
+        tileSize: 512,
+        opacity, // the layer's own opacity; the pane opacity (0↔1) is the crossfade multiplier on top
+        crossOrigin: true,
+        pane: paneName,
+      } as L.WMSOptions);
+    };
+    this.a = mk('smokeA');
+    this.b = mk('smokeB');
+  }
+
+  /** Wire a loading callback (true while a frame's tiles are in flight) so the UI can show a buffering hint. */
+  setOnState(cb: (loading: boolean) => void): void {
+    this.onState = cb;
+  }
+
+  private buffer(front: boolean): L.TileLayer.WMS {
+    return (front ? this.frontIsA : !this.frontIsA) ? this.a : this.b;
+  }
+  private pane(front: boolean): HTMLElement {
+    return this.map.getPane((front ? this.frontIsA : !this.frontIsA) ? 'smokeA' : 'smokeB')!;
+  }
+
+  /** Show/hide the whole forecast layer. Both buffers join/leave the map together; the pending frame is
+   *  (re)applied on show so the layer is never blank when revealed. */
+  setVisible(on: boolean): void {
+    if (on === this.shown) {
+      if (on && this.pending) this.showFrame(this.pending); // idempotent re-show keeps the current frame
+      return;
+    }
+    this.shown = on;
+    if (on) {
+      this.a.addTo(this.map);
+      this.b.addTo(this.map);
+      if (this.pending) this.showFrame(this.pending);
+    } else {
+      this.map.removeLayer(this.a);
+      this.map.removeLayer(this.b);
+      this.pane(true).style.opacity = '0';
+      this.pane(false).style.opacity = '0';
+      this.frame = null;
+      this.onState?.(false);
+    }
+  }
+
+  /** Point the layer at one hourly forecast frame (ISO8601 UTC); crossfades to it once its tiles load. When
+   *  hidden it's just remembered (applied on the next show). */
+  showFrame(iso: string): void {
+    this.pending = iso;
+    if (!this.shown || iso === this.frame) return;
+    const back = this.buffer(false);
+    const backPane = this.pane(false);
+    const myToken = ++this.token;
+    this.onState?.(true);
+    back.once('load', () => {
+      if (myToken !== this.token || !this.shown) return; // a newer frame superseded this one — abandon it
+      backPane.style.opacity = '1'; // crossfade the new frame up…
+      this.pane(true).style.opacity = '0'; // …and the old front out (transition on each pane)
+      this.frontIsA = !this.frontIsA; // the back buffer is now the front
+      this.frame = iso;
+      this.onState?.(false);
+    });
+    back.setParams({ time: iso } as unknown as L.WMSParams); // triggers the reload → eventual 'load'
+  }
+}
+
 export interface FireMapHandlers {
   onSelectHotspot: (h: Hotspot) => void;
   onSelectReported: (f: ReportedFire) => void;
   // Optional so a simpler consumer (e.g. a front-door map) need not wire the alert/ban layers.
   onSelectAlert?: (a: AlertItem) => void;
   onSelectBan?: (b: BanArea) => void;
+  // Optional: fired true/false as a smoke forecast frame's tiles load/settle (drives the scrubber's
+  // buffering hint). A consumer that doesn't animate smoke can omit it.
+  onSmokeLoad?: (loading: boolean) => void;
 }
 
 export class FireMap {
@@ -66,7 +181,7 @@ export class FireMap {
   private bansLayer: L.LayerGroup;
   private alertsLayer: L.LayerGroup;
   private fwiLayer: L.TileLayer.WMS;
-  private smokeLayer: L.TileLayer.WMS;
+  private smoke: SmokeForecastLayer;
   private selected: L.CircleMarker | null = null;
   private selectedBase: { weight: number; color: string } | null = null; // the selected dot's pre-ring style
   private handlers: FireMapHandlers;
@@ -87,26 +202,29 @@ export class FireMap {
     this.map.setView([58, -100], 4); // rough Canada centre; fitTo() refits to the live data
     L.tileLayer(CARTO_DARK, { subdomains: 'abcd', maxZoom: 19 }).addTo(this.map);
 
-    // The Fire Weather Index raster (WMS tiles → tilePane, so it renders UNDER the canvas dots).
+    // The Fire Weather Index raster (WMS tiles → tilePane, so it renders UNDER the canvas dots). TIME = a
+    // near-term FORECAST day so the layer is the CONTINUOUS model grid (full coverage), not the patchy
+    // station-interpolated analysis. (See fwiForecastTime; honestly labeled a forecast in the UI.)
     this.fwiLayer = L.tileLayer.wms(FWI_WMS_URL, {
       layers: FWI_WMS_LAYER,
       format: 'image/png',
       transparent: true,
       opacity: LIVEFIRE.fwiOpacity, // low tint, not a paint — keep the map legible underneath (config.ts)
+      time: fwiForecastTime(),
       crossOrigin: true,
     } as L.WMSOptions);
 
-    // The surface-smoke FORECAST raster (ECCC GeoMet FireWork). A WMS tile underlay like FWI; its TIME
-    // param is set per frame by setSmokeTime() so the layer animates. Tiles 404 gracefully past the run.
-    this.smokeLayer = L.tileLayer.wms(GEOMET_WMS_URL, {
-      layers: SMOKE_WMS_LAYER,
-      styles: SMOKE_WMS_STYLE,
-      format: 'image/png',
-      transparent: true,
-      version: '1.3.0',
-      opacity: LIVEFIRE.smokeOpacity,
-      crossOrigin: true,
-    } as L.WMSOptions);
+    // The surface-smoke FORECAST raster (ECCC GeoMet FireWork) — double-buffered so the hourly animation
+    // crossfades instead of strobing. setSmokeTime() drives the frame; tiles 404 gracefully past the run.
+    this.smoke = new SmokeForecastLayer(
+      this.map,
+      GEOMET_WMS_URL,
+      SMOKE_WMS_LAYER,
+      SMOKE_WMS_SLD,
+      LIVEFIRE.smokeOpacity,
+      LIVEFIRE.smokeFadeMs,
+    );
+    if (handlers.onSmokeLoad) this.smoke.setOnState(handlers.onSmokeLoad);
 
     // Vector layers, drawn back-to-front: footprints → ban areas → extinguished → active fires → hotspots
     // → alert pins (the highest-priority overlay sits on top). Each added per its toggle.
@@ -268,12 +386,16 @@ export class FireMap {
     this.applyVisibility();
   }
 
-  /** Point the animated smoke raster at one hourly forecast frame (ISO8601 UTC). Reloads only the visible
-   *  tiles for that TIME; harmless when the layer is hidden (the param sticks for when it's shown). */
+  /** Point the animated smoke raster at one hourly forecast frame (ISO8601 UTC). Crossfades to it once the
+   *  frame's tiles load (no blank flash); remembered + applied later when the layer is hidden. */
   setSmokeTime(iso: string): void {
-    // `time` is a WMS dimension param (not in the typed WMSParams shape); Leaflet merges it into the
-    // GetMap query at runtime. Cast through unknown to attach it without re-supplying the base params.
-    this.smokeLayer.setParams({ time: iso } as unknown as L.WMSParams);
+    this.smoke.showFrame(iso);
+  }
+
+  /** Point the Fire-Weather-Index raster at one forecast DAY (yyyy-mm-dd) — updates the WMS TIME param so
+   *  the day-scrubber can step the continuous forecast grid forward (each day is its own model run). */
+  setFwiTime(iso: string): void {
+    this.fwiLayer.setParams({ time: iso } as unknown as L.WMSParams);
   }
 
   isVisible(layer: FireLayer): boolean {
@@ -290,7 +412,8 @@ export class FireMap {
     // The FWI raster is a live CWFIS feed, so the kill-switch must stop it too (the JSON feeds gate in
     // the client; this layer is constructed directly, so gate it here — never hit CWFIS when disabled).
     sync(this.fwiLayer, this.visible.fwi && isLiveFireEnabled());
-    sync(this.smokeLayer, this.visible.smoke && isLiveFireEnabled());
+    // Smoke is its own double-buffered manager (two panes), not a single Leaflet layer — drive it directly.
+    this.smoke.setVisible(this.visible.smoke && isLiveFireEnabled());
     sync(this.perimLayer, this.visible.perimeters);
     sync(this.bansLayer, this.visible.bans);
     sync(this.outLayer, this.visible.out);

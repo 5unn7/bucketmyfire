@@ -69,29 +69,50 @@ const CSS = `
 .bmf-app .firesel:focus{ outline:none; border-color:var(--ember); }
 .bmf-app .firemap{ flex:1 1 auto; min-height:0; width:100%; }
 
-/* National summary stat strip (CIFFC) — compact cells; scrolls horizontally if a phone can't fit six. */
-.bmf-app .firestats{ flex:0 0 auto; z-index:2; display:flex; align-items:stretch; padding:7px 8px; background:var(--card-bg); border-bottom:1px solid var(--stroke); overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
-.bmf-app .firestats::-webkit-scrollbar{ display:none; }
+/* National summary stat strip (CIFFC) — THREE headline numbers ("how bad, right now") + a demoted season
+   subline. Stable height across states: US/MX & a down feed render a same-height note, never a silent
+   collapse that jumps the header. */
+.bmf-app .firestats{ flex:0 0 auto; z-index:2; display:flex; flex-direction:column; gap:2px; padding:8px 10px; background:var(--card-bg); border-bottom:1px solid var(--stroke); }
 .bmf-app .firestats[hidden]{ display:none; }
-.bmf-app .fstat{ flex:1 1 0; min-width:54px; display:flex; flex-direction:column; align-items:center; gap:1px; padding:0 6px; border-right:1px solid var(--hair); text-align:center; }
+.bmf-app .fstat-row{ display:flex; align-items:stretch; }
+.bmf-app .fstat-row[hidden]{ display:none; }
+.bmf-app .fstat{ flex:1 1 0; min-width:0; display:flex; flex-direction:column; align-items:center; gap:1px; padding:0 8px; border-right:1px solid var(--hair); text-align:center; }
 .bmf-app .fstat:last-child{ border-right:0; }
-.bmf-app .fstat b{ font-family:var(--mono); font-size:var(--fs-md); font-weight:var(--fw-bold); color:var(--text); line-height:1.1; white-space:nowrap; }
-.bmf-app .fstat span{ font-size:var(--fs-micro); letter-spacing:.03em; color:var(--dim); white-space:nowrap; }
+.bmf-app .fstat b{ font-family:var(--mono); font-size:var(--fs-lg); font-weight:var(--fw-bold); color:var(--text); line-height:1.05; white-space:nowrap; }
+.bmf-app .fstat span{ font-size:var(--fs-micro); letter-spacing:.02em; color:var(--dim); line-height:1.15; }
+.bmf-app .fstat-season{ font-family:var(--mono); font-size:var(--fs-micro); color:var(--text-subtle); text-align:center; letter-spacing:.02em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.bmf-app .fstat-season[hidden]{ display:none; }
+.bmf-app .fstat-note{ font-size:var(--fs-meta); color:var(--dim); text-align:center; padding:5px 0 4px; }
+.bmf-app .fstat-note[hidden]{ display:none; }
 
-/* Layer toggles + stage legend — one control strip (scrolls horizontally if it can't fit). NOT pills:
-   rounded-rect chips on the field register (design system: no round pills), ember-lit when active. */
-.bmf-app .firetools{ flex:0 0 auto; z-index:2; display:flex; align-items:center; gap:10px; padding:7px 12px; background:var(--card-bg); border-bottom:1px solid var(--stroke); overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
-.bmf-app .firetools::-webkit-scrollbar{ display:none; }
-.bmf-app .firelayers{ display:flex; gap:6px; flex:0 0 auto; }
-.bmf-app .lchip{ flex:0 0 auto; display:inline-flex; align-items:center; min-height:38px; padding:6px 13px; border-radius:var(--r-md); border:1px solid var(--stroke); background:var(--field); color:var(--dim); font-family:var(--font); font-size:var(--fs-meta); cursor:pointer; white-space:nowrap; transition:background .15s ease, color .15s ease, border-color .15s ease; }
-.bmf-app .lchip:hover{ color:var(--text); }
-.bmf-app .lchip.on{ background:var(--ember-12, var(--field)); border-color:var(--ember); color:var(--text); }
-.bmf-app .flegend{ flex:0 0 auto; display:inline-flex; align-items:center; font-size:var(--fs-micro); color:var(--dim); white-space:nowrap; }
-.bmf-app .flegend .ldot{ display:inline-block; width:9px; height:9px; border-radius:50%; margin:0 5px 0 12px; vertical-align:middle; }
-.bmf-app .flegend .ldot:first-child{ margin-left:0; }
-.bmf-app .flegend .ldot.oc{ background:var(--warn); }
-.bmf-app .flegend .ldot.bh{ background:var(--caution); }
-.bmf-app .flegend .ldot.uc{ background:var(--ok); }
+/* Map controls — a short row: the summoned Layers + Sources sheets only. The eight layer toggles and the
+   full per-mark legend live INSIDE the Layers sheet, so this row stays short and the map keeps its height
+   (no more eight-chip horizontal scroller). Buttons are rounded-rect on the field register — never pills. */
+.bmf-app .firetools{ flex:0 0 auto; z-index:2; display:flex; align-items:center; gap:8px; padding:7px 12px; background:var(--card-bg); border-bottom:1px solid var(--stroke); }
+.bmf-app .ftbtn{ flex:0 0 auto; display:inline-flex; align-items:center; gap:7px; min-height:38px; padding:7px 13px; border-radius:var(--r-md); border:1px solid var(--stroke); background:var(--field); color:var(--text); font-family:var(--font); font-size:var(--fs-meta); cursor:pointer; white-space:nowrap; transition:background .15s ease, border-color .15s ease; }
+.bmf-app .ftbtn:hover{ border-color:var(--ember); }
+.bmf-app .ftbtn svg{ width:16px; height:16px; flex:0 0 auto; }
+.bmf-app .ftbtn .ftn{ font-family:var(--mono); font-size:var(--fs-micro); font-weight:var(--fw-bold); color:var(--ember-hi); }
+
+/* Layers sheet — tiered toggles (reuse .srow/.toggle) + the full legend. A layer row's icon slot carries a
+   legend swatch; a country-gated tier shows a reason badge instead of a toggle. */
+.bmf-app .lgcap{ display:flex; align-items:baseline; gap:8px; }
+.bmf-app .lgcap .sc{ font-size:var(--fs-micro); color:var(--dim); letter-spacing:.04em; text-transform:none; }
+.bmf-app .firesheet .srow.off{ opacity:.5; }
+.bmf-app .lgsw{ width:13px; height:13px; flex:0 0 auto; border-radius:var(--r-round); background:var(--faint); }
+.bmf-app .lgsw.oc{ background:var(--warn); } .bmf-app .lgsw.bh{ background:var(--caution); } .bmf-app .lgsw.uc{ background:var(--ok); }
+.bmf-app .lgsw.neutral{ background:var(--faint); }
+.bmf-app .lgsw.alert{ background:var(--warn); border:2px solid var(--text); width:15px; height:15px; }
+.bmf-app .lgsw.ramp{ width:32px; border-radius:var(--r-sm); background:linear-gradient(90deg, var(--ember-hi), var(--ember), var(--warn)); }
+.bmf-app .lgsw.fwiramp{ width:32px; border-radius:var(--r-sm); background:linear-gradient(90deg, var(--ok), var(--caution), var(--warn)); }
+.bmf-app .lgsw.scar{ border-radius:var(--r-sm); background:var(--ember-12); border:1px solid var(--ember-50); }
+.bmf-app .lgsw.ban{ border-radius:var(--r-sm); background:transparent; border:1.5px dashed var(--warn); }
+.bmf-app .lgsw.smoke{ width:32px; border-radius:var(--r-sm); background:linear-gradient(90deg, var(--ember-10), var(--ember-40)); }
+.bmf-app .lgrow{ display:flex; align-items:center; gap:11px; padding:6px 2px; border-bottom:1px solid var(--hair); }
+.bmf-app .lgrow:last-child{ border-bottom:0; }
+.bmf-app .lgrow .lgtx{ display:flex; flex-direction:column; gap:1px; min-width:0; }
+.bmf-app .lgrow .lgname{ font-size:var(--fs-meta); color:var(--text); }
+.bmf-app .lgrow .lgdef{ font-size:var(--fs-micro); color:var(--dim); }
 
 /* Leaflet, themed dark to match the cockpit (tokens only). */
 .bmf-app .leaflet-container{ background:var(--card-bg); font-family:var(--font); }
@@ -105,6 +126,12 @@ const CSS = `
 .bmf-app .firesheet{ position:absolute; left:0; right:0; bottom:0; z-index:402; max-height:64%; overflow-y:auto; -webkit-overflow-scrolling:touch;
   background:var(--card-bg); border-top:1px solid var(--warm-stroke); border-radius:var(--r-xl) var(--r-xl) 0 0; box-shadow:var(--shadow-card); padding:10px 16px 16px; }
 .bmf-app .firesheet[hidden]{ display:none; }
+/* Branded scrollbar — warm ember thumb (the "fight" register), floating on a clear track, pill-capped. */
+.bmf-app .firesheet{ scrollbar-width:thin; scrollbar-color:var(--ember-50) transparent; }
+.bmf-app .firesheet::-webkit-scrollbar{ width:8px; }
+.bmf-app .firesheet::-webkit-scrollbar-track{ background:transparent; }
+.bmf-app .firesheet::-webkit-scrollbar-thumb{ background:var(--ember-50); border-radius:var(--r-pill); border:2px solid transparent; background-clip:padding-box; }
+.bmf-app .firesheet::-webkit-scrollbar-thumb:hover{ background:var(--ember); background-clip:padding-box; }
 .bmf-app .fsheet-head{ position:sticky; top:0; display:flex; align-items:flex-start; gap:10px; padding:4px 0 9px; background:var(--card-bg); }
 .bmf-app .fsheet-ttl{ font-family:var(--mono); font-size:var(--fs-md); font-weight:var(--fw-bold); color:var(--text); }
 .bmf-app .fgroup{ margin-top:12px; }
@@ -130,14 +157,22 @@ const CSS = `
 .bmf-app .lrow .lfresh{ font-family:var(--mono); font-size:var(--fs-micro); color:var(--text-subtle); white-space:nowrap; flex:0 0 auto; text-align:right; }
 .bmf-app .lrow.link .lfresh{ color:var(--ember-hi); }
 .bmf-app .ledger .lnote{ font-size:var(--fs-micro); color:var(--faint); margin-top:11px; line-height:1.45; }
-/* Smoke FORECAST scrubber — a slim timeline pinned over the map's bottom edge (shown only when Smoke is on). */
-.bmf-app .firescrub{ position:absolute; left:0; right:0; bottom:0; z-index:401; display:flex; align-items:center; gap:10px; padding:7px 12px calc(7px + env(safe-area-inset-bottom)); background:var(--card-bg); border-top:1px solid var(--stroke); }
+/* Smoke FORECAST scrubber — a slim timeline pinned over the map's bottom edge (shown only when Smoke is on).
+   The range sits over a "Now … +48 h" rail; the label pairs the absolute frame time with an ember lead chip. */
+.bmf-app .firescrub{ position:absolute; left:0; right:0; bottom:0; z-index:401; display:flex; align-items:center; gap:11px; padding:6px 12px calc(7px + env(safe-area-inset-bottom)); background:var(--card-bg); border-top:1px solid var(--stroke); }
 .bmf-app .firescrub[hidden]{ display:none; }
-.bmf-app .firescrub .iconbtn{ width:38px; height:38px; }
-.bmf-app .scrubrange{ flex:1 1 auto; min-width:0; height:30px; accent-color:var(--ember); cursor:pointer; }
-.bmf-app .scrublabel{ flex:0 0 auto; display:flex; flex-direction:column; align-items:flex-end; line-height:1.15; }
-.bmf-app .scrublabel [data-lf-scrub-time]{ font-family:var(--mono); font-size:var(--fs-meta); color:var(--text); white-space:nowrap; }
-.bmf-app .scrubtag{ font-size:var(--fs-micro); letter-spacing:.1em; text-transform:uppercase; color:var(--ember-hi); }
+.bmf-app .firescrub .iconbtn{ width:38px; height:38px; flex:0 0 auto; }
+.bmf-app .scrubtrack{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:1px; }
+.bmf-app .scrubrange{ width:100%; height:22px; margin:0; accent-color:var(--ember); cursor:pointer; }
+.bmf-app .scrubrail{ display:flex; justify-content:space-between; font-size:var(--fs-micro); color:var(--faint); letter-spacing:.04em; padding:0 1px; }
+/* Buffering pulse while the next frame's tiles load (no spinner — just a soft breath on the track). */
+.bmf-app .scrubtrack.buffering .scrubrange{ animation:bmf-scrubpulse 1s ease-in-out infinite; }
+@keyframes bmf-scrubpulse{ 0%,100%{ opacity:1; } 50%{ opacity:.5; } }
+.bmf-app .scrublabel{ flex:0 0 auto; display:flex; flex-direction:column; align-items:flex-end; line-height:1.12; }
+.bmf-app .scrubwhen{ display:flex; align-items:baseline; gap:6px; }
+.bmf-app .scrubwhen b{ font-family:var(--mono); font-size:var(--fs-meta); font-weight:600; color:var(--text); white-space:nowrap; }
+.bmf-app .scrubwhen i{ font-family:var(--mono); font-style:normal; font-size:var(--fs-micro); color:var(--ember-hi); white-space:nowrap; }
+.bmf-app .scrubtag{ font-size:var(--fs-micro); letter-spacing:.1em; text-transform:uppercase; color:var(--faint); }
 /* Alert / fire-ban detail-sheet body (the issuer's words + the official-source button + the standing caveat). */
 .bmf-app .alertsum{ font-size:var(--fs-meta); color:var(--text-subtle); line-height:1.5; margin:12px 0; }
 .bmf-app .firesheet .btn.block{ margin-top:6px; }

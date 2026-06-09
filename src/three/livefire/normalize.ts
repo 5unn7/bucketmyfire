@@ -72,6 +72,20 @@ export function smokeForecastFrames(now: number, hours: number): string[] {
   return out;
 }
 
+/** The forecast frame's LEAD time as a compact chip — the scrubber frames are hourly from "now", so the
+ *  frame INDEX is the hours ahead: 0 → "Now", 6 → "+6 h", 26 → "+1 d 2 h". Pure (the UI passes the scrubber
+ *  index) so the verify gate can assert it; reads alongside the absolute time ("Mon 6 PM"). Lives here with
+ *  `smokeForecastFrames` (its sibling timeline math), NOT in strings.ts — strings re-exports from client.ts,
+ *  which is browser-only (`import.meta.env`) and would break the Node verify bundle. */
+export function forecastLeadLabel(hoursAhead: number): string {
+  if (!Number.isFinite(hoursAhead) || hoursAhead <= 0) return 'Now';
+  const h = Math.round(hoursAhead);
+  if (h < 24) return `+${h} h`;
+  const d = Math.floor(h / 24);
+  const r = h % 24;
+  return r ? `+${d} d ${r} h` : `+${d} d`;
+}
+
 /** Pull the FWI raster's issue date out of the CWFIS WMS GetCapabilities XML: the `fwi_current` layer's
  *  <Title> ends in " - YYYY-MM-DD". Returns epoch ms, or 0 if the suffix is missing (the UI then says
  *  "issue time unavailable" — we never fabricate a time). Pure + defensive so the verify gate can assert it. */

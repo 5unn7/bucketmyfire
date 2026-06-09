@@ -1818,13 +1818,20 @@ export const LIVEFIRE = {
   // enough that the basemap (towns, lakes, the fire dots) stays legible underneath. Was 0.42 (washed the
   // map out); 0.24 reads as a tint, not a paint. The layer is opt-in/default-off regardless.
   fwiOpacity: 0.24,
-  // Surface-smoke FORECAST raster (ECCC GeoMet FireWork) opacity, for the smoke layer. Slightly higher
-  // than FWI since smoke is the point of that layer, but still see-through.
-  smokeOpacity: 0.5,
+  // Surface-smoke FORECAST raster (ECCC GeoMet FireWork) opacity, for the smoke layer. A global dimmer ON
+  // TOP of the SLD's own per-density opacity (which already ramps 0→0.95 grey→white), kept below 1 so even a
+  // bright-white dense plume lets the map read through. 0.85 × the SLD = a visible white smoke that doesn't
+  // paint over the basemap.
+  smokeOpacity: 0.85,
   // Smoke is animatable (hourly TIME frames). How many hours FORWARD from now the scrubber spans, and the
   // per-frame dwell when playing. The GeoMet FireWork run reaches ~72h; 48h keeps the timeline readable.
   smokeForecastHours: 48,
-  smokeFrameMs: 850, // playback dwell per hourly frame (ms) — calm, not strobey, mobile-data-friendly
+  smokeFrameMs: 900, // playback dwell per hourly frame (ms) — calm, not strobey, mobile-data-friendly
+  // The smoke layer is DOUBLE-BUFFERED (two WMS panes, crossfaded): the next hour loads into the back buffer
+  // and only fades in once its tiles are ready, so the trail MORPHS instead of blanking on every step. Keep
+  // this SHORT — a long fade shows BOTH adjacent frames at once (a ghosty double-plume); 140ms reads as a
+  // clean dissolve between fully-loaded frames.
+  smokeFadeMs: 140,
 } as const;
 
 // --- Live tuning registry (dev tooling) -------------------------------------

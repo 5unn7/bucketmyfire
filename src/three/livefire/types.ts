@@ -78,6 +78,10 @@ export interface ReportedFire {
   at: number; // field_situation_report_date as epoch ms (0 if unparseable)
   fireId: string; // field_system_fire_id (else agency fire id) — the headline identifier
   props: Record<string, unknown>;
+  // Provenance — set when this fire came from a PROVINCIAL agency feed (e.g. 'bc-wildfire') rather than
+  // the national CIFFC roll; lets the detail panel render the richer provincial record + name. Undefined = CIFFC.
+  source?: string;
+  name?: string; // human fire name/label (provincial feeds carry one; CIFFC fires are id-only)
 }
 
 /** One satellite-mapped burn perimeter (a CWFIS `m3_polygons_current` feature) — the TRUE footprint

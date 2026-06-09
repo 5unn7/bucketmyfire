@@ -48,7 +48,7 @@ export const LIVEFIRE_COPY = {
     out: 'Fires reported out (extinguished) this year',
     hotspots: 'Raw satellite heat detections, last 24 hours',
     perimeters: 'Satellite-mapped burn footprints',
-    fwi: 'Fire Weather Index: the fire-danger field',
+    fwi: 'Fire Weather Index — continuous national forecast (full coverage)',
     smoke: 'Surface-smoke forecast (ECCC FireWork) — drag the timeline to see it move',
     alerts: 'Active wildfire & evacuation alerts (SaskAlert) — tap for the official notice',
     bans: 'Provincial fire bans & open-fire restrictions (SK)',
@@ -56,6 +56,31 @@ export const LIVEFIRE_COPY = {
   // National summary stat-strip labels (the CIFFC "Current fires / Year-to-date" panel).
   stat: { today: 'Reported today', active: 'Active', out: 'Out', total: 'Total', area: 'Area burned', prep: 'Prep level' },
   prepLevel: (n: number) => (n > 0 ? `Level ${n}` : '—'),
+  // Redesigned data strip: three HEADLINE numbers ("how bad, right now") + a demoted season subline.
+  // The whole strip holds a STABLE height across states — US/MX and down become a same-height note, never
+  // a silent collapse that jumps the header.
+  strip: {
+    active: 'Active fires',
+    today: 'Reported today',
+    area: 'Burned this year',
+    // Demoted secondary tier — out / total / prep, plus the source "as of" stamp.
+    season: (out: string, total: string, prep: string, asOf: string) =>
+      `Out ${out} · Total ${total} · ${prep}${asOf ? ` · ${asOf}` : ''}`,
+    caOnly: 'Season totals are Canada only',
+    down: 'Live totals unavailable',
+  },
+  // Layer grouping (Watch-Duty-style tiers) + the summoned-sheet control labels.
+  tiers: { fires: 'Fires', weather: 'Weather', local: 'Local' },
+  tierScope: { fires: '', weather: 'Canada', local: 'Saskatchewan' } as Record<string, string>,
+  // Why a tier is greyed out when the country filter leaves its coverage area.
+  disabledReason: { weather: 'Canada only', local: 'Saskatchewan only' } as Record<string, string>,
+  layersBtn: 'Layers',
+  sourcesBtn: 'Sources',
+  legendTitle: 'Legend',
+  layersTitle: 'Map layers',
+  layersSub: 'Choose what the map draws',
+  // Plain-language gloss for the stage-of-control jargon (shown once in the legend).
+  stageGloss: 'Being held = not expected to grow under current conditions',
   sub: 'Satellite-detected · last 24 hours',
   hint: 'Tap a fire for its full detail',
   emptyTitle: 'No active fires',
@@ -161,7 +186,7 @@ export const LIVEFIRE_SOURCES: Record<'reported' | 'hotspots' | 'perimeters' | '
   reported: { label: 'Active fires', what: 'Agency-reported fires, stage of control + size — CIFFC', url: 'https://ciffc.net' },
   hotspots: { label: 'Satellite hotspots', what: 'Last-24h thermal detections — CWFIS (NRCan)', url: 'https://cwfis.cfs.nrcan.gc.ca' },
   perimeters: { label: 'Burn area', what: 'Satellite-mapped fire footprints — CWFIS M3', url: 'https://cwfis.cfs.nrcan.gc.ca' },
-  fwi: { label: 'Fire weather', what: 'Fire Weather Index danger field — CWFIS', url: 'https://cwfis.cfs.nrcan.gc.ca' },
+  fwi: { label: 'Fire weather', what: 'Fire Weather Index — continuous national FORECAST grid — CWFIS', url: 'https://cwfis.cfs.nrcan.gc.ca' },
   smoke: { label: 'Smoke forecast', what: 'Surface PM2.5 wildfire-smoke FORECAST — ECCC FireWork', url: 'https://eccc-msc.github.io/open-data/msc-data/nwp_raqdps-fw/readme_raqdps-fw_en/' },
   alerts: { label: 'Alerts', what: 'Wildfire & evacuation alerts — SaskAlert', url: 'https://emergencyalert.saskatchewan.ca' },
   bans: { label: 'Fire bans', what: 'Provincial fire bans & restrictions — SK SPSA', url: 'https://www.saskatchewan.ca/residents/environment-public-health-and-safety/wildfire-management' },
@@ -212,6 +237,14 @@ export function frameTimeLabel(iso: string): string {
  *  and show the frame currently in view, e.g. "Forecast · Mon 6 PM" (never a fake "updated X ago"). */
 export function smokeFreshness(currentFrameIso: string | null): string {
   return currentFrameIso ? `Forecast · ${frameTimeLabel(currentFrameIso)}` : 'Forecast';
+}
+
+/** Ledger freshness for the FWI raster: we draw the CONTINUOUS national-grid FORECAST (the observed
+ *  station grid is patchy, full of gaps between weather stations), so name it a forecast + the day in
+ *  view, e.g. "Forecast · Jun 10" — never a fake observed "updated X ago". */
+export function fwiFreshness(meta: FeedMeta, dayLabel: string): string {
+  if (meta.status !== 'live') return freshnessLine(meta);
+  return dayLabel ? `Forecast · ${dayLabel}` : 'Forecast';
 }
 
 /** The standing honesty line — this is a window onto real data, NOT an emergency tool. */

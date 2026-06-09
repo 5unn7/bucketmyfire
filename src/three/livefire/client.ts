@@ -77,7 +77,17 @@ export const BANS_SOURCE =
 
 // CWFIS Fire Weather Index raster (a Leaflet WMS tile overlay — the orange-shaded fire-danger field).
 export const FWI_WMS_URL = 'https://cwfis.cfs.nrcan.gc.ca/geoserver/public/wms';
-export const FWI_WMS_LAYER = 'public:fwi_current';
+// The OBSERVED grid (`fwi_current`) is interpolated from sparse weather STATIONS → patchy, with big gaps
+// between stations (the "missing coverage"). The time-enabled `fwi` layer's near-term FORECAST is the
+// CONTINUOUS model grid (full coverage over all fuelled land), so we draw that — keyless + CORS-`*`, same
+// service. Honestly labeled a forecast in the chip + ledger.
+export const FWI_WMS_LAYER = 'public:fwi';
+/** WMS TIME (yyyy-mm-dd) for the FWI layer: today's value is still the patchy station ANALYSIS, so we ask
+ *  for a near-term FORECAST day, which is the continuous model grid. Shared by the tile layer + the ledger
+ *  label so they always name the same day. */
+export function fwiForecastTime(now: number = Date.now()): string {
+  return new Date(now + 86_400_000).toISOString().slice(0, 10); // today + 1 day (UTC)
+}
 // The FWI raster has no per-feature timestamp; its issue date lives in the WMS layer <Title> ("… - YYYY-MM-DD").
 const FWI_CAPS_SOURCE = `${FWI_WMS_URL}?service=WMS&version=1.3.0&request=GetCapabilities`;
 
@@ -87,7 +97,22 @@ const FWI_CAPS_SOURCE = `${FWI_WMS_URL}?service=WMS&version=1.3.0&request=GetCap
 // CORS-blocked, so this Canadian-government WMS is the honest, browser-fetchable equivalent.
 export const GEOMET_WMS_URL = 'https://geo.weather.gc.ca/geomet';
 export const SMOKE_WMS_LAYER = 'RAQDPS.Sfc_PM2.5-WildfireSmokePlume';
-export const SMOKE_WMS_STYLE = 'PM2.5_0to100ugm3_Dis'; // discrete 0–100 µg/m³ banded ramp (legible default)
+// White→grey SHADED ramp rendered SERVER-SIDE via a custom SLD (GeoMet honors `SLD_BODY` — verified live).
+// The layer's BUILT-IN styles are an AQI rainbow whose low end is a dark BLUE that's near-invisible on the
+// dark basemap; this maps PM2.5 (µg/m³) to a smoke-true grey→white that deepens — lighter AND more opaque —
+// with DENSITY, so a thin trail reads as soft grey haze and a dense plume as bright white. Sent as the
+// `sld_body` GetMap param (with `styles=` empty); minified to keep the per-tile GET URL short. Retint by
+// editing the ColorMap — the layer/time wiring is unchanged.
+export const SMOKE_WMS_SLD =
+  '<StyledLayerDescriptor version="1.0.0" xmlns="http://www.opengis.net/sld">' +
+  '<NamedLayer><Name>RAQDPS.Sfc_PM2.5-WildfireSmokePlume</Name><UserStyle><FeatureTypeStyle><Rule>' +
+  '<RasterSymbolizer><Opacity>1</Opacity><ColorMap type="ramp">' +
+  '<ColorMapEntry color="#b9c0c5" quantity="1" opacity="0"/>' + // below ~1 µg/m³ → fully clear (no fog everywhere)
+  '<ColorMapEntry color="#c4cbd0" quantity="6" opacity="0.38"/>' + // thin haze: soft mid-grey, just readable
+  '<ColorMapEntry color="#d9dee2" quantity="30" opacity="0.64"/>' + // moderate smoke: lighter grey
+  '<ColorMapEntry color="#eef1f3" quantity="90" opacity="0.83"/>' + // dense: near-white
+  '<ColorMapEntry color="#ffffff" quantity="250" opacity="0.95"/>' + // thickest core: bright white
+  '</ColorMap></RasterSymbolizer></Rule></FeatureTypeStyle></UserStyle></NamedLayer></StyledLayerDescriptor>';
 
 /** Source attribution shown in the tracker UI. */
 export const LIVEFIRE_CREDIT = 'Sources: CWFIS (NRCan) · CIFFC · ECCC';
@@ -273,9 +298,22 @@ interface FireRow {
   props: Record<string, unknown> | null;
   reported_at: string | null;
 }
+interface ProvFireRow {
+  source: string;
+  source_fire_id: string;
+  agency: string | null;
+  name: string | null;
+  lat: number;
+  lon: number;
+  stage: string | null;
+  size_ha: number | null;
+  props: Record<string, unknown> | null;
+  discovered_at: string | null;
+  updated_at_src: string | null;
+}
 
-/** Map a `public.fires` row to the SAME ReportedFire shape `normalizeReported` produces, so the map +
- *  detail panel render identically whichever path (backend or direct CIFFC) served the data. */
+/** Map a `public.fires` (national CIFFC) row to the SAME ReportedFire shape `normalizeReported` produces,
+ *  so the map + detail panel render identically whichever path served the data. */
 function rowToReported(r: FireRow): ReportedFire {
   const agency = r.agency ?? '';
   const at = r.reported_at ? Date.parse(r.reported_at) || 0 : 0;
@@ -292,36 +330,77 @@ function rowToReported(r: FireRow): ReportedFire {
   };
 }
 
-/** Read the reported-fire roll from the ingestion backend (PostgREST). Returns a ReportedFeed identical
- *  in shape to `normalizeReported`, or null on any failure (→ the caller falls back to direct CIFFC). */
-async function fetchReportedFromBackend(): Promise<ReportedFeed | null> {
-  const q =
-    'select=fire_id,lat,lon,agency,country,stage,size_ha,props,reported_at' +
-    '&stage=in.(OC,BH,UC,OUT)&order=size_ha.desc.nullslast&limit=5000';
+/** Map a `public.provincial_fires` row → ReportedFire, tagged with its `source` + `name` so the detail
+ *  panel can render the richer provincial record (cause, response, per-fire official URL, …). */
+function provRowToReported(r: ProvFireRow): ReportedFire {
+  const agency = r.agency ?? '';
+  const at = Date.parse(r.updated_at_src ?? r.discovered_at ?? '') || 0;
+  return {
+    lat: r.lat,
+    lon: r.lon,
+    sizeHa: typeof r.size_ha === 'number' ? r.size_ha : -1,
+    stage: (r.stage as FireStage) || 'UNK',
+    agency,
+    country: countryOf(agency),
+    at: Number.isFinite(at) ? at : 0,
+    fireId: r.source_fire_id ?? '',
+    props: r.props ?? {},
+    source: r.source,
+    name: r.name ?? undefined,
+  };
+}
+
+/** Provincial sources whose stage→CIFFC mapping is NOT yet trusted, so we DON'T prefer them over CIFFC
+ *  (their rows still ingest; the national roll covers those provinces meanwhile). NL uses overloaded
+ *  single-letter status codes whose legend is unconfirmed — preferring it would inflate "active". */
+const UNTRUSTED_PROVINCIAL = new Set(['nl-ffa']);
+
+async function fetchBackendRows<T>(table: string, query: string): Promise<T[] | null> {
   const t = withTimeout(8000);
   try {
-    const res = await fetch(`${restBase()}/rest/v1/fires?${q}`, { headers: restHeaders(), signal: t.signal });
+    const res = await fetch(`${restBase()}/rest/v1/${table}?${query}`, { headers: restHeaders(), signal: t.signal });
     if (!res.ok) return null;
-    const rows = (await res.json()) as FireRow[];
-    if (!Array.isArray(rows)) return null;
-    const all = rows.map(rowToReported);
-    const byStage: Record<FireStage, number> = { OC: 0, BH: 0, UC: 0, OUT: 0, UNK: 0 };
-    let publishedAt = 0;
-    for (const f of all) {
-      byStage[f.stage]++;
-      if (f.at > publishedAt) publishedAt = f.at;
-    }
-    return {
-      fires: all.filter((f) => isActiveStage(f.stage)),
-      out: all.filter((f) => f.stage === 'OUT'),
-      byStage,
-      meta: { status: 'live', fromCache: false, publishedAt, fetchedAt: Date.now() },
-    };
+    const rows = (await res.json()) as T[];
+    return Array.isArray(rows) ? rows : null;
   } catch {
     return null;
   } finally {
     t.done();
   }
+}
+
+/**
+ * Reported-fire roll from our ingestion backend, PREFER-PROVINCIAL per province: a province with its own
+ * agency feed (BC/AB/ON/…) is shown from THAT feed (richer — cause, official URL); provinces without one
+ * (SK/MB/PE/NU) fall back to the national CIFFC roll. Returns null only when BOTH backend reads yield
+ * nothing (→ the caller then falls back to the direct CIFFC fetch, so the map is never blank).
+ */
+async function fetchReportedFromBackend(): Promise<ReportedFeed | null> {
+  const [ciffcRows, provRows] = await Promise.all([
+    fetchBackendRows<FireRow>('fires', 'select=fire_id,lat,lon,agency,country,stage,size_ha,props,reported_at&stage=in.(OC,BH,UC,OUT)&order=size_ha.desc.nullslast&limit=5000'),
+    fetchBackendRows<ProvFireRow>('provincial_fires', 'select=source,source_fire_id,agency,name,lat,lon,stage,size_ha,props,discovered_at,updated_at_src&order=size_ha.desc.nullslast&limit=8000'),
+  ]);
+
+  const prov = (provRows ?? []).filter((r) => !UNTRUSTED_PROVINCIAL.has(r.source)).map(provRowToReported);
+  if ((ciffcRows == null || ciffcRows.length === 0) && prov.length === 0) return null;
+
+  // Provinces with trusted provincial coverage → drop CIFFC's rows for those (prefer provincial).
+  const covered = new Set(prov.map((f) => f.agency.toUpperCase()).filter(Boolean));
+  const ciffcKept = (ciffcRows ?? []).map(rowToReported).filter((f) => !covered.has(f.agency.toUpperCase()));
+  const all = [...prov, ...ciffcKept];
+
+  const byStage: Record<FireStage, number> = { OC: 0, BH: 0, UC: 0, OUT: 0, UNK: 0 };
+  let publishedAt = 0;
+  for (const f of all) {
+    byStage[f.stage]++;
+    if (f.at > publishedAt) publishedAt = f.at;
+  }
+  return {
+    fires: all.filter((f) => isActiveStage(f.stage)),
+    out: all.filter((f) => f.stage === 'OUT'),
+    byStage,
+    meta: { status: 'live', fromCache: false, publishedAt, fetchedAt: Date.now() },
+  };
 }
 
 /** A fire's tracked HISTORY (size + stage over time) from the ingestion backend. The browser-only feed

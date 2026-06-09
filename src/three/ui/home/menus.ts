@@ -27,15 +27,14 @@ import { railNav } from './rail';
 import { DEFS, FLAME, ic } from './icons';
 import { openStore } from '../storeLink';
 import { validateCallsign, MAX_CALLSIGN } from '../callsign';
-import { fetchActiveFires, fetchSummary, fetchReportedFires, fetchBurnPerimeters, fetchFwiMeta, fetchAlerts, fetchBans, fetchFireHistory, getCountryPref, setCountryPref, isLiveFireEnabled } from '../../livefire/client';
+import { fetchActiveFires, fetchSummary, fetchReportedFires, fetchBurnPerimeters, fetchFwiMeta, fetchAlerts, fetchBans, fetchFireHistory, fwiForecastTime, getCountryPref, setCountryPref, isLiveFireEnabled } from '../../livefire/client';
 import {
   LIVEFIRE_COPY, severityClass, severityLabel, stageClass, stageLabel, relTime,
   freshnessLine, statusDotClass, publishedWhen, LIVEFIRE_SOURCES, NOT_FOR_EMERGENCY, SK_OFFICIAL,
-  frameTimeLabel, smokeFreshness, alertLevelClass, alertLevelLabel, banTypeClass, titleCase, banFreshness, alertFreshness,
+  frameTimeLabel, smokeFreshness, fwiFreshness, alertLevelClass, alertLevelLabel, banTypeClass, titleCase, banFreshness, alertFreshness,
 } from '../../livefire/strings';
 import { FIELD_GROUPS, REPORTED_FIELD_GROUPS, type FieldGroup } from '../../livefire/fields';
-import { officialFor } from '../../livefire/official';
-import { countFires, filterCountry, filterReportedCountry, countryLabel, COUNTRIES, smokeForecastFrames, safeUrl } from '../../livefire/normalize';
+import { countFires, filterCountry, filterReportedCountry, countryLabel, COUNTRIES, smokeForecastFrames, forecastLeadLabel, safeUrl } from '../../livefire/normalize';
 import { LIVEFIRE } from '../../config';
 import type { Hotspot, ReportedFire, ReportedFeed, FireHistoryPoint, NationalSummary, BurnFeed, AlertFeed, AlertItem, BanFeed, BanArea, FeedMeta, LiveFireFeed, CountryFilter } from '../../livefire/types';
 import type { FireMap, FireLayer } from '../../livefire/FireMap';
@@ -469,14 +468,42 @@ function fireDetailHtml(h: Hotspot): string {
     <div>${fieldGroupsHtml(FIELD_GROUPS, h.props)}</div>`;
 }
 
-/** The full CIFFC record for one tapped AUTHORITATIVE reported fire — staged, sized, named. */
+// Provincial feeds carry richer fields than CIFFC but under per-source names — a multi-key lookup pulls
+// the universally-useful ones (cause, response, type, district) across all 9 sources for the detail panel.
+const PROV_FIELDS: { label: string; keys: string[] }[] = [
+  { label: 'Cause', keys: ['FIRE_CAUSE', 'GENERAL_CAUSE', 'Cause', 'cause', 'CAUSE'] },
+  { label: 'Response', keys: ['RESPONSE_TYPE_DESC', 'ResponseType', 'RESPONSE_OBJECTIVE', 'responsecategory'] },
+  { label: 'Type', keys: ['FIRE_TYPE', 'FireType', 'fire_type'] },
+  { label: 'Contained', keys: ['PercentContained', 'percent_contained'] },
+  { label: 'District', keys: ['DISTRICT_NAME', 'FIRE_DISTRICT_NAME', 'REGION', 'region', 'FIRE_CENTRE'] },
+];
+/** First present, non-blank value among `keys`, as a trimmed string. */
+function pickProp(props: Record<string, unknown>, keys: string[]): string {
+  for (const k of keys) {
+    const v = props[k];
+    if (v !== null && v !== undefined && String(v).trim() !== '') return String(v).trim();
+  }
+  return '';
+}
+/** Curated detail group for a PROVINCIAL fire (its props use source-specific field names, not CIFFC's). */
+function provDetailHtml(f: ReportedFire): string {
+  const rows = [`<div class="frow"><span class="fk">Source</span><span class="fv">${esc((f.agency || '').toUpperCase())} provincial agency</span></div>`];
+  if (f.fireId) rows.push(`<div class="frow"><span class="fk">Fire ID</span><span class="fv">${esc(f.fireId)}</span></div>`);
+  for (const d of PROV_FIELDS) {
+    const v = pickProp(f.props, d.keys);
+    if (v) rows.push(`<div class="frow"><span class="fk">${d.label}</span><span class="fv">${esc(v)}</span></div>`);
+  }
+  return `<div class="fgroup"><div class="fgh">Fire details</div>${rows.join('')}</div>`;
+}
+
+/** One tapped AUTHORITATIVE reported fire. CIFFC fires render the full CIFFC record; PROVINCIAL fires
+ *  (f.source set) render the curated provincial group. Closes on the standing honesty line — this is a
+ *  window onto real agency data, not an emergency tool. */
 function reportedDetailHtml(f: ReportedFire): string {
   const when = relTime(f.at);
-  const title = f.fireId ? esc(f.fireId) : LIVEFIRE_COPY.coords(f.lat, f.lon);
+  const title = f.name ? esc(f.name) : f.fireId ? esc(f.fireId) : LIVEFIRE_COPY.coords(f.lat, f.lon);
   const agency = f.agency ? f.agency.toUpperCase() : '—';
-  // Province-aware official source: link to THIS fire's jurisdiction (national CIFFC map as fallback) —
-  // never the SK-only SPSA viewer for an out-of-province fire.
-  const official = officialFor(f.agency);
+  const body = f.source ? provDetailHtml(f) : `<div>${fieldGroupsHtml(REPORTED_FIELD_GROUPS, f.props)}</div>`;
   return `<div class="fsheet-head">
       <div class="grow" style="min-width:0;">
         <div class="fsheet-ttl">${title}</div>
@@ -486,8 +513,8 @@ function reportedDetailHtml(f: ReportedFire): string {
       <button class="iconbtn" data-lf-close aria-label="Close detail">${ic('close')}</button>
     </div>
     <div data-lf-hist></div>
-    <div>${fieldGroupsHtml(REPORTED_FIELD_GROUPS, f.props)}</div>
-    <a class="btn primary block" href="${safeUrl(official.url)}" target="_blank" rel="noopener">${ic('shield')}${esc(official.label)} ↗</a>`;
+    ${body}
+    <p class="alertnote">${esc(NOT_FOR_EMERGENCY)}</p>`;
 }
 
 /** Stage-of-control → the CSS token var the sparkline's end dot is coloured by (mirrors FireMap's
@@ -608,54 +635,60 @@ export function openLiveFires(): void {
   activeOverlay?.close(); // opened directly (not via the rail) — clear any panel that was up
   const options = COUNTRIES.map((c) => `<option value="${c.id}">${c.label}</option>`).join('');
   const C = LIVEFIRE_COPY;
+  // The FWI raster draws a near-term FORECAST day (the continuous full-coverage grid); this is the day the
+  // ledger names it for ("Forecast · Jun 10"). Computed once so the tile layer + the label always agree.
+  const fwiDayLabel = new Date(`${fwiForecastTime()}T00:00:00Z`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
 
-  // National summary stat strip (CIFFC). One compact cell per number; values settle in via paintStats.
+  // National summary stat strip (CIFFC) — three HEADLINE numbers ("how bad, right now") + a demoted season
+  // subline. The strip holds a STABLE height across states: paintStats swaps in a same-height note for the
+  // US/MX filter or a down feed, so the header never jumps. Hero values settle in via paintStats.
   const statCell = (key: string, label: string): string =>
     `<div class="fstat"><b data-lf-stat="${key}">—</b><span>${label}</span></div>`;
   const statStrip =
-    statCell('today', C.stat.today) + statCell('active', C.stat.active) + statCell('out', C.stat.out) +
-    statCell('total', C.stat.total) + statCell('area', C.stat.area) + statCell('prep', C.stat.prep);
+    `<div class="fstat-row" data-lf-stat-row>` +
+    statCell('active', C.strip.active) + statCell('today', C.strip.today) + statCell('area', C.strip.area) +
+    `</div>` +
+    `<div class="fstat-season" data-lf-season hidden></div>` +
+    `<div class="fstat-note" data-lf-note hidden></div>`;
 
-  // Layer toggle chips (the `on` class = currently visible). Reported fires + hotspots + burn area on
-  // by default; the Fire Weather raster is opt-in (it would otherwise wash out the dots). The FWI chip
-  // is dropped entirely under the kill-switch so it can never hit CWFIS (the JSON feeds gate too).
-  const ALL_LAYERS: { id: FireLayer; label: string; hint: string; on: boolean }[] = [
-    { id: 'reported', label: C.layers.reported, hint: C.layerHint.reported, on: true },
-    { id: 'out', label: C.layers.out, hint: C.layerHint.out, on: false },
-    { id: 'hotspots', label: C.layers.hotspots, hint: C.layerHint.hotspots, on: true },
-    { id: 'perimeters', label: C.layers.perimeters, hint: C.layerHint.perimeters, on: true },
-    { id: 'fwi', label: C.layers.fwi, hint: C.layerHint.fwi, on: false },
-    { id: 'smoke', label: C.layers.smoke, hint: C.layerHint.smoke, on: false },
-    { id: 'alerts', label: C.layers.alerts, hint: C.layerHint.alerts, on: false },
-    { id: 'bans', label: C.layers.bans, hint: C.layerHint.bans, on: false },
+  // The eight map layers, grouped into three tiers (Fires / Weather · Canada / Local · Saskatchewan) and
+  // surfaced inside the summoned LAYERS sheet — not a crammed permanent chip row. Each carries the legend
+  // swatch its mark draws with. Default-on = active fires + hotspots + burn area only; the rest are opt-in.
+  type LayerRow = { id: FireLayer; tier: 'fires' | 'weather' | 'local'; label: string; hint: string; swatch: string };
+  const ALL_LAYERS: LayerRow[] = [
+    { id: 'reported', tier: 'fires', label: C.layers.reported, hint: C.layerHint.reported, swatch: 'oc' },
+    { id: 'hotspots', tier: 'fires', label: C.layers.hotspots, hint: C.layerHint.hotspots, swatch: 'ramp' },
+    { id: 'perimeters', tier: 'fires', label: C.layers.perimeters, hint: C.layerHint.perimeters, swatch: 'scar' },
+    { id: 'out', tier: 'fires', label: C.layers.out, hint: C.layerHint.out, swatch: 'neutral' },
+    { id: 'fwi', tier: 'weather', label: C.layers.fwi, hint: C.layerHint.fwi, swatch: 'fwiramp' },
+    { id: 'smoke', tier: 'weather', label: C.layers.smoke, hint: C.layerHint.smoke, swatch: 'smoke' },
+    { id: 'alerts', tier: 'local', label: C.layers.alerts, hint: C.layerHint.alerts, swatch: 'alert' },
+    { id: 'bans', tier: 'local', label: C.layers.bans, hint: C.layerHint.bans, swatch: 'ban' },
   ];
-  // The FWI + smoke rasters are live WMS feeds, so the kill-switch drops their chips entirely (the JSON
-  // feeds gate in the client; these layers are built directly in FireMap, so they're gated here too).
+  // FWI + smoke are live WMS feeds, so the kill-switch drops them entirely (never hit CWFIS when disabled).
   const LIVE_WMS = new Set<FireLayer>(['fwi', 'smoke']);
-  const LAYERS = ALL_LAYERS.filter((l) => !LIVE_WMS.has(l.id) || isLiveFireEnabled());
-  const layerChips = LAYERS.map(
-    (l) =>
-      `<button class="lchip${l.on ? ' on' : ''}" data-lf-layer="${l.id}" aria-pressed="${l.on}" title="${l.hint}"><i class="ldotc" data-lf-dot="${l.id}"></i>${l.label}</button>`,
-  ).join('');
-  // Stage-of-control legend (the dots' meaning) — classes map to the same tokens the map dots use.
-  const legend = `<span class="flegend">
-      <i class="ldot oc"></i>Out of control<i class="ldot bh"></i>Being held<i class="ldot uc"></i>Under control
-    </span>`;
+  // Visible-layer mirror (matches FireMap's own default `visible`); mutated as toggles flip in the sheet.
+  const layerOn: Record<FireLayer, boolean> = { reported: true, out: false, hotspots: true, perimeters: true, fwi: false, smoke: false, alerts: false, bans: false };
 
   const body = `<div class="firewrap">
     <div class="firebar">
       <div class="grow" style="min-width:0;"><div class="t" data-lf-head>${C.bannerLoading}</div><div class="s" data-lf-sub>${C.hint}</div></div>
       <select class="firesel" data-lf-country aria-label="Country filter">${options}</select>
-      <button class="iconbtn" data-lf-ledger aria-label="Data sources & freshness">${ic('shield')}</button>
       <button class="iconbtn" data-lf-refresh aria-label="Refresh">${ic('motion')}</button>
     </div>
-    <div class="firestats" data-lf-stats hidden>${statStrip}</div>
-    <div class="firetools"><div class="firelayers">${layerChips}</div>${legend}</div>
+    <div class="firestats" data-lf-stats>${statStrip}</div>
+    <div class="firetools">
+      <button class="ftbtn" data-lf-layers aria-label="Map layers">${ic('map')}${C.layersBtn}<span class="ftn" data-lf-layern></span></button>
+      <button class="ftbtn" data-lf-sources aria-label="Data sources & freshness">${ic('shield')}${C.sourcesBtn}</button>
+    </div>
     <div class="firemap" data-lf-map></div>
     <div class="firescrub" data-lf-scrub hidden>
-      <button class="iconbtn" data-lf-play aria-label="Play smoke forecast">${ic('play')}</button>
-      <input type="range" class="scrubrange" data-lf-range min="0" max="0" value="0" step="1" aria-label="Smoke forecast time" />
-      <div class="scrublabel"><span data-lf-scrub-time>—</span><span class="scrubtag">Forecast</span></div>
+      <button class="iconbtn" data-lf-play aria-label="Play forecast">${ic('play')}</button>
+      <div class="scrubtrack" data-lf-scrubtrack>
+        <input type="range" class="scrubrange" data-lf-range min="0" max="0" value="0" step="1" aria-label="Forecast time" />
+        <div class="scrubrail"><span data-lf-rail-a>Now</span><span data-lf-rail-b>+${LIVEFIRE.smokeForecastHours} h</span></div>
+      </div>
+      <div class="scrublabel"><span class="scrubwhen"><b data-lf-scrub-time>—</b><i data-lf-scrub-lead>Now</i></span><span class="scrubtag">Forecast</span></div>
     </div>
     <div class="firesheet" data-lf-sheet hidden></div>
   </div>`;
@@ -679,12 +712,18 @@ export function openLiveFires(): void {
   const mapEl = root.querySelector<HTMLElement>('[data-lf-map]')!;
   const sheetEl = root.querySelector<HTMLElement>('[data-lf-sheet]')!;
   const refreshBtn = root.querySelector<HTMLButtonElement>('[data-lf-refresh]')!;
-  const ledgerBtn = root.querySelector<HTMLButtonElement>('[data-lf-ledger]')!;
+  const layersBtn = root.querySelector<HTMLButtonElement>('[data-lf-layers]')!;
+  const sourcesBtn = root.querySelector<HTMLButtonElement>('[data-lf-sources]')!;
+  const layerCountEl = root.querySelector<HTMLElement>('[data-lf-layern]')!;
   const countryEl = root.querySelector<HTMLSelectElement>('[data-lf-country]')!;
   const scrubEl = root.querySelector<HTMLElement>('[data-lf-scrub]')!;
+  const scrubTrackEl = root.querySelector<HTMLElement>('[data-lf-scrubtrack]')!;
   const playBtn = root.querySelector<HTMLButtonElement>('[data-lf-play]')!;
   const rangeEl = root.querySelector<HTMLInputElement>('[data-lf-range]')!;
   const scrubTimeEl = root.querySelector<HTMLElement>('[data-lf-scrub-time]')!;
+  const scrubLeadEl = root.querySelector<HTMLElement>('[data-lf-scrub-lead]')!;
+  const railAEl = root.querySelector<HTMLElement>('[data-lf-rail-a]')!;
+  const railBEl = root.querySelector<HTMLElement>('[data-lf-rail-b]')!;
 
   const offline: FeedMeta = { status: 'unavailable', fromCache: false, publishedAt: 0, fetchedAt: 0 };
   let hsFeed: LiveFireFeed = { hotspots: [], fireCount: 0, totalDetections: 0, meta: offline };
@@ -696,13 +735,18 @@ export function openLiveFires(): void {
   let banFeed: BanFeed = { bans: [], meta: offline };
   let biggest: ReportedFire | null = null; // tracked for the ?qa detail-panel hook below
   let hottest: Hotspot | null = null;
-  // Smoke FORECAST layer: an hourly frame timeline built once from `now`, an index into it, and playback.
-  // It's a forecast (a model prediction), labeled as such — never presented as observed smoke.
+  // The two FORECAST rasters share ONE bottom scrubber. `forecastMode` says which one it currently drives
+  // (the layer you turned on last); the other holds its frame. Smoke = HOURLY (+48h); fire weather = DAILY
+  // model grids (today+1 … +N), labeled forecasts — never presented as observed.
   const smokeMeta: FeedMeta = { status: isLiveFireEnabled() ? 'live' : 'disabled', fromCache: false, publishedAt: 0, fetchedAt: 0 };
   const smokeFrames = smokeForecastFrames(Date.now(), LIVEFIRE.smokeForecastHours);
   let smokeIdx = 0;
-  let smokePlaying = false;
-  rangeEl.max = String(Math.max(0, smokeFrames.length - 1));
+  const FWI_FC_DAYS = 7; // a week of continuous model fire-weather forecast (well within the NAEFS range)
+  const FWI_FRAME_MS = 1200; // day-step playback pace (calmer than the hourly smoke step)
+  const fwiFrames = Array.from({ length: FWI_FC_DAYS }, (_, i) => new Date(Date.now() + (i + 1) * 86_400_000).toISOString().slice(0, 10));
+  let fwiIdx = 0;
+  let forecastMode: 'none' | 'smoke' | 'fwi' = 'none';
+  let forecastPlaying = false;
   let country: CountryFilter = getCountryPref(); // defaults to Canada
   countryEl.value = country;
 
@@ -764,17 +808,19 @@ export function openLiveFires(): void {
     const rowHtml = rows
       .map(({ key, meta }) => {
         const info = LIVEFIRE_SOURCES[key];
-        // Per-source freshness, honestly: smoke = a FORECAST + the frame in view (never "updated X ago");
-        // alerts/bans = the count + the honest "none active" / "no ban in effect" empty state; the rest use
-        // their real source publish time.
+        // Per-source freshness, honestly: smoke + FWI are FORECASTS (name them so + the day in view, never
+        // "updated X ago"); alerts/bans = the count + the honest "none active" / "no ban in effect" empty
+        // state; the rest use their real source publish time.
         const fresh =
           key === 'smoke' && meta.status === 'live'
             ? smokeFreshness(currentSmokeFrame())
-            : key === 'alerts'
-              ? alertFreshness(meta, alertFeed.alerts.length)
-              : key === 'bans'
-                ? banFreshness(meta, banFeed.bans.length)
-                : freshnessLine(meta);
+            : key === 'fwi'
+              ? fwiFreshness(meta, fwiDayLabel)
+              : key === 'alerts'
+                ? alertFreshness(meta, alertFeed.alerts.length)
+                : key === 'bans'
+                  ? banFreshness(meta, banFeed.bans.length)
+                  : freshnessLine(meta);
         return `<a class="lrow" href="${info.url}" target="_blank" rel="noopener">
           <i class="sdot ${statusDotClass(meta)}"></i>
           <span class="grow" style="min-width:0;"><span class="lname">${esc(info.label)}</span><span class="lwhat">${esc(info.what)}</span></span>
@@ -798,59 +844,193 @@ export function openLiveFires(): void {
     wireClose();
   };
 
-  // ── Smoke forecast playback — the firesmoke.ca-style animation, honestly labeled a FORECAST ──────────
-  const currentSmokeFrame = (): string | null => smokeFrames[smokeIdx] ?? null;
-  const applySmokeFrame = (): void => {
-    const f = currentSmokeFrame();
+  // ── Forecast playback — ONE scrubber for both rasters (smoke = hourly, fire weather = daily), honestly
+  //    labeled a FORECAST. `forecastMode` selects which raster the strip drives; the other holds its frame. ──
+  const currentSmokeFrame = (): string | null => smokeFrames[smokeIdx] ?? null; // still used by the ledger
+  const fcFrames = (): string[] => (forecastMode === 'fwi' ? fwiFrames : smokeFrames);
+  const fcIdx = (): number => (forecastMode === 'fwi' ? fwiIdx : smokeIdx);
+  const fcSetIdx = (i: number): void => { if (forecastMode === 'fwi') fwiIdx = i; else smokeIdx = i; };
+
+  const applyForecastFrame = (): void => {
+    if (forecastMode === 'none') return;
+    const fs = fcFrames();
+    const i = Math.min(fs.length - 1, Math.max(0, fcIdx()));
+    const f = fs[i];
     if (!f) return;
-    map?.setSmokeTime(f);
-    scrubTimeEl.textContent = frameTimeLabel(f);
-    if (rangeEl.value !== String(smokeIdx)) rangeEl.value = String(smokeIdx);
+    if (forecastMode === 'fwi') {
+      map?.setFwiTime(f);
+      // Render in UTC so the day matches the UTC forecast date `f` + the "+N d" chip (a local-TZ render of
+      // UTC-midnight skews a day in negative-offset zones).
+      scrubTimeEl.textContent = new Date(`${f}T00:00:00Z`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
+      scrubLeadEl.textContent = `+${i + 1} d`; // fwiFrames start at today+1, so frame i is "+ (i+1) days"
+    } else {
+      map?.setSmokeTime(f);
+      scrubTimeEl.textContent = frameTimeLabel(f); // absolute: "Mon 6 PM"
+      scrubLeadEl.textContent = forecastLeadLabel(i); // lead chip: "Now" / "+6 h" (frames are hourly)
+    }
+    if (rangeEl.value !== String(i)) rangeEl.value = String(i);
   };
-  const stopSmoke = (): void => {
-    smokePlaying = false;
+  const stopForecast = (): void => {
+    forecastPlaying = false;
     if (smokeTimer !== null) { clearInterval(smokeTimer); smokeTimer = null; }
     playBtn.innerHTML = ic('play');
-    playBtn.setAttribute('aria-label', 'Play smoke forecast');
+    playBtn.setAttribute('aria-label', 'Play forecast');
   };
-  const playSmoke = (): void => {
-    if (smokeFrames.length < 2 || closed) return;
+  const playForecast = (): void => {
+    if (forecastMode === 'none' || fcFrames().length < 2 || closed) return;
     if (smokeTimer !== null) clearInterval(smokeTimer); // idempotent: never stack intervals (double-tap guard)
-    smokePlaying = true;
+    forecastPlaying = true;
     playBtn.innerHTML = ic('pause');
-    playBtn.setAttribute('aria-label', 'Pause smoke forecast');
+    playBtn.setAttribute('aria-label', 'Pause forecast');
+    const stepMs = forecastMode === 'fwi' ? FWI_FRAME_MS : LIVEFIRE.smokeFrameMs;
     smokeTimer = window.setInterval(() => {
-      if (closed) return stopSmoke();
-      smokeIdx = (smokeIdx + 1) % smokeFrames.length;
-      applySmokeFrame();
-    }, LIVEFIRE.smokeFrameMs);
+      if (closed) return stopForecast();
+      fcSetIdx((fcIdx() + 1) % fcFrames().length);
+      applyForecastFrame();
+    }, stepMs);
+  };
+  // Reveal + configure the scrubber for a mode (or hide on 'none'); seeds the range max + rail end labels.
+  const setForecastMode = (mode: 'none' | 'smoke' | 'fwi'): void => {
+    stopForecast();
+    forecastMode = mode;
+    if (mode === 'none') { scrubEl.hidden = true; return; }
+    const fs = fcFrames();
+    rangeEl.max = String(Math.max(0, fs.length - 1));
+    railAEl.textContent = mode === 'fwi' ? '+1 d' : 'Now';
+    railBEl.textContent = mode === 'fwi' ? `+${fs.length} d` : `+${LIVEFIRE.smokeForecastHours} h`;
+    scrubEl.hidden = false;
+    applyForecastFrame();
   };
 
-  // Paint the CIFFC summary stat strip. The numbers are CANADA-national, so hide the strip entirely when
-  // the map is filtered to the US/Mexico (showing Canadian YTD there would be a lie), and when the summary
-  // is unreachable (no fake zeros). Shown for Canada + All North America (Canada is part of "all").
-  const paintStats = (): void => {
-    if (!summary || summary.meta.status !== 'live' || country === 'US' || country === 'MX') {
-      statsEl.hidden = true;
-      return;
+  // ── Layers sheet — tiered toggles (Fires / Weather · Canada / Local · Saskatchewan) + the live legend.
+  //    Summoned from the Layers button so the permanent control row stays short and the map keeps height. ──
+  const updateLayerCount = (): void => {
+    const n = (Object.keys(layerOn) as FireLayer[]).filter((k) => layerOn[k]).length;
+    layerCountEl.textContent = n ? `· ${n}` : '';
+  };
+  updateLayerCount();
+
+  // Flip one layer on/off: mirror state → drive the map → keep the count fresh → (forecast rasters) hand
+  // off the shared scrubber. The single funnel used by both the sheet toggles and country-gating.
+  const setLayerState = (id: FireLayer, on: boolean): void => {
+    layerOn[id] = on;
+    map?.setLayer(id, on);
+    // Smoke + fire weather are the two FORECAST rasters sharing one scrubber. Turning one on hands it the
+    // scrubber; turning off the owner falls back to the other forecast layer (if still on) or hides it.
+    if (id === 'smoke' || id === 'fwi') {
+      if (on) setForecastMode(id);
+      else if (forecastMode === id) setForecastMode(layerOn[id === 'smoke' ? 'fwi' : 'smoke'] ? (id === 'smoke' ? 'fwi' : 'smoke') : 'none');
     }
+    updateLayerCount();
+  };
+
+  // A tier is AVAILABLE only where its data lives: Weather + Local are Canada / SK scoped, so they grey out
+  // (with a reason) when the filter leaves Canada. Fires is continent-wide.
+  const tierAvailable = (tier: LayerRow['tier']): boolean =>
+    tier === 'fires' ? true : country !== 'US' && country !== 'MX';
+
+  // The legend keys exactly what the map is CURRENTLY drawing (it tracks the live toggles), so it never
+  // explains a mark that isn't on screen. The stage breakdown rides the reported/out layers.
+  const legendHtml = (): string => {
+    const lg = (sw: string, name: string, def = ''): string =>
+      `<div class="lgrow"><i class="lgsw ${sw}"></i><div class="lgtx"><span class="lgname">${esc(name)}</span>${def ? `<span class="lgdef">${esc(def)}</span>` : ''}</div></div>`;
+    let rows = '';
+    if (layerOn.reported || layerOn.out) {
+      rows += lg('oc', stageLabel('OC')) + lg('bh', stageLabel('BH'), C.stageGloss) + lg('uc', stageLabel('UC')) + lg('neutral', 'Out / unknown');
+    }
+    if (layerOn.hotspots) rows += lg('ramp', C.layers.hotspots, 'Low → extreme heat');
+    if (layerOn.perimeters) rows += lg('scar', C.layers.perimeters, 'Satellite-mapped footprint');
+    if (layerOn.alerts) rows += lg('alert', C.layers.alerts, 'Critical → advisory');
+    if (layerOn.bans) rows += lg('ban', C.layers.bans, 'Ban → restriction');
+    if (layerOn.fwi && isLiveFireEnabled()) rows += lg('fwiramp', C.layers.fwi, 'Low → extreme danger');
+    if (layerOn.smoke && isLiveFireEnabled()) rows += lg('smoke', C.layers.smoke, 'Light → heavy · forecast');
+    if (!rows) return '';
+    return `<div class="fgroup"><div class="fgh">${esc(C.legendTitle)}</div>${rows}</div>`;
+  };
+
+  const layersHtml = (): string => {
+    const tierBlock = (tier: LayerRow['tier']): string => {
+      const avail = tierAvailable(tier);
+      const rows = ALL_LAYERS.filter((l) => l.tier === tier)
+        .filter((l) => !LIVE_WMS.has(l.id) || isLiveFireEnabled()) // kill-switch drops FWI + smoke entirely
+        .map((l) => {
+          const on = layerOn[l.id];
+          const control = avail
+            ? `<div class="toggle${on ? ' on' : ''}" data-lf-layer="${l.id}" role="switch" aria-checked="${on}" aria-label="${esc(l.label)}" tabindex="0"><span class="knob"></span></div>`
+            : `<span class="badge neutral">${esc(C.disabledReason[tier] ?? '')}</span>`;
+          return `<div class="srow${avail ? '' : ' off'}"><div class="ic"><i class="lgsw ${l.swatch}"></i></div>` +
+            `<div class="grow" style="min-width:0;"><div class="t">${esc(l.label)}</div><div class="s">${esc(l.hint)}</div></div>${control}</div>`;
+        })
+        .join('');
+      if (!rows) return '';
+      const scope = C.tierScope[tier];
+      return `<div class="fgroup"><div class="fgh lgcap">${esc(C.tiers[tier])}${scope ? `<span class="sc">${esc(scope)}</span>` : ''}</div>${rows}</div>`;
+    };
+    return `<div class="fsheet-head">
+        <div class="grow" style="min-width:0;"><div class="fsheet-ttl">${esc(C.layersTitle)}</div><div class="s">${esc(C.layersSub)}</div></div>
+        <button class="iconbtn" data-lf-close aria-label="Close">${ic('close')}</button>
+      </div>
+      ${tierBlock('fires')}${tierBlock('weather')}${tierBlock('local')}
+      <div data-lf-legend>${legendHtml()}</div>`;
+  };
+
+  // Open the layers sheet + wire its toggles. Re-rendered each open so it reflects live availability; a
+  // toggle drives setLayerState and re-keys ONLY the legend block in place (toggle state + scroll kept).
+  const showLayers = (): void => {
+    sheetEl.innerHTML = layersHtml();
+    sheetEl.hidden = false;
+    sheetEl.scrollTop = 0;
+    wireClose();
+    sheetEl.querySelectorAll<HTMLElement>('[data-lf-layer]').forEach((tog) => {
+      const flip = (): void => {
+        const id = tog.dataset.lfLayer as FireLayer;
+        const on = !tog.classList.contains('on');
+        tog.classList.toggle('on', on);
+        tog.setAttribute('aria-checked', String(on));
+        setLayerState(id, on);
+        const lh = sheetEl.querySelector<HTMLElement>('[data-lf-legend]');
+        if (lh) lh.innerHTML = legendHtml();
+      };
+      tog.addEventListener('click', flip);
+      tog.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip(); }
+      });
+    });
+  };
+
+  // Paint the CIFFC summary strip. The numbers are CANADA-national, so the US/MX filter or a down summary
+  // swaps in a same-height NOTE (never collapse the strip — that jumps the header). Live + CA shows three
+  // headline numbers + a demoted season subline (out / total / prep + the source "as of" day).
+  const statRowEl = statsEl.querySelector<HTMLElement>('[data-lf-stat-row]')!;
+  const seasonEl = statsEl.querySelector<HTMLElement>('[data-lf-season]')!;
+  const noteEl = statsEl.querySelector<HTMLElement>('[data-lf-note]')!;
+  const paintStats = (): void => {
+    const showNote = (msg: string): void => {
+      statRowEl.hidden = true;
+      seasonEl.hidden = true;
+      noteEl.textContent = msg;
+      noteEl.hidden = false;
+    };
+    if (country === 'US' || country === 'MX') return showNote(C.strip.caOnly);
+    if (!summary || summary.meta.status !== 'live') return showNote(C.strip.down);
     const s = summary;
     const set = (k: string, v: string): void => {
-      const el = statsEl.querySelector<HTMLElement>(`[data-lf-stat="${k}"]`);
+      const el = statRowEl.querySelector<HTMLElement>(`[data-lf-stat="${k}"]`);
       if (el) el.textContent = v;
     };
-    set('today', s.firesToday.toLocaleString());
     set('active', s.activeFires.toLocaleString());
-    set('out', s.ytdOut.toLocaleString());
-    set('total', s.ytdTotal.toLocaleString());
+    set('today', s.firesToday.toLocaleString());
     set('area', C.fireSize(s.areaBurnedHa));
-    set('prep', C.prepLevel(s.prepLevel));
-    statsEl.hidden = false;
+    const asOf = s.meta.publishedAt ? publishedWhen(s.meta.publishedAt) : '';
+    seasonEl.textContent = C.strip.season(s.ytdOut.toLocaleString(), s.ytdTotal.toLocaleString(), C.prepLevel(s.prepLevel), asOf);
+    noteEl.hidden = true;
+    statRowEl.hidden = false;
+    seasonEl.hidden = false;
   };
 
   // Paint the map for the SELECTED country: filter each layer → re-plot → refit. The headline uses the
   // AUTHORITATIVE reported active-fire count (falls back to the clustered hotspot count if CIFFC is down).
-  const paint = (): void => {
+  const paint = (refit: boolean): void => {
     const reported = filterReportedCountry(reportedFeed.fires, country);
     const out = filterReportedCountry(reportedFeed.out, country);
     const hs = filterCountry(hsFeed.hotspots, country);
@@ -859,7 +1039,6 @@ export function openLiveFires(): void {
     hottest = hs.reduce<Hotspot | null>((a, b) => (!a || b.hfi > a.hfi ? b : a), null);
 
     const canada = country !== 'US' && country !== 'MX';
-    const perimCount = canada ? burnFeed.polys.length : 0;
     // Alerts + bans are Saskatchewan (SaskAlert / SK SPSA), so they show only when Canada is in frame.
     const alerts = canada ? alertFeed.alerts : [];
     const bans = canada ? banFeed.bans : [];
@@ -870,30 +1049,20 @@ export function openLiveFires(): void {
       headEl.textContent = C.offlineTitle;
       subEl.textContent = C.offlineBody;
     } else {
-      const active = reported.length || countFires(hs); // authoritative count if we have it, else clustered hotspots
+      // Headline active count: for the strict Canada view use CIFFC's OFFICIAL national tally
+      // (summary.activeFires) so the headline equals the strip's "Active fires" hero exactly — no two
+      // different "active" numbers side by side. Otherwise (US/MX/all) the plotted reported count, falling
+      // back to clustered hotspots when CIFFC is down. (The map still plots what it can; the official count
+      // is ≥ the plottable set, as every fire tracker shows.)
+      const active =
+        country === 'CA' && summary && summary.meta.status === 'live'
+          ? summary.activeFires
+          : reported.length || countFires(hs);
       headEl.textContent = active > 0 ? C.head(active, label) : `${C.emptyTitle} · ${label}`;
       // Freshness = the SOURCE's publish time (reported sitrep, else satellite pass) — NOT our fetch time.
       const freshMs = reportedFeed.meta.publishedAt || hsFeed.meta.publishedAt;
       subEl.textContent = C.subStats(hs.length, publishedWhen(freshMs));
     }
-
-    // Per-chip status dots — empty-in-view ('none') is a DISTINCT, calmer state from down/off (the
-    // "empty ≠ down ≠ off" trust fix, computed here at the UI layer where the country filter is known).
-    const setDot = (id: FireLayer, meta: FeedMeta, count?: number): void => {
-      const el = root.querySelector<HTMLElement>(`[data-lf-dot="${id}"]`);
-      if (!el) return;
-      let cls = statusDotClass(meta); // live | cache | down | off
-      if (cls !== 'down' && cls !== 'off' && count !== undefined && count === 0) cls = 'none';
-      el.className = `ldotc ${cls}`;
-    };
-    setDot('reported', reportedFeed.meta, reported.length);
-    setDot('out', reportedFeed.meta, out.length);
-    setDot('hotspots', hsFeed.meta, hs.length);
-    setDot('perimeters', burnFeed.meta, perimCount);
-    setDot('fwi', fwiMeta);
-    setDot('smoke', smokeMeta);
-    setDot('alerts', alertFeed.meta, alerts.length);
-    setDot('bans', banFeed.meta, bans.length);
 
     map?.setReportedFires(reported);
     map?.setOutFires(out);
@@ -903,9 +1072,12 @@ export function openLiveFires(): void {
     // The M3 burn perimeters are Canada-only (CWFIS), so drop them when the map is scoped to US/Mexico —
     // mirrors the stat strip. Shown for Canada + All North America (where Canada is part of the frame).
     map?.setBurnPolygons(canada ? burnFeed.polys : []);
-    // Frame on the authoritative fires (fall back to hotspots) for the chosen country.
-    const frame = (reported.length ? reported : hs).map((p) => [p.lat, p.lon] as [number, number]);
-    map?.fitTo(frame);
+    // Reframe ONLY on first load + a real country change (refit). NEVER on a silent refresh — that would
+    // yank the user out of a zoom/pan they set by hand (the fitTo-on-every-paint regression).
+    if (refit) {
+      const frame = (reported.length ? reported : hs).map((p) => [p.lat, p.lon] as [number, number]);
+      map?.fitTo(frame);
+    }
     map?.invalidate();
   };
 
@@ -943,45 +1115,35 @@ export function openLiveFires(): void {
         if (alr.status === 'fulfilled') alertFeed = alr.value;
         if (ban.status === 'fulfilled') banFeed = ban.value;
         paintStats();
-        paint();
+        paint(!force); // first load (force=false) frames the data; a refresh (force=true) keeps the view
       })
       .finally(() => {
         if (!closed) refreshBtn.disabled = false;
       });
   };
   refreshBtn.addEventListener('click', () => load(true));
-  ledgerBtn.addEventListener('click', () => showLedger());
+  sourcesBtn.addEventListener('click', () => showLedger());
+  layersBtn.addEventListener('click', () => showLayers());
   countryEl.addEventListener('change', () => {
     country = countryEl.value as CountryFilter;
     setCountryPref(country);
-    sheetEl.hidden = true; // a country switch clears any open detail (it may not be in the new set)
-    paintStats(); // the national summary is Canada-only — show/hide it for the chosen country
-    paint();
+    sheetEl.hidden = true; // a country switch clears any open sheet (the set / availability just changed)
+    // Weather + SK layers hold no US/MX data — turn off any that were on so a Canadian raster doesn't
+    // linger over a US view and the active-layer count stays honest.
+    if (country === 'US' || country === 'MX') {
+      (['fwi', 'smoke', 'alerts', 'bans'] as FireLayer[]).forEach((id) => { if (layerOn[id]) setLayerState(id, false); });
+    }
+    paintStats(); // the national summary is Canada-only — note vs. numbers for the chosen country
+    paint(true); // a real filter change DOES reframe
   });
 
-  // Layer toggles: flip the chip's state + the map layer's visibility.
-  root.querySelectorAll<HTMLButtonElement>('[data-lf-layer]').forEach((chip) =>
-    chip.addEventListener('click', () => {
-      const id = chip.dataset.lfLayer as FireLayer;
-      const on = !chip.classList.contains('on');
-      chip.classList.toggle('on', on);
-      chip.setAttribute('aria-pressed', String(on));
-      map?.setLayer(id, on);
-      // Smoke owns the forecast scrubber: reveal it + seed the current frame on enable, stop playback on disable.
-      if (id === 'smoke') {
-        scrubEl.hidden = !on;
-        if (on) applySmokeFrame();
-        else stopSmoke();
-      }
-    }),
-  );
-
-  // Smoke scrubber: play/pause toggles the hourly animation; dragging the timeline scrubs (and pauses).
-  playBtn.addEventListener('click', () => (smokePlaying ? stopSmoke() : playSmoke()));
+  // Forecast scrubber: play/pause toggles the active animation (smoke hourly / fire-weather daily);
+  // dragging the timeline scrubs (and pauses).
+  playBtn.addEventListener('click', () => (forecastPlaying ? stopForecast() : playForecast()));
   rangeEl.addEventListener('input', () => {
-    stopSmoke(); // dragging the timeline pauses playback
-    smokeIdx = Math.min(smokeFrames.length - 1, Math.max(0, parseInt(rangeEl.value, 10) || 0));
-    applySmokeFrame();
+    stopForecast(); // dragging the timeline pauses playback
+    fcSetIdx(Math.min(fcFrames().length - 1, Math.max(0, parseInt(rangeEl.value, 10) || 0)));
+    applyForecastFrame();
   });
 
   // Build the map once the overlay is painted + sized; Leaflet is a lazy chunk (loads on open only). If
@@ -991,7 +1153,15 @@ export function openLiveFires(): void {
     import('../../livefire/FireMap')
       .then((m) => {
         if (closed) return;
-        map = new m.FireMap(mapEl, { onSelectHotspot: showHotspot, onSelectReported: showReported, onSelectAlert: showAlert, onSelectBan: showBan });
+        map = new m.FireMap(mapEl, {
+          onSelectHotspot: showHotspot,
+          onSelectReported: showReported,
+          onSelectAlert: showAlert,
+          onSelectBan: showBan,
+          // While a forecast frame's tiles are in flight, mark the scrubber buffering (a soft pulse) so a
+          // slow step reads as loading, not stuck.
+          onSmokeLoad: (loading) => scrubTrackEl.classList.toggle('buffering', loading),
+        });
         map.invalidate();
         load(false);
       })
