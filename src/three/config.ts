@@ -232,8 +232,10 @@ export const FLIGHT = {
   // (so releasing the stick doesn't let the wind carry you away)
   // Helicopter-style steering: the stick TURNS the nose (yawRate) and pushes
   // forward/back along it (variable throttle). The nose no longer chases velocity.
-  yawRate: 0.72, // turn rate (rad/s) at full left/right stick — LOWERED 1.0→0.72 to reduce jumpy over-steer
+  yawRate: 0.72, // turn rate (rad/s) at full right-stick X (yaw / pedals) — LOWERED 1.0→0.72 to reduce jumpy over-steer
   reversePower: 0.5, // backward thrust fraction — flying tail-first is slower
+  lateralPower: 0.55, // sideways (cyclic strafe) thrust as a fraction of forward enginePower. A helicopter
+  // slides sideways slower than it flies forward, so the left-stick lateral axis is deliberately weaker.
   // Raw turn/throttle/collective input is eased toward (this) per-60fps factor before
   // it drives yaw, thrust and climb, so a key tap or stick flick ramps in and rolls
   // out instead of snapping — the main lever for how SMOOTH the flight transitions

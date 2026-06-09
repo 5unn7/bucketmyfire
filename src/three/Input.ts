@@ -3,11 +3,11 @@
  * `read()`. This is a mobile-browser game, so the touch UI is always present
  * (it also works with a mouse) and the keyboard is a desktop convenience.
  *
- * Controls (helicopter-style — you steer the nose, not a world direction):
- *   - Turn the nose: push the left stick LEFT/RIGHT, or A/D / ←/→.
- *   - Forward / back (variable speed): push the stick UP/DOWN, or W/S / ↑/↓.
- *     Push the stick further for more speed; ease off to creep in precisely.
- *   - Altitude (collective): on-screen ▲/▼, or I (climb) / J (descend).
+ * Controls (real-helicopter layout — TWO 2-axis sticks, each self-centring so a release HOLDS):
+ *   - LEFT stick = cyclic. UP/DOWN = forward/back throttle (W/S, ↑/↓); LEFT/RIGHT = lateral STRAFE
+ *     (A/D), a sideways slide perpendicular to the nose. Push further for more; ease off to creep.
+ *   - RIGHT stick = pedals + collective. LEFT/RIGHT = YAW the nose (Q/E, ←/→); UP/DOWN = altitude
+ *     (climb / descend; I/J). Letting go holds your heading + altitude band.
  *   - Drop water: the DROP button, or Space. A 'bambi' bucket dumps fully on a
  *     single tap; a 'valve' bucket pours while held and pauses on release. The DROP
  *     button doubles as the BUCKET gauge — water rises inside it as you scoop.
@@ -34,9 +34,10 @@ import { HelpModal, hasSeenHelp, markHelpSeen } from './ui/HelpModal';
 import type { HighlightId } from './ui/coach/CoachDirector';
 
 export interface ControlState {
-  turn: number; // -1 turn left .. +1 turn right
-  throttle: number; // -1 reverse .. +1 forward (variable along the nose)
-  lift: number; // -1 descend .. +1 climb
+  turn: number; // -1 turn left .. +1 turn right (yaw / pedals — RIGHT stick X)
+  throttle: number; // -1 reverse .. +1 forward (variable along the nose — LEFT stick Y)
+  lateral: number; // -1 strafe left .. +1 strafe right (sideways cyclic — LEFT stick X)
+  lift: number; // -1 descend .. +1 climb (collective — RIGHT stick Y)
   drop: boolean; // DROP held this frame (the 'valve' bucket pours while held)
   dropPressed: boolean; // DROP went down THIS frame (edge) — a one-tap 'bambi' dump trigger
   swapPressed: boolean; // SWAP went down THIS frame (edge) — re-rig bucket↔crew at base (mixed missions)
@@ -44,16 +45,18 @@ export interface ControlState {
 }
 
 /** Stick travel below this fraction reads as zero, then rescales smoothly. */
-const STICK_DEADZONE = 0.18;
+const STICK_DEADZONE = 0.15;
 /** Expo shaping applied after the deadzone (1 = linear; 2 = quadratic). Small pushes
- *  produce much less output; you need a deliberate full push to reach full deflection. */
-const STICK_EXPO = 2.2;
+ *  produce much less output; you need a deliberate full push to reach full deflection.
+ *  Higher = calmer stick — softens small/mid pushes so mobile flying isn't twitchy. */
+const STICK_EXPO = 2.7;
 
 // Keyboard keys are on/off, so without this they'd always command FULL deflection
 // (max speed / max turn) — twitchy next to the analog stick. These scale a held key
 // down to a moderate "stick push" so flying on a desktop feels closer to touch.
 const KEY_THROTTLE = 0.6; // forward/back gain for W/S / ↑↓
-const KEY_TURN = 0.7; // turn-rate gain for A/D / ←→
+const KEY_LATERAL = 0.7; // sideways-strafe gain for A/D
+const KEY_TURN = 0.9; // yaw-rate gain for Q/E / ←→
 
 /** Drop shadow under the bucket % readout — keeps the digits legible over the cyan water fill. */
 const PCT_SHADOW = '0 1px 2px rgba(0,0,0,0.55)';
@@ -61,12 +64,15 @@ const PCT_SHADOW = '0 1px 2px rgba(0,0,0,0.55)';
 export class Input {
   private readonly held = new Set<string>();
 
-  // Touch state.
-  private stickTurn = 0; // -1..1, right = turn right
-  private stickThrottle = 0; // -1..1, up = forward
-  private stickActive = false;
-  private btnUp = false;
-  private btnDown = false;
+  // Touch state. Two 2-axis sticks (real-helicopter layout):
+  //   LEFT (cyclic):  X = lateral strafe, Y = throttle (fwd / back).
+  //   RIGHT (pedals + collective): X = yaw, Y = altitude. Both self-centre on release.
+  private leftX = 0; // -1..1, right = strafe right
+  private leftY = 0; // -1..1, up = forward
+  private leftActive = false;
+  private rightX = 0; // -1..1, right = yaw right
+  private rightY = 0; // -1..1, up = climb
+  private rightActive = false;
   private btnDrop = false;
   private prevDrop = false; // last frame's drop level, for press-edge detection
   private dropEnabled = true; // false while a crew low-hover hold owns the controls — DROP greys out + ignores taps/Space
@@ -81,29 +87,29 @@ export class Input {
   private lookYawAccum = 0; // horizontal orbit drag (rad) banked since the last `look` read
   private lookPitchAccum = 0; // vertical orbit drag (rad) banked since the last `look` read
 
-  // Live joystick base radius (max thumb travel) — recomputed per breakpoint so the
-  // pointer math below tracks the on-screen size.
-  private stickR = 65;
+  // Live joystick base radii (max thumb travel) — recomputed per breakpoint so the pointer math
+  // tracks each on-screen size. Two equal 2-axis sticks: LEFT (cyclic) + RIGHT (pedals/collective).
+  private leftR = 65;
+  private rightR = 65;
 
   // Element refs resized by applyLayout().
-  private stickBase!: HTMLDivElement;
-  private stickThumb!: HTMLDivElement;
-  private stickTicks: HTMLDivElement[] = [];
-  private climbBtn!: HTMLDivElement;
-  private descendBtn!: HTMLDivElement;
+  private leftBase!: HTMLDivElement;
+  private leftThumb!: HTMLDivElement;
+  private leftTicks: HTMLDivElement[] = [];
+  private rightBase!: HTMLDivElement;
+  private rightThumb!: HTMLDivElement;
+  private rightTicks: HTMLDivElement[] = [];
   private dropBtn!: HTMLDivElement;
   // The DROP hero IS the bucket: a cool water layer rises inside it as you scoop and drains as you
   // drop (carry + spend fused into one element). These three refs drive that fill + its % readout.
   private dropLabel!: HTMLDivElement; // the action word ("DROP" / "IGNITE") — relabelled by setActionLabel
   private dropPct!: HTMLDivElement; // the water % readout under the word
-  private dropWater!: HTMLDivElement; // the rising water fill layer (clipped to the hex button)
+  private dropWater!: HTMLDivElement; // the rising water fill layer (clipped to the round button)
   private dropWave!: HTMLDivElement; // the animated wave riding the water surface (a sloshing crest)
   private dropWaterActive = true; // false on crew/torch loadouts (no bucket) → fill hidden, button is just the action
   private flashBucketTimer = 0; // setTimeout id: restore the % readout after a drop-result tint
   private swapBtn!: HTMLDivElement;
-  private detachBtn!: HTMLDivElement; // the small hex RELEASE-BUCKET button (inner — sized + press-wired)
-  private detachWrap!: HTMLDivElement; // its wrapper (carries the glow) — the element shown/hidden
-  private clusterRow!: HTMLDivElement;
+  private detachBtn!: HTMLDivElement; // the small round RELEASE-BUCKET button (clustered above DROP)
   private helpBtn!: HTMLDivElement;
   private help!: HelpModal;
   /** The control currently spotlit by the coach (so a change clears the previous one). */
@@ -153,9 +159,10 @@ export class Input {
   setHighlight(id: HighlightId | null): void {
     injectPulseStyles();
     const map: Record<HighlightId, HTMLElement | undefined> = {
-      stick: this.stickBase,
-      climb: this.climbBtn,
-      descend: this.descendBtn,
+      stick: this.leftBase, // movement lives on the left cyclic stick
+      // climb/descend (altitude) are the right stick's vertical axis — point both at it.
+      climb: this.rightBase,
+      descend: this.rightBase,
       drop: this.dropBtn,
     };
     const next = id ? (map[id] ?? null) : null;
@@ -168,22 +175,30 @@ export class Input {
   read(): ControlState {
     const k = this.held;
 
-    // Keyboard steering: A/D (or ←/→) turn the nose; W/S (or ↑/↓) throttle.
-    let kTurn = 0;
+    // Keyboard (real-heli split): W/S (or ↑/↓) throttle, A/D strafe, Q/E (or ←/→) yaw, I/J collective.
     let kThrottle = 0;
+    let kLateral = 0;
+    let kTurn = 0;
     if (k.has('KeyW') || k.has('ArrowUp')) kThrottle += KEY_THROTTLE; // forward
     if (k.has('KeyS') || k.has('ArrowDown')) kThrottle -= KEY_THROTTLE; // reverse
-    if (k.has('KeyA') || k.has('ArrowLeft')) kTurn -= KEY_TURN; // turn left
-    if (k.has('KeyD') || k.has('ArrowRight')) kTurn += KEY_TURN; // turn right
+    if (k.has('KeyA')) kLateral -= KEY_LATERAL; // strafe left
+    if (k.has('KeyD')) kLateral += KEY_LATERAL; // strafe right
+    if (k.has('KeyQ') || k.has('ArrowLeft')) kTurn -= KEY_TURN; // yaw left
+    if (k.has('KeyE') || k.has('ArrowRight')) kTurn += KEY_TURN; // yaw right
 
-    // Touch stick overrides the keyboard when engaged (deadzoned + rescaled).
-    const turn = this.stickActive ? deadzone(this.stickTurn) : kTurn;
-    const throttle = this.stickActive ? deadzone(this.stickThrottle) : kThrottle;
-
-    // Collective: keyboard + buttons, clamped. (I = climb, J = descend.)
+    // Each touch stick overrides the keyboard for its own axes when engaged (deadzoned + rescaled).
+    // LEFT = cyclic (throttle + lateral); RIGHT = pedals + collective (yaw + altitude). Both self-centre,
+    // so releasing holds heading + altitude.
+    const throttle = this.leftActive ? deadzone(this.leftY) : kThrottle;
+    const lateral = this.leftActive ? deadzone(this.leftX) : kLateral;
+    const turn = this.rightActive ? deadzone(this.rightX) : kTurn;
     let lift = 0;
-    if (k.has('KeyI') || this.btnUp) lift += 1;
-    if (k.has('KeyJ') || this.btnDown) lift -= 1;
+    if (this.rightActive) {
+      lift = deadzone(this.rightY);
+    } else {
+      if (k.has('KeyI')) lift += 1;
+      if (k.has('KeyJ')) lift -= 1;
+    }
 
     // Drop: Space (or the on-screen DROP button). Gated off while disabled (a crew low-hover hold) so a
     // held button or Space can't leak a phantom drop through.
@@ -201,7 +216,7 @@ export class Input {
     const detachPressed = detach && !this.prevDetach;
     this.prevDetach = detach;
 
-    return { turn, throttle, lift, drop, dropPressed, swapPressed, detachPressed };
+    return { turn, throttle, lateral, lift, drop, dropPressed, swapPressed, detachPressed };
   }
 
   /** Relabel the primary action (DROP) button — Game sets it to "IGNITE" on a torch (helitorch) mission,
@@ -211,7 +226,7 @@ export class Input {
   }
 
   /** Enable or disable the DROP action entirely. `Game` disables it during a crew low-hover hold (no bucket
-   *  to drop): the hexagon greys out and stops intercepting taps + Space, so the inert control reads as
+   *  to drop): the button greys out and stops intercepting taps + Space, so the inert control reads as
    *  inactive instead of a dead button you keep mashing. Change-guarded — safe to call every frame. */
   setDropEnabled(on: boolean): void {
     if (on === this.dropEnabled) return;
@@ -280,7 +295,7 @@ export class Input {
   /** Show/hide the DETACH (jettison-bucket) button. Game shows it on a water mission while a bucket is
    *  attached — press it to release the slung bucket; you then RTB to a base for a fresh one. */
   setDetachVisible(on: boolean): void {
-    if (this.detachWrap) this.detachWrap.style.display = on ? 'flex' : 'none'; // the wrapper carries the hex + outline + glow
+    if (this.detachBtn) this.detachBtn.style.display = on ? 'flex' : 'none';
   }
 
   /** Show/hide the contextual SWAP-loadout button. Game calls this each frame: it's only
@@ -316,33 +331,24 @@ export class Input {
     const k = s.compact ? 0.92 : 1;
     const set = s.set;
 
-    // Joystick.
-    const R = Math.round(set.stickRadius * k);
-    this.stickR = R;
-    const d = R * 2;
-    Object.assign(this.stickBase.style, { width: `${d}px`, height: `${d}px` });
-    const thumb = Math.round(R * 0.92);
-    Object.assign(this.stickThumb.style, {
-      width: `${thumb}px`,
-      height: `${thumb}px`,
-      marginLeft: `${-thumb / 2}px`,
-      marginTop: `${-thumb / 2}px`,
-    });
-    for (const t of this.stickTicks) t.style.transformOrigin = `1px ${R - 6}px`;
-
-    // Collective + DROP cluster.
-    const cb = Math.round(set.clusterBtn * k);
-    for (const el of [this.climbBtn, this.descendBtn]) {
-      Object.assign(el.style, { width: `${cb}px`, height: `${cb}px`, fontSize: `${Math.round(cb * 0.29)}px` });
+    // Twin 2-axis sticks, equal size (real-helicopter layout): LEFT = cyclic, RIGHT = pedals/collective.
+    const sr = Math.round(set.stickRadius * k);
+    this.leftR = sr;
+    this.rightR = sr;
+    for (const [base, thumb, ticks] of [
+      [this.leftBase, this.leftThumb, this.leftTicks],
+      [this.rightBase, this.rightThumb, this.rightTicks],
+    ] as const) {
+      sizeStick(base, thumb, sr);
+      for (const t of ticks) t.style.transformOrigin = `1px ${sr - 6}px`;
     }
+
+    // DROP (round water gauge) + the small RELEASE-BUCKET button clustered above it.
     const drop = Math.round(set.dropSize * k);
     Object.assign(this.dropBtn.style, { width: `${drop}px`, height: `${drop}px` });
     this.dropLabel.style.fontSize = `${Math.round(drop * 0.18)}px`; // the action word
     this.dropPct.style.fontSize = `${Math.round(drop * 0.15)}px`; // the water % readout (a touch smaller)
-    this.clusterRow.style.gap = `${Math.round(set.gap * 1.7)}px`;
-
-    // RELEASE BUCKET — a small hexagon on the left edge (clearly smaller than the collective buttons).
-    const det = Math.round(set.clusterBtn * 0.72 * k);
+    const det = Math.round(set.clusterBtn * 0.66 * k); // RELEASE BUCKET — clearly smaller than DROP
     Object.assign(this.detachBtn.style, { width: `${det}px`, height: `${det}px` });
 
     // (Free-look is now a full-screen drag layer — no sized element to lay out here.)
@@ -365,37 +371,13 @@ export class Input {
     });
 
     this.buildLookLayer(root); // first → sits BENEATH the controls; drags on empty space orbit the camera
-    this.buildStick(root);
-    this.buildCluster(root);
-    this.buildDetachUI(root);
+    this.buildLeftStick(root);
+    this.buildRightControls(root); // right stick + the DROP / RELEASE-BUCKET cluster
     this.buildSwapUI(root);
     this.buildHelpUI(root);
 
     this.root = root; // stored so dispose() can pull the whole overlay (and its listeners) at once
     parent.appendChild(root);
-  }
-
-  /** RELEASE BUCKET — a small HEXAGON icon button on the mid-LEFT edge (echoes the DROP hexagon),
-   *  hidden until Game calls setDetachVisible(true). The left-centre edge keeps it clear of the top-left
-   *  instrument strip (which it used to sit on top of and get lost in), the top-right radar, and both
-   *  thumb clusters (joystick BL / action cluster BR) — a deliberate side reach so a rare bucket-jettison
-   *  is never a fat-finger. The bucket-release glyph inherits the warm text colour. */
-  private buildDetachUI(root: HTMLElement): void {
-    const { wrap, btn: detach } = makeHexButton({
-      fill: UI.warmGlass,
-      stroke: UI.warmStroke,
-      glow: UI.detachGlow,
-    });
-    detach.style.color = UI.warmText;
-    detach.appendChild(makeIconSvg('bucket-release', 22));
-    wrap.style.display = 'none'; // shown by setDetachVisible (toggles the WRAPPER so the outline goes too)
-    this.detachBtn = detach;
-    this.detachWrap = wrap;
-    holdButton(detach, (on) => (this.btnDetach = on), UI.warm);
-
-    const a = anchor('left-center');
-    a.appendChild(wrap);
-    root.appendChild(a);
   }
 
   /** SWAP — bottom-centre, hidden until Game calls setSwapVisible(true).
@@ -424,9 +406,15 @@ export class Input {
     root.appendChild(a);
   }
 
-  /** Virtual joystick (bottom-left) — a frosted dish with hairline axis ticks and a
-   *  glowing cyan knob, so it reads as an instrument rather than a flat blob. */
-  private buildStick(root: HTMLElement): void {
+  /** Build one 2-axis virtual joystick — a frosted dish with a 4-way tick cross and a glowing cyan knob,
+   *  so it reads as an instrument rather than a flat blob. Both flight sticks share it; the caller maps the
+   *  normalised knob offset to its axes via `apply(nx, ny)` (ny is UP-positive). `clear()` fires on release
+   *  — the knob springs back to centre, so the axes return to 0 (heading + altitude hold). */
+  private makeJoystick(opts: {
+    radius: () => number;
+    apply: (nx: number, ny: number) => void;
+    clear: () => void;
+  }): { base: HTMLDivElement; thumb: HTMLDivElement; ticks: HTMLDivElement[] } {
     const base = div({
       position: 'relative',
       borderRadius: R.round,
@@ -441,7 +429,9 @@ export class Input {
     base.appendChild(
       div({ position: 'absolute', inset: '20px', borderRadius: R.round, border: '1px solid rgba(255,255,255,0.08)' }),
     );
-    // Four faint axis ticks (N/E/S/W) — origin set per size in applyLayout().
+
+    // Four faint axis ticks (N/E/S/W) → "this stick moves in every direction". Origin set in applyLayout().
+    const ticks: HTMLDivElement[] = [];
     for (let i = 0; i < 4; i++) {
       const tick = div({
         position: 'absolute',
@@ -454,9 +444,10 @@ export class Input {
         background: 'rgba(103,232,255,0.35)',
         transform: `rotate(${i * 90}deg)`,
       });
-      this.stickTicks.push(tick);
+      ticks.push(tick);
       base.appendChild(tick);
     }
+
     const thumb = div({
       position: 'absolute',
       left: '50%',
@@ -469,8 +460,6 @@ export class Input {
       pointerEvents: 'none',
     });
     base.appendChild(thumb);
-    this.stickBase = base;
-    this.stickThumb = thumb;
 
     const setKnobActive = (on: boolean) => {
       thumb.style.boxShadow = on
@@ -479,65 +468,120 @@ export class Input {
       thumb.style.borderColor = on ? UI.accent : UI.accentSoft;
     };
 
-    let stickId = -1;
-    const onStick = (e: PointerEvent) => {
-      const R = this.stickR;
+    let pid = -1;
+    const onMove = (e: PointerEvent) => {
+      const rad = opts.radius();
       const rect = base.getBoundingClientRect();
       const cx = rect.left + rect.width / 2;
       const cy = rect.top + rect.height / 2;
       const dx = e.clientX - cx;
       const dy = e.clientY - cy;
-      const dist = Math.min(Math.hypot(dx, dy), R);
+      const dist = Math.min(Math.hypot(dx, dy), rad);
       const ang = Math.atan2(dy, dx);
       const tx = Math.cos(ang) * dist;
       const ty = Math.sin(ang) * dist;
       thumb.style.transform = `translate(${tx}px, ${ty}px)`;
-      this.stickTurn = tx / R; // push right → turn right
-      this.stickThrottle = -ty / R; // push up → forward (screen-up is −y)
-      this.stickActive = true;
+      opts.apply(tx / rad, -ty / rad); // push up → +1 (screen-up is −y)
       setKnobActive(true);
     };
-    const releaseStick = () => {
-      stickId = -1;
-      this.stickActive = false;
-      this.stickTurn = 0;
-      this.stickThrottle = 0;
+    const release = () => {
+      pid = -1;
       thumb.style.transform = 'translate(0px, 0px)';
       setKnobActive(false);
+      opts.clear();
     };
     base.addEventListener('pointerdown', (e) => {
-      stickId = e.pointerId;
+      pid = e.pointerId;
       base.setPointerCapture(e.pointerId);
-      onStick(e);
+      onMove(e);
     });
     base.addEventListener('pointermove', (e) => {
-      if (e.pointerId === stickId) onStick(e);
+      if (e.pointerId === pid) onMove(e);
     });
-    base.addEventListener('pointerup', releaseStick);
-    base.addEventListener('pointercancel', releaseStick);
+    base.addEventListener('pointerup', release);
+    base.addEventListener('pointercancel', release);
+
+    return { base, thumb, ticks };
+  }
+
+  /** LEFT cyclic stick (bottom-left): X = lateral strafe, Y = throttle (forward / back). */
+  private buildLeftStick(root: HTMLElement): void {
+    const { base, thumb, ticks } = this.makeJoystick({
+      radius: () => this.leftR,
+      apply: (nx, ny) => {
+        this.leftX = nx; // push right → strafe right
+        this.leftY = ny; // push up → forward
+        this.leftActive = true;
+      },
+      clear: () => {
+        this.leftActive = false;
+        this.leftX = 0;
+        this.leftY = 0;
+      },
+    });
+    this.leftBase = base;
+    this.leftThumb = thumb;
+    this.leftTicks = ticks;
 
     const a = anchor('bottom-left');
     a.appendChild(base);
     root.appendChild(a);
   }
 
-  /** Right-hand cluster: a vertical collective pair (climb / descend) sitting just
-   *  left of the DROP hero, all sharing one baseline so they read as one group. The DROP
-   *  hero doubles as the BUCKET — a rising cyan water fill (carry) over the warm action (spend). */
-  private buildCluster(root: HTMLElement): void {
-    const climb = button('▲', { position: 'relative' });
-    const descend = button('▼', { position: 'relative' });
-    // The DROP hero is a HEXAGON (mechanical cockpit-control vibe), not a plain disc. makeHexButton
-    // gives a clip-path hex with the warm fill, a crisp SVG hex outline, and the glow on a wrapper
-    // (a drop-shadow that follows the hex silhouette — a clipped box-shadow would be cut off).
-    const { wrap: dropWrap, btn: drop } = makeHexButton({
-      fill: UI.warmGlass,
-      stroke: UI.warmStroke,
-      glow: UI.dropGlow,
+  /** RIGHT controls (bottom-right): the cyclic-pedals + collective stick (X = yaw, Y = altitude) in the
+   *  corner — the right thumb's home — with the DROP / RELEASE-BUCKET cluster a short roll inboard. The
+   *  held flight control sits in the corner; the actions are inboard, so a quick drop never fights the
+   *  stick and DROP isn't the fat-finger target the corner is. */
+  private buildRightControls(root: HTMLElement): void {
+    const { base, thumb, ticks } = this.makeJoystick({
+      radius: () => this.rightR,
+      apply: (nx, ny) => {
+        this.rightX = nx; // push right → yaw right
+        this.rightY = ny; // push up → climb
+        this.rightActive = true;
+      },
+      clear: () => {
+        this.rightActive = false;
+        this.rightX = 0;
+        this.rightY = 0;
+      },
     });
-    Object.assign(drop.style, { color: UI.warmText, fontWeight: FW.bold, letterSpacing: '1.5px' });
-    // Bucket water — a cool layer that rises from the base with the bucket's fill and drains as you
-    // drop, behind the label; clipped to the hex. An animated wave rides its surface (a sloshing crest).
+    this.rightBase = base;
+    this.rightThumb = thumb;
+    this.rightTicks = ticks;
+
+    const cluster = this.buildDropCluster();
+
+    const row = div({
+      display: 'flex',
+      flexDirection: 'row',
+      alignItems: 'flex-end',
+      gap: 'calc(var(--bmf-gap) * 1.9)',
+    });
+    row.append(cluster, base); // [DROP + RELEASE] [stick] — stick outermost (corner = thumb home)
+
+    const a = anchor('bottom-right');
+    a.appendChild(row);
+    root.appendChild(a);
+  }
+
+  /** The DROP + RELEASE-BUCKET cluster, inboard of the right stick. DROP is a round WATER-GAUGE button
+   *  (warm): a cool water layer rises with the bucket's fill and drains as you drop, behind the warm
+   *  action word, with an animated crest sloshing on its surface (the round button clips the fill to a
+   *  filling porthole). RELEASE BUCKET is a small round button stacked ABOVE it — clustered with DROP
+   *  (not stranded on the screen edge), but clearly smaller + up-and-inboard so a rare jettison is never
+   *  a fat-finger DROP; hidden until Game calls setDetachVisible(true). Returns the column to mount. */
+  private buildDropCluster(): HTMLDivElement {
+    const drop = button('', {
+      position: 'relative',
+      overflow: 'hidden', // clip the rising water fill to the round silhouette
+      background: UI.warmGlass,
+      borderColor: UI.warmStroke,
+      color: UI.warmText,
+      fontWeight: FW.bold,
+      letterSpacing: '1.5px',
+      boxShadow: `${UI.emberGlow}, ${UI.shadowBtn}`,
+    });
     const water = div({
       position: 'absolute',
       left: '0',
@@ -577,29 +621,30 @@ export class Input {
     pct.style.setProperty('font-variant-numeric', 'tabular-nums');
     content.append(lbl, pct);
     drop.append(water, content);
-    this.climbBtn = climb;
-    this.descendBtn = descend;
     this.dropBtn = drop;
     this.dropLabel = lbl;
     this.dropPct = pct;
     this.dropWater = water;
     this.dropWave = wave;
-    holdButton(climb, (on) => (this.btnUp = on));
-    holdButton(descend, (on) => (this.btnDown = on));
     holdButton(drop, (on) => (this.btnDrop = on), UI.warm);
 
-    const col = div({ display: 'flex', flexDirection: 'column', gap: 'var(--bmf-gap)', alignItems: 'center' });
-    col.appendChild(climb);
-    col.appendChild(descend);
+    // RELEASE BUCKET — a small round, warm button above DROP, hidden until shown (water missions only).
+    const detach = button('', {
+      position: 'relative',
+      display: 'none',
+      background: UI.warmGlass,
+      borderColor: UI.warmStroke,
+      color: UI.warmText,
+      boxShadow: `${UI.emberGlow}, ${UI.shadowBtn}`,
+    });
+    detach.appendChild(makeIconSvg('bucket-release', 20));
+    this.detachBtn = detach;
+    holdButton(detach, (on) => (this.btnDetach = on), UI.warm);
 
-    const row = div({ display: 'flex', flexDirection: 'row', alignItems: 'flex-end' });
-    row.appendChild(col);
-    row.appendChild(dropWrap);
-    this.clusterRow = row;
-
-    const a = anchor('bottom-right');
-    a.appendChild(row);
-    root.appendChild(a);
+    // Column: RELEASE above DROP. The row aligns to its BOTTOM, so DROP stays put when RELEASE toggles.
+    const col = div({ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'calc(var(--bmf-gap) * 1.4)' });
+    col.append(detach, drop);
+    return col;
   }
 
   // --- Free-look: drag anywhere to orbit ------------------------------------
@@ -704,50 +749,6 @@ function injectPulseStyles(): void {
   document.head.appendChild(tag);
 }
 
-// --- Hexagon touch buttons (DROP hero + RELEASE BUCKET) --------------------------------------------
-// A flat-top hexagon reads as a mechanical cockpit control (not a plain disc). The clip-path shapes the
-// fill + any clipped children; the warm edge is a separate SVG outline (a clipped border would only
-// survive on the flat top/bottom); and the glow rides a WRAPPER as a drop-shadow (which follows the hex
-// silhouette — a clipped box-shadow would be cut off). The SAME points feed clip-path + the outline.
-const HEX_CLIP = 'polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)';
-const SVG_NS = 'http://www.w3.org/2000/svg';
-
-/** A crisp hexagon OUTLINE drawn over (and slightly beyond) a clipped hex button, so the edge follows
- *  the diagonals. Square buttons only (preserveAspectRatio none + square = no stroke distortion). */
-function makeHexOutline(stroke: string): SVGSVGElement {
-  const svg = document.createElementNS(SVG_NS, 'svg');
-  svg.setAttribute('viewBox', '0 0 100 100');
-  svg.setAttribute('preserveAspectRatio', 'none');
-  svg.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;overflow:visible;pointer-events:none';
-  const poly = document.createElementNS(SVG_NS, 'polygon');
-  poly.setAttribute('points', '25,2 75,2 98,50 75,98 25,98 2,50');
-  poly.setAttribute('fill', 'none');
-  poly.setAttribute('stroke', stroke);
-  poly.setAttribute('stroke-width', '2.5');
-  poly.setAttribute('stroke-linejoin', 'round');
-  svg.appendChild(poly);
-  return svg;
-}
-
-/** Build a hexagon touch button: a clip-path hex `btn` (caller adds the size + contents) inside a
- *  `wrap` that carries the glow + the crisp outline. Return both — size/press the `btn`, show/hide
- *  the `wrap`. */
-function makeHexButton(o: { fill: string; stroke: string; glow: string }): { wrap: HTMLDivElement; btn: HTMLDivElement } {
-  const btn = button('', {
-    position: 'relative',
-    overflow: 'hidden',
-    border: 'none', // the hex edge is the SVG outline; a rect border would clip to the flats only
-    borderRadius: '0', // clip-path owns the shape — kill the default round so it can't intersect the hex
-    boxShadow: 'none', // glow lives on the wrapper (drop-shadow follows the hex)
-    background: o.fill,
-  });
-  btn.style.clipPath = HEX_CLIP;
-  btn.style.setProperty('-webkit-clip-path', HEX_CLIP);
-  const wrap = div({ position: 'relative', display: 'flex', filter: o.glow });
-  wrap.append(btn, makeHexOutline(o.stroke));
-  return { wrap, btn };
-}
-
 /** The SVG for the sloshing water crest — one wave cycle over 28px, tiled + scrolled to animate. */
 function waterWaveSvg(): string {
   return `<svg xmlns='http://www.w3.org/2000/svg' width='28' height='8' viewBox='0 0 28 8'><path d='M0 5 Q 7 1 14 5 T 28 5' fill='none' stroke='${UI.waterCrest}' stroke-width='1.6'/></svg>`;
@@ -761,6 +762,15 @@ function injectWaveStyles(): void {
   const tag = document.createElement('style');
   tag.textContent = '@keyframes bmf-water-wave { from { transform: translateX(0); } to { transform: translateX(-28px); } }';
   document.head.appendChild(tag);
+}
+
+/** Size a joystick dish (`base`) + its centred knob (`thumb`) to base radius `R` (px). Shared by the
+ *  flight + collective sticks so both stay in sync with the pointer math (which reads the live radius). */
+function sizeStick(base: HTMLElement, thumb: HTMLElement, R: number): void {
+  const d = R * 2;
+  Object.assign(base.style, { width: `${d}px`, height: `${d}px` });
+  const t = Math.round(R * 0.92);
+  Object.assign(thumb.style, { width: `${t}px`, height: `${t}px`, marginLeft: `${-t / 2}px`, marginTop: `${-t / 2}px` });
 }
 
 /** Drop tiny stick jitter, rescale [DEADZONE..1] → [0..1], then apply expo shaping

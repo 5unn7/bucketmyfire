@@ -2,10 +2,14 @@ import * as THREE from 'three';
 import { FLIGHT, WASH, CRASH, resolveHeliClass, type HeliClass } from '../config';
 
 export interface FlightInput {
-  /** Yaw: -1 turn the nose left … +1 turn right. The pilot steers directly. */
+  /** Yaw: -1 turn the nose left … +1 turn right. The pilot steers directly (right-stick X / pedals). */
   turn: number;
   /** Throttle along the nose: -1 full reverse … +1 full forward (variable). */
   throttle: number;
+  /** Lateral cyclic: -1 strafe left … +1 strafe right — a sideways slide perpendicular to the nose
+   *  (like a real helicopter rolling the disc). Optional + defaults to 0, so a zero/absent lateral
+   *  leaves the model BIT-IDENTICAL (the verifiers drive turn/throttle/lift only). */
+  lateral?: number;
   /** Collective: -1 descend … +1 climb. */
   lift: number;
 }
@@ -69,6 +73,7 @@ export class HelicopterSim {
   // when a full-deflection step hits the velocity ease cold.
   private turnInput = 0;
   private throttleInput = 0;
+  private lateralInput = 0;
   private liftInput = 0;
 
   constructor(x = 0, z = 0, heliClass: HeliClass = resolveHeliClass()) {
@@ -93,6 +98,7 @@ export class HelicopterSim {
     this.smRightAcc = 0;
     this.turnInput = 0;
     this.throttleInput = 0;
+    this.lateralInput = 0;
     this.liftInput = 0;
     this.agl = FLIGHT.minClearance;
   }
@@ -116,6 +122,7 @@ export class HelicopterSim {
     this.smRightAcc = 0;
     this.turnInput = 0;
     this.throttleInput = 0;
+    this.lateralInput = 0;
     this.liftInput = 0;
     this.agl = FLIGHT.startClearance;
   }
@@ -173,6 +180,7 @@ export class HelicopterSim {
     const ctlA = 1 - Math.pow(1 - FLIGHT.controlResponse * cls.controlMul, dt * 60);
     this.turnInput += (THREE.MathUtils.clamp(input.turn, -1, 1) - this.turnInput) * ctlA;
     this.throttleInput += (THREE.MathUtils.clamp(input.throttle, -1, 1) - this.throttleInput) * ctlA;
+    this.lateralInput += (THREE.MathUtils.clamp(input.lateral ?? 0, -1, 1) - this.lateralInput) * ctlA;
     this.liftInput += (THREE.MathUtils.clamp(input.lift, -1, 1) - this.liftInput) * ctlA;
 
     // --- Yaw: the pilot turns the nose directly, at a rate set by the (smoothed) stick.
@@ -180,15 +188,23 @@ export class HelicopterSim {
     const turn = this.turnInput;
     this.yaw -= turn * FLIGHT.yawRate * cls.yawMul * dt; // stick-right turns the nose toward screen-right
 
-    // Nose-forward unit vector for the current heading.
+    // Nose-forward unit vector for the current heading, and the matching body-RIGHT vector (for strafe).
     const fx = Math.cos(this.yaw);
     const fz = -Math.sin(this.yaw);
+    const rx = Math.sin(this.yaw); // body-right in world XZ (+ = the craft's right side)
+    const rz = Math.cos(this.yaw);
 
     // --- Horizontal: thrust ALONG THE NOSE (variable with smoothed throttle), drag, cap ---
     let throttle = this.throttleInput;
     if (throttle < 0) throttle *= FLIGHT.reversePower; // tail-first flight is slower
     this.vel.x += fx * throttle * enginePower * dt;
     this.vel.z += fz * throttle * enginePower * dt;
+    // Lateral cyclic strafe: thrust along body-RIGHT, weaker than forward (FLIGHT.lateralPower). It joins
+    // the same vel → drag → speed-cap path below, and its acceleration flows into the attitude block's
+    // `rightAcc`, so the airframe BANKS into the slide automatically — like a real helicopter.
+    const lateral = this.lateralInput;
+    this.vel.x += rx * lateral * enginePower * FLIGHT.lateralPower * dt;
+    this.vel.z += rz * lateral * enginePower * FLIGHT.lateralPower * dt;
     // Cyclic-forward: a nose-down disc tilts the thrust vector forward, so committing
     // to a dive adds REAL speed on top of throttle (the helicopter trades height for
     // velocity). Uses last frame's pitch — the one-frame lag is imperceptible. Pitch is
@@ -284,9 +300,7 @@ export class HelicopterSim {
     const accZ = (this.vel.z - this.prevVelZ) / dt;
     this.prevVelX = this.vel.x;
     this.prevVelZ = this.vel.z;
-    const rx = Math.sin(this.yaw); // right vector for this heading
-    const rz = Math.cos(this.yaw);
-    const fwdAcc = accX * fx + accZ * fz; // + = speeding up along the nose
+    const fwdAcc = accX * fx + accZ * fz; // + = speeding up along the nose (rx/rz hoisted above)
     const rightAcc = accX * rx + accZ * rz; // + = pulled to the right (e.g. a right turn)
     const aRef = FLIGHT.enginePower; // normalize accel → roughly ±1 at full thrust
     // Low-pass the raw per-frame acceleration before it tilts the airframe. The raw

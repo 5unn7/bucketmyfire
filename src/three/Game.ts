@@ -941,7 +941,11 @@ export class Game {
           return c ? { ref, name: c.name, x: c.x, z: c.z } : null;
         })
         .filter((t): t is { ref: string; name: string; x: number; z: number } => t !== null);
-      this.province = new ProvinceMode(this.mission.seed, towns, onboarding);
+      // Shared Open Skies (`!solo`) is ENDLESS — the dispatch never exhausts, so the live world (where you
+      // see other pilots) is neverending. A SOLO round (the map-pick "fly alone" path) is the BOUNDED shift:
+      // a limited run of dispatch calls per flight → "shift complete" → reset. That's the key Open-Skies-vs-
+      // Solo split (ghosts/board already key off `!solo` below; this makes the dispatch ITSELF differ).
+      this.province = new ProvinceMode(this.mission.seed, towns, onboarding, !this.solo);
     }
     // Live presence (Slice 3): lazily connect the realtime channel + ghost-pilot view so OTHER players
     // appear in your sky. Dynamic-imported (the realtime client is code-split off the solo bundle) and a
@@ -1339,12 +1343,14 @@ export class Game {
       // sinking collective, so the player makes a forced landing wherever they are.
       const turn = c.turn;
       let throttle = c.throttle;
+      let lateral = c.lateral;
       let lift = c.lift;
       if (this.fuelSim?.starved) {
         throttle = 0;
+        lateral = 0;
         lift = Math.min(lift, MISSIONS.starveSinkLift);
       }
-      this.heliSim.update(dt, { turn, throttle, lift }, floorY, payloadRatio, windX, windZ, this.wash.groundEffect);
+      this.heliSim.update(dt, { turn, throttle, lateral, lift }, floorY, payloadRatio, windX, windZ, this.wash.groundEffect);
 
       // Drain / refuel after the flight step (so speed + AGL reflect this frame).
       if (this.fuelSim) {

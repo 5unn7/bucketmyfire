@@ -29,7 +29,7 @@ export interface LayoutSet {
   radarBase: number; // collapsed radar side
   radarMaxFrac: number; // expanded radar side capped to this fraction of the short viewport side
   stickRadius: number; // virtual-joystick base radius
-  clusterBtn: number; // climb / descend button size
+  clusterBtn: number; // contextual hex-button base size (the DETACH / release-bucket button)
   dropSize: number; // DROP hero size
   helpSize: number; // "?" help button size
 }
