@@ -114,17 +114,19 @@ function routeMission(): void {
 
   // Open Skies (?ffa): the endless FREE-FOR-ALL — the same daily-seeded Saskatchewan for everyone, fires
   // never stop, rack up a personal score. Bypasses the campaign router. No once-per-day lock (unlike the
-  // daily): it's a sandbox you can re-enter anytime.
+  // daily): it's a sandbox you can re-enter anytime. Name-gated: a new pilot landing on this deep link
+  // registers a callsign first (it's what the board flies under) — see bootNamed.
   if (params.has('ffa')) {
-    bootMission(buildFreeForAll(new Date()));
+    bootNamed(() => buildFreeForAll(new Date()));
     return;
   }
 
-  // Living Province (?province): the open-world "the map just opens" mode — dispatch calls emerge over a
-  // climbing fire-weather curve and you hold the province's towns. `?region=` picks the map (default SK).
-  // Like Open Skies it's a shared daily seed (fair board + ghosts), re-enterable anytime.
+  // Living Province (?province): the open-world "the map just opens" mode — Open Skies (shared) or a Solo
+  // round (`?solo=1`). Dispatch calls emerge over a climbing fire-weather curve and you hold the province's
+  // towns. `?region=` picks the map (default SK). Like Open Skies it's a shared daily seed (fair board +
+  // ghosts), re-enterable anytime. Name-gated (bootNamed): no callsign → the New Pilot screen pops first.
   if (params.has('province')) {
-    bootMission(buildProvince(new Date(), params.get('region') ?? undefined));
+    bootNamed(() => buildProvince(new Date(), params.get('region') ?? undefined));
     return;
   }
 
@@ -233,6 +235,27 @@ function gotoProvince(): void {
   url.searchParams.delete('ffa');
   url.searchParams.set('province', '1');
   location.assign(url.toString());
+}
+
+/**
+ * Boot a live mode (Open Skies / Solo / province) but gate a NAMELESS new pilot behind the registration
+ * screen first — you can't fly Open Skies or Solo without a callsign (it's what the leaderboard flies
+ * under, and an un-named score posts as a generic "Pilot"). Reached on a DEEP LINK: opening
+ * `?province` / `?province&solo=1` / `?ffa` directly (a shared/bookmarked link) skips the TitleScreen →
+ * New Pilot flow that named users go through, so we re-assert it here. The mission is built via a thunk
+ * AFTER registration so its daily seed reflects the actual boot moment. Headless/QA boots (?qa /
+ * ?autostart) skip the gate so the verify:render harness still reaches the game unattended.
+ */
+function bootNamed(make: () => MissionDef): void {
+  if (!hasNamedProfile() && !params.has('qa') && !params.has('autostart')) {
+    new NewPilotScreen(container, () => bootMission(make()));
+    // The New Pilot screen is pure DOM (no render loop), and on a deep link it mounts WITHOUT the
+    // TitleScreen that normally clears the cold-start splash — so hand the splash off here after two
+    // frames (the openHome pattern), else it lingers over the registration card until the 12s net.
+    requestAnimationFrame(() => requestAnimationFrame(() => signalFirstFrame()));
+    return;
+  }
+  bootMission(make());
 }
 
 /**
