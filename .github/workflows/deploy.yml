@@ -73,11 +73,12 @@ jobs:
       #   crash   (crash/health physics),
       #   voice   (generative brand-voice invariants),
       #   feel    (flight + bucket control-feel golden trace),
-      #   world   (seed -> world determinism; also a co-op prereq), and
-      #   ui      (design-token discipline ratchet).
+      #   world   (seed -> world determinism; also a co-op prereq),
+      #   ui      (design-token discipline ratchet), and
+      #   content (Field Notes blog: official-sources-only links + SEO/voice hygiene).
       # Each catches a regression class the type-check can't see. The feel/world/ui baselines are
       # committed; an INTENTIONAL change is re-baselined with `npm run verify:<name> -- --update`.
-      - name: Verify sims / feel / world / UI (pure-Node gates)
+      - name: Verify sims / feel / world / UI / content (pure-Node gates)
         run: npm run verify
 
       # Live render / shader smoke — the ONLY gate that catches GLSL-compile errors (they pass tsc +

@@ -1,0 +1,38 @@
+{
+  "$schema": "./sources.allowlist.schema (informal)",
+  "$comment": "THE single enforced list of citeable domains for bucketmyfire content. Every external link in a published article (content/*.md) MUST resolve to a hostname that ends with one of these `domain` suffixes, or `verify:content` fails the build and the content engine's fact-check stage rejects the claim. This is the project's E-E-A-T / GEO moat: official sources only. Matching is hostname-suffix (so `cwfis.cfs.nrcan.gc.ca` matches `nrcan.gc.ca`). Tiers are honesty metadata, not gates: `government` = a gov-owned domain, `coordination` = the interagency centre that governments fund and report through, `authority` = a recognized non-profit program partnered with government (allowed, but say so). Seeded from src/three/livefire/official.ts + client.ts. To add a source: confirm it is genuinely a government / provincial / recognized-authority origin, add it here with a real label, and prefer a pure-gov (.gc.ca / provincial .ca) equivalent where one exists.",
+  "exempt": [
+    "bucketmyfire.com",
+    "shop.bucketmyfire.com"
+  ],
+  "sources": [
+    { "domain": "gc.ca", "label": "Government of Canada", "tier": "government", "scope": "federal" },
+    { "domain": "nrcan.gc.ca", "label": "Natural Resources Canada", "tier": "government", "scope": "federal" },
+    { "domain": "cwfis.cfs.nrcan.gc.ca", "label": "Canadian Wildland Fire Information System (CWFIS)", "tier": "government", "scope": "federal" },
+    { "domain": "canada.ca", "label": "Government of Canada", "tier": "government", "scope": "federal" },
+    { "domain": "weather.gc.ca", "label": "Environment and Climate Change Canada (ECCC)", "tier": "government", "scope": "federal" },
+    { "domain": "publicsafety.gc.ca", "label": "Public Safety Canada", "tier": "government", "scope": "federal" },
+    { "domain": "getprepared.gc.ca", "label": "Get Prepared (Public Safety Canada)", "tier": "government", "scope": "federal" },
+    { "domain": "pc.gc.ca", "label": "Parks Canada", "tier": "government", "scope": "federal" },
+    { "domain": "ciffc.net", "label": "Canadian Interagency Forest Fire Centre (CIFFC)", "tier": "coordination", "scope": "national" },
+
+    { "domain": "saskatchewan.ca", "label": "Government of Saskatchewan (incl. SPSA)", "tier": "government", "scope": "provincial" },
+    { "domain": "saskalert.ca", "label": "SaskAlert (Saskatchewan emergency alerts)", "tier": "government", "scope": "provincial" },
+    { "domain": "gov.bc.ca", "label": "Government of British Columbia (incl. BC Wildfire Service)", "tier": "government", "scope": "provincial" },
+    { "domain": "alberta.ca", "label": "Government of Alberta (Alberta Wildfire)", "tier": "government", "scope": "provincial" },
+    { "domain": "manitoba.ca", "label": "Government of Manitoba", "tier": "government", "scope": "provincial" },
+    { "domain": "gov.on.ca", "label": "Government of Ontario (incl. Ontario forest fire info)", "tier": "government", "scope": "provincial" },
+    { "domain": "ontario.ca", "label": "Government of Ontario", "tier": "government", "scope": "provincial" },
+    { "domain": "sopfeu.qc.ca", "label": "SOPFEU (Québec forest fire protection)", "tier": "authority", "scope": "provincial" },
+    { "domain": "quebec.ca", "label": "Gouvernement du Québec", "tier": "government", "scope": "provincial" },
+    { "domain": "gnb.ca", "label": "Government of New Brunswick", "tier": "government", "scope": "provincial" },
+    { "domain": "novascotia.ca", "label": "Government of Nova Scotia", "tier": "government", "scope": "provincial" },
+    { "domain": "princeedwardisland.ca", "label": "Government of Prince Edward Island", "tier": "government", "scope": "provincial" },
+    { "domain": "gov.nl.ca", "label": "Government of Newfoundland and Labrador", "tier": "government", "scope": "provincial" },
+    { "domain": "yukon.ca", "label": "Government of Yukon", "tier": "government", "scope": "territorial" },
+    { "domain": "gov.nt.ca", "label": "Government of the Northwest Territories", "tier": "government", "scope": "territorial" },
+    { "domain": "gov.nu.ca", "label": "Government of Nunavut", "tier": "government", "scope": "territorial" },
+
+    { "domain": "firesmartcanada.ca", "label": "FireSmart Canada (national preparedness program, NRCan/provincial-partnered)", "tier": "authority", "scope": "national" }
+  ]
+}
