@@ -35,11 +35,17 @@ function metaFrom(opts: NormalizeOpts, publishedAt: number): FeedMeta {
   return { status: opts.status, fromCache: opts.fromCache, publishedAt, fetchedAt: opts.fetchedAt };
 }
 
-/** Parse a date/datetime string to epoch ms (0 if unparseable). Handles ISO with or without a TZ suffix
- *  (CIFFC sitrep dates omit the zone) and bare YYYY-MM-DD. */
+/** Parse a date/datetime string to epoch ms (0 if unparseable). These gov feeds (CIFFC sitrep/status
+ *  dates, CWFIS rep_date) publish in UTC but OMIT the zone designator — and JS parses a zone-LESS
+ *  date-TIME as the RUNTIME's LOCAL time, which shifts every value by the viewer's offset (in
+ *  Saskatchewan, +6h: a 5-hour-old report would render an hour in the FUTURE). So a zone-less datetime is
+ *  read as UTC here; a bare YYYY-MM-DD (already UTC in JS) and a zone-stamped string (`Z` or `±hh:mm`)
+ *  pass through untouched. */
 export function parseMs(v: unknown): number {
   if (typeof v !== 'string' || !v) return 0;
-  const t = Date.parse(v);
+  const s = v.trim();
+  const zoneless = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(s);
+  const t = Date.parse(zoneless ? `${s.replace(' ', 'T')}Z` : s);
   return Number.isFinite(t) ? t : 0;
 }
 
@@ -158,14 +164,14 @@ export function parseHotspots(geojson: unknown): Hotspot[] {
     }
     if (lat == null || lon == null || lat < -90 || lat > 90 || lon < -180 || lon > 180) continue;
     const hfi = Math.max(0, asNum(p.hfi) ?? 0);
-    const at = typeof p.rep_date === 'string' ? Date.parse(p.rep_date) : NaN;
+    const at = parseMs(p.rep_date);
     const agency = typeof p.agency === 'string' ? p.agency : '';
     out.push({
       lat,
       lon,
       hfi,
       severity: severityFor(hfi),
-      at: Number.isFinite(at) ? at : 0,
+      at,
       agency,
       country: countryOf(agency),
       props: p,
@@ -253,7 +259,7 @@ export function parseReportedFires(geojson: unknown): ReportedFire[] {
       lat = lat ?? asNum(c[1]);
     }
     if (lat == null || lon == null || lat < -90 || lat > 90 || lon < -180 || lon > 180) continue;
-    const at = typeof p.field_situation_report_date === 'string' ? Date.parse(p.field_situation_report_date) : NaN;
+    const at = parseMs(p.field_situation_report_date);
     const agency = typeof p.field_agency_code === 'string' ? p.field_agency_code : '';
     const fireId =
       (typeof p.field_system_fire_id === 'string' && p.field_system_fire_id) ||
@@ -266,7 +272,7 @@ export function parseReportedFires(geojson: unknown): ReportedFire[] {
       stage: stageOf(p.field_stage_of_control_status),
       agency,
       country: countryOf(agency),
-      at: Number.isFinite(at) ? at : 0,
+      at,
       fireId,
       props: p,
     });
@@ -342,8 +348,7 @@ export function parseBurnPolygons(geojson: unknown): BurnPolygon[] {
     const g = feat?.geometry;
     const p = feat?.properties ?? {};
     const areaHa = Math.max(0, asNum(p.area) ?? 0);
-    const at = typeof p.lastdate === 'string' ? Date.parse(p.lastdate) : NaN;
-    const stamp = Number.isFinite(at) ? at : 0;
+    const stamp = parseMs(p.lastdate);
     const push = (ring: [number, number][]): void => {
       if (ring.length >= 3) out.push({ ring, areaHa, at: stamp });
     };

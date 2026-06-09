@@ -8,6 +8,7 @@
  */
 
 import { stageLabel } from './strings';
+import { parseMs } from './normalize';
 
 export interface FieldDef {
   key: string;
@@ -67,11 +68,13 @@ function fireCause(v: unknown): string {
   if (k === 'U' || k === 'UND' || k === 'UNK') return 'Unknown';
   return String(v);
 }
-/** rep_date → a readable local datetime. */
+/** A source date string → a readable datetime in the VIEWER's local zone. Parses via the UTC-aware
+ *  `parseMs` (these feeds publish zone-less UTC), so a Saskatchewan viewer sees the instant correctly
+ *  converted to local time — not the raw UTC clock digits mislabelled as local (the +6h skew that made a
+ *  5-h-old sitrep read an hour in the future). */
 export function fmtDate(v: unknown): string {
-  if (typeof v !== 'string') return '—';
-  const t = Date.parse(v);
-  if (!Number.isFinite(t)) return '—';
+  const t = parseMs(v);
+  if (!t) return '—';
   return new Date(t).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
