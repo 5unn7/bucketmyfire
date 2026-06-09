@@ -23,6 +23,7 @@ import { onLayout, type LayoutState } from './ui/layout';
 import { Radar } from './hud/Radar';
 import { EndScreen } from './hud/EndScreen';
 import { EngineStart } from './hud/engineStart';
+import { MessageBar } from './hud/MessageBar';
 import { CoachOverlay } from './ui/coach/CoachOverlay';
 import type { CoachPrompt } from './ui/coach/CoachDirector';
 import { fmtTime, AIRFRAME_OK, personalize } from './hud/common';
@@ -38,7 +39,6 @@ export type { HudState, EndScreenHooks, MapLabels };
 const TAPE_W = 78; // jet tape canvas width
 const TAPE_H = 188; // jet tape canvas height (the scrolling window)
 const LOW_AGL_FT = 250; // altimeter reads LOW (red) below this AGL in feet
-const HINT_VISIBLE_MS = 3600; // status hint flashes on, then auto-fades after this (no permanent nag)
 
 // The cockpit instrument face (JetBrains Mono) — one source via theme.ts; used by the flight tapes +
 // radar text below. (The pre-flight DISPATCH SLIP that also used it now lives in ui/Briefing.ts, so it
@@ -86,14 +86,13 @@ export class HUD {
   private readonly crewBar: HTMLDivElement;
   private readonly crewBarLabel: HTMLDivElement;
   private readonly crewBarFill: HTMLDivElement;
-  private crewBarShown = false; // last visibility (re-seat the hint only when it toggles)
-  private readonly hint: HTMLDivElement;
-  private hintText: string | null = null; // last hint we acted on (skip re-trigger when unchanged)
-  private hintHideTimer = 0; // setTimeout: start the fade-out
-  private hintFadeTimer = 0; // setTimeout: drop it from layout once the fade finishes
-  private readonly topLeft: HTMLDivElement; // top-left anchor (measured to drop the hint below it on portrait)
-  private readonly topCenter: HTMLDivElement; // status-hint column — dropped below the instrument band on portrait
-  private readonly topRight: HTMLDivElement; // radar column — help "?" + the radio comms log tuck under the map
+  private crewBarShown = false; // last visibility (re-seat the bar only when it toggles)
+  // The ONE top-center glass advisory bar: dispatch/comms + contextual hints + idle flying tips, all
+  // through a single pill (replaces the old split status-hint bubble and under-radar comms toast stack).
+  private readonly messages: MessageBar;
+  private readonly topLeft: HTMLDivElement; // top-left anchor (measured to drop the bar below it on portrait)
+  private readonly topCenter: HTMLDivElement; // message-bar column — dropped below the instrument band on portrait
+  private readonly topRight: HTMLDivElement; // radar column — help "?" tucks under the map
   private portraitMessages = false; // the hint drops below the band (phone/portrait) vs rides at the top (wide)
   private bandClear = 0; // floor px the hint is dropped by when portraitMessages
   private readonly smoke: HTMLDivElement; // C5: blinding-smoke veil when the camera is in a plume
@@ -101,7 +100,6 @@ export class HUD {
   private hitFlashTimer = 0; // setTimeout id: fade the impact flash back out
   private readonly alertEl: HTMLDivElement; // big centred GPWS-style caption (SINK RATE / PULL UP / TERRAIN)
   private alertText: string | null = null; // current caption (idempotent guard — never re-trigger the same one)
-  private readonly commsWrap: HTMLDivElement; // radio comms log (DISPATCH/CREW/WARNING toasts)
 
   // Fighter-jet scrolling tapes (canvas): airspeed left of the heli, altitude right.
   private readonly spdCtx: CanvasRenderingContext2D;
@@ -294,38 +292,9 @@ export class HUD {
     this.crewBar.append(this.crewBarLabel, crewTrack);
     leftCol.appendChild(this.crewBar);
 
-    // Radio comms log — DISPATCH/CREW/WARNING lines that drop in BELOW THE RADAR (top-right) and
-    // auto-expire (the mission "talking" to the pilot). Right-aligned under the map so it never
-    // crowds the flight view or the instrument strip; lines are created on demand (events, not
-    // per-frame). Appended into the top-right column below where the radar is assembled.
-    this.commsWrap = el('div', {
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '5px',
-      alignItems: 'flex-end', // hug the right edge, under the radar
-      width: 'min(260px, 64vw)',
-      marginTop: '1px',
-      pointerEvents: 'none',
-    });
-
     this.topLeft = anchor('top-left');
     this.topLeft.appendChild(leftCol);
     this.root.appendChild(this.topLeft);
-
-    // --- Status hint (the "tooltip"): top-center, dropped below the band on portrait ---
-    this.hint = frosted({
-      fontSize: FS.sm,
-      fontWeight: FW.medium,
-      color: UI.instrument,
-      padding: '5px 12px',
-      borderRadius: R.pill,
-      whiteSpace: 'nowrap',
-      maxWidth: '90vw',
-      boxSizing: 'border-box',
-      display: 'none',
-      opacity: '0',
-      transition: 'opacity 0.35s ease',
-    });
 
     // --- Fighter-jet scrolling tapes flanking the heli: airspeed LEFT, altitude
     // RIGHT (real HUD convention). Transparent canvases — thin glowing ladders that
@@ -353,20 +322,20 @@ export class HUD {
     this.altCanvas = alt.canvas;
     this.root.appendChild(alt.canvas);
 
-    // --- Status hint (top-center anchor). Just the transient tooltip now — the comms log
-    // moved under the radar (right). Heading lives in the strip's compass cell, so the old
-    // scrolling heading tape is retired. positionMessages() drops this below the strip band
-    // on a phone so it never overlaps the corners. ---
+    // --- Message bar (top-center anchor): the ONE glass advisory pill — dispatch/comms, contextual
+    // hints, and idle flying tips all flow through it (see hud/MessageBar.ts). Heading lives in the
+    // strip's compass cell, so the old scrolling heading tape is retired. positionMessages() drops it
+    // below the strip band on a phone so it never overlaps the corners. ---
+    this.messages = new MessageBar();
     this.topCenter = anchor('top-center');
-    this.topCenter.appendChild(this.hint);
+    this.topCenter.appendChild(this.messages.root);
     this.root.appendChild(this.topCenter);
 
-    // --- Radar (top-right anchor) — its own module owns the canvas + interaction. The radio comms
-    // tuck in directly under the map (same column, reflow down when the radar expands). ---
+    // --- Radar (top-right anchor) — its own module owns the canvas + interaction. The help "?" tucks
+    // in directly under the map (mountUnderRadar), reflowing down when the radar expands. ---
     this.radar = new Radar(minimap, labels ?? { communities: [], lakes: [] });
     this.topRight = anchor('top-right');
     this.topRight.appendChild(this.radar.canvas);
-    this.topRight.appendChild(this.commsWrap);
     this.root.appendChild(this.topRight);
 
     // Mission end screen + cold-start dial — fire-once sub-systems mounted into the root on demand.
@@ -441,13 +410,13 @@ export class HUD {
     const radarMax = Math.max(radarBase + 40, Math.round(Math.min(set.radarMaxFrac * Math.min(s.w, s.h), 320)));
     this.radar.setLayout(radarBase, radarMax);
 
-    this.positionMessages(); // seat the hint below the now-sized instrument band
+    this.positionMessages(); // seat the message bar below the now-sized instrument band
   }
 
-  /** Drop the top-center status hint just below the real left instrument band (strip +
+  /** Drop the top-center message bar just below the real left instrument band (strip +
    *  objectives) so it never overlaps the strip on a phone; on a wide screen it rides at the
    *  very top. Measures the live left-column height (cheap; only on layout change + when the
-   *  objective list changes). The comms log lives under the radar, so it's not measured here. */
+   *  objective list changes). */
   private positionMessages(): void {
     if (!this.portraitMessages) {
       this.topCenter.style.paddingTop = '0px';
@@ -466,40 +435,9 @@ export class HUD {
   }
 
   /** Mount an extra control (the help "?" button) into the radar column, directly under the
-   *  minimap — so it shares the top-right corner and reflows down when the radar expands.
-   *  Inserted ABOVE the comms log so the transient toasts never shove the button around. */
+   *  minimap — so it shares the top-right corner and reflows down when the radar expands. */
   mountUnderRadar(node: HTMLElement): void {
-    this.topRight.insertBefore(node, this.commsWrap);
-  }
-
-  /**
-   * Status hint: flash a NEW message briefly, then fade it out — and never nag with the same
-   * message twice running. Game recomputes the hint string every frame, so a persistent
-   * condition (e.g. "Descend to fill the bucket" while loitering over a lake) used to pin the
-   * banner on permanently; now each distinct prompt shows once and clears itself.
-   */
-  private setHint(text: string | null): void {
-    if (text === this.hintText) return; // unchanged since last frame — don't re-trigger the flash
-    this.hintText = text;
-    window.clearTimeout(this.hintHideTimer);
-    window.clearTimeout(this.hintFadeTimer);
-    if (!text) {
-      this.fadeOutHint(); // condition cleared — let whatever is showing fade away
-      return;
-    }
-    this.hint.textContent = text;
-    this.hint.style.display = 'block';
-    void this.hint.offsetWidth; // force reflow so the fade-in runs from opacity 0
-    this.hint.style.opacity = '1';
-    this.hintHideTimer = window.setTimeout(() => this.fadeOutHint(), HINT_VISIBLE_MS);
-  }
-
-  /** Fade the hint out, then drop it from layout once the transition has finished. */
-  private fadeOutHint(): void {
-    this.hint.style.opacity = '0';
-    this.hintFadeTimer = window.setTimeout(() => {
-      this.hint.style.display = 'none';
-    }, 360);
+    this.topRight.appendChild(node);
   }
 
   update(s: HudState): void {
@@ -565,7 +503,7 @@ export class HUD {
     const anyLow = !!s.healthLow || !!s.fuelLow || (hasStructures && clamp01(s.threat) > 0.6);
     this.spine.style.boxShadow = anyLow ? `0 0 12px ${UI.warn}, ${UI.shadow}` : UI.shadow;
 
-    this.setHint(s.hint);
+    this.messages.setHint(s.hint);
 
     // Living Province swaps the objective checklist for a SHIFT readout (province health + reputation +
     // towns); the campaign/sandbox keeps the objective checklist. Same panel, same no-churn dedup.
@@ -762,46 +700,12 @@ export class HUD {
   // `personalize` is now the shared helper in hud/common.ts, used by both the comms below and the slip.)
 
   /**
-   * Post a radio line to the comms log: a slim frosted toast tagged DISPATCH / CREW / WARNING,
-   * dropping in UNDER THE RADAR (right) and auto-expiring. A small colored tag sits inline before
-   * the text (one tight line, not a chunky card). Created on demand (events, not per-frame); the
-   * stack is capped to a few visible lines so it never crowds the HUD.
+   * Post a radio line. It now routes through the single top-center MessageBar (tagged DISPATCH / CREW /
+   * WARNING, colored + edge-lit by urgency, queued FIFO with `alert` preempting). The bar shows one line
+   * at a time and fills the quiet between them with flying tips — so dispatch + tips share one surface.
    */
   pushComms(speaker: CommsSpeaker, text: string, urgency: CommsUrgency): void {
-    text = personalize(text, this.pilotName);
-    const color =
-      speaker === 'warning' || urgency === 'alert' ? UI.warn : speaker === 'crew' ? UI.commsAmber : speaker === 'pilot' ? UI.text : UI.accent;
-    const line = frosted({
-      padding: '4px 9px',
-      borderLeft: `2px solid ${color}`,
-      borderRadius: R.sm,
-      maxWidth: '100%',
-      display: 'flex',
-      alignItems: 'baseline',
-      gap: '6px',
-      textAlign: 'left',
-      opacity: '0',
-      transform: 'translateY(-6px)',
-      transition: 'opacity 0.22s ease, transform 0.22s ease',
-    });
-    if (urgency === 'alert') line.style.boxShadow = `0 0 12px ${color}66, ${UI.shadow}`;
-    line.appendChild(
-      el('span', { fontSize: FS.micro, fontWeight: FW.bold, letterSpacing: '1.2px', color, flex: '0 0 auto' }, speaker.toUpperCase()),
-    );
-    line.appendChild(el('span', { fontSize: FS.meta, lineHeight: '1.3', color: UI.text }, text));
-    this.commsWrap.appendChild(line);
-    // Force a reflow so the transition runs from the initial (faded/offset) state, then reveal.
-    // (A rAF-based reveal can be throttled when the tab is backgrounded; this is synchronous.)
-    void line.offsetWidth;
-    line.style.opacity = '1';
-    line.style.transform = 'translateY(0)';
-    while (this.commsWrap.childElementCount > 3) this.commsWrap.firstElementChild?.remove();
-    const ttl = urgency === 'alert' ? 6500 : urgency === 'warn' ? 5500 : 4800;
-    window.setTimeout(() => {
-      line.style.opacity = '0';
-      line.style.transform = 'translateY(-6px)';
-      window.setTimeout(() => line.remove(), 300);
-    }, ttl);
+    this.messages.push(speaker, personalize(text, this.pilotName), urgency);
   }
 
   /**
@@ -871,8 +775,7 @@ export class HUD {
    * under the root, so they're harmless once it's gone.) Idempotent.
    */
   dispose(): void {
-    window.clearTimeout(this.hintHideTimer);
-    window.clearTimeout(this.hintFadeTimer);
+    this.messages.dispose(); // clears the bar's queue + tip/hint timers
     window.clearTimeout(this.hitFlashTimer);
     this.engine.hide(); // detaches the dial's window key listeners if still up
     this.coach.hide(); // fold the coach overlay (clears its hide timer); idempotent
