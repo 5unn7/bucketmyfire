@@ -157,6 +157,8 @@ export const HOME = {
   gold70: 'rgba(255,194,74,0.7)',
   ok12: 'rgba(99,214,138,0.12)', // UI.ok wash
   ok50: 'rgba(99,214,138,0.5)', // UI.ok edge
+  caution12: 'rgba(255,200,97,0.12)', // UI.caution wash (the amber "being held" badge)
+  caution50: 'rgba(255,200,97,0.5)', // UI.caution edge
   warn10: 'rgba(255,93,77,0.1)', // UI.warn wash (danger button)
   warn16: 'rgba(255,93,77,0.16)', // danger modal glow
   warn18: 'rgba(255,93,77,0.18)',

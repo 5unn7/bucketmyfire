@@ -27,6 +27,7 @@ export function tokenDecls(): string {
     `--fire-06:${HOME.fire06};--fire-12:${HOME.fire12};--fire-16:${HOME.fire16};--fire-28:${HOME.fire28};--fire-55:${HOME.fire55};`,
     `--glow-50:${HOME.glow50};--glow-60:${HOME.glow60};--glow-80:${HOME.glow80};--glow-90:${HOME.glow90};--warm-26:${HOME.warm26};--warm-38:${HOME.warm38};`,
     `--gold-32:${HOME.gold32};--gold-70:${HOME.gold70};--ok-12:${HOME.ok12};--ok-50:${HOME.ok50};`,
+    `--caution-12:${HOME.caution12};--caution-50:${HOME.caution50};`,
     `--warn-10:${HOME.warn10};--warn-16:${HOME.warn16};--warn-18:${HOME.warn18};--warn-22:${HOME.warn22};--warn-50:${HOME.warn50};`,
     `--rank:${HOME.rank};--card-bg:${HOME.cardBg};`,
     `--font:${UI.font};--mono:${UI.fontMono};`,

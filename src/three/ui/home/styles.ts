@@ -50,6 +50,69 @@ const CSS = `
 .bmf-app.home .zone{ display:flex; flex-direction:column; }
 .bmf-app.home .z-shop{ flex:0 0 auto; }
 .bmf-app.home .z-cont{ flex:0 0 auto; }
+.bmf-app.home .z-fires{ flex:0 0 auto; }
+/* The live-fire tracker rides high (under the dossier) and must stay visible even on cramped windows:
+   it reuses the shop banner's GLASS styling but NOT its short-window hide. The .z-fires .firebanner
+   selector is 4 classes vs the @media hide's 3, so it always wins; keep the count line too. */
+.bmf-app.home .z-fires .firebanner{ display:flex; }
+.bmf-app.home .z-fires .firebanner .sb-sub{ display:block; }
+
+/* ===== LIVE FIRE MAP overlay — a full-bleed Leaflet map + slide-up CWFIS detail sheet. Colours via
+   tokens only (FireMap dots are themed from theme.ts). The map owns pan/zoom; the page never scrolls. */
+.bmf-app .pad:has(> .firewrap){ padding:0 0 calc(var(--rail-h) + env(safe-area-inset-bottom)) 0; margin:0; max-width:none; display:flex; flex-direction:column; overflow:hidden; }
+.bmf-app .pad:has(> .firewrap) .appbar{ display:none; }
+.bmf-app .firewrap{ position:relative; flex:1 1 auto; min-height:0; display:flex; flex-direction:column; }
+.bmf-app .firebar{ flex:0 0 auto; z-index:2; display:flex; align-items:center; gap:10px; padding:calc(env(safe-area-inset-top) + 10px) 14px 10px; background:var(--card-bg); border-bottom:1px solid var(--stroke); }
+.bmf-app .firebar .t{ font-size:var(--fs-md); font-weight:var(--fw-bold); color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.bmf-app .firebar .s{ font-size:var(--fs-tag); color:var(--dim); }
+.bmf-app .firesel{ flex:0 0 auto; max-width:42%; min-height:38px; background:var(--field); color:var(--text); border:1px solid var(--stroke); border-radius:var(--r-md); padding:7px 9px; font-family:var(--font); font-size:var(--fs-meta); cursor:pointer; }
+.bmf-app .firesel:focus{ outline:none; border-color:var(--ember); }
+.bmf-app .firemap{ flex:1 1 auto; min-height:0; width:100%; }
+
+/* National summary stat strip (CIFFC) — compact cells; scrolls horizontally if a phone can't fit six. */
+.bmf-app .firestats{ flex:0 0 auto; z-index:2; display:flex; align-items:stretch; padding:7px 8px; background:var(--card-bg); border-bottom:1px solid var(--stroke); overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
+.bmf-app .firestats::-webkit-scrollbar{ display:none; }
+.bmf-app .firestats[hidden]{ display:none; }
+.bmf-app .fstat{ flex:1 1 0; min-width:54px; display:flex; flex-direction:column; align-items:center; gap:1px; padding:0 6px; border-right:1px solid var(--hair); text-align:center; }
+.bmf-app .fstat:last-child{ border-right:0; }
+.bmf-app .fstat b{ font-family:var(--mono); font-size:var(--fs-md); font-weight:var(--fw-bold); color:var(--text); line-height:1.1; white-space:nowrap; }
+.bmf-app .fstat span{ font-size:var(--fs-micro); letter-spacing:.03em; color:var(--dim); white-space:nowrap; }
+
+/* Layer toggles + stage legend — one control strip (scrolls horizontally if it can't fit). NOT pills:
+   rounded-rect chips on the field register (design system: no round pills), ember-lit when active. */
+.bmf-app .firetools{ flex:0 0 auto; z-index:2; display:flex; align-items:center; gap:10px; padding:7px 12px; background:var(--card-bg); border-bottom:1px solid var(--stroke); overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
+.bmf-app .firetools::-webkit-scrollbar{ display:none; }
+.bmf-app .firelayers{ display:flex; gap:6px; flex:0 0 auto; }
+.bmf-app .lchip{ flex:0 0 auto; display:inline-flex; align-items:center; min-height:38px; padding:6px 13px; border-radius:var(--r-md); border:1px solid var(--stroke); background:var(--field); color:var(--dim); font-family:var(--font); font-size:var(--fs-meta); cursor:pointer; white-space:nowrap; transition:background .15s ease, color .15s ease, border-color .15s ease; }
+.bmf-app .lchip:hover{ color:var(--text); }
+.bmf-app .lchip.on{ background:var(--ember-12, var(--field)); border-color:var(--ember); color:var(--text); }
+.bmf-app .flegend{ flex:0 0 auto; display:inline-flex; align-items:center; font-size:var(--fs-micro); color:var(--dim); white-space:nowrap; }
+.bmf-app .flegend .ldot{ display:inline-block; width:9px; height:9px; border-radius:50%; margin:0 5px 0 12px; vertical-align:middle; }
+.bmf-app .flegend .ldot:first-child{ margin-left:0; }
+.bmf-app .flegend .ldot.oc{ background:var(--warn); }
+.bmf-app .flegend .ldot.bh{ background:var(--caution); }
+.bmf-app .flegend .ldot.uc{ background:var(--ok); }
+
+/* Leaflet, themed dark to match the cockpit (tokens only). */
+.bmf-app .leaflet-container{ background:var(--card-bg); font-family:var(--font); }
+.bmf-app .leaflet-bar{ border:1px solid var(--stroke); box-shadow:var(--shadow-card); }
+.bmf-app .leaflet-bar a, .bmf-app .leaflet-bar a:hover{ background:var(--field); color:var(--text); border-bottom-color:var(--hair); }
+.bmf-app .leaflet-bar a:hover{ background:var(--recess); }
+.bmf-app .leaflet-control-attribution{ background:var(--card-soft); color:var(--dim); }
+.bmf-app .leaflet-control-attribution a{ color:var(--menu); }
+
+/* Slide-up detail sheet — the full CWFIS record (bounded inner scroll is allowed for a long field list). */
+.bmf-app .firesheet{ position:absolute; left:0; right:0; bottom:0; z-index:402; max-height:64%; overflow-y:auto; -webkit-overflow-scrolling:touch;
+  background:var(--card-bg); border-top:1px solid var(--warm-stroke); border-radius:var(--r-xl) var(--r-xl) 0 0; box-shadow:var(--shadow-card); padding:10px 16px 16px; }
+.bmf-app .firesheet[hidden]{ display:none; }
+.bmf-app .fsheet-head{ position:sticky; top:0; display:flex; align-items:flex-start; gap:10px; padding:4px 0 9px; background:var(--card-bg); }
+.bmf-app .fsheet-ttl{ font-family:var(--mono); font-size:var(--fs-md); font-weight:var(--fw-bold); color:var(--text); }
+.bmf-app .fgroup{ margin-top:12px; }
+.bmf-app .fgh{ font-family:var(--mono); font-size:var(--fs-micro); letter-spacing:.12em; text-transform:uppercase; color:var(--ember-hi); margin-bottom:4px; }
+.bmf-app .frow{ display:flex; justify-content:space-between; gap:14px; padding:5px 0; border-bottom:1px solid var(--hair); }
+.bmf-app .frow .fk{ font-size:var(--fs-meta); color:var(--text-subtle); }
+.bmf-app .frow .fv{ font-family:var(--mono); font-size:var(--fs-meta); color:var(--text); text-align:right; white-space:nowrap; }
+.bmf-app .credits a{ color:var(--menu); }
 .bmf-app.home .sec{ margin:0 2px 8px; }
 .bmf-app.home .z-cont .artcard{ min-height:200px; }
 

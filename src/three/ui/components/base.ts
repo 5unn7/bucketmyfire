@@ -94,6 +94,7 @@ export function injectKitStyles(): void {
   .badge.accent{ color:var(--accent); background:var(--accent-fill); border-color:var(--accent-soft); }
   .badge.ok{ color:var(--ok); background:var(--ok-12); border-color:var(--ok-50); }
   .badge.warn{ color:var(--warn); background:var(--warn-10); border-color:var(--warn-50); }
+  .badge.caution{ color:var(--caution); background:var(--caution-12); border-color:var(--caution-50); }
   .badge.neutral, .badge.locked{ color:var(--dim); background:var(--recess); border-color:var(--hair); }
   .badge.fire{ color:var(--ember-hi); background:var(--warm-glass); border-color:var(--warm-stroke); }
   .badge.fire svg path{ fill:var(--fire); }

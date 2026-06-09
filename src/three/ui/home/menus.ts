@@ -27,9 +27,12 @@ import { railNav } from './rail';
 import { DEFS, FLAME, ic } from './icons';
 import { openStore } from '../storeLink';
 import { validateCallsign, MAX_CALLSIGN } from '../callsign';
-import { fetchActiveFires } from '../../livefire/client';
-import { LIVEFIRE_COPY, LIVEFIRE_CREDIT, severityClass, severityLabel, relTime } from '../../livefire/strings';
-import type { LiveFire, LiveFireFeed } from '../../livefire/types';
+import { fetchActiveFires, fetchSummary, fetchReportedFires, fetchBurnPerimeters, getCountryPref, setCountryPref, isLiveFireEnabled } from '../../livefire/client';
+import { LIVEFIRE_COPY, severityClass, severityLabel, stageClass, stageLabel, relTime } from '../../livefire/strings';
+import { FIELD_GROUPS, REPORTED_FIELD_GROUPS, type FieldGroup } from '../../livefire/fields';
+import { countFires, filterCountry, filterReportedCountry, countryLabel, COUNTRIES } from '../../livefire/normalize';
+import type { Hotspot, ReportedFire, ReportedFeed, NationalSummary, BurnPolygon, LiveFireFeed, CountryFilter } from '../../livefire/types';
+import type { FireMap, FireLayer } from '../../livefire/FireMap';
 
 const MUTE_KEY = 'bmf.audio.muted.v1';
 
@@ -80,7 +83,7 @@ export function openBoard(): void {
 /** Build a focused full-screen overlay WITH the persistent bottom rail (`key` = its active tab).
  *  Navigation is the rail's job (no back button); Esc / the rail's Home tab return to the hub.
  *  Returns the root + a close() helper. */
-function overlay(key: string, title: string, body: string): { root: HTMLDivElement; close: () => void } {
+function overlay(key: string, title: string, body: string, onClose?: () => void): { root: HTMLDivElement; close: () => void } {
   injectHomeStyles();
   const root = document.createElement('div');
   root.className = 'bmf-app';
@@ -95,6 +98,7 @@ function overlay(key: string, title: string, body: string): { root: HTMLDivEleme
   if (embers) spawnEmbers(embers, 10);
   const close = (): void => {
     window.removeEventListener('keydown', onKey);
+    onClose?.(); // lifecycle teardown on EVERY close path (Esc / rail / programmatic) — e.g. dispose a map
     root.remove();
     if (activeOverlay && activeOverlay.close === close) activeOverlay = null;
   };
@@ -422,85 +426,297 @@ export function openSolo(): void {
 }
 
 // ============================ LIVE WILDFIRES (the real-fire tracker) ============================
-/** One fire row — reuses the Settings `.srow` shape (icon · name · sub · trailing badge) so it
- *  inherits the list styling. Severity maps onto an existing badge class (warm at the dangerous end). */
-function fireRow(f: LiveFire): string {
-  const rel = relTime(f.lastDetect);
-  return `<div class="srow">
-    <div class="ic">${ic('fire')}</div>
-    <div class="grow">
-      <div class="t">${LIVEFIRE_COPY.near(f.place)}</div>
-      <div class="s">${f.detections} detection${f.detections === 1 ? '' : 's'}${rel ? ` · ${rel}` : ''}</div>
-    </div>
-    <span class="${severityClass(f.severity)}">${severityLabel(f.severity)}</span>
-  </div>`;
+/** Escape API strings before they reach innerHTML (agency/fuel/ecozone are server-provided). */
+function esc(s: string): string {
+  return s.replace(/[&<>"]/g, (c) => (c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : '&quot;'));
 }
 
-/** A faint placeholder row while the first fetch settles (cache-warm loads skip this). */
-function fireSkeleton(): string {
-  return `<div class="srow"><div class="ic">${ic('fire')}</div><div class="grow"><div class="t"><span class="sk" style="width:9em"></span></div><div class="s"><span class="sk" style="width:6em"></span></div></div></div>`;
+/** Render grouped detail fields from a record's property bag (empty fields dropped). Shared by the
+ *  hotspot + reported-fire detail panels — same row markup, different field groups. */
+function fieldGroupsHtml(groups: FieldGroup[], props: Record<string, unknown>): string {
+  return groups
+    .map((g) => {
+      const rows = g.fields
+        .filter((f) => {
+          const v = props[f.key];
+          return v !== undefined && v !== null && v !== '';
+        })
+        .map((f) => `<div class="frow"><span class="fk">${f.label}</span><span class="fv">${esc(f.fmt(props[f.key]))}</span></div>`)
+        .join('');
+      return rows ? `<div class="fgroup"><div class="fgh">${g.group}</div>${rows}</div>` : '';
+    })
+    .join('');
+}
+
+/** The full CWFIS record for one tapped satellite HOTSPOT — every meaningful field, grouped +
+ *  unit-formatted (detection · behaviour · the FWI System codes · weather · site). */
+function fireDetailHtml(h: Hotspot): string {
+  const when = relTime(h.at);
+  return `<div class="fsheet-head">
+      <div class="grow" style="min-width:0;">
+        <div class="fsheet-ttl">${LIVEFIRE_COPY.coords(h.lat, h.lon)}</div>
+        <div class="s">Satellite hotspot · ${esc(h.agency || '—')}${when ? ` · ${when}` : ''}</div>
+      </div>
+      <span class="${severityClass(h.severity)}">${severityLabel(h.severity)}</span>
+      <button class="iconbtn" data-lf-close aria-label="Close detail">${ic('close')}</button>
+    </div>
+    <div>${fieldGroupsHtml(FIELD_GROUPS, h.props)}</div>`;
+}
+
+/** The full CIFFC record for one tapped AUTHORITATIVE reported fire — staged, sized, named. */
+function reportedDetailHtml(f: ReportedFire): string {
+  const when = relTime(f.at);
+  const title = f.fireId ? esc(f.fireId) : LIVEFIRE_COPY.coords(f.lat, f.lon);
+  const agency = f.agency ? f.agency.toUpperCase() : '—';
+  return `<div class="fsheet-head">
+      <div class="grow" style="min-width:0;">
+        <div class="fsheet-ttl">${title}</div>
+        <div class="s">${esc(agency)} · ${esc(LIVEFIRE_COPY.fireSize(f.sizeHa))}${when ? ` · ${when}` : ''}</div>
+      </div>
+      <span class="${stageClass(f.stage)}">${esc(stageLabel(f.stage))}</span>
+      <button class="iconbtn" data-lf-close aria-label="Close detail">${ic('close')}</button>
+    </div>
+    <div>${fieldGroupsHtml(REPORTED_FIELD_GROUPS, f.props)}</div>`;
 }
 
 /**
- * Wildfires — the live tracker. Pulls TODAY'S real Saskatchewan wildfire hotspots (last 24h) from
- * CWFIS and lists them as active fires (nearest town · detections · severity). Best-effort: a warm
- * cache paints instantly; offline/empty get their own honest states. Opened from the Home hub banner
- * (like Board/Settings — not a rail tab). No-scroll: the list is capped to what fits.
+ * Live fire map — the tracker. A full-bleed Leaflet map (dark tiles, pinch-zoom) plots EVERY live CWFIS
+ * satellite hotspot across the continent (last 24h); tapping a dot slides up the full CWFIS record for
+ * that fire. Best-effort: a warm cache paints instantly; offline/empty get honest states. Leaflet is
+ * dynamically imported so it only loads when the map is opened (keeps the home bundle lean). Opened from
+ * the Home banner (like Board/Settings — not a rail tab); the map owns its own pan/zoom (page never scrolls).
  */
 export function openLiveFires(): void {
   activeOverlay?.close(); // opened directly (not via the rail) — clear any panel that was up
-  const body = `<div style="margin-top:8px;">
-    <div class="card">
-      <div class="srow">
-        <div class="ic">${ic('fire')}</div>
-        <div class="grow"><div class="t" data-lf-head>${LIVEFIRE_COPY.bannerLoading}</div><div class="s" data-lf-sub>${LIVEFIRE_COPY.sub}</div></div>
-        <button class="btn ghost sm" data-lf-refresh aria-label="Refresh">${ic('motion')}Refresh</button>
-      </div>
+  const options = COUNTRIES.map((c) => `<option value="${c.id}">${c.label}</option>`).join('');
+  const C = LIVEFIRE_COPY;
+
+  // National summary stat strip (CIFFC). One compact cell per number; values settle in via paintStats.
+  const statCell = (key: string, label: string): string =>
+    `<div class="fstat"><b data-lf-stat="${key}">—</b><span>${label}</span></div>`;
+  const statStrip =
+    statCell('today', C.stat.today) + statCell('active', C.stat.active) + statCell('out', C.stat.out) +
+    statCell('total', C.stat.total) + statCell('area', C.stat.area) + statCell('prep', C.stat.prep);
+
+  // Layer toggle chips (the `on` class = currently visible). Reported fires + hotspots + burn area on
+  // by default; the Fire Weather raster is opt-in (it would otherwise wash out the dots). The FWI chip
+  // is dropped entirely under the kill-switch so it can never hit CWFIS (the JSON feeds gate too).
+  const ALL_LAYERS: { id: FireLayer; label: string; hint: string; on: boolean }[] = [
+    { id: 'reported', label: C.layers.reported, hint: C.layerHint.reported, on: true },
+    { id: 'hotspots', label: C.layers.hotspots, hint: C.layerHint.hotspots, on: true },
+    { id: 'perimeters', label: C.layers.perimeters, hint: C.layerHint.perimeters, on: true },
+    { id: 'fwi', label: C.layers.fwi, hint: C.layerHint.fwi, on: false },
+  ];
+  const LAYERS = ALL_LAYERS.filter((l) => l.id !== 'fwi' || isLiveFireEnabled());
+  const layerChips = LAYERS.map(
+    (l) => `<button class="lchip${l.on ? ' on' : ''}" data-lf-layer="${l.id}" aria-pressed="${l.on}" title="${l.hint}">${l.label}</button>`,
+  ).join('');
+  // Stage-of-control legend (the dots' meaning) — classes map to the same tokens the map dots use.
+  const legend = `<span class="flegend">
+      <i class="ldot oc"></i>Out of control<i class="ldot bh"></i>Being held<i class="ldot uc"></i>Under control
+    </span>`;
+
+  const body = `<div class="firewrap">
+    <div class="firebar">
+      <div class="grow" style="min-width:0;"><div class="t" data-lf-head>${C.bannerLoading}</div><div class="s" data-lf-sub>${C.hint}</div></div>
+      <select class="firesel" data-lf-country aria-label="Country filter">${options}</select>
+      <button class="iconbtn" data-lf-refresh aria-label="Refresh">${ic('motion')}</button>
     </div>
-    <div data-lf-list style="margin-top:12px;"><div class="card">${fireSkeleton()}${fireSkeleton()}${fireSkeleton()}</div></div>
-    <div class="s" style="margin-top:12px;text-align:center;opacity:.7;">${LIVEFIRE_CREDIT}</div>
+    <div class="firestats" data-lf-stats hidden>${statStrip}</div>
+    <div class="firetools"><div class="firelayers">${layerChips}</div>${legend}</div>
+    <div class="firemap" data-lf-map></div>
+    <div class="firesheet" data-lf-sheet hidden></div>
   </div>`;
-  const { root } = overlay('fires', LIVEFIRE_COPY.overlayTitle, body);
+  // The Leaflet map lives in a lazy chunk, so it's built asynchronously below. `closed` guards every
+  // async continuation: if the overlay is dismissed (Esc / rail / another panel) before the chunk
+  // resolves, the onClose hook flips it and we never build/operate a map on a detached container.
+  let map: FireMap | null = null;
+  let closed = false;
+  const { root } = overlay('fires', C.overlayTitle, body, () => {
+    closed = true;
+    delete (window as unknown as { __fireQA?: unknown }).__fireQA; // release the QA hook + its retained DOM
+    map?.dispose();
+    map = null;
+  });
 
   const headEl = root.querySelector<HTMLElement>('[data-lf-head]')!;
   const subEl = root.querySelector<HTMLElement>('[data-lf-sub]')!;
-  const listEl = root.querySelector<HTMLElement>('[data-lf-list]')!;
+  const statsEl = root.querySelector<HTMLElement>('[data-lf-stats]')!;
+  const mapEl = root.querySelector<HTMLElement>('[data-lf-map]')!;
+  const sheetEl = root.querySelector<HTMLElement>('[data-lf-sheet]')!;
   const refreshBtn = root.querySelector<HTMLButtonElement>('[data-lf-refresh]')!;
+  const countryEl = root.querySelector<HTMLSelectElement>('[data-lf-country]')!;
 
-  const VIS = 8; // cap visible rows so the panel stays single-viewport / no-scroll
-  const render = (feed: LiveFireFeed): void => {
-    const n = feed.fires.length;
-    if (n === 0 && feed.source === 'offline') {
-      headEl.textContent = LIVEFIRE_COPY.offlineTitle;
-      subEl.textContent = LIVEFIRE_COPY.offlineBody;
-      listEl.innerHTML = '';
-      return;
-    }
-    if (n === 0) {
-      headEl.textContent = LIVEFIRE_COPY.emptyTitle;
-      subEl.textContent = LIVEFIRE_COPY.sub;
-      listEl.innerHTML = `<div class="card"><div class="srow"><div class="ic">${ic('check')}</div><div class="grow"><div class="s">${LIVEFIRE_COPY.emptyBody}</div></div></div></div>`;
-      return;
-    }
-    headEl.textContent = LIVEFIRE_COPY.head(n);
-    const upd = relTime(feed.fetchedAt);
-    subEl.textContent = upd ? `${LIVEFIRE_COPY.sub} · updated ${upd}` : LIVEFIRE_COPY.sub;
-    const rows = feed.fires.slice(0, VIS).map(fireRow).join('');
-    const more = n > VIS ? `<div class="s" style="margin-top:9px;text-align:center;">+${n - VIS} more active</div>` : '';
-    listEl.innerHTML = `<div class="card">${rows}</div>${more}`;
+  let hsFeed: LiveFireFeed = { hotspots: [], fireCount: 0, totalDetections: 0, fetchedAt: 0, source: 'offline' };
+  let reportedFeed: ReportedFeed = { fires: [], byStage: { OC: 0, BH: 0, UC: 0, OUT: 0, UNK: 0 }, fetchedAt: 0, source: 'offline' };
+  let summary: NationalSummary | null = null;
+  let perims: BurnPolygon[] = [];
+  let biggest: ReportedFire | null = null; // tracked for the ?qa detail-panel hook below
+  let hottest: Hotspot | null = null;
+  let country: CountryFilter = getCountryPref(); // defaults to Canada
+  countryEl.value = country;
+
+  const wireClose = (): void => {
+    sheetEl.querySelector('[data-lf-close]')?.addEventListener('click', () => {
+      sheetEl.hidden = true;
+    });
+  };
+  const showReported = (f: ReportedFire): void => {
+    sheetEl.innerHTML = reportedDetailHtml(f);
+    sheetEl.hidden = false;
+    sheetEl.scrollTop = 0;
+    wireClose();
+  };
+  const showHotspot = (h: Hotspot): void => {
+    sheetEl.innerHTML = fireDetailHtml(h);
+    sheetEl.hidden = false;
+    sheetEl.scrollTop = 0;
+    wireClose();
   };
 
+  // Paint the CIFFC summary stat strip. The numbers are CANADA-national, so hide the strip entirely when
+  // the map is filtered to the US/Mexico (showing Canadian YTD there would be a lie), and when the summary
+  // is unreachable (no fake zeros). Shown for Canada + All North America (Canada is part of "all").
+  const paintStats = (): void => {
+    if (!summary || summary.source === 'offline' || country === 'US' || country === 'MX') {
+      statsEl.hidden = true;
+      return;
+    }
+    const s = summary;
+    const set = (k: string, v: string): void => {
+      const el = statsEl.querySelector<HTMLElement>(`[data-lf-stat="${k}"]`);
+      if (el) el.textContent = v;
+    };
+    set('today', s.firesToday.toLocaleString());
+    set('active', s.activeFires.toLocaleString());
+    set('out', s.ytdOut.toLocaleString());
+    set('total', s.ytdTotal.toLocaleString());
+    set('area', C.fireSize(s.areaBurnedHa));
+    set('prep', C.prepLevel(s.prepLevel));
+    statsEl.hidden = false;
+  };
+
+  // Paint the map for the SELECTED country: filter each layer → re-plot → refit. The headline uses the
+  // AUTHORITATIVE reported active-fire count (falls back to the clustered hotspot count if CIFFC is down).
+  const paint = (): void => {
+    const reported = filterReportedCountry(reportedFeed.fires, country);
+    const hs = filterCountry(hsFeed.hotspots, country);
+    const label = countryLabel(country);
+    biggest = reported.reduce<ReportedFire | null>((a, b) => (!a || b.sizeHa > a.sizeHa ? b : a), null);
+    hottest = hs.reduce<Hotspot | null>((a, b) => (!a || b.hfi > a.hfi ? b : a), null);
+
+    if (reportedFeed.source === 'offline' && hsFeed.source === 'offline') {
+      headEl.textContent = C.offlineTitle;
+      subEl.textContent = C.offlineBody;
+    } else {
+      const active = reported.length || countFires(hs); // authoritative count if we have it
+      headEl.textContent = active > 0 ? C.head(active, label) : `${C.emptyTitle} · ${label}`;
+      const fresh = Math.max(reportedFeed.fetchedAt, hsFeed.fetchedAt);
+      subEl.textContent = C.subStats(hs.length, relTime(fresh));
+    }
+
+    map?.setReportedFires(reported);
+    map?.setHotspots(hs);
+    // The M3 burn perimeters are Canada-only (CWFIS), so drop them when the map is scoped to US/Mexico —
+    // mirrors the stat strip. Shown for Canada + All North America (where Canada is part of the frame).
+    map?.setBurnPolygons(country === 'US' || country === 'MX' ? [] : perims);
+    // Frame on the authoritative fires (fall back to hotspots) for the chosen country.
+    const frame = (reported.length ? reported : hs).map((p) => [p.lat, p.lon] as [number, number]);
+    map?.fitTo(frame);
+    map?.invalidate();
+  };
+
+  // QA hook (gated like __game): lets the headless harness open a detail panel deterministically.
+  // `selectPrimary` = the authoritative biggest reported fire (the headline datum); `selectHottest` is
+  // genuinely hotspot-first (matches its name). Torn down by the overlay's onClose hook above.
+  if (import.meta.env.DEV || new URLSearchParams(location.search).has('qa')) {
+    (window as unknown as { __fireQA?: unknown }).__fireQA = {
+      selectPrimary: () => (biggest ? showReported(biggest) : hottest ? showHotspot(hottest) : undefined),
+      selectHottest: () => (hottest ? showHotspot(hottest) : biggest ? showReported(biggest) : undefined),
+      selectReported: () => biggest && showReported(biggest),
+    };
+  }
+
   const load = (force: boolean): void => {
+    if (closed) return;
     refreshBtn.disabled = true;
-    fetchActiveFires({ force })
-      .then(render)
-      .catch(() => render({ fires: [], totalDetections: 0, fetchedAt: 0, source: 'offline' }))
+    sheetEl.hidden = true; // a (re)load re-plots every marker — drop any stale detail sheet over the old set
+    Promise.allSettled([
+      fetchSummary({ force }),
+      fetchReportedFires({ force }),
+      fetchActiveFires({ force }),
+      fetchBurnPerimeters({ force }),
+    ])
+      .then(([sum, rep, hot, per]) => {
+        if (closed) return; // overlay dismissed mid-flight — don't paint into a removed DOM
+        if (sum.status === 'fulfilled') summary = sum.value;
+        if (rep.status === 'fulfilled') reportedFeed = rep.value;
+        if (hot.status === 'fulfilled') hsFeed = hot.value;
+        if (per.status === 'fulfilled') perims = per.value;
+        paintStats();
+        paint();
+      })
       .finally(() => {
-        refreshBtn.disabled = false;
+        if (!closed) refreshBtn.disabled = false;
       });
   };
   refreshBtn.addEventListener('click', () => load(true));
-  load(false);
+  countryEl.addEventListener('change', () => {
+    country = countryEl.value as CountryFilter;
+    setCountryPref(country);
+    sheetEl.hidden = true; // a country switch clears any open detail (it may not be in the new set)
+    paintStats(); // the national summary is Canada-only — show/hide it for the chosen country
+    paint();
+  });
+
+  // Layer toggles: flip the chip's state + the map layer's visibility.
+  root.querySelectorAll<HTMLButtonElement>('[data-lf-layer]').forEach((chip) =>
+    chip.addEventListener('click', () => {
+      const id = chip.dataset.lfLayer as FireLayer;
+      const on = !chip.classList.contains('on');
+      chip.classList.toggle('on', on);
+      chip.setAttribute('aria-pressed', String(on));
+      map?.setLayer(id, on);
+    }),
+  );
+
+  // Build the map once the overlay is painted + sized; Leaflet is a lazy chunk (loads on open only). If
+  // the overlay was already dismissed before the chunk resolved, bail — never build on a detached node.
+  requestAnimationFrame(() => {
+    if (closed) return;
+    import('../../livefire/FireMap')
+      .then((m) => {
+        if (closed) return;
+        map = new m.FireMap(mapEl, { onSelectHotspot: showHotspot, onSelectReported: showReported });
+        map.invalidate();
+        load(false);
+      })
+      .catch(() => {
+        if (closed) return;
+        headEl.textContent = C.offlineTitle;
+        subEl.textContent = C.offlineBody;
+      });
+  });
+}
+
+// ============================ CREDITS (data + licences) ============================
+/** Credits page — the one home for third-party attribution (the live fire map carries none on-map).
+ *  Opened from Settings. Lists the fire data, basemap, map engine, and icon set, each linked to source. */
+function openCredits(host: HTMLElement): void {
+  const { card, close } = bmfModal(host, {
+    title: 'Credits & data',
+    sub: 'The live fire map is built on open data + tools',
+    glyph: ic('shield'),
+    body:
+      `<div class="credits">` +
+      `<p class="mtext"><b>Active fire data</b><br>CWFIS — <a href="https://cwfis.cfs.nrcan.gc.ca" target="_blank" rel="noopener">Canadian Wildland Fire Information System</a>, Natural Resources Canada</p>` +
+      `<p class="mtext"><b>Basemap</b><br>© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors · © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a></p>` +
+      `<p class="mtext"><b>Map engine</b><br><a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a></p>` +
+      `<p class="mtext"><b>Icons</b><br>Lucide (MIT)</p>` +
+      `</div>` +
+      `<div class="modal-actions"><button class="btn primary" data-credits-ok>${ic('check')}Got it</button></div>`,
+  });
+  card.querySelector('[data-credits-ok]')?.addEventListener('click', close);
 }
 
 // ============================ SETTINGS (minimal) ============================
@@ -519,6 +735,8 @@ export function openSettings(): void {
     <div class="srow"><div class="ic">${ic('cloud')}</div><div class="grow" style="min-width:0;"><div class="t">Cloud save</div><div class="s" id="cloudsub" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">…</div></div>
       <button class="btn ghost sm" data-cloud id="cloudbtn" style="display:none;"></button></div>
     <div class="srow"><div class="ic">${ic('pin')}</div><div class="grow"><div class="t">Region</div><div class="s">Map</div></div><span class="badge">Saskatchewan</span></div>
+    <div class="srow"><div class="ic">${ic('shield')}</div><div class="grow"><div class="t">Credits &amp; data</div><div class="s">Map, fire data &amp; licences</div></div>
+      <button class="btn ghost sm" data-credits aria-label="Open credits">${ic('chevron-right')}</button></div>
   </div>
   <div class="card" style="margin-top:12px;">
     <div class="srow danger"><div class="ic">${ic('trash')}</div><div class="grow"><div class="t">Reset progress</div><div class="s">Wipe ranks, stars &amp; unlocks</div></div>
@@ -549,6 +767,7 @@ export function openSettings(): void {
   };
   renderCloud();
   root.querySelector('[data-cloud]')?.addEventListener('click', () => openCloudSave(renderCloud));
+  root.querySelector('[data-credits]')?.addEventListener('click', () => openCredits(root));
 
   root.querySelector('[data-sound]')?.addEventListener('click', (e) => {
     const t = e.currentTarget as HTMLElement;

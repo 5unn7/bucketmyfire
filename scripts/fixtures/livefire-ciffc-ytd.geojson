@@ -1,0 +1,107 @@
+{
+  "type": "FeatureCollection",
+  "numberMatched": 7,
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [-103.2, 56.1] },
+      "properties": {
+        "field_system_fire_id": "2026_SK_042",
+        "field_latitude": 56.1, "field_longitude": -103.2,
+        "field_fire_size": 15230.5,
+        "field_stage_of_control_status": "OC",
+        "field_agency_code": "sk",
+        "field_response_type": "FUL",
+        "field_percent_contained": -1,
+        "field_system_fire_cause": "L",
+        "field_situation_report_date": "2026-06-08T18:00:00Z",
+        "field_status_date": "2026-06-08T19:30:00Z",
+        "field_agency_data_timezone": "CST"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [-122.5, 54.0] },
+      "properties": {
+        "field_system_fire_id": "2026_BC_109",
+        "field_latitude": 54.0, "field_longitude": -122.5,
+        "field_fire_size": 0,
+        "field_stage_of_control_status": "OC",
+        "field_agency_code": "bc",
+        "field_response_type": "MOD",
+        "field_percent_contained": 0,
+        "field_system_fire_cause": "H",
+        "field_situation_report_date": "2026-06-08T17:10:00Z"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [-114.1, 55.3] },
+      "properties": {
+        "field_system_fire_id": "2026_AB_077",
+        "field_latitude": 55.3, "field_longitude": -114.1,
+        "field_fire_size": 320.0,
+        "field_stage_of_control_status": "BH",
+        "field_agency_code": "ab",
+        "field_response_type": "FUL",
+        "field_percent_contained": 40,
+        "field_system_fire_cause": "L",
+        "field_situation_report_date": "2026-06-08T16:00:00Z"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [-74.3, 48.9] },
+      "properties": {
+        "field_system_fire_id": "2026_QC_165",
+        "field_latitude": 48.9, "field_longitude": -74.3,
+        "field_fire_size": 1.2,
+        "field_stage_of_control_status": "UC",
+        "field_agency_code": "qc",
+        "field_response_type": "FUL",
+        "field_percent_contained": 90,
+        "field_system_fire_cause": "H",
+        "field_situation_report_date": "2026-06-07T22:45:00Z"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [-89.7, 50.1] },
+      "properties": {
+        "field_system_fire_id": "2026_ON_201",
+        "field_fire_size": 88.4,
+        "field_stage_of_control_status": "uc",
+        "field_agency_code": "on",
+        "field_response_type": "MON",
+        "field_percent_contained": -1,
+        "field_system_fire_cause": "L",
+        "field_situation_report_date": "2026-06-08T12:00:00Z"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [-99.1, 53.2] },
+      "properties": {
+        "field_system_fire_id": "2026_MB_300",
+        "field_latitude": 53.2, "field_longitude": -99.1,
+        "field_fire_size": 540,
+        "field_stage_of_control_status": "OUT",
+        "field_agency_code": "mb",
+        "field_response_type": "FUL",
+        "field_percent_contained": 100,
+        "field_system_fire_cause": "L",
+        "field_situation_report_date": "2026-06-02T09:00:00Z"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": null,
+      "properties": {
+        "field_system_fire_id": "2026_XX_999",
+        "field_fire_size": 5,
+        "field_stage_of_control_status": "OC",
+        "field_agency_code": "sk"
+      }
+    }
+  ]
+}

@@ -17,7 +17,8 @@ import { setMenuCatalog, navigateRail, openSettings, openBoard, openLiveFires } 
 import { railNav } from './rail';
 import { injectHomeStyles, spawnEmbers } from './styles';
 import { DEFS, FLAME, FLAME_ONLY, HELMET, ic } from './icons';
-import { fetchActiveFires } from '../../livefire/client';
+import { fetchActiveFires, fetchSummary, getCountryPref } from '../../livefire/client';
+import { filterCountry, countFires, countryLabel } from '../../livefire/normalize';
 import { LIVEFIRE_COPY } from '../../livefire/strings';
 
 export class HomeScreen {
@@ -92,6 +93,21 @@ export class HomeScreen {
     </div>
   </header>
 
+  <div class="zone z-fires">
+  <!-- LIVE wildfire tracker — today's REAL Saskatchewan fires (CWFIS). Rides high (under the dossier,
+       above the Dispatch hero) so "what's burning now" motivates the FLY below. The count settles in
+       via loadLiveFires(); the banner opens the full tracker overlay (openLiveFires). The firebanner
+       class keeps it visible on cramped windows (it must NOT inherit the shop banner's short-win hide). -->
+  <button class="shopbanner firebanner card warm cut rise d2" data-act="fires" aria-label="Live wildfire tracker">
+    <span class="sb-ic">${ic('fire')}</span>
+    <span class="sb-copy">
+      <span class="sb-title">${LIVEFIRE_COPY.title}</span>
+      <span class="sb-sub" data-lf-count>${LIVEFIRE_COPY.bannerLoading}</span>
+    </span>
+    <span class="sb-go">${ic('chevron-right')}</span>
+  </button>
+  </div>
+
   <div class="zone z-cont">
   <!-- the province MISSION CARD — the game's open-world front door (pick aircraft → fly the shift) -->
   <div class="sec rise d2"><span class="tag">Dispatch</span><span class="line"></span><span class="stamp">${regionName}</span></div>
@@ -107,19 +123,6 @@ export class HomeScreen {
       <button class="btn ember block" style="margin-top:14px;" data-act="province">${ic('play')}${PROVINCE_COPY.cta}</button>
     </div>
   </article>
-  </div>
-
-  <div class="zone z-fires">
-  <!-- live wildfire tracker — today's REAL Saskatchewan fires (CWFIS hotspots). The count settles
-       in via loadLiveFires(); the banner opens the full tracker overlay (openLiveFires). -->
-  <button class="shopbanner card warm cut rise d3" data-act="fires" aria-label="Live wildfire tracker">
-    <span class="sb-ic">${ic('fire')}</span>
-    <span class="sb-copy">
-      <span class="sb-title">${LIVEFIRE_COPY.title}</span>
-      <span class="sb-sub" data-lf-count>${LIVEFIRE_COPY.bannerLoading}</span>
-    </span>
-    <span class="sb-go">${ic('chevron-right')}</span>
-  </button>
   </div>
 
   <div class="zone z-shop">
@@ -199,18 +202,40 @@ ${railNav('home')}`;
       .catch(() => settle(null));
   }
 
-  /** Settle the home banner's count line from the live CWFIS feed (best-effort, like loadGlobalRank).
-   *  Warm cache paints instantly; the banner stays tappable in every state (it's the entry point to
-   *  the full tracker overlay), so a quiet/offline result just softens the sub-line — never hides it. */
+  /** Settle the home banner's count line from the live feed (best-effort, like loadGlobalRank). Prefers
+   *  the AUTHORITATIVE CIFFC national summary ("95 active fires · 148k ha burned this year"); if that's
+   *  unreachable it falls back to the satellite clustered count. The banner stays tappable in every state
+   *  (it's the entry point to the full tracker overlay) — a quiet/offline result just softens the line. */
   private loadLiveFires(): void {
     const el = this.root.querySelector<HTMLElement>('[data-lf-count]');
     if (!el) return;
+    fetchSummary()
+      .then((s) => {
+        if (this.disposed) return;
+        if (s.source !== 'offline' && (s.activeFires > 0 || s.areaBurnedHa > 0)) {
+          el.textContent = LIVEFIRE_COPY.bannerSummary(s);
+        } else {
+          this.fallbackLiveFireCount(el); // summary down/empty → the satellite count
+        }
+      })
+      .catch(() => {
+        if (!this.disposed) this.fallbackLiveFireCount(el);
+      });
+  }
+
+  /** Fallback banner line: the clustered satellite hotspot count for the saved country. */
+  private fallbackLiveFireCount(el: HTMLElement): void {
+    const country = getCountryPref(); // defaults to Canada
+    const label = countryLabel(country);
     fetchActiveFires()
       .then((feed) => {
         if (this.disposed) return;
-        const n = feed.fires.length;
-        el.textContent =
-          n > 0 ? LIVEFIRE_COPY.bannerSub(n) : feed.source === 'offline' ? LIVEFIRE_COPY.bannerOffline : LIVEFIRE_COPY.bannerQuiet;
+        if (feed.source === 'offline') {
+          el.textContent = LIVEFIRE_COPY.bannerOffline;
+          return;
+        }
+        const n = countFires(filterCountry(feed.hotspots, country));
+        el.textContent = n > 0 ? LIVEFIRE_COPY.bannerSub(n, label) : LIVEFIRE_COPY.bannerQuiet(label);
       })
       .catch(() => {
         if (!this.disposed) el.textContent = LIVEFIRE_COPY.bannerOffline;
