@@ -63,7 +63,7 @@ export function navigateRail(key: string): void {
     case 'solo':
       return openSolo();
     case 'shop':
-      openStore(); // opens the standalone bucketmyfire storefront in a new tab
+      openStore('home-rail'); // opens the standalone bucketmyfire storefront in a new tab
       return;
   }
 }

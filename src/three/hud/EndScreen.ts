@@ -231,7 +231,7 @@ export class EndScreen {
       // Win-only merch hook — surfaced at the highest-intent moment (just won, grade glowing). Opens
       // the standalone bucketmyfire storefront in a new tab (keeps the win screen behind it).
       if (s.won) {
-        const store = bannerButton('🪧 SQUADRON STORE', 'store', () => openStore());
+        const store = bannerButton('🪧 SQUADRON STORE', 'store', () => openStore('win'));
         const storeRow = el('div', { display: 'flex', justifyContent: 'center', marginTop: shortVp ? '8px' : '12px' });
         storeRow.appendChild(store);
         card.appendChild(storeRow);

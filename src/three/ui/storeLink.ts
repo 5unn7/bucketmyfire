@@ -5,15 +5,31 @@
  * property (a headless Medusa + Next.js site on its own host), NOT part of this game bundle. The
  * three in-game funnel entry points — the title-screen **Shop** button, the home-rail **Shop** tab
  * (`navigateRail('shop')`), and the win-screen **Squadron Store** hook — all call `openStore()`,
- * which opens it in a NEW TAB so the game keeps running underneath. The legacy `/shop.html` waitlist
- * page now just redirects here for any external/bookmarked traffic.
+ * which navigates to it in the SAME tab (a full context switch to the store). The legacy `/shop.html`
+ * waitlist page now just redirects here for any external/bookmarked traffic.
  *
- * One constant so the URL (and the new-tab behaviour) live in exactly one place.
+ * One constant so the URL (and the navigation behaviour) live in exactly one place.
  */
 export const STORE_URL = 'https://shop.bucketmyfire.com';
 
-/** Open the merch store in a new tab. Called from a click handler (so the popup isn't blocked);
- *  `noopener,noreferrer` keeps the store from reaching back into the game's `window`. */
-export function openStore(): void {
-  window.open(STORE_URL, '_blank', 'noopener,noreferrer');
+/** Where in the game the player clicked through to the store. Tagged onto the URL as standard UTM
+ *  params so the storefront's analytics can attribute WHICH in-game moment actually sells — the
+ *  win screen (highest intent), the home rail, or the title screen. The funnel is the brand's
+ *  scoreboard; you can't grow what you can't measure. */
+export type StoreSource = 'win' | 'home-rail' | 'title';
+
+/** The store URL with funnel attribution baked in. */
+export function storeUrl(source: StoreSource): string {
+  const u = new URL(STORE_URL);
+  u.searchParams.set('utm_source', 'bucketmyfire-game');
+  u.searchParams.set('utm_medium', 'in-game');
+  u.searchParams.set('utm_campaign', source);
+  return u.toString();
+}
+
+/** Navigate to the merch store in the SAME tab — a full context switch (the player leaves the game
+ *  for the store, exactly like the old `/shop.html` link did). Pass the funnel `source` so the click
+ *  is still attributable on the storefront side via UTM. */
+export function openStore(source: StoreSource): void {
+  window.location.href = storeUrl(source);
 }

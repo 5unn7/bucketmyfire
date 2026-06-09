@@ -163,7 +163,7 @@ export class TitleScreen {
     hero.appendChild(play);
 
     // Secondary — Shop opens the standalone bucketmyfire storefront in a new tab (keeps the game up).
-    const shop = makeButton({ label: 'Shop', icon: '🛍', variant: 'secondary', register: 'fight', onClick: () => openStore() });
+    const shop = makeButton({ label: 'Shop', icon: '🛍', variant: 'secondary', register: 'fight', onClick: () => openStore('title') });
     shop.el.style.pointerEvents = 'auto';
     hero.appendChild(shop.el);
 
