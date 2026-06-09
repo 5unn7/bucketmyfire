@@ -1,0 +1,59 @@
+{
+  "updated": "2026-06-09T14:30:00-06:00",
+  "id": "saskalert-public",
+  "title": "SaskAlert - Public - Mobile",
+  "entries": [
+    {
+      "id": "urn:oid:fire-1",
+      "code": "fire",
+      "event_en": "evacuation order",
+      "level": "critical",
+      "type_en": "Issued",
+      "state": "active",
+      "point": "56.123000 -103.456000",
+      "coverage_en": "Northern Saskatchewan",
+      "summary_en": "Evacuation order due to wildfire near the community.",
+      "author_en": "Saskatchewan Public Safety Agency",
+      "html_link": "https://emergencyalert.saskatchewan.ca/#/incidents/urn:oid:fire-1",
+      "sent": "2026-06-09T13:00:00-06:00"
+    },
+    {
+      "id": "urn:oid:tornado-1",
+      "code": "tornado",
+      "event_en": "tornado",
+      "level": "advisory",
+      "type_en": "Issued",
+      "state": "active",
+      "point": "49.604300 -101.876500",
+      "coverage_en": "Southern region",
+      "summary_en": "Conditions favourable for tornadoes.",
+      "author_en": "Environment Canada",
+      "html_link": "https://emergencyalert.saskatchewan.ca/#/incidents/urn:oid:tornado-1",
+      "sent": "2026-06-09T12:00:00-06:00"
+    },
+    {
+      "id": "urn:oid:fire-cancelled",
+      "code": "fire",
+      "event_en": "fire advisory",
+      "level": "info",
+      "type_en": "Cancelled",
+      "state": "ended",
+      "point": "55.000000 -105.000000",
+      "summary_en": "Wildfire advisory cancelled.",
+      "html_link": "https://example.test/x",
+      "sent": "2026-06-08T10:00:00-06:00"
+    },
+    {
+      "id": "urn:oid:fire-nopoint",
+      "code": "fire",
+      "event_en": "wildfire",
+      "level": "critical",
+      "type_en": "Issued",
+      "state": "active",
+      "point": "not-a-coordinate",
+      "summary_en": "Wildfire with no usable point.",
+      "html_link": "https://example.test/y",
+      "sent": "2026-06-09T11:00:00-06:00"
+    }
+  ]
+}

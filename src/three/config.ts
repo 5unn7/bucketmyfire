@@ -1809,6 +1809,22 @@ export const PROVINCE = {
   onboardMaxWaitSec: 35, // emit the NEXT teaching call by this long after the last even if unanswered (no soft-lock)
 } as const;
 
+// --- Live wildfire tracker (the home-screen "honest window" — real CWFIS/CIFFC/ECCC data on a Leaflet
+//     map). Look/feel knobs only; the data sources + freshness live in src/three/livefire/. ----------
+export const LIVEFIRE = {
+  // Fire-Weather-Index WMS raster opacity. The danger field is a full-bleed orange wash, so keep it LOW
+  // enough that the basemap (towns, lakes, the fire dots) stays legible underneath. Was 0.42 (washed the
+  // map out); 0.24 reads as a tint, not a paint. The layer is opt-in/default-off regardless.
+  fwiOpacity: 0.24,
+  // Surface-smoke FORECAST raster (ECCC GeoMet FireWork) opacity, for the smoke layer. Slightly higher
+  // than FWI since smoke is the point of that layer, but still see-through.
+  smokeOpacity: 0.5,
+  // Smoke is animatable (hourly TIME frames). How many hours FORWARD from now the scrubber spans, and the
+  // per-frame dwell when playing. The GeoMet FireWork run reaches ~72h; 48h keeps the timeline readable.
+  smokeForecastHours: 48,
+  smokeFrameMs: 850, // playback dwell per hourly frame (ms) — calm, not strobey, mobile-data-friendly
+} as const;
+
 // --- Live tuning registry (dev tooling) -------------------------------------
 // Every tunable block, by name. The dev slider panel (`dev/ConfigPanel.ts`, toggled with the
 // backtick key under `import.meta.env.DEV || ?qa || ?tune`) walks this to auto-generate a control
@@ -1821,7 +1837,7 @@ export const CONFIG_REGISTRY: Record<string, Record<string, unknown>> = {
   HELI_CLASSES, HEALTH, CRASH, BRIDGE,
   FIRE3D, STRUCTURES, STRUCT_FIRE, COMMUNITIES, SETTLEMENT3D, ROADS, SCORE, MISSIONS, FFA, PROVINCE, FAUNA, HELIPAD, TERRAIN_TEX, TREE_TEX,
   QUALITY, POSTFX, ENV, GODRAYS, GRADE, FIRELIGHT, EMBERS, AMBIENT_EMBERS,
-  WATER, CLOUDS, SPRAY, SMOKE, HAZE, AUDIO, CAMERA, TITLE,
+  WATER, CLOUDS, SPRAY, SMOKE, HAZE, AUDIO, CAMERA, TITLE, LIVEFIRE,
 };
 
 // A deep clone captured BEFORE overrides are applied — the panel's "reset to default" baseline.

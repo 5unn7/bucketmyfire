@@ -112,6 +112,36 @@ const CSS = `
 .bmf-app .frow{ display:flex; justify-content:space-between; gap:14px; padding:5px 0; border-bottom:1px solid var(--hair); }
 .bmf-app .frow .fk{ font-size:var(--fs-meta); color:var(--text-subtle); }
 .bmf-app .frow .fv{ font-family:var(--mono); font-size:var(--fs-meta); color:var(--text); text-align:right; white-space:nowrap; }
+/* Layer-chip status dot — live / cached / down / off / none-in-view. "empty ≠ down ≠ off": a doused-quiet
+   layer reads 'none' (calm grey), a broken feed reads 'down' (red), an off toggle is already de-emphasised. */
+.bmf-app .ldotc{ display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:7px; flex:0 0 auto; background:var(--dim); vertical-align:middle; }
+.bmf-app .ldotc.live{ background:var(--ok); } .bmf-app .ldotc.cache{ background:var(--caution); }
+.bmf-app .ldotc.down{ background:var(--warn); } .bmf-app .ldotc.none{ background:var(--dim); } .bmf-app .ldotc.off{ background:var(--faint); }
+/* Source ledger — the trust hero: every source, its status dot, its SOURCE publish time, link to origin. */
+.bmf-app .ledger{ display:flex; flex-direction:column; gap:0; padding-top:2px; }
+.bmf-app .lrow{ display:flex; align-items:center; gap:11px; padding:10px 2px; border-bottom:1px solid var(--hair); text-decoration:none; color:inherit; }
+.bmf-app .lrow:last-child{ border-bottom:0; }
+.bmf-app .lrow .sdot{ width:9px; height:9px; border-radius:50%; flex:0 0 auto; background:var(--dim); }
+.bmf-app .lrow .sdot.live{ background:var(--ok); } .bmf-app .lrow .sdot.cache{ background:var(--caution); }
+.bmf-app .lrow .sdot.down{ background:var(--warn); } .bmf-app .lrow .sdot.none{ background:var(--dim); }
+.bmf-app .lrow .sdot.off{ background:var(--faint); } .bmf-app .lrow .sdot.link{ background:var(--ember); }
+.bmf-app .lrow .lname{ display:block; font-size:var(--fs-sm); font-weight:var(--fw-bold); color:var(--text); }
+.bmf-app .lrow .lwhat{ display:block; font-size:var(--fs-micro); color:var(--dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.bmf-app .lrow .lfresh{ font-family:var(--mono); font-size:var(--fs-micro); color:var(--text-subtle); white-space:nowrap; flex:0 0 auto; text-align:right; }
+.bmf-app .lrow.link .lfresh{ color:var(--ember-hi); }
+.bmf-app .ledger .lnote{ font-size:var(--fs-micro); color:var(--faint); margin-top:11px; line-height:1.45; }
+/* Smoke FORECAST scrubber — a slim timeline pinned over the map's bottom edge (shown only when Smoke is on). */
+.bmf-app .firescrub{ position:absolute; left:0; right:0; bottom:0; z-index:401; display:flex; align-items:center; gap:10px; padding:7px 12px calc(7px + env(safe-area-inset-bottom)); background:var(--card-bg); border-top:1px solid var(--stroke); }
+.bmf-app .firescrub[hidden]{ display:none; }
+.bmf-app .firescrub .iconbtn{ width:38px; height:38px; }
+.bmf-app .scrubrange{ flex:1 1 auto; min-width:0; height:30px; accent-color:var(--ember); cursor:pointer; }
+.bmf-app .scrublabel{ flex:0 0 auto; display:flex; flex-direction:column; align-items:flex-end; line-height:1.15; }
+.bmf-app .scrublabel [data-lf-scrub-time]{ font-family:var(--mono); font-size:var(--fs-meta); color:var(--text); white-space:nowrap; }
+.bmf-app .scrubtag{ font-size:var(--fs-micro); letter-spacing:.1em; text-transform:uppercase; color:var(--ember-hi); }
+/* Alert / fire-ban detail-sheet body (the issuer's words + the official-source button + the standing caveat). */
+.bmf-app .alertsum{ font-size:var(--fs-meta); color:var(--text-subtle); line-height:1.5; margin:12px 0; }
+.bmf-app .firesheet .btn.block{ margin-top:6px; }
+.bmf-app .alertnote{ font-size:var(--fs-micro); color:var(--faint); line-height:1.4; margin-top:12px; }
 .bmf-app .credits a{ color:var(--menu); }
 .bmf-app.home .sec{ margin:0 2px 8px; }
 .bmf-app.home .z-cont .artcard{ min-height:200px; }
@@ -280,7 +310,7 @@ const CSS = `
   display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
 
 /* ===== BMF Gear banner — a promo card in the home's left column, sitting UNDER Today's Burn and
-   opening the /shop.html merch site. On the desktop dashboard it's pinned to the BOTTOM of the Today's
+   opening the standalone merch store (shop.bucketmyfire.com, same tab). On the desktop dashboard it's pinned to the BOTTOM of the Today's
    Burn cell so its base lines up with the Continue mission card (the "aligned" goal — see the desktop
    grid block below). On phone/tablet it flows directly under the daily slip; it's gated OUT only on the
    shortest viewports so the single-viewport no-scroll law still holds (CLAUDE.md). The whole card is ONE

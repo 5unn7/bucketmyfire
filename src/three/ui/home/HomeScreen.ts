@@ -167,7 +167,7 @@ ${railNav('home')}`;
       case 'province':
         return navigateRail('coop'); // open the province lobby (pick aircraft → Fly)
       case 'shop':
-        return navigateRail('shop'); // opens the standalone bucketmyfire storefront in a new tab
+        return navigateRail('shop'); // navigates to the standalone bucketmyfire storefront in the same tab
       case 'fires':
         return openLiveFires(); // the live wildfire tracker overlay
       case 'board':
@@ -212,7 +212,7 @@ ${railNav('home')}`;
     fetchSummary()
       .then((s) => {
         if (this.disposed) return;
-        if (s.source !== 'offline' && (s.activeFires > 0 || s.areaBurnedHa > 0)) {
+        if (s.meta.status === 'live' && (s.activeFires > 0 || s.areaBurnedHa > 0)) {
           el.textContent = LIVEFIRE_COPY.bannerSummary(s);
         } else {
           this.fallbackLiveFireCount(el); // summary down/empty → the satellite count
@@ -230,7 +230,7 @@ ${railNav('home')}`;
     fetchActiveFires()
       .then((feed) => {
         if (this.disposed) return;
-        if (feed.source === 'offline') {
+        if (feed.meta.status !== 'live') {
           el.textContent = LIVEFIRE_COPY.bannerOffline;
           return;
         }

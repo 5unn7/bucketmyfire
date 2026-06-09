@@ -16,12 +16,13 @@
 import * as L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { UI } from '../ui/theme';
+import { LIVEFIRE } from '../config';
 import { radiusMetersForHa } from './normalize';
-import { FWI_WMS_URL, FWI_WMS_LAYER, isLiveFireEnabled } from './client';
-import type { Hotspot, FireSeverity, FireStage, ReportedFire, BurnPolygon } from './types';
+import { FWI_WMS_URL, FWI_WMS_LAYER, GEOMET_WMS_URL, SMOKE_WMS_LAYER, SMOKE_WMS_STYLE, isLiveFireEnabled } from './client';
+import type { Hotspot, FireSeverity, FireStage, ReportedFire, BurnPolygon, AlertItem, AlertLevel, BanArea, BanType } from './types';
 
 /** The toggleable data layers. */
-export type FireLayer = 'reported' | 'perimeters' | 'hotspots' | 'fwi';
+export type FireLayer = 'reported' | 'out' | 'perimeters' | 'hotspots' | 'fwi' | 'smoke' | 'alerts' | 'bans';
 
 // Warm severity ramp for the raw HOTSPOTS, straight from the brand tokens (cool gold → amber-red hot).
 const SEV_STYLE: Record<FireSeverity, { color: string; radius: number; fill: number }> = {
@@ -41,25 +42,37 @@ const STAGE_COLOR: Record<FireStage, string> = {
   UNK: UI.caution,
 };
 
+// SaskAlert level → pin colour (critical=red, advisory=amber, info=neutral) over the same brand tokens.
+const ALERT_COLOR: Record<AlertLevel, string> = { critical: UI.warn, advisory: UI.caution, info: UI.text, unknown: UI.caution };
+// Fire-ban type → area tint (Ban=red, Restriction=amber, else neutral).
+const BAN_COLOR: Record<BanType, string> = { Ban: UI.warn, Restriction: UI.caution, Advisory: UI.text, Other: UI.caution };
+
 const CARTO_DARK = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
 
 export interface FireMapHandlers {
   onSelectHotspot: (h: Hotspot) => void;
   onSelectReported: (f: ReportedFire) => void;
+  // Optional so a simpler consumer (e.g. a front-door map) need not wire the alert/ban layers.
+  onSelectAlert?: (a: AlertItem) => void;
+  onSelectBan?: (b: BanArea) => void;
 }
 
 export class FireMap {
   private map: L.Map;
   private hotspotLayer: L.LayerGroup;
   private reportedLayer: L.LayerGroup;
+  private outLayer: L.LayerGroup;
   private perimLayer: L.LayerGroup;
+  private bansLayer: L.LayerGroup;
+  private alertsLayer: L.LayerGroup;
   private fwiLayer: L.TileLayer.WMS;
+  private smokeLayer: L.TileLayer.WMS;
   private selected: L.CircleMarker | null = null;
   private selectedBase: { weight: number; color: string } | null = null; // the selected dot's pre-ring style
   private handlers: FireMapHandlers;
   // Which layers are currently shown (default: the authoritative fires + their footprints + hotspots;
   // the FWI raster is opt-in so the map stays legible until the player asks for the danger field).
-  private visible: Record<FireLayer, boolean> = { reported: true, perimeters: true, hotspots: true, fwi: false };
+  private visible: Record<FireLayer, boolean> = { reported: true, out: false, perimeters: true, hotspots: true, fwi: false, smoke: false, alerts: false, bans: false };
 
   constructor(container: HTMLElement, handlers: FireMapHandlers) {
     this.handlers = handlers;
@@ -79,14 +92,30 @@ export class FireMap {
       layers: FWI_WMS_LAYER,
       format: 'image/png',
       transparent: true,
-      opacity: 0.42,
+      opacity: LIVEFIRE.fwiOpacity, // low tint, not a paint — keep the map legible underneath (config.ts)
       crossOrigin: true,
     } as L.WMSOptions);
 
-    // Vector layers, drawn back-to-front: footprints → fires → hotspots (each added per its toggle).
+    // The surface-smoke FORECAST raster (ECCC GeoMet FireWork). A WMS tile underlay like FWI; its TIME
+    // param is set per frame by setSmokeTime() so the layer animates. Tiles 404 gracefully past the run.
+    this.smokeLayer = L.tileLayer.wms(GEOMET_WMS_URL, {
+      layers: SMOKE_WMS_LAYER,
+      styles: SMOKE_WMS_STYLE,
+      format: 'image/png',
+      transparent: true,
+      version: '1.3.0',
+      opacity: LIVEFIRE.smokeOpacity,
+      crossOrigin: true,
+    } as L.WMSOptions);
+
+    // Vector layers, drawn back-to-front: footprints → ban areas → extinguished → active fires → hotspots
+    // → alert pins (the highest-priority overlay sits on top). Each added per its toggle.
     this.perimLayer = L.layerGroup();
+    this.bansLayer = L.layerGroup();
+    this.outLayer = L.layerGroup();
     this.reportedLayer = L.layerGroup();
     this.hotspotLayer = L.layerGroup();
+    this.alertsLayer = L.layerGroup();
     this.applyVisibility();
   }
 
@@ -152,6 +181,28 @@ export class FireMap {
     }
   }
 
+  /** Plot the EXTINGUISHED ("out") fires reported this season as small, dim neutral dots — historical
+   *  context, drawn beneath the active fires, opt-in. Tapping one opens its full record like any fire. */
+  setOutFires(fires: ReportedFire[]): void {
+    this.outLayer.clearLayers();
+    this.clearSelection();
+    for (const f of fires) {
+      const dot = L.circleMarker([f.lat, f.lon], {
+        radius: 2.5,
+        color: UI.faint,
+        weight: 1,
+        opacity: 0.5,
+        fillColor: UI.faint,
+        fillOpacity: 0.4,
+      });
+      dot.on('click', () => {
+        this.highlight(dot);
+        this.handlers.onSelectReported(f);
+      });
+      dot.addTo(this.outLayer);
+    }
+  }
+
   /** Draw the satellite-mapped burn footprints as faint scorch polygons (non-interactive underlay). */
   setBurnPolygons(polys: BurnPolygon[]): void {
     this.perimLayer.clearLayers();
@@ -167,12 +218,62 @@ export class FireMap {
     }
   }
 
+  /** Plot active wildfire/evacuation ALERTS as bold ringed pins coloured by level (critical→advisory→info).
+   *  Tapping one opens the issuer's notice (which links out to the official page). Drawn on top of fires. */
+  setAlerts(alerts: AlertItem[]): void {
+    this.alertsLayer.clearLayers();
+    this.clearSelection();
+    for (const a of alerts) {
+      const color = ALERT_COLOR[a.level];
+      const m = L.circleMarker([a.lat, a.lon], {
+        radius: 7,
+        color: UI.text,
+        weight: 2,
+        opacity: 0.95,
+        fillColor: color,
+        fillOpacity: 0.9,
+      });
+      m.on('click', () => {
+        this.highlight(m);
+        this.handlers.onSelectAlert?.(a);
+      });
+      m.addTo(this.alertsLayer);
+    }
+  }
+
+  /** Draw provincial fire-ban / restriction AREAS as dashed tinted polygons coloured by type. Tappable for
+   *  the ban detail. An empty `bans` array simply clears the layer (the "no ban" state shows as nothing). */
+  setBans(bans: BanArea[]): void {
+    this.bansLayer.clearLayers();
+    for (const b of bans) {
+      const color = BAN_COLOR[b.type];
+      const poly = L.polygon(b.ring, {
+        color,
+        weight: 1.5,
+        opacity: 0.85,
+        fillColor: color,
+        fillOpacity: 0.14,
+        dashArray: '6 4',
+      });
+      poly.on('click', () => this.handlers.onSelectBan?.(b));
+      poly.addTo(this.bansLayer);
+    }
+  }
+
   // ── Visibility ──
 
   /** Show/hide a data layer. */
   setLayer(layer: FireLayer, on: boolean): void {
     this.visible[layer] = on;
     this.applyVisibility();
+  }
+
+  /** Point the animated smoke raster at one hourly forecast frame (ISO8601 UTC). Reloads only the visible
+   *  tiles for that TIME; harmless when the layer is hidden (the param sticks for when it's shown). */
+  setSmokeTime(iso: string): void {
+    // `time` is a WMS dimension param (not in the typed WMSParams shape); Leaflet merges it into the
+    // GetMap query at runtime. Cast through unknown to attach it without re-supplying the base params.
+    this.smokeLayer.setParams({ time: iso } as unknown as L.WMSParams);
   }
 
   isVisible(layer: FireLayer): boolean {
@@ -189,9 +290,13 @@ export class FireMap {
     // The FWI raster is a live CWFIS feed, so the kill-switch must stop it too (the JSON feeds gate in
     // the client; this layer is constructed directly, so gate it here — never hit CWFIS when disabled).
     sync(this.fwiLayer, this.visible.fwi && isLiveFireEnabled());
+    sync(this.smokeLayer, this.visible.smoke && isLiveFireEnabled());
     sync(this.perimLayer, this.visible.perimeters);
+    sync(this.bansLayer, this.visible.bans);
+    sync(this.outLayer, this.visible.out);
     sync(this.reportedLayer, this.visible.reported);
     sync(this.hotspotLayer, this.visible.hotspots);
+    sync(this.alertsLayer, this.visible.alerts);
   }
 
   // ── Framing + selection ──

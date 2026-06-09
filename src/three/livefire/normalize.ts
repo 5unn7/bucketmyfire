@@ -10,9 +10,73 @@
  * feed, never a throw.
  */
 import type {
-  Hotspot, FireSeverity, LiveFireFeed, FeedSource, Country, CountryFilter,
-  FireStage, ReportedFire, ReportedFeed, BurnPolygon, NationalSummary,
+  Hotspot, FireSeverity, LiveFireFeed, SourceStatus, FeedMeta, Country, CountryFilter,
+  FireStage, ReportedFire, ReportedFeed, BurnPolygon, BurnFeed, NationalSummary,
+  AlertItem, AlertFeed, AlertLevel, BanArea, BanFeed, BanType,
 } from './types';
+
+/** What the fetch layer hands the pure normalizers: the fetch-level outcome (status/fromCache/fetchedAt).
+ *  `publishedAt` is NOT passed in — each normalizer derives it from the SOURCE data it's parsing. */
+export interface NormalizeOpts {
+  fetchedAt: number;
+  status: SourceStatus;
+  fromCache: boolean;
+}
+
+/** Largest positive `at` (epoch ms) across items — the freshest SOURCE timestamp in a feed (0 if none). */
+function maxAt(items: { at: number }[]): number {
+  let m = 0;
+  for (const it of items) if (Number.isFinite(it.at) && it.at > m) m = it.at;
+  return m;
+}
+
+/** Assemble the per-source honesty meta from the fetch outcome + the derived source publish time. */
+function metaFrom(opts: NormalizeOpts, publishedAt: number): FeedMeta {
+  return { status: opts.status, fromCache: opts.fromCache, publishedAt, fetchedAt: opts.fetchedAt };
+}
+
+/** Parse a date/datetime string to epoch ms (0 if unparseable). Handles ISO with or without a TZ suffix
+ *  (CIFFC sitrep dates omit the zone) and bare YYYY-MM-DD. */
+export function parseMs(v: unknown): number {
+  if (typeof v !== 'string' || !v) return 0;
+  const t = Date.parse(v);
+  return Number.isFinite(t) ? t : 0;
+}
+
+/** A URL safe to drop into an `href`: only http(s) passes; everything else (a `javascript:`/`data:` scheme,
+ *  junk, non-string) → '' so the link is dropped. The SaskAlert `html_link` is FEED-controlled, so it must
+ *  pass through here before it reaches an attribute — esc() stops attribute-breakout but not a `javascript:`
+ *  URL. Pure, so the verify gate can assert it. */
+export function safeUrl(u: unknown): string {
+  const s = typeof u === 'string' ? u.trim() : '';
+  return /^https?:\/\//i.test(s) ? s : '';
+}
+
+/** Build the smoke layer's hourly forecast timeline: ISO8601-UTC hour strings from `now` (floored to the
+ *  hour) forward `hours` hours, inclusive. Each is the GeoMet WMS `TIME=` param for one frame
+ *  (e.g. "2026-06-10T00:00:00Z"). Pure (takes `now`) so the verify gate can assert it; the UI passes
+ *  Date.now(). Starting at `now` keeps every frame inside the current model run's valid window (the run
+ *  reaches ~72h ahead), so frames don't 404 the way pre-run-start hours would. */
+export function smokeForecastFrames(now: number, hours: number): string[] {
+  const HOUR = 3_600_000;
+  const start = Math.floor(now / HOUR) * HOUR;
+  const n = Math.max(0, Math.floor(Number.isFinite(hours) ? hours : 0));
+  const out: string[] = [];
+  for (let i = 0; i <= n; i++) out.push(new Date(start + i * HOUR).toISOString().replace(/\.000Z$/, 'Z'));
+  return out;
+}
+
+/** Pull the FWI raster's issue date out of the CWFIS WMS GetCapabilities XML: the `fwi_current` layer's
+ *  <Title> ends in " - YYYY-MM-DD". Returns epoch ms, or 0 if the suffix is missing (the UI then says
+ *  "issue time unavailable" — we never fabricate a time). Pure + defensive so the verify gate can assert it. */
+export function parseFwiIssueDate(capsXml: string): number {
+  if (typeof capsXml !== 'string' || !capsXml) return 0;
+  // WMS sequences <Name> before <Title>; find the fwi_current layer then its nearby Title.
+  const m = /<Name>\s*(?:public:)?fwi_current\s*<\/Name>[\s\S]{0,600}?<Title>([\s\S]*?)<\/Title>/i.exec(capsXml);
+  const title = (m?.[1] ?? '').trim();
+  const d = /(\d{4}-\d{2}-\d{2})\s*$/.exec(title) ?? /(\d{4}-\d{2}-\d{2})/.exec(title);
+  return d ? parseMs(d[1]) : 0;
+}
 
 const CLUSTER_KM = 6; // detections within this radius count as the same fire (headline number only)
 const MAX_DETECTIONS = 8000; // guard so a freak day can't blow up the O(n²) count
@@ -133,17 +197,14 @@ export function countFires(hotspots: Hotspot[]): number {
 
 /** The one-call pipeline used by the client AND the verify gate: raw GeoJSON → rendered feed.
  *  `fetchedAt` / `source` are passed in (the pure core never reads the clock). */
-export function normalizeFeed(
-  geojson: unknown,
-  opts: { fetchedAt: number; source: FeedSource },
-): LiveFireFeed {
+export function normalizeFeed(geojson: unknown, opts: NormalizeOpts): LiveFireFeed {
   const hotspots = parseHotspots(geojson);
   return {
     hotspots,
     fireCount: countFires(hotspots),
     totalDetections: hotspots.length,
-    fetchedAt: opts.fetchedAt,
-    source: opts.source,
+    // publishedAt = the freshest satellite detection time (rep_date) — the SOURCE's currency, honestly.
+    meta: metaFrom(opts, maxAt(hotspots)),
   };
 }
 
@@ -216,40 +277,44 @@ export function parseReportedFires(geojson: unknown): ReportedFire[] {
 
 /** Build the reported-fire feed for the active-fire MAP: keep the plottable stages (OC/BH/UC), tally
  *  every parsed stage for the legend. `fetchedAt` / `source` are passed in (pure core, no clock). */
-export function normalizeReported(
-  geojson: unknown,
-  opts: { fetchedAt: number; source: FeedSource },
-): ReportedFeed {
+export function normalizeReported(geojson: unknown, opts: NormalizeOpts): ReportedFeed {
   const all = parseReportedFires(geojson);
   const byStage: Record<FireStage, number> = { OC: 0, BH: 0, UC: 0, OUT: 0, UNK: 0 };
   for (const f of all) byStage[f.stage]++;
   return {
-    fires: all.filter((f) => isActiveStage(f.stage)),
+    fires: all.filter((f) => isActiveStage(f.stage)), // ACTIVE (OC/BH/UC) — default layer + headline
+    out: all.filter((f) => f.stage === 'OUT'), // EXTINGUISHED this season — the opt-in "Out fires" layer
     byStage,
-    fetchedAt: opts.fetchedAt,
-    source: opts.source,
+    // publishedAt = the latest situation-report date across the roll — the CIFFC sitrep cycle, honestly.
+    meta: metaFrom(opts, maxAt(all)),
   };
 }
 
 /** Parse the CIFFC dashboard summary JSON into the national panel numbers. Missing/junk fields → 0;
  *  `ytdOut` is derived (total − active, floored at 0). Never throws. */
-export function normalizeSummary(
-  json: unknown,
-  opts: { fetchedAt: number; source: FeedSource },
-): NationalSummary {
+export function normalizeSummary(json: unknown, opts: NormalizeOpts): NationalSummary {
   const j = (json && typeof json === 'object' ? json : {}) as Record<string, unknown>;
+  const sitrep = (j.sitrep && typeof j.sitrep === 'object' ? j.sitrep : {}) as Record<string, unknown>;
   const total = Math.max(0, asNum(j.fire_count) ?? 0);
   const active = Math.max(0, asNum(j.active_fires) ?? 0);
+  // publishedAt = the CIFFC situation-report date (`sitrep.date`, a bare YYYY-MM-DD) — the day these
+  // national numbers are "as of". prepLevel prefers the top-level value, falling back to the sitrep's.
+  const publishedAt = parseMs(sitrep.date);
   return {
     firesToday: Math.max(0, asNum(j.fires_today) ?? 0),
     activeFires: active,
     ytdTotal: total,
     ytdOut: Math.max(0, total - active),
     areaBurnedHa: Math.max(0, asNum(j.area_burned) ?? 0),
-    prepLevel: Math.max(0, asNum(j.preparedness_level) ?? 0),
-    fetchedAt: opts.fetchedAt,
-    source: opts.source,
+    prepLevel: Math.max(0, asNum(j.preparedness_level) ?? asNum(sitrep.preparedness_level) ?? 0),
+    meta: metaFrom(opts, publishedAt),
   };
+}
+
+/** Build the burn-perimeter feed: parse the M3 polygons + derive publishedAt from the freshest `lastdate`. */
+export function normalizeBurn(geojson: unknown, opts: NormalizeOpts): BurnFeed {
+  const polys = parseBurnPolygons(geojson);
+  return { polys, meta: metaFrom(opts, maxAt(polys)) };
 }
 
 /** Parse CWFIS `m3_polygons_current` GeoJSON into burn-perimeter rings ([lat,lon] order for Leaflet).
@@ -292,4 +357,142 @@ export function parseBurnPolygons(geojson: unknown): BurnPolygon[] {
     if (out.length >= MAX_DETECTIONS) break;
   }
   return out;
+}
+
+// ════════════ Public alerts (SaskAlert) ════════════
+// The highest-stakes layer: we surface the issuer's verbatim words + a link to the official page and
+// NEVER re-classify (no inventing "ORDER"/"ALERT"). Filtered to wildfire/evacuation-relevant alerts.
+
+/** SaskAlert `point` ("lat lon", space-separated decimal degrees) → coordinate, or null if unusable. */
+function parsePoint(v: unknown): { lat: number; lon: number } | null {
+  if (typeof v !== 'string') return null;
+  const parts = v.trim().split(/\s+/);
+  const lat = asNum(parts[0]);
+  const lon = asNum(parts[1]);
+  if (lat == null || lon == null || lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
+  return { lat, lon };
+}
+
+/** SaskAlert `level` → AlertLevel (critical/advisory/info, else unknown). */
+export function alertLevel(v: unknown): AlertLevel {
+  const s = String(v ?? '').trim().toLowerCase();
+  if (s === 'critical' || s === 'advisory' || s === 'info') return s;
+  return 'unknown';
+}
+
+/** Wildfire/evacuation-relevant? Keyword match over code + the issuer's text. Inclusive on purpose —
+ *  better to show a borderline alert than to miss a real evacuation. */
+export function isWildfireAlert(a: AlertItem, code = ''): boolean {
+  const hay = `${code} ${a.event} ${a.summary} ${a.coverage}`.toLowerCase();
+  return /(fire|wildfire|evac|evacuat|smoke|burn)/.test(hay);
+}
+
+/** Parse the SaskAlert feed.json into ACTIVE alerts (valid coord, not ended/cancelled), keeping ALL
+ *  types; `codes[i]` is the matching `code` for each. Defensive: junk → empty, never throws. */
+export function parseAlerts(json: unknown): { alerts: AlertItem[]; codes: string[] } {
+  const j = (json && typeof json === 'object' ? json : {}) as { entries?: unknown };
+  const entries = Array.isArray(j.entries) ? j.entries : [];
+  const alerts: AlertItem[] = [];
+  const codes: string[] = [];
+  for (const e of entries) {
+    const o = (e && typeof e === 'object' ? e : {}) as Record<string, unknown>;
+    const state = String(o.state ?? '').toLowerCase();
+    const life = typeof o.type_en === 'string' ? o.type_en : '';
+    if (state === 'ended' || life.toLowerCase() === 'cancelled') continue; // active alerts only
+    const pt = parsePoint(o.point);
+    if (!pt) continue;
+    alerts.push({
+      lat: pt.lat,
+      lon: pt.lon,
+      level: alertLevel(o.level),
+      event: typeof o.event_en === 'string' ? o.event_en : '',
+      summary: typeof o.summary_en === 'string' ? o.summary_en : '',
+      coverage: typeof o.coverage_en === 'string' ? o.coverage_en : '',
+      sentAt: parseMs(o.sent),
+      lifecycle: life,
+      author: typeof o.author_en === 'string' ? o.author_en : '',
+      url: typeof o.html_link === 'string' ? o.html_link : '',
+      id: typeof o.id === 'string' ? o.id : '',
+    });
+    codes.push(typeof o.code === 'string' ? o.code : '');
+    if (alerts.length >= MAX_DETECTIONS) break;
+  }
+  return { alerts, codes };
+}
+
+/** Build the alert feed: keep only wildfire/evacuation-relevant active alerts; publishedAt = the feed's
+ *  own `updated` time (else the freshest `sent`). */
+export function normalizeAlerts(json: unknown, opts: NormalizeOpts): AlertFeed {
+  const { alerts, codes } = parseAlerts(json);
+  const wild = alerts.filter((a, i) => isWildfireAlert(a, codes[i]));
+  const feedUpdated = parseMs((json as { updated?: unknown } | null)?.updated);
+  const publishedAt = feedUpdated || wild.reduce((m, a) => (a.sentAt > m ? a.sentAt : m), 0);
+  return { alerts: wild, meta: metaFrom(opts, publishedAt) };
+}
+
+// ════════════ Fire bans (SK SPSA Public_Fire_Ban, provincial) ════════════
+// EMPTY ⇒ "no provincial ban in effect" — a VALID state, never confused with the feed being down.
+
+/** SPSA `Start_Date` ("YYYYMMDD" string, despite a date field type) → epoch ms (tolerates ISO too; 0 if bad). */
+export function parseYmd(v: unknown): number {
+  const s = String(v ?? '').trim();
+  const m = /^(\d{4})(\d{2})(\d{2})$/.exec(s);
+  return m ? parseMs(`${m[1]}-${m[2]}-${m[3]}`) : parseMs(s);
+}
+
+/** SPSA `Type` → BanType. */
+export function banType(v: unknown): BanType {
+  const s = String(v ?? '').trim().toLowerCase();
+  if (s === 'ban') return 'Ban';
+  if (s === 'restriction') return 'Restriction';
+  if (s === 'advisory') return 'Advisory';
+  return 'Other';
+}
+
+/** Parse the SPSA fire-ban GeoJSON into ban areas (outer rings as [lat,lon]). Polygon + MultiPolygon
+ *  (flattened to one BanArea per outer ring); drops <3-pt rings; caps vertices. Defensive: junk → []. */
+export function parseBans(geojson: unknown): BanArea[] {
+  const fc = geojson as { features?: unknown };
+  const feats = Array.isArray(fc?.features) ? fc.features : [];
+  const out: BanArea[] = [];
+  const ringFrom = (coords: unknown): [number, number][] => {
+    const ring: [number, number][] = [];
+    if (!Array.isArray(coords)) return ring;
+    for (const pt of coords) {
+      if (!Array.isArray(pt)) continue;
+      const lon = asNum(pt[0]);
+      const lat = asNum(pt[1]);
+      if (lat == null || lon == null || lat < -90 || lat > 90 || lon < -180 || lon > 180) continue;
+      ring.push([lat, lon]);
+      if (ring.length >= 4000) break;
+    }
+    return ring;
+  };
+  for (const f of feats) {
+    const feat = f as { properties?: Record<string, unknown>; geometry?: { type?: string; coordinates?: unknown } };
+    const g = feat?.geometry;
+    const p = feat?.properties ?? {};
+    const type = banType(p.Type);
+    const startAt = parseYmd(p.Start_Date);
+    const comment = typeof p.Comment === 'string' ? p.Comment : '';
+    const push = (ring: [number, number][]): void => {
+      if (ring.length >= 3) out.push({ ring, type, startAt, comment });
+    };
+    if (g?.type === 'Polygon' && Array.isArray(g.coordinates)) {
+      push(ringFrom(g.coordinates[0]));
+    } else if (g?.type === 'MultiPolygon' && Array.isArray(g.coordinates)) {
+      for (const poly of g.coordinates as unknown[]) {
+        if (Array.isArray(poly)) push(ringFrom((poly as unknown[])[0]));
+      }
+    }
+    if (out.length >= MAX_DETECTIONS) break;
+  }
+  return out;
+}
+
+/** Build the fire-ban feed: publishedAt = the freshest Start_Date (0 if no bans — a valid "none" state). */
+export function normalizeBans(geojson: unknown, opts: NormalizeOpts): BanFeed {
+  const bans = parseBans(geojson);
+  const publishedAt = bans.reduce((m, b) => (b.startAt > m ? b.startAt : m), 0);
+  return { bans, meta: metaFrom(opts, publishedAt) };
 }

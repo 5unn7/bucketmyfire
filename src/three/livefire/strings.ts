@@ -2,7 +2,7 @@
  * Live wildfire tracker — copy + small presentation helpers. Tight + declarative per the brand. Severity
  * + stage map onto EXISTING `.bmf-app` token classes (no new colours) for the detail panel's badge.
  */
-import type { FireSeverity, FireStage, NationalSummary } from './types';
+import type { FireSeverity, FireStage, NationalSummary, FeedMeta, AlertLevel, BanType } from './types';
 
 /** Whole-number with thousands separators ("148,939"). */
 export function fmtInt(n: number): string {
@@ -31,19 +31,27 @@ export const LIVEFIRE_COPY = {
   overlayTitle: 'Live fire map',
   // Headline = authoritative reported active fires for the chosen country (the "real" fire count).
   head: (fires: number, label: string) => `${fires.toLocaleString()} active ${fires === 1 ? 'fire' : 'fires'} · ${label}`,
-  subStats: (dets: number, rel: string) => `${dets.toLocaleString()} satellite detections · ${rel ? `updated ${rel}` : 'last 24h'}`,
+  subStats: (dets: number, freshness: string) => `${dets.toLocaleString()} satellite detections · ${freshness || 'last 24h'}`,
   // Layer toggle labels (the chips that show/hide each data layer).
   layers: {
     reported: 'Active fires',
+    out: 'Out fires',
     hotspots: 'Hotspots',
     perimeters: 'Burn area',
     fwi: 'Fire weather',
+    smoke: 'Smoke',
+    alerts: 'Alerts',
+    bans: 'Fire bans',
   },
   layerHint: {
     reported: 'Agency-reported fires, sized by area & coloured by stage of control',
+    out: 'Fires reported out (extinguished) this year',
     hotspots: 'Raw satellite heat detections, last 24 hours',
     perimeters: 'Satellite-mapped burn footprints',
     fwi: 'Fire Weather Index: the fire-danger field',
+    smoke: 'Surface-smoke forecast (ECCC FireWork) — drag the timeline to see it move',
+    alerts: 'Active wildfire & evacuation alerts (SaskAlert) — tap for the official notice',
+    bans: 'Provincial fire bans & open-fire restrictions (SK)',
   },
   // National summary stat-strip labels (the CIFFC "Current fires / Year-to-date" panel).
   stat: { today: 'Reported today', active: 'Active', out: 'Out', total: 'Total', area: 'Area burned', prep: 'Prep level' },
@@ -105,5 +113,108 @@ export function relTime(ms: number, now: number = Date.now()): string {
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.round(mins / 60);
-  return `${hrs}h ago`;
+  if (hrs < 36) return `${hrs}h ago`;
+  return `${Math.round(hrs / 24)}d ago`;
 }
+
+// ── Source honesty copy (the "honest window" — never confuse stale/down/off with "no fires") ──────────
+
+/** A SOURCE publish time as user-facing freshness: "updated 2h ago" for recent data, "as of 8 Jun" for
+ *  date-only/older data, and an explicit "publish time unknown" rather than a fabricated time. */
+export function publishedWhen(ms: number, now: number = Date.now()): string {
+  if (!ms || ms <= 0) return 'publish time unknown';
+  if (now - ms < 36 * 60 * 60 * 1000) return `updated ${relTime(ms, now)}`;
+  return `as of ${new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+}
+
+/** One-line freshness for the source ledger: "Live · updated 2h ago" / "Cached · as of 8 Jun" /
+ *  "Unavailable — couldn’t reach the source" / "Turned off". This is what makes the screen honest. */
+export function freshnessLine(meta: FeedMeta): string {
+  if (meta.status === 'disabled') return 'Turned off';
+  if (meta.status === 'unavailable') return 'Unavailable — couldn’t reach the source';
+  return `${meta.fromCache ? 'Cached' : 'Live'} · ${publishedWhen(meta.publishedAt)}`;
+}
+
+/** A short status word for a layer chip. */
+export function statusWord(meta: FeedMeta): string {
+  if (meta.status === 'disabled') return 'off';
+  if (meta.status === 'unavailable') return 'unavailable';
+  return meta.fromCache ? 'cached' : 'live';
+}
+
+/** The status-dot modifier class (maps to .sdot tones in styles.ts): live=ok, cached=caution, down/off=dim. */
+export function statusDotClass(meta: FeedMeta): string {
+  if (meta.status === 'disabled') return 'off';
+  if (meta.status === 'unavailable') return 'down';
+  return meta.fromCache ? 'cache' : 'live';
+}
+
+/** Static descriptors for each source the ledger lists (label + what-it-is + link to the authoritative
+ *  origin). Combined with the live `FeedMeta` at render time. SK SPSA is a link-out only — its live feed
+ *  is token-gated + CORS-blocked, so we point at the official viewer rather than fake a live layer. */
+export interface SourceInfo {
+  label: string;
+  what: string;
+  url: string;
+}
+export const LIVEFIRE_SOURCES: Record<'reported' | 'hotspots' | 'perimeters' | 'fwi' | 'smoke' | 'alerts' | 'bans' | 'summary', SourceInfo> = {
+  reported: { label: 'Active fires', what: 'Agency-reported fires, stage of control + size — CIFFC', url: 'https://ciffc.net' },
+  hotspots: { label: 'Satellite hotspots', what: 'Last-24h thermal detections — CWFIS (NRCan)', url: 'https://cwfis.cfs.nrcan.gc.ca' },
+  perimeters: { label: 'Burn area', what: 'Satellite-mapped fire footprints — CWFIS M3', url: 'https://cwfis.cfs.nrcan.gc.ca' },
+  fwi: { label: 'Fire weather', what: 'Fire Weather Index danger field — CWFIS', url: 'https://cwfis.cfs.nrcan.gc.ca' },
+  smoke: { label: 'Smoke forecast', what: 'Surface PM2.5 wildfire-smoke FORECAST — ECCC FireWork', url: 'https://eccc-msc.github.io/open-data/msc-data/nwp_raqdps-fw/readme_raqdps-fw_en/' },
+  alerts: { label: 'Alerts', what: 'Wildfire & evacuation alerts — SaskAlert', url: 'https://emergencyalert.saskatchewan.ca' },
+  bans: { label: 'Fire bans', what: 'Provincial fire bans & restrictions — SK SPSA', url: 'https://www.saskatchewan.ca/residents/environment-public-health-and-safety/wildfire-management' },
+  summary: { label: 'National totals', what: 'Year-to-date national summary — CIFFC', url: 'https://ciffc.net' },
+};
+
+// ── Alert + fire-ban presentation (tones from the existing badge ramp; no new tokens) ────────────────
+
+/** SaskAlert level → kit badge tone: critical = danger (warn), advisory = caution, info/unknown = neutral. */
+export function alertLevelClass(l: AlertLevel): string {
+  if (l === 'critical') return 'badge warn';
+  if (l === 'advisory') return 'badge caution';
+  return 'badge';
+}
+export function alertLevelLabel(l: AlertLevel): string {
+  return l === 'unknown' ? 'Alert' : l.charAt(0).toUpperCase() + l.slice(1);
+}
+/** Title-case an issuer's event code for display ("evacuation order" → "Evacuation order"); shown verbatim otherwise. */
+export function titleCase(s: string): string {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+/** Fire-ban type → kit badge tone: Ban = danger, Restriction = caution, else neutral. */
+export function banTypeClass(t: BanType): string {
+  if (t === 'Ban') return 'badge warn';
+  if (t === 'Restriction') return 'badge caution';
+  return 'badge';
+}
+
+/** Ledger freshness for fire bans: 0 bans is the HONEST "no ban in effect" state, never a stale timestamp. */
+export function banFreshness(meta: FeedMeta, count: number): string {
+  if (meta.status !== 'live') return freshnessLine(meta);
+  return count > 0 ? `${count} in effect · ${publishedWhen(meta.publishedAt)}` : 'No provincial ban in effect';
+}
+/** Ledger freshness for alerts: 0 is the honest "none active" state (the feed publish time still applies). */
+export function alertFreshness(meta: FeedMeta, count: number): string {
+  if (meta.status !== 'live') return freshnessLine(meta);
+  return count > 0 ? `${count} active · ${publishedWhen(meta.publishedAt)}` : `No wildfire alerts · ${publishedWhen(meta.publishedAt)}`;
+}
+
+/** A smoke scrubber frame's valid time, in the viewer's local zone: "Mon 6 PM". */
+export function frameTimeLabel(iso: string): string {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return '—';
+  return new Date(t).toLocaleString(undefined, { weekday: 'short', hour: 'numeric' });
+}
+
+/** Ledger freshness for the smoke layer: it's a FORECAST (no fetched publish time), so name it a forecast
+ *  and show the frame currently in view, e.g. "Forecast · Mon 6 PM" (never a fake "updated X ago"). */
+export function smokeFreshness(currentFrameIso: string | null): string {
+  return currentFrameIso ? `Forecast · ${frameTimeLabel(currentFrameIso)}` : 'Forecast';
+}
+
+/** The standing honesty line — this is a window onto real data, NOT an emergency tool. */
+export const NOT_FOR_EMERGENCY = 'A window onto real data — not an emergency tool. Always follow official sources and local authorities.';
+/** Where to go for the authoritative Saskatchewan picture (SPSA's own live feed isn't browser-fetchable). */
+export const SK_OFFICIAL = { label: 'Saskatchewan (SPSA) active fire map', url: 'https://gisappl.saskatchewan.ca/Html5Ext/?viewer=wfmpublic' };

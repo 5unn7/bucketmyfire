@@ -1,17 +1,24 @@
 /**
- * Live wildfire data client — fetches the live CWFIS (Natural Resources Canada) satellite hotspot feed
- * (`hotspots_last24hrs`, continent-wide, last 24h) and hands the UI a normalized feed. Pure `fetch`, NO
- * key, NO backend: the CWFIS GeoServer WFS is public, serves GeoJSON, and returns
- * `Access-Control-Allow-Origin: *` (verified), so the browser reads it directly. The WHOLE feed is
- * fetched (no geographic filter) — every detection across Canada + the US is plotted on the map.
+ * Live wildfire data client — the fetch layer for the "honest window" tracker. Every source is fetched
+ * with plain `fetch`, NO key, NO backend, and returns a feed carrying a per-source `meta` (status +
+ * `fromCache` + the SOURCE's publish time) so the UI can be honest about what's live, what's cached, and
+ * what's unavailable — NEVER a silent blank. All endpoints are verified keyless + CORS-`*` from the
+ * browser (see the recon notes); the one feed that ISN'T browser-fetchable (the CIFFC GeoServer WFS) was
+ * the cause of "active fire shows nothing" and is replaced here by the CORS-safe CIFFC dashboard API.
  *
- * Best-effort like the leaderboard client: any failure (offline, timeout, CORS, malformed) resolves to a
- * quiet cached/offline feed — it NEVER throws into the home screen. A localStorage cache (30-min TTL,
- * stale-while-revalidate) keeps the home banner instant and stops reloads hammering the service. The
- * `VITE_LIVEFIRE_DISABLE=1` env flag is a single incident kill-switch (data is public, so it ships ON).
+ * Best-effort like the leaderboard client: any failure (offline, timeout, CORS, malformed) degrades to
+ * the most recent cache, else an `unavailable` feed — it NEVER throws into the home screen. A localStorage
+ * cache (30-min TTL, stale-while-revalidate) keeps the home banner instant. `VITE_LIVEFIRE_DISABLE=1` is
+ * the incident kill-switch; when set, every feed reports `status:'disabled'` (intentionally off, not down).
  */
-import type { LiveFireFeed, CountryFilter, ReportedFeed, NationalSummary, BurnPolygon, FeedSource } from './types';
-import { normalizeFeed, normalizeReported, normalizeSummary, parseBurnPolygons } from './normalize';
+import type {
+  LiveFireFeed, CountryFilter, ReportedFeed, ReportedFire, FireStage, Country, FireHistoryPoint,
+  NationalSummary, BurnFeed, AlertFeed, BanFeed, FeedMeta, SourceStatus,
+} from './types';
+import { normalizeFeed, normalizeReported, normalizeSummary, normalizeBurn, normalizeAlerts, normalizeBans, parseFwiIssueDate, countryOf, isActiveStage } from './normalize';
+// The ingestion backend lives in the SAME Supabase project as the leaderboard; reuse its rest accessors
+// (the cloud-save module reuses them the same way) rather than re-reading the env vars here.
+import { isConfigured as supabaseConfigured, restBase, restHeaders } from '../leaderboard/client';
 
 // Remembered country filter for the map + home banner. Defaults to Canada (the game's home turf).
 const COUNTRY_KEY = 'bmf.livefire.country.v1';
@@ -32,42 +39,81 @@ export function setCountryPref(c: CountryFilter): void {
   }
 }
 
-// CWFIS WFS: last-24h hotspots, GeoJSON, WGS84, the FULL feed (no CQL filter). One swappable source const.
+// ── Source endpoints (each a single swappable const; all keyless + CORS-`*` from the browser) ─────────
+
+// CWFIS WFS: last-24h satellite hotspots, GeoJSON, WGS84, the FULL continent-wide feed (no CQL filter).
 export const LIVEFIRE_SOURCE =
   'https://cwfis.cfs.nrcan.gc.ca/geoserver/public/ows?service=WFS&version=2.0.0&request=GetFeature' +
   '&typeNames=public:hotspots_last24hrs&outputFormat=application/json&srsName=EPSG:4326';
 
-// CIFFC dashboard summary (the "Current fires / Year-to-date" panel). Keyless JSON, CORS `*`, ~187 B.
+// CIFFC dashboard summary (the "Current fires / Year-to-date" panel). Keyless JSON, CORS `*`, ~190 B.
 export const SUMMARY_SOURCE = 'https://api.ciffc.net/v1/dashboard/summary';
 
-// CIFFC active-fire roll (the AUTHORITATIVE "Active Wildland Fires" map). Filtered server-side to the
-// plottable stages (Out of Control / Being Held / Under Control) so we pull ~100 features, not the
-// whole year-to-date list. Carries stage of control + hectares + agency per fire. Keyless, CORS `*`.
-export const REPORTED_FIRES_SOURCE =
-  'https://geoserver.ciffc.net/geoserver/ows?service=WFS&version=2.0.0&request=GetFeature' +
-  '&typeNames=ciffc:ytd_fires&outputFormat=application/json&srsName=EPSG:4326&count=2000' +
-  "&CQL_FILTER=field_stage_of_control_status%20IN%20('OC','BH','UC')";
+// CIFFC active-fire roll — the AUTHORITATIVE "Active Wildland Fires" list. The GeoServer WFS
+// (geoserver.ciffc.net ciffc:ytd_fires) carries the SAME data but is CORS-BLOCKED in the browser (no
+// Access-Control-Allow-Origin even with an Origin header) — that was the "active fire shows nothing" bug.
+// This dashboard API on api.ciffc.net IS CORS-`*` (same host as the summary above). It returns the FULL
+// year-to-date list (~1700 features incl. OUT) with NO server-side stage filter, so we fetch it all and
+// `normalizeReported` filters to the active stages (OC/BH/UC) client-side. NOTE: its GeoJSON geometry is
+// corrupt (duplicates latitude) — `parseReportedFires` reads the field_latitude/field_longitude props.
+export const REPORTED_FIRES_SOURCE = 'https://api.ciffc.net/v1/dashboard/fires';
 
 // CWFIS satellite-mapped burn perimeters (the TRUE footprint shapes). GeoJSON polygons, WGS84.
 export const BURN_PERIM_SOURCE =
   'https://cwfis.cfs.nrcan.gc.ca/geoserver/public/ows?service=WFS&version=2.0.0&request=GetFeature' +
   '&typeNames=public:m3_polygons_current&outputFormat=application/json&srsName=EPSG:4326&count=1500';
 
+// SaskAlert public alert feed (Atom-as-JSON). Keyless, CORS `*`. The WHOLE provincial feed (all hazard
+// types); the client filters to wildfire/evacuation-relevant alerts. We surface the issuer's own words
+// and link to each alert's html_link for the authoritative detail — we never re-classify an alert.
+export const ALERTS_SOURCE = 'https://emergencyalert.saskatchewan.ca/sapublic/feed.json';
+
+// SK SPSA provincial fire-ban / open-fire-restriction polygons (ArcGIS GeoJSON, layer 3 = "FireBan
+// Provincial"). Keyless, CORS (echoed-origin). An EMPTY result = "no provincial ban in effect" (a real
+// state, not a failure). credentials are omitted (the server sets a Cloudflare cookie we don't need).
+export const BANS_SOURCE =
+  'https://gis.saskatchewan.ca/egis/rest/services/Wildfire/Public_Fire_Ban/MapServer/3/query' +
+  '?where=1%3D1&outFields=*&returnGeometry=true&outSR=4326&f=geojson';
+
 // CWFIS Fire Weather Index raster (a Leaflet WMS tile overlay — the orange-shaded fire-danger field).
 export const FWI_WMS_URL = 'https://cwfis.cfs.nrcan.gc.ca/geoserver/public/wms';
 export const FWI_WMS_LAYER = 'public:fwi_current';
+// The FWI raster has no per-feature timestamp; its issue date lives in the WMS layer <Title> ("… - YYYY-MM-DD").
+const FWI_CAPS_SOURCE = `${FWI_WMS_URL}?service=WMS&version=1.3.0&request=GetCapabilities`;
+
+// ECCC GeoMet WMS — the surface-smoke FORECAST raster (FireWork / RAQDPS-FW PM2.5). Keyless, CORS-`*`, and
+// it exposes an hourly TIME dimension, so the layer ANIMATES: pass &TIME=<iso hour> per frame. It is a
+// FORECAST (a model prediction), not an observation — the UI labels it so. firesmoke.ca itself is
+// CORS-blocked, so this Canadian-government WMS is the honest, browser-fetchable equivalent.
+export const GEOMET_WMS_URL = 'https://geo.weather.gc.ca/geomet';
+export const SMOKE_WMS_LAYER = 'RAQDPS.Sfc_PM2.5-WildfireSmokePlume';
+export const SMOKE_WMS_STYLE = 'PM2.5_0to100ugm3_Dis'; // discrete 0–100 µg/m³ banded ramp (legible default)
 
 /** Source attribution shown in the tracker UI. */
-export const LIVEFIRE_CREDIT = 'Sources: CWFIS (NRCan) · CIFFC';
+export const LIVEFIRE_CREDIT = 'Sources: CWFIS (NRCan) · CIFFC · ECCC';
 
-const CACHE_KEY = 'bmf.livefire.v2'; // v2: full-feed shape (v1 was the SK-only list)
+// ── Cache + timing ────────────────────────────────────────────────────────────────────────────────
+const HOTSPOT_CACHE = 'bmf.livefire.v3'; // v3: raw-json shape + meta model (v1 SK list, v2 geojson key)
+const SUMMARY_CACHE = 'bmf.livefire.summary.v1';
+const REPORTED_CACHE = 'bmf.livefire.reported.v2'; // v2 caches the NORMALIZED feed (the raw roll is ~965 KB)
+const PERIM_CACHE = 'bmf.livefire.perim.v1';
+const FWI_META_CACHE = 'bmf.livefire.fwi.v1';
+const ALERTS_CACHE = 'bmf.livefire.alerts.v1';
+const BANS_CACHE = 'bmf.livefire.bans.v1';
 const TTL_MS = 30 * 60 * 1000; // 30 min — beyond this the cache is "stale" and we refetch
-const TIMEOUT_MS = 12000; // the full feed is ~750 KB, give a flaky mobile link room
+const FWI_TTL_MS = 6 * 60 * 60 * 1000; // the FWI issue date changes daily — re-derive at most every 6h
+const TIMEOUT_MS = 12000; // the hotspot feed is ~750 KB, give a flaky mobile link room
+const REPORTED_TIMEOUT_MS = 15000; // the CIFFC roll is ~965 KB
 
 /** Ships ON unless explicitly disabled (the data is public + the whole client degrades to offline). */
 export function isLiveFireEnabled(): boolean {
   return import.meta.env.VITE_LIVEFIRE_DISABLE !== '1';
 }
+
+/** The kill-switch meta: a feed that's intentionally OFF (never confused with "down" in the ledger). */
+const DISABLED_META: FeedMeta = { status: 'disabled', fromCache: false, publishedAt: 0, fetchedAt: 0 };
+/** Honest empty feeds for the disabled/unavailable states (publishedAt 0 = unknown). */
+const offMeta = (status: SourceStatus): FeedMeta => ({ status, fromCache: false, publishedAt: 0, fetchedAt: 0 });
 
 /** Abort a hung request so the home banner never waits forever. (Mirrors leaderboard/client.withTimeout.) */
 function withTimeout(ms: number): { signal: AbortSignal; done: () => void } {
@@ -76,70 +122,19 @@ function withTimeout(ms: number): { signal: AbortSignal; done: () => void } {
   return { signal: ctrl.signal, done: () => clearTimeout(t) };
 }
 
-interface CacheEntry {
-  fetchedAt: number;
-  geojson: unknown;
-}
-
-function readCache(): CacheEntry | null {
-  try {
-    const raw = localStorage.getItem(CACHE_KEY);
-    if (!raw) return null;
-    const e = JSON.parse(raw) as CacheEntry;
-    if (typeof e?.fetchedAt !== 'number' || !e.geojson) return null;
-    return e;
-  } catch {
-    return null;
-  }
-}
-
-function writeCache(e: CacheEntry): void {
-  try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(e));
-  } catch {
-    /* storage blocked / quota (private mode, big feed) — fine, we just refetch next time */
-  }
-}
-
-/** Render a cache entry (or an empty offline feed when there's nothing cached). */
-function feedFromCache(e: CacheEntry | null): LiveFireFeed {
-  if (!e) return { hotspots: [], fireCount: 0, totalDetections: 0, fetchedAt: 0, source: 'offline' };
-  return normalizeFeed(e.geojson, { fetchedAt: e.fetchedAt, source: 'cache' });
-}
-
-/**
- * The live continent-wide wildfire feed. Returns the FRESH live feed when reachable, else the most
- * recent cache, else an empty offline feed — never throws. With `force`, bypasses the TTL (the map's
- * Refresh).
- */
-export async function fetchActiveFires(opts: { force?: boolean } = {}): Promise<LiveFireFeed> {
-  if (!isLiveFireEnabled()) return { hotspots: [], fireCount: 0, totalDetections: 0, fetchedAt: 0, source: 'offline' };
-
-  const cached = readCache();
-  const now = Date.now();
-  if (!opts.force && cached && now - cached.fetchedAt < TTL_MS) return feedFromCache(cached);
-
-  const t = withTimeout(TIMEOUT_MS);
-  try {
-    const res = await fetch(LIVEFIRE_SOURCE, { signal: t.signal, headers: { Accept: 'application/json' } });
-    if (!res.ok) return feedFromCache(cached);
-    const geojson = (await res.json()) as unknown;
-    const fetchedAt = Date.now();
-    writeCache({ fetchedAt, geojson });
-    return normalizeFeed(geojson, { fetchedAt, source: 'live' });
-  } catch {
-    return feedFromCache(cached);
-  } finally {
-    t.done();
-  }
-}
-
-// ── Generic cached JSON fetch (shared by the reported-fire / summary / perimeter feeds) ──────────
-// Same best-effort contract as fetchActiveFires: fresh-when-reachable, else the most recent cache,
-// else a null/offline result — it NEVER throws into the UI. Each feed owns its own localStorage key.
+// ── Generic cached RAW-json fetch (hotspots / summary / perimeters) ───────────────────────────────
+// Outcome model (the honesty spine): status 'live' = we have usable data (fresh OR cached); 'unavailable'
+// = failed AND nothing cached. `fromCache` is orthogonal (a live feed can be served from cache, incl. a
+// stale cache after a failed refresh — publishedAt then reveals its true age). NEVER throws.
 interface RawEntry {
   fetchedAt: number;
   json: unknown;
+}
+interface RawOutcome {
+  json: unknown | null;
+  fetchedAt: number;
+  status: SourceStatus;
+  fromCache: boolean;
 }
 function readRaw(key: string): RawEntry | null {
   try {
@@ -159,62 +154,269 @@ function writeRaw(key: string, e: RawEntry): void {
     /* storage blocked / quota — fine, we just refetch next time */
   }
 }
-
-/** Fetch + cache a JSON URL, degrading to cache then offline. Returns the raw parsed JSON plus the
- *  freshness metadata the normalizers need. `null` json ⇒ nothing live and nothing cached. */
-async function fetchJsonCached(
-  url: string,
-  key: string,
-  ttlMs: number,
-  timeoutMs: number,
-  force: boolean,
-): Promise<{ json: unknown | null; fetchedAt: number; source: FeedSource }> {
+async function loadCachedRaw(url: string, key: string, ttlMs: number, timeoutMs: number, force: boolean): Promise<RawOutcome> {
   const cached = readRaw(key);
-  const fromCache = (): { json: unknown | null; fetchedAt: number; source: FeedSource } =>
-    cached ? { json: cached.json, fetchedAt: cached.fetchedAt, source: 'cache' } : { json: null, fetchedAt: 0, source: 'offline' };
-  if (!force && cached && Date.now() - cached.fetchedAt < ttlMs) return fromCache();
+  const fromCacheOutcome = (): RawOutcome =>
+    cached
+      ? { json: cached.json, fetchedAt: cached.fetchedAt, status: 'live', fromCache: true }
+      : { json: null, fetchedAt: 0, status: 'unavailable', fromCache: false };
+  if (!force && cached && Date.now() - cached.fetchedAt < ttlMs) return fromCacheOutcome();
 
   const t = withTimeout(timeoutMs);
   try {
     const res = await fetch(url, { signal: t.signal, headers: { Accept: 'application/json' } });
-    if (!res.ok) return fromCache();
+    if (!res.ok) return fromCacheOutcome();
     const json = (await res.json()) as unknown;
     const fetchedAt = Date.now();
     writeRaw(key, { fetchedAt, json });
-    return { json, fetchedAt, source: 'live' };
+    return { json, fetchedAt, status: 'live', fromCache: false };
   } catch {
-    return fromCache();
+    return fromCacheOutcome(); // offline / CORS / timeout → serve the most recent cache (stale-but-honest)
   } finally {
     t.done();
   }
 }
 
-const SUMMARY_CACHE = 'bmf.livefire.summary.v1';
-const REPORTED_CACHE = 'bmf.livefire.reported.v1';
-const PERIM_CACHE = 'bmf.livefire.perim.v1';
+/**
+ * The live continent-wide satellite hotspot feed. Fresh-when-reachable, else cache, else `unavailable` —
+ * never throws. With `force`, bypasses the TTL (the map's Refresh).
+ */
+export async function fetchActiveFires(opts: { force?: boolean } = {}): Promise<LiveFireFeed> {
+  const empty = (meta: FeedMeta): LiveFireFeed => ({ hotspots: [], fireCount: 0, totalDetections: 0, meta });
+  if (!isLiveFireEnabled()) return empty(DISABLED_META);
+  const r = await loadCachedRaw(LIVEFIRE_SOURCE, HOTSPOT_CACHE, TTL_MS, TIMEOUT_MS, !!opts.force);
+  if (r.json == null) return empty(offMeta('unavailable'));
+  return normalizeFeed(r.json, { fetchedAt: r.fetchedAt, status: r.status, fromCache: r.fromCache });
+}
 
 /** The national summary panel (CIFFC) — Reported today / Active / YTD totals / Area burned / prep level. */
 export async function fetchSummary(opts: { force?: boolean } = {}): Promise<NationalSummary> {
-  const off: NationalSummary = { firesToday: 0, activeFires: 0, ytdTotal: 0, ytdOut: 0, areaBurnedHa: 0, prepLevel: 0, fetchedAt: 0, source: 'offline' };
-  if (!isLiveFireEnabled()) return off;
-  const { json, fetchedAt, source } = await fetchJsonCached(SUMMARY_SOURCE, SUMMARY_CACHE, TTL_MS, 8000, !!opts.force);
-  if (json == null) return off;
-  return normalizeSummary(json, { fetchedAt, source });
+  const empty = (meta: FeedMeta): NationalSummary => ({ firesToday: 0, activeFires: 0, ytdTotal: 0, ytdOut: 0, areaBurnedHa: 0, prepLevel: 0, meta });
+  if (!isLiveFireEnabled()) return empty(DISABLED_META);
+  const r = await loadCachedRaw(SUMMARY_SOURCE, SUMMARY_CACHE, TTL_MS, 8000, !!opts.force);
+  if (r.json == null) return empty(offMeta('unavailable'));
+  return normalizeSummary(r.json, { fetchedAt: r.fetchedAt, status: r.status, fromCache: r.fromCache });
 }
 
-/** The authoritative reported active-fire roll (CIFFC) — stage of control + hectares per fire. */
+// ── Reported active fires (CIFFC dashboard API) — cached NORMALIZED (the raw roll is ~965 KB) ─────────
+interface ReportedCacheEntry {
+  fetchedAt: number;
+  feed: ReportedFeed;
+}
+function readReportedCache(): ReportedCacheEntry | null {
+  try {
+    const raw = localStorage.getItem(REPORTED_CACHE);
+    if (!raw) return null;
+    const e = JSON.parse(raw) as ReportedCacheEntry;
+    if (typeof e?.fetchedAt !== 'number' || !e.feed || !Array.isArray(e.feed.fires) || !Array.isArray(e.feed.out) || !e.feed.meta) return null;
+    return e;
+  } catch {
+    return null;
+  }
+}
+/** Re-stamp a cached feed as served-from-cache (status stays live; publishedAt is the data's own time). */
+function reportedFromCache(e: ReportedCacheEntry): ReportedFeed {
+  return { ...e.feed, meta: { ...e.feed.meta, fromCache: true, status: 'live' } };
+}
+
+/** The authoritative reported active-fire roll (CIFFC) — stage of control + hectares per fire. Fetches the
+ *  full YTD list, filters to active stages, and caches the (small) normalized feed — never the 965 KB raw. */
 export async function fetchReportedFires(opts: { force?: boolean } = {}): Promise<ReportedFeed> {
-  const off: ReportedFeed = { fires: [], byStage: { OC: 0, BH: 0, UC: 0, OUT: 0, UNK: 0 }, fetchedAt: 0, source: 'offline' };
-  if (!isLiveFireEnabled()) return off;
-  const { json, fetchedAt, source } = await fetchJsonCached(REPORTED_FIRES_SOURCE, REPORTED_CACHE, TTL_MS, TIMEOUT_MS, !!opts.force);
-  if (json == null) return off;
-  return normalizeReported(json, { fetchedAt, source });
+  const empty = (meta: FeedMeta): ReportedFeed => ({ fires: [], out: [], byStage: { OC: 0, BH: 0, UC: 0, OUT: 0, UNK: 0 }, meta });
+  if (!isLiveFireEnabled()) return empty(DISABLED_META);
+
+  // Backend-preferred: read our own ingestion store (one server-side fetch serves everyone, it's the
+  // source of per-fire HISTORY, and it survives a CIFFC schema change). If it's unconfigured, down, or
+  // empty (e.g. before the first ingest), fall through to the direct CIFFC roll below — never blank.
+  if (supabaseConfigured()) {
+    const backend = await fetchReportedFromBackend();
+    if (backend && (backend.fires.length || backend.out.length)) return backend;
+  }
+
+  const cached = readReportedCache();
+  if (!opts.force && cached && Date.now() - cached.fetchedAt < TTL_MS) return reportedFromCache(cached);
+
+  const t = withTimeout(REPORTED_TIMEOUT_MS);
+  try {
+    const res = await fetch(REPORTED_FIRES_SOURCE, { signal: t.signal, headers: { Accept: 'application/json' } });
+    if (!res.ok) return cached ? reportedFromCache(cached) : empty(offMeta('unavailable'));
+    const json = (await res.json()) as unknown;
+    const fetchedAt = Date.now();
+    const feed = normalizeReported(json, { fetchedAt, status: 'live', fromCache: false });
+    try {
+      localStorage.setItem(REPORTED_CACHE, JSON.stringify({ fetchedAt, feed } satisfies ReportedCacheEntry));
+    } catch {
+      /* quota — fine, we refetch next time */
+    }
+    return feed;
+  } catch {
+    return cached ? reportedFromCache(cached) : empty(offMeta('unavailable')); // offline/CORS/timeout → stale cache or honest unavailable
+  } finally {
+    t.done();
+  }
 }
 
-/** Satellite-mapped burn perimeters (CWFIS M3) — the true footprint shapes. Best-effort: [] when down. */
-export async function fetchBurnPerimeters(opts: { force?: boolean } = {}): Promise<BurnPolygon[]> {
-  if (!isLiveFireEnabled()) return [];
-  const { json } = await fetchJsonCached(BURN_PERIM_SOURCE, PERIM_CACHE, TTL_MS, 15000, !!opts.force);
-  if (json == null) return [];
-  return parseBurnPolygons(json);
+// ── Ingestion-backend reads (Phases 1–3) ─────────────────────────────────────────────────────────
+// Our own Supabase store, populated server-side by the ingest-fires Edge Function on a pg_cron
+// schedule (supabase/functions/ingest-fires + the scheduling block in supabase/schema.sql). Same
+// plain-fetch / PostgREST / anon-key pattern as the leaderboard. All best-effort: a failure here
+// returns null/[] and the reported-fire reader falls back to the direct CIFFC roll.
+
+interface FireRow {
+  fire_id: string;
+  lat: number;
+  lon: number;
+  agency: string | null;
+  country: string | null;
+  stage: string;
+  size_ha: number | null;
+  props: Record<string, unknown> | null;
+  reported_at: string | null;
+}
+
+/** Map a `public.fires` row to the SAME ReportedFire shape `normalizeReported` produces, so the map +
+ *  detail panel render identically whichever path (backend or direct CIFFC) served the data. */
+function rowToReported(r: FireRow): ReportedFire {
+  const agency = r.agency ?? '';
+  const at = r.reported_at ? Date.parse(r.reported_at) || 0 : 0;
+  return {
+    lat: r.lat,
+    lon: r.lon,
+    sizeHa: typeof r.size_ha === 'number' ? r.size_ha : -1,
+    stage: r.stage as FireStage,
+    agency,
+    country: (r.country as Country) || countryOf(agency),
+    at: Number.isFinite(at) ? at : 0,
+    fireId: r.fire_id ?? '',
+    props: r.props ?? {},
+  };
+}
+
+/** Read the reported-fire roll from the ingestion backend (PostgREST). Returns a ReportedFeed identical
+ *  in shape to `normalizeReported`, or null on any failure (→ the caller falls back to direct CIFFC). */
+async function fetchReportedFromBackend(): Promise<ReportedFeed | null> {
+  const q =
+    'select=fire_id,lat,lon,agency,country,stage,size_ha,props,reported_at' +
+    '&stage=in.(OC,BH,UC,OUT)&order=size_ha.desc.nullslast&limit=5000';
+  const t = withTimeout(8000);
+  try {
+    const res = await fetch(`${restBase()}/rest/v1/fires?${q}`, { headers: restHeaders(), signal: t.signal });
+    if (!res.ok) return null;
+    const rows = (await res.json()) as FireRow[];
+    if (!Array.isArray(rows)) return null;
+    const all = rows.map(rowToReported);
+    const byStage: Record<FireStage, number> = { OC: 0, BH: 0, UC: 0, OUT: 0, UNK: 0 };
+    let publishedAt = 0;
+    for (const f of all) {
+      byStage[f.stage]++;
+      if (f.at > publishedAt) publishedAt = f.at;
+    }
+    return {
+      fires: all.filter((f) => isActiveStage(f.stage)),
+      out: all.filter((f) => f.stage === 'OUT'),
+      byStage,
+      meta: { status: 'live', fromCache: false, publishedAt, fetchedAt: Date.now() },
+    };
+  } catch {
+    return null;
+  } finally {
+    t.done();
+  }
+}
+
+/** A fire's tracked HISTORY (size + stage over time) from the ingestion backend. The browser-only feed
+ *  can't produce this — it only ever sees "now". Returns [] when the backend is unconfigured / empty /
+ *  down, so the detail panel simply omits the history chart (never an error). */
+export async function fetchFireHistory(fireId: string): Promise<FireHistoryPoint[]> {
+  if (!isLiveFireEnabled() || !supabaseConfigured() || !fireId) return [];
+  const q =
+    `fire_id=eq.${encodeURIComponent(fireId)}` +
+    '&select=stage,size_ha,reported_at,observed_at&order=observed_at.asc&limit=500';
+  const t = withTimeout(8000);
+  try {
+    const res = await fetch(`${restBase()}/rest/v1/fire_snapshots?${q}`, { headers: restHeaders(), signal: t.signal });
+    if (!res.ok) return [];
+    const rows = (await res.json()) as { stage: string; size_ha: number | null; reported_at: string | null; observed_at: string }[];
+    if (!Array.isArray(rows)) return [];
+    return rows.map((r) => ({
+      stage: r.stage as FireStage,
+      sizeHa: typeof r.size_ha === 'number' ? r.size_ha : -1,
+      reportedAt: r.reported_at ? Date.parse(r.reported_at) || 0 : 0,
+      observedAt: Date.parse(r.observed_at) || 0,
+    }));
+  } catch {
+    return [];
+  } finally {
+    t.done();
+  }
+}
+
+/** Satellite-mapped burn perimeters (CWFIS M3) — the true footprint shapes + freshness meta. */
+export async function fetchBurnPerimeters(opts: { force?: boolean } = {}): Promise<BurnFeed> {
+  if (!isLiveFireEnabled()) return { polys: [], meta: DISABLED_META };
+  const r = await loadCachedRaw(BURN_PERIM_SOURCE, PERIM_CACHE, TTL_MS, 15000, !!opts.force);
+  if (r.json == null) return { polys: [], meta: offMeta('unavailable') };
+  return normalizeBurn(r.json, { fetchedAt: r.fetchedAt, status: r.status, fromCache: r.fromCache });
+}
+
+/** Active public alerts (SaskAlert), filtered to wildfire/evacuation-relevant. Best-effort + honest meta;
+ *  an empty result with status 'live' means "no wildfire alerts active", NOT that the feed is down. */
+export async function fetchAlerts(opts: { force?: boolean } = {}): Promise<AlertFeed> {
+  if (!isLiveFireEnabled()) return { alerts: [], meta: DISABLED_META };
+  const r = await loadCachedRaw(ALERTS_SOURCE, ALERTS_CACHE, TTL_MS, TIMEOUT_MS, !!opts.force);
+  if (r.json == null) return { alerts: [], meta: offMeta('unavailable') };
+  return normalizeAlerts(r.json, { fetchedAt: r.fetchedAt, status: r.status, fromCache: r.fromCache });
+}
+
+/** Provincial fire bans / open-fire restrictions (SK SPSA). An EMPTY result with status 'live' means
+ *  "no provincial ban in effect" — a real state, never the same as the feed being unavailable. */
+export async function fetchBans(opts: { force?: boolean } = {}): Promise<BanFeed> {
+  if (!isLiveFireEnabled()) return { bans: [], meta: DISABLED_META };
+  const r = await loadCachedRaw(BANS_SOURCE, BANS_CACHE, TTL_MS, TIMEOUT_MS, !!opts.force);
+  if (r.json == null) return { bans: [], meta: offMeta('unavailable') };
+  return normalizeBans(r.json, { fetchedAt: r.fetchedAt, status: r.status, fromCache: r.fromCache });
+}
+
+// ── FWI raster issue date (no per-feature JSON — parse the dated WMS <Title>) ──────────────────────
+interface FwiMetaCache {
+  fetchedAt: number;
+  publishedAt: number;
+}
+/** Freshness meta for the Fire-Weather-Index raster layer (for the source ledger). Caches just the parsed
+ *  issue date (the GetCapabilities doc is ~295 KB — never cached), re-derived at most every 6h. */
+export async function fetchFwiMeta(opts: { force?: boolean } = {}): Promise<FeedMeta> {
+  if (!isLiveFireEnabled()) return DISABLED_META;
+  let cached: FwiMetaCache | null = null;
+  try {
+    const raw = localStorage.getItem(FWI_META_CACHE);
+    if (raw) {
+      const e = JSON.parse(raw) as FwiMetaCache;
+      if (typeof e?.fetchedAt === 'number' && typeof e?.publishedAt === 'number') cached = e;
+    }
+  } catch {
+    /* ignore */
+  }
+  if (!opts.force && cached && Date.now() - cached.fetchedAt < FWI_TTL_MS) {
+    return { status: 'live', fromCache: true, publishedAt: cached.publishedAt, fetchedAt: cached.fetchedAt };
+  }
+  const t = withTimeout(15000);
+  try {
+    const res = await fetch(FWI_CAPS_SOURCE, { signal: t.signal });
+    if (!res.ok) throw new Error('caps');
+    const xml = await res.text();
+    const publishedAt = parseFwiIssueDate(xml);
+    const fetchedAt = Date.now();
+    try {
+      localStorage.setItem(FWI_META_CACHE, JSON.stringify({ fetchedAt, publishedAt } satisfies FwiMetaCache));
+    } catch {
+      /* quota — fine */
+    }
+    return { status: 'live', fromCache: false, publishedAt, fetchedAt };
+  } catch {
+    return cached
+      ? { status: 'live', fromCache: true, publishedAt: cached.publishedAt, fetchedAt: cached.fetchedAt }
+      : offMeta('unavailable');
+  } finally {
+    t.done();
+  }
 }

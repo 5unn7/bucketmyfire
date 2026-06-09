@@ -1,0 +1,20 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "OBJECTID": 1, "Type": "Ban", "Start_Date": "20260527", "Comment": "Full Ban", "Contact_Ti": "Administrator", "Contact_Nu": "306-000-0000" },
+      "geometry": { "type": "Polygon", "coordinates": [[[-106.0, 55.0], [-105.0, 55.0], [-105.0, 56.0], [-106.0, 56.0], [-106.0, 55.0]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "OBJECTID": 2, "Type": "Restriction", "Start_Date": "20260601", "Comment": "Partial restriction" },
+      "geometry": { "type": "MultiPolygon", "coordinates": [[[[-104.0, 54.0], [-103.0, 54.0], [-103.0, 55.0], [-104.0, 54.0]]], [[[-102.0, 53.0], [-101.0, 53.0], [-101.0, 54.0], [-102.0, 53.0]]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "OBJECTID": 3, "Type": "Advisory", "Start_Date": "20260520" },
+      "geometry": { "type": "Polygon", "coordinates": [[[-100.0, 52.0], [-99.0, 52.0]]] }
+    }
+  ]
+}
