@@ -5,8 +5,8 @@
  * property (a headless Medusa + Next.js site on its own host), NOT part of this game bundle. The
  * three in-game funnel entry points — the title-screen **Shop** button, the home-rail **Shop** tab
  * (`navigateRail('shop')`), and the win-screen **Squadron Store** hook — all call `openStore()`,
- * which navigates to it in the SAME tab (a full context switch to the store). The legacy `/shop.html`
- * waitlist page now just redirects here for any external/bookmarked traffic.
+ * which navigates to it in the SAME tab (a full context switch to the store). The old in-bundle
+ * `/shop.html` waitlist page has been retired; the front door (index.html) links straight out to the store.
  *
  * One constant so the URL (and the navigation behaviour) live in exactly one place.
  */
