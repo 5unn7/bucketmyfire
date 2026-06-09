@@ -337,3 +337,159 @@ $$;
 -- Only anon may call the narrow RPC; the table itself stays sealed.
 revoke all on function public.submit_lead(text, text, text, text) from public;
 grant execute on function public.submit_lead(text, text, text, text) to anon;
+
+-- ===========================================================================
+-- Live wildfire ingestion store — the "honest window" BACKEND (Phases 1–3).
+-- ===========================================================================
+-- Until now the live-fire map fetched 5 government feeds straight from every visitor's browser
+-- (src/three/livefire/client.ts) — a zero-backend MVP that can only ever show "right now" and
+-- breaks site-wide the day a source changes schema. This store inverts that: the `ingest-fires`
+-- Edge Function (supabase/functions/ingest-fires) pulls the AUTHORITATIVE CIFFC reported-fire roll +
+-- national summary SERVER-SIDE on a pg_cron schedule and writes here with the service role. The game
+-- client then reads THIS (fast, one schema we control), and — the real unlock — we keep an
+-- append-only HISTORY per fire, so the UI can show a fire's size + stage OVER TIME (impossible from
+-- the client). The ephemeral layers (raw hotspots, FWI/smoke rasters) stay client-direct: they are
+-- "now"-only and snapshotting them buys nothing.
+--
+-- Access mirrors `scores`: anon may SELECT all three (public data); only the service role writes.
+-- RLS on, one read policy each, NO write policies (the Edge Function bypasses RLS as service role).
+
+-- ── Current fire state — one row per fire, upserted each ingest ─────────────────────────────────
+create table if not exists public.fires (
+  fire_id       text        primary key,             -- field_system_fire_id (else agency fire id)
+  lat           double precision not null,
+  lon           double precision not null,
+  agency        text,                                 -- province/territory code (lowercase, e.g. 'sk')
+  country       text,                                 -- 'CA' | 'US' | 'MX' | 'OT' (server-side filter aid)
+  stage         text        not null,                 -- 'OC' | 'BH' | 'UC' | 'OUT' | 'UNK'
+  size_ha       double precision,                     -- field_fire_size (null/<0 = unknown)
+  props         jsonb,                                -- the full CIFFC record verbatim (drives the panel)
+  reported_at   timestamptz,                          -- field_situation_report_date (the SOURCE's time)
+  first_seen    timestamptz not null default now(),   -- when WE first saw this fire
+  last_updated  timestamptz not null default now(),   -- when WE last touched this row
+
+  constraint fires_lat_range  check (lat between -90 and 90),
+  constraint fires_lon_range  check (lon between -180 and 180),
+  constraint fires_stage_vals check (stage in ('OC','BH','UC','OUT','UNK'))
+);
+-- Fast "active fires, biggest first" reads (the default map layer + headline) and country filter.
+create index if not exists fires_stage_size_idx on public.fires (stage, size_ha desc);
+create index if not exists fires_country_idx     on public.fires (country);
+
+-- ── Append-only per-fire HISTORY — the thing the client architecture can't do ───────────────────
+-- One row per OBSERVED CHANGE (the ingest only appends when stage or size moved, or the fire is new),
+-- so a static fire doesn't pile up a row every cron tick.
+create table if not exists public.fire_snapshots (
+  id          bigint generated always as identity primary key,
+  fire_id     text        not null references public.fires(fire_id) on delete cascade,
+  stage       text        not null,
+  size_ha     double precision,
+  reported_at timestamptz,                            -- the source sitrep date for this observation
+  observed_at timestamptz not null default now(),     -- when our ingest recorded it
+
+  constraint fire_snapshots_stage_vals check (stage in ('OC','BH','UC','OUT','UNK'))
+);
+-- The sparkline query: this fire's points, in time order.
+create index if not exists fire_snapshots_fire_idx on public.fire_snapshots (fire_id, observed_at);
+
+-- ── Append-only national-summary snapshots (CIFFC dashboard) — the season trend ─────────────────
+create table if not exists public.national_summary (
+  id             bigint generated always as identity primary key,
+  fires_today    integer,
+  active_fires   integer,
+  ytd_total      integer,
+  area_burned_ha double precision,
+  prep_level     integer,
+  published_at   timestamptz,                         -- CIFFC sitrep date (the SOURCE's time)
+  observed_at    timestamptz not null default now()
+);
+create index if not exists national_summary_observed_idx on public.national_summary (observed_at desc);
+
+-- ── RLS: anon reads, service role writes ────────────────────────────────────────────────────────
+alter table public.fires            enable row level security;
+alter table public.fire_snapshots   enable row level security;
+alter table public.national_summary enable row level security;
+
+drop policy if exists "fires: anyone can read"            on public.fires;
+drop policy if exists "fire_snapshots: anyone can read"   on public.fire_snapshots;
+drop policy if exists "national_summary: anyone can read" on public.national_summary;
+
+create policy "fires: anyone can read"            on public.fires            for select using (true);
+create policy "fire_snapshots: anyone can read"   on public.fire_snapshots   for select using (true);
+create policy "national_summary: anyone can read" on public.national_summary for select using (true);
+-- No INSERT/UPDATE/DELETE policies → anon cannot write; the Edge Function (service role) bypasses RLS.
+
+grant select on public.fires            to anon;
+grant select on public.fire_snapshots   to anon;
+grant select on public.national_summary to anon;
+
+-- ---------------------------------------------------------------------------
+-- Scheduling — pg_cron pings the public `ingest-fires` Edge Function every 20 minutes.
+-- ---------------------------------------------------------------------------
+-- The function is deployed with verify_jwt = FALSE (like report-error) but gates writes behind a
+-- shared secret it reads from its own env (INGEST_SECRET), so a random public POST can't drive it.
+-- pg_net sends that secret as a header. Run this block ONCE, AFTER deploying the function and setting
+-- its INGEST_SECRET. Replace <PROJECT_REF> and <INGEST_SECRET> with your values (the cron job stores
+-- the secret in pg_cron's job table, readable only by the postgres role — acceptable for this use).
+--
+--   create extension if not exists pg_cron;
+--   create extension if not exists pg_net;
+--
+--   select cron.schedule(
+--     'ingest-fires-20min',
+--     '*/20 * * * *',
+--     $cron$
+--       select net.http_post(
+--         url     := 'https://<PROJECT_REF>.supabase.co/functions/v1/ingest-fires',
+--         headers := jsonb_build_object('Content-Type','application/json','x-ingest-secret','<INGEST_SECRET>'),
+--         body    := '{}'::jsonb,
+--         timeout_milliseconds := 30000
+--       );
+--     $cron$
+--   );
+--
+-- To inspect / unschedule:  select * from cron.job;   select cron.unschedule('ingest-fires-20min');
+
+-- ===========================================================================
+-- Provincial-agency wildfire feeds (the richer layer on top of national CIFFC).
+-- ===========================================================================
+-- CIFFC (public.fires, ingest-fires) is the national baseline. Each PROVINCE runs its own wildfire
+-- service with MORE detail than the national roll — cause, response type, geographic description, and a
+-- direct per-fire official incident URL. Those feeds all have DIFFERENT schemas, so we use ONE flexible
+-- table: normalize the shared SPINE into columns (for the map + queries) and keep EVERY source field
+-- verbatim in `props` jsonb. Keyed by (source, source_fire_id). Written by the ingest-provincial Edge
+-- Function (one adapter per source; BC Wildfire is the first — keyless ArcGIS Online PublicView).
+create table if not exists public.provincial_fires (
+  source          text        not null,              -- adapter id, e.g. 'bc-wildfire'
+  source_fire_id  text        not null,              -- the source's own fire identifier
+  agency          text,                              -- CIFFC-style province code ('BC','AB',…)
+  name            text,
+  lat             double precision not null,
+  lon             double precision not null,
+  size_ha         double precision,
+  status          text,                              -- the source's OWN status string (kept raw)
+  stage           text,                              -- best-effort CIFFC-style stage if derivable
+  discovered_at   timestamptz,
+  updated_at_src  timestamptz,
+  props           jsonb,                             -- the FULL source record verbatim
+  first_seen      timestamptz not null default now(),
+  last_updated    timestamptz not null default now(),
+  primary key (source, source_fire_id),
+  constraint provincial_fires_lat_range check (lat between -90 and 90),
+  constraint provincial_fires_lon_range check (lon between -180 and 180)
+);
+create index if not exists provincial_fires_source_idx on public.provincial_fires (source);
+create index if not exists provincial_fires_agency_idx on public.provincial_fires (agency);
+
+alter table public.provincial_fires enable row level security;
+drop policy if exists "provincial_fires: anyone can read" on public.provincial_fires;
+create policy "provincial_fires: anyone can read" on public.provincial_fires for select using (true);
+grant select on public.provincial_fires to anon;
+
+-- Schedule (run after deploying ingest-provincial; staggered :05/:25/:45 vs ingest-fires' :00/:20/:40):
+--   select cron.schedule('ingest-provincial-20min', '5,25,45 * * * *', $cron$
+--     select net.http_post(
+--       url := 'https://<PROJECT_REF>.supabase.co/functions/v1/ingest-provincial',
+--       headers := jsonb_build_object('Content-Type','application/json'),
+--       body := '{}'::jsonb, timeout_milliseconds := 60000);
+--   $cron$);
