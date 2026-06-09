@@ -5,7 +5,10 @@
  * error, page error, or console error (minus a benign allowlist), plus a couple of "did it actually
  * render" DOM checks:
  *
- *   1. Title screen (/)            — its own renderer + attract-scene shaders; PLAY control present.
+ *   1. Front door (/)              — the content-first hub (src/hub.ts); boots clean + renders interactive
+ *                                     content (the "Fight the fire" control + copy). Best-effort live-data
+ *                                     fetches are allowlisted (headless.mjs BENIGN_RE) so a third-party
+ *                                     outage can't false-fail the deploy. No shaders here (game is lazy).
  *   2. Mission (/?autostart&qa)    — boots the Living Province; wait for __game.debug + first frame, ignite a
  *                                     blaze, settle a few seconds so fire/smoke/ember/heat-haze/bloom/
  *                                     god-ray shaders compile + run; canvas + readable debug state.
@@ -55,11 +58,12 @@ async function waitForServer(url, ms) {
 
 const ROUTES = [
   {
-    // The home/landing screen is DOM (its exact layout — cover + PLAY pill vs. the menu carousel — is
-    // actively in flux), so this route asserts the durable thing: home BOOTS CLEAN and renders
-    // interactive content. A broken import / JS error (caught by classify) or a blank/crashed home
-    // (no controls, no text) fails it — without pinning a specific button label that keeps changing.
-    name: 'home screen',
+    // The bare '/' now renders the content-first FRONT DOOR (src/hub.ts), not the game. This route
+    // asserts the durable thing: it BOOTS CLEAN and renders interactive content (the "Fight the fire"
+    // button + hero copy). A broken import / JS error (caught by classify) or a blank/crashed page (no
+    // controls, no text) fails it — without pinning copy that changes. Live-data fetch failures are
+    // allowlisted in headless.mjs so the gate doesn't depend on CIFFC/CWFIS/CARTO being reachable.
+    name: 'front door',
     url: `${BASE}/`,
     ready: () => document.querySelectorAll('button,[role=button]').length > 0,
     settle: 1200,

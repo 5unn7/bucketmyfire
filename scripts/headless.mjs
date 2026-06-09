@@ -28,7 +28,11 @@ export async function launchBrowser() {
 // Shader/GL compile-link failures — ALWAYS fatal (this is the class verify:campaign can't see).
 const SHADER_RE = /THREE\.WebGLProgram|Shader Error|shader.*(compile|link)|GL_INVALID|WebGL:? INVALID|VALIDATE_STATUS|gl\.getProgramInfoLog|program info log/i;
 // Benign console noise in a local preview (no edge analytics, no Supabase env, favicons may 404).
-const BENIGN_RE = /favicon|og-image|apple-touch|manifest\.json|site\.webmanifest|cloudflareinsights|supabase|leaderboard|robots\.txt/i;
+// The front door ('/') fires best-effort live-wildfire fetches (CIFFC/CWFIS) + CARTO map tiles; their
+// failure is handled honestly in-page (degrades to "unavailable"), so a third-party outage or a
+// network-restricted CI runner must NOT false-fail this shader/boot gate — allowlist those hosts.
+const BENIGN_RE =
+  /favicon|og-image|apple-touch|manifest\.json|site\.webmanifest|cloudflareinsights|supabase|leaderboard|robots\.txt|ciffc|cwfis|cartocdn|basemaps/i;
 
 /** Split collected console/page messages into fatal shader errors vs. other (non-benign) errors. */
 export function classify(messages) {

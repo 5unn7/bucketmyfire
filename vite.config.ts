@@ -1,10 +1,9 @@
 import { defineConfig, type Plugin } from 'vite';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { SPLASH_CSS, SPINNER_MARKUP, SPLASH_ATTRS } from './src/three/ui/spinner';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
-// Project root (where index.html + shop.html live) — resolved for the multi-page build input.
+// Project root (where index.html lives) — resolved for the build input.
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 
 /**
@@ -66,7 +65,25 @@ const STRUCTURED_DATA = {
   '@context': 'https://schema.org',
   '@graph': [
     {
+      '@type': 'Organization',
+      '@id': 'https://bucketmyfire.com/#org',
+      name: 'Bucket My Fire',
+      url: 'https://bucketmyfire.com/',
+    },
+    {
+      '@type': 'WebSite',
+      '@id': 'https://bucketmyfire.com/#website',
+      name: 'Bucket My Fire',
+      url: 'https://bucketmyfire.com/',
+      description:
+        'A live window onto real wildfire across Saskatchewan and Canada — agency-reported fires, area burned, and fire weather from CIFFC and CWFIS — plus a helicopter you can fly into the fight.',
+      inLanguage: 'en',
+      publisher: { '@id': 'https://bucketmyfire.com/#org' },
+    },
+    {
       '@type': ['VideoGame', 'SoftwareApplication'],
+      '@id': 'https://bucketmyfire.com/#videogame',
+      isPartOf: { '@id': 'https://bucketmyfire.com/#website' },
       name: 'Bucket My Fire',
       alternateName: 'Bucket My Fire — Helicopter Wildfire Flight Sim',
       url: 'https://bucketmyfire.com/',
@@ -79,11 +96,14 @@ const STRUCTURED_DATA = {
       operatingSystem: 'Any modern web browser (iOS, Android, Windows, macOS)',
       playMode: 'SinglePlayer',
       inLanguage: 'en',
-      author: { '@type': 'Organization', name: 'Bucket My Fire' },
+      author: { '@id': 'https://bucketmyfire.com/#org' },
+      publisher: { '@id': 'https://bucketmyfire.com/#org' },
       offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD', availability: 'https://schema.org/InStock' },
     },
     {
       '@type': 'FAQPage',
+      '@id': 'https://bucketmyfire.com/#faq',
+      isPartOf: { '@id': 'https://bucketmyfire.com/#website' },
       mainEntity: [
         {
           '@type': 'Question',
@@ -106,7 +126,7 @@ const STRUCTURED_DATA = {
           name: 'How do you play Bucket My Fire?',
           acceptedAnswer: {
             '@type': 'Answer',
-            text: "Fly the helicopter low over a lake to fill your bucket, then drop the water on the fire. Keep the fire off the cabins and complete each mission's objectives.",
+            text: 'Fly the helicopter low over a lake to fill your slung bucket, then drop the water on the fire. Keep the fire off the towns — it is an open-world fight where the fires keep coming, not a fixed set of levels.',
           },
         },
         {
@@ -122,7 +142,15 @@ const STRUCTURED_DATA = {
           name: 'Is there multiplayer?',
           acceptedAnswer: {
             '@type': 'Answer',
-            text: 'Co-op multiplayer is in development. Today the game is a single-player campaign with a global leaderboard.',
+            text: 'You can fly the same live map alongside other pilots in Open Skies, or fly solo. Full co-op is in development. A global leaderboard tracks every pilot.',
+          },
+        },
+        {
+          '@type': 'Question',
+          name: 'Does Bucket My Fire show real wildfire data?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'Yes. The front page is a live window onto real wildfire across Saskatchewan and Canada — agency-reported active fires, area burned this year, and fire weather, sourced from CIFFC and CWFIS (Natural Resources Canada). It is an honest view, not an emergency tool; always follow official sources.',
           },
         },
       ],
@@ -145,31 +173,36 @@ function injectStructuredData(): Plugin {
 }
 
 /**
- * Cold-start splash. The branded ember loader (#bmf-splash) is injected — CSS into <head>, markup as
- * the first child of <body> — from the ONE shared source `src/three/ui/spinner.ts`, the SAME module
- * the in-app `LoadingOverlay` imports, so the two flame-mark loaders can't drift. Injected via
- * transformIndexHtml (runs in BOTH dev-serve and build), so the splash is baked into the served HTML
- * and paints on the first frame with zero runtime dependency. Tag-injection (not string-replace) keeps
- * the markup out of Vite's HTML inline-proxy, matching the structured-data plugin above.
+ * "Field Notes" blog: render content/*.md into dist/blog/<slug>/ (pre-rendered static HTML with
+ * Article/FAQ/HowTo JSON-LD) + the blog index + pillar hubs + OG cards, and regenerate dist/sitemap.xml
+ * (home + every blog URL). Runs at closeBundle so it writes alongside the finished bundle. The render
+ * module is dependency-free Markdown + pure templates (scripts/content/), and reuses the GENERATED
+ * mockups/tokens.css so the blog shares the app's design tokens. Standalone equivalent: npm run build:content.
  */
-function injectColdStartSplash(): Plugin {
+function renderContent(): Plugin {
   return {
-    name: 'bmf-splash',
-    transformIndexHtml(_html, ctx) {
-      if (!ctx.path.endsWith('/index.html')) return; // game page only (not shop.html)
-      return [
-        { tag: 'style', attrs: { id: 'bmf-splash-css' }, children: SPLASH_CSS, injectTo: 'head' },
-        { tag: 'div', attrs: SPLASH_ATTRS, children: SPINNER_MARKUP, injectTo: 'body-prepend' },
-      ];
+    name: 'bmf-content',
+    apply: 'build',
+    async closeBundle() {
+      const mod = await import(pathToFileURL(path.resolve(ROOT, 'scripts/content/render.mjs')).href);
+      const res = await mod.buildContent({ root: ROOT, outDir: path.resolve(ROOT, 'dist'), log: () => {} });
+      console.log(`[bmf-content] rendered ${res.count} Field Notes article(s) into dist/blog/ + sitemap.xml`);
     },
   };
 }
 
-// bucketmyfire is a pure client-side Three.js game. Vite serves src/ in dev and
-// bundles a static site into dist/ for deployment to any static host.
+// The cold-start ember splash is no longer injected statically into index.html. The front door
+// (index.html → src/hub.ts) is content-first and must paint its editorial hero INSTANTLY, with no
+// full-screen loader over it. The splash now belongs to the game transition: `src/hub.ts` shows it
+// (from the same shared `src/three/ui/spinner.ts` source) only when "Fight the fire" is tapped and the
+// ~1 MB game bundle starts downloading, tearing it down on the game's `bmf:ready` first-frame signal.
+
+// bucketmyfire is a pure client-side app. Vite serves src/ in dev and bundles a static site into dist/
+// for deployment to any static host. index.html is now the content-first front door; the 3D game is a
+// lazy module the front door imports on demand (so the heavy bundle never blocks first paint).
 export default defineConfig({
   base: './',
-  plugins: [cacheModelsInDev(), injectStructuredData(), injectColdStartSplash()],
+  plugins: [cacheModelsInDev(), injectStructuredData(), renderContent()],
   server: {
     host: true, // expose on LAN so you can test on a real phone
     port: 5173,
@@ -179,13 +212,12 @@ export default defineConfig({
     sourcemap: false, // don't ship 3.9 MB of source maps (or full source) to prod
     chunkSizeWarningLimit: 1500,
     rollupOptions: {
-      // Multi-page: build ONLY these two. Vite does not auto-discover other root *.html, so the
-      // dev-only heli-preview.html / icons-preview.html stay out of dist/. `shop` is now a static
-      // redirect page (shop.html) that forwards to the standalone storefront at shop.bucketmyfire.com
-      // — it shares no graph with the game (the old in-bundle waitlist + src/shop/ were retired).
+      // Single HTML entry: the content-first front door (index.html → src/hub.ts). The dev-only
+      // heli-preview.html / icons-preview.html are not root-discovered, so they stay out of dist/. The
+      // merch store is now a standalone site at shop.bucketmyfire.com (the old in-bundle shop.html
+      // redirect + src/shop/ were retired); the front door links out to it directly.
       input: {
         main: path.resolve(ROOT, 'index.html'),
-        shop: path.resolve(ROOT, 'shop.html'),
       },
     },
   },
