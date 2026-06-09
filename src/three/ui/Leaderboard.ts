@@ -1,6 +1,5 @@
 import type { MissionDef } from '../missions/types';
 import { loadProfile } from './profile';
-import { getProgress } from '../missions/progress';
 import {
   isConfigured,
   getClientId,
@@ -13,25 +12,33 @@ import {
 } from '../leaderboard/client';
 import { dailyDateLabel } from '../missions/daily';
 import { provinceSessionId, isProvinceId } from '../province/buildProvince';
+import { regionDisplayName } from '../province/strings';
+import { rankFor, careerScore, nextRankProgress, type RankTier } from '../missions/rank';
+import { bestShift } from '../province/career';
 import { UI, BOARD, FS, FW, R, div, setBlur } from './theme';
 import { makeTabs, makeIconButton } from './components';
 
 /**
  * Global leaderboard overlay — an **F1 broadcast timing-tower** rendered in the game's WARM "fight"
- * register (ember/gold on near-black, per DESIGN.md → Two registers: brand surfaces run warm, only
- * the in-flight cockpit stays cyan). A two-way switch picks between TOTAL (every pilot's overall
- * standing — campaign + daily summed, the all-time board) and TODAY'S DAILY BURN (the shared per-day
- * race, ranked by score then time, with the player's local streak).
+ * register (ember/gold on near-black, per DESIGN.md → Two registers: brand surfaces run warm, only the
+ * in-flight cockpit stays cyan). Rebuilt for the open-world game (the campaign retired): you fly SHIFTS
+ * over the province, bank REPUTATION, and climb a five-tier RANK ladder. A two-way switch picks between
+ *   • TODAY — the live shared province shift (everyone on today's date-stamped seed), ranked by score
+ *     then time, the per-day race; and
+ *   • ALL-TIME — every pilot's lifetime reputation, the global ladder, each row tagged with the rank
+ *     tier (Recruit → Hotshot → Veteran → Captain → Chief) that reputation earns.
  *
  * What makes it read like a timing screen rather than a flat list:
- *   • a single continuous TABLE from P1 down — no separate podium pedestal; the top three are just
- *     the top rows, their position number tinted gold/silver/bronze and the leader row glowing;
+ *   • a single continuous TABLE from P1 down — no separate podium pedestal; the top three are just the
+ *     top rows, their position number tinted gold/silver/bronze and the leader row glowing;
  *   • a MOVEMENT column — ▲ green / ▼ red / – flat / NEW — showing how each pilot's position changed
  *     since you last opened this board (a real diff, computed client-side from a localStorage snapshot
  *     of the previous ranks — the backend keeps no rank history, so we keep our own);
  *   • a GAP-to-leader figure under each score, the way an F1 tower shows the interval;
- *   • a per-pilot TEAM COLOUR — a stable hue hashed from the callsign — painted as the row's left
- *     edge and the avatar, so the grid reads as a field of distinct entrants at a glance;
+ *   • a per-pilot TEAM COLOUR — a stable hue hashed from the callsign — painted as the row's left edge
+ *     and the avatar, so the grid reads as a field of distinct entrants at a glance;
+ *   • on All-Time, each row's RANK TIER as a heat-ramp dot+name, and a RANK-ADVANCE strip up top that
+ *     shows your own climb toward the next tier (the same ladder the home dossier leads with);
  *   • a STICKY "YOU" row pinned to the scroll so you always see where you stand, even at #147.
  *
  * Pure DOM, zero assets, self-disposing (Close / backdrop tap / Esc). Network is best-effort via
@@ -41,6 +48,11 @@ import { makeTabs, makeIconButton } from './components';
 // Tabular monospaced numerals — the timing-tower "lap clock" feel. A system stack (no font download,
 // keeps the no-binary-assets ethos); tabular-nums on top so columns of digits stay rail-straight.
 const MONO = 'ui-monospace, "SF Mono", "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace';
+
+// The shared province whose per-day board the "Today" tab reads. Single-sourced here (and matched to the
+// default of `provinceSessionId`) so the day's board key and its display name can't drift; when a second
+// shared province ships this becomes a lookup. (Known limitation noted in the maps-foundation handoff.)
+const TODAY_REGION = 'saskatchewan';
 
 // Warm "you" treatment (the ember analogue of the cockpit's cyan rowMine) — board surfaces + the
 // grid palette live as tokens in theme.ts (BOARD.*); these short aliases keep the row code readable.
@@ -60,52 +72,52 @@ const COL = {
   gap: 'var(--lb-gap)',
 };
 
-/** Which board is showing: TOTAL (career + daily combined) or today's DAILY BURN. */
-type Board2 = 'total' | 'daily';
+/** Which board is showing: ALL-TIME (lifetime reputation + rank) or TODAY's shared province shift. */
+type Board2 = 'allTime' | 'today';
 
 /** A board row normalised for rendering — the table, the sticky YOU row and the gap maths consume this. */
 interface Ranked {
   rank: number;
   pilot: string;
-  value: string; // formatted score / career total
+  value: string; // formatted score / reputation total
   num: number; // raw numeric, for the gap-to-leader column
-  sub: string; // small second line (time / mission count · "2d ago")
+  sub: string; // small trailing line (N shifts · "2d ago" / time · "2d ago")
   mine: boolean;
   key: string; // lowercased callsign — the movement-snapshot key
   delta: number | null; // prevRank − rank since last visit: >0 up, <0 down, 0 flat, null = NEW/unknown
+  tier: RankTier | null; // lifetime rank tier (All-Time rows only; null on the single-shift Today board)
 }
 
-/** Open the leaderboard overlay. `initialMissionId` selects that mission's tab on open
- *  (the win banner passes the just-played mission); otherwise it opens on the Career board. */
-export function openLeaderboard(catalog: MissionDef[], initialMissionId?: string): void {
+/** Open the leaderboard overlay. `initialMissionId` selects today's board on open when it names a province
+ *  shift (the stand-down screen passes the just-flown id); otherwise it opens on the All-Time ladder. The
+ *  leading `_catalog` is retained for call-site compatibility (the campaign it indexed has retired). */
+export function openLeaderboard(_catalog: MissionDef[], initialMissionId?: string): void {
   injectStyles();
-  new Leaderboard(catalog, initialMissionId);
+  new Leaderboard(initialMissionId);
 }
 
 class Leaderboard {
   private readonly root: HTMLDivElement;
   private readonly body: HTMLDivElement;
   private readonly refreshBtn: HTMLButtonElement;
-  private readonly catalog: MissionDef[];
   private readonly myName: string;
   private readonly myClient: string;
   private active: Board2;
   private reqToken = 0; // guards against a slow fetch overwriting a newer tab
 
-  constructor(catalog: MissionDef[], initialMissionId?: string) {
-    this.catalog = catalog;
+  constructor(initialMissionId?: string) {
     this.myName = (loadProfile()?.name ?? '').trim();
     this.myClient = getClientId();
-    // Open on Today's board when launched from a province end-screen; otherwise the all-time Total.
-    this.active = initialMissionId && isProvinceId(initialMissionId) ? 'daily' : 'total';
+    // Open on Today's board when launched from a province stand-down; otherwise the All-Time ladder.
+    this.active = initialMissionId && isProvinceId(initialMissionId) ? 'today' : 'allTime';
 
     this.root = div({
       position: 'fixed',
       inset: '0',
       zIndex: '60',
       overflowY: 'auto',
-      // Near-opaque WARM backdrop (ember atmosphere) so the overlay fully OCCLUDES the mission menu
-      // it opens over — and so the board reads on the "fight" register, not the cockpit's cool blue.
+      // Near-opaque WARM backdrop (ember atmosphere) so the overlay fully OCCLUDES the menu it opens
+      // over — and so the board reads on the "fight" register, not the cockpit's cool blue.
       background: `radial-gradient(125% 92% at 50% -4%, ${BOARD.bgTop}, ${BOARD.bgBot})`,
       fontFamily: UI.font,
       color: UI.text,
@@ -125,15 +137,15 @@ class Leaderboard {
     const panel = div({ maxWidth: '640px', margin: '0 auto', position: 'relative' });
     panel.appendChild(this.header());
 
-    // Two boards: TOTAL (all-time career) and TODAY (the shared per-day Open Skies / province race). A
+    // Two boards: TODAY (the shared per-day province shift) and ALL-TIME (lifetime reputation + rank). A
     // WARM-register segmented switch (gold accent) replaces the old flat scroll of one tab per mission.
-    const tabs = makeTabs(['Total', '🔥 Today'], (i) => {
-      const next: Board2 = i === 0 ? 'total' : 'daily';
+    const tabs = makeTabs(['Today', 'All-Time'], (i) => {
+      const next: Board2 = i === 0 ? 'today' : 'allTime';
       if (next === this.active) return;
       this.active = next;
       this.load();
     }, 'fight');
-    if (this.active === 'daily') tabs.select(1);
+    tabs.select(this.active === 'today' ? 0 : 1);
     const tabRow = div({ margin: '14px 0 2px' });
     tabRow.appendChild(tabs.el);
     panel.appendChild(tabRow);
@@ -151,7 +163,7 @@ class Leaderboard {
   // Stash the refresh button created inside header() so load() can spin it.
   private headerRefreshBtn: HTMLButtonElement | null = null;
 
-  /** Title block — a timing-tower wordmark: an ember "LIVE TIMING" eyebrow over a big STANDINGS,
+  /** Title block — a timing-tower wordmark: an ember "LIVE TIMING" eyebrow over a big THE BOARD,
    *  with the refresh + close controls riding the top-right like a broadcast graphic. */
   private header(): HTMLDivElement {
     const head = div({ display: 'flex', alignItems: 'flex-start', gap: '10px' });
@@ -175,11 +187,9 @@ class Leaderboard {
     );
     title.appendChild(eyebrow);
     title.appendChild(
-      div({ fontSize: FS.banner, fontWeight: FW.black, letterSpacing: '0.5px', lineHeight: '1' }, 'STANDINGS'),
+      div({ fontSize: FS.banner, fontWeight: FW.black, letterSpacing: '0.5px', lineHeight: '1' }, 'THE BOARD'),
     );
-    title.appendChild(
-      div({ fontSize: FS.meta, color: UI.dim, marginTop: '5px' }, 'Global rankings — the pilots holding the line.'),
-    );
+    title.appendChild(div({ fontSize: FS.meta, color: UI.dim, marginTop: '5px' }, 'Global rankings.'));
     head.appendChild(title);
 
     const ctrl = div({ display: 'flex', gap: '8px', flex: 'none' });
@@ -201,9 +211,9 @@ class Leaderboard {
 
   // --- Load + render ---------------------------------------------------------
 
-  /** The localStorage snapshot key for the active board — daily movement is per-day. */
+  /** The localStorage snapshot key for the active board — today's movement is per-day. */
   private snapKey(): string {
-    return this.active === 'daily' ? `daily:${provinceSessionId(new Date())}` : 'total';
+    return this.active === 'today' ? `today:${provinceSessionId(new Date())}` : 'allTime';
   }
 
   /** Fetch + render the active board. A request token guards against out-of-order responses. */
@@ -216,7 +226,7 @@ class Leaderboard {
     this.setRefreshing(true);
     this.body.replaceChildren(this.skeleton());
     try {
-      if (this.active === 'total') {
+      if (this.active === 'allTime') {
         const { rows, total } = await fetchCareerTop(50);
         if (token !== this.reqToken) return;
         const ranked = rows.map((r, i) => this.fromCareer(r, i + 1));
@@ -228,8 +238,8 @@ class Leaderboard {
         }
         this.renderBoard(ranked, total || ranked.length, standing, false);
       } else {
-        // Today's shared race — the per-day Open Skies / province board, keyed by the date-stamped session id.
-        const id = provinceSessionId(new Date());
+        // Today's shared race — the per-day province board, keyed by the date-stamped session id.
+        const id = provinceSessionId(new Date(), TODAY_REGION);
         const { rows, total } = await fetchMissionTop(id, 25);
         if (token !== this.reqToken) return;
         const ranked = rows.map((r, i) => this.fromMission(r, i + 1));
@@ -249,24 +259,24 @@ class Leaderboard {
   private fromMission(r: MissionEntry, rank: number): Ranked {
     const mine = r.client_id === this.myClient || (!!this.myName && r.pilot.toLowerCase() === this.myName.toLowerCase());
     const sub = [r.time_s != null ? fmtTime(r.time_s) : '', fmtAgo(r.created_at)].filter(Boolean).join('   ·   ');
-    return { rank, pilot: r.pilot, value: r.score.toLocaleString(), num: r.score, sub, mine, key: r.pilot.toLowerCase(), delta: null };
+    return { rank, pilot: r.pilot, value: r.score.toLocaleString(), num: r.score, sub, mine, key: r.pilot.toLowerCase(), delta: null, tier: null };
   }
 
   private fromCareer(r: CareerEntry, rank: number): Ranked {
     const mine = !!this.myName && r.pilot.toLowerCase() === this.myName.toLowerCase();
-    const sub = [`${r.missions} ${r.missions === 1 ? 'mission' : 'missions'}`, fmtAgo(r.last_seen)].filter(Boolean).join('   ·   ');
-    return { rank, pilot: r.pilot, value: r.total.toLocaleString(), num: r.total, sub, mine, key: r.pilot.toLowerCase(), delta: null };
+    const sub = [`${r.missions} ${r.missions === 1 ? 'shift' : 'shifts'}`, fmtAgo(r.last_seen)].filter(Boolean).join('   ·   ');
+    return { rank, pilot: r.pilot, value: r.total.toLocaleString(), num: r.total, sub, mine, key: r.pilot.toLowerCase(), delta: null, tier: rankFor(r.total) };
   }
 
-  private renderBoard(ranked: Ranked[], total: number, standing: Ranked | null, daily: boolean): void {
+  private renderBoard(ranked: Ranked[], total: number, standing: Ranked | null, today: boolean): void {
     if (ranked.length === 0) {
       const empty = div({});
-      if (daily) empty.appendChild(this.dailyHeader());
+      if (today) empty.appendChild(this.todayHeader());
       empty.appendChild(
         this.note(
-          daily
+          today
             ? 'No runs today. Fly the shift and set the pace.'
-            : 'No runs yet. Fly a mission and be the first on the board.',
+            : 'No runs yet. Fly a shift and be first on the board.',
         ),
       );
       const local = this.localPanel();
@@ -279,11 +289,16 @@ class Leaderboard {
     this.applyMovement(ranked);
 
     const leader = ranked[0]?.num ?? 0;
-    const metric = daily ? 'SCORE' : 'CAREER';
 
     const frag = div({});
-    if (daily) frag.appendChild(this.dailyHeader());
-    frag.appendChild(this.contextBar(total, standing));
+    if (today) frag.appendChild(this.todayHeader());
+    else {
+      // The personal RANK-ADVANCE strip up top — your climb up the tier ladder (the board as progression,
+      // not just a list). Reads the LOCAL career total so it shows instantly and even offline.
+      const strip = this.rankStrip();
+      if (strip) frag.appendChild(strip);
+    }
+    frag.appendChild(this.contextBar(total, standing, today));
 
     const table = div({
       borderRadius: R.lg,
@@ -292,14 +307,17 @@ class Leaderboard {
       border: `1px solid ${UI.stroke}`,
     });
     setBlur(table);
-    table.appendChild(this.columnHeader(metric));
+    table.appendChild(this.columnHeader('REP'));
     ranked.forEach((r, i) => table.appendChild(this.row(r, i, leader)));
     frag.appendChild(table);
 
     frag.appendChild(this.caption(ranked.length, total));
 
     // Pin "YOU" only when you're outside the visible field — top entries are already on screen.
-    if (standing && !ranked.some((r) => r.mine)) frag.appendChild(this.youRow(standing, total, leader));
+    if (standing && !ranked.some((r) => r.mine)) {
+      const youTier = !today ? rankFor(standing.num) : null;
+      frag.appendChild(this.youRow(standing, total, leader, youTier));
+    }
 
     this.body.replaceChildren(frag);
   }
@@ -326,11 +344,60 @@ class Leaderboard {
     saveSnaps(store);
   }
 
-  // --- Daily header ----------------------------------------------------------
+  // --- Rank-advance strip (All-Time only) ------------------------------------
 
-  /** Today's-race strip above its board: the label + date + how it's ranked. Frames the per-day Open
-   *  Skies / province board as a recurring race, not just another mission. */
-  private dailyHeader(): HTMLDivElement {
+  /** The player's own ladder progress — tier badge + reputation, and a bar toward the next tier. The
+   *  single "the game changed" element: the All-Time board is about climbing Recruit → Chief, so the
+   *  board leads with where YOU are on that climb (mirroring the home dossier). Null at zero reputation
+   *  (a brand-new pilot sees just the empty-state note). Local-sourced → instant + offline-safe. */
+  private rankStrip(): HTMLDivElement | null {
+    const pts = careerScore();
+    if (pts <= 0) return null;
+    const tier = rankFor(pts);
+    const np = nextRankProgress(pts);
+
+    const card = div({
+      margin: '2px 2px 14px',
+      padding: '13px 16px',
+      borderRadius: R.lg,
+      background: BOARD.card,
+      border: `1px solid ${UI.warmStroke}44`,
+    });
+    setBlur(card);
+
+    card.appendChild(
+      div({ fontSize: FS.tag, fontWeight: FW.heavy, letterSpacing: '1.6px', color: UI.faint, fontFamily: MONO, marginBottom: '8px' }, 'YOUR RANK'),
+    );
+
+    const top = div({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' });
+    const badge = div({ display: 'inline-flex', alignItems: 'center', gap: '9px', minWidth: '0' });
+    badge.appendChild(div({ width: '10px', height: '10px', borderRadius: R.round, background: tier.color, boxShadow: `0 0 12px ${tier.color}`, flex: 'none' }));
+    badge.appendChild(div({ fontSize: FS.title, fontWeight: FW.heavy, color: tier.color, letterSpacing: '0.3px' }, tier.name));
+    top.appendChild(badge);
+    top.appendChild(div({ fontFamily: MONO, fontSize: FS.meta, fontWeight: FW.bold, color: UI.faint, letterSpacing: '0.4px', flex: 'none' }, `${pts.toLocaleString()} REP`));
+    card.appendChild(top);
+
+    const barrow = div({ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '10px', margin: '11px 0 6px' });
+    barrow.appendChild(div({ fontSize: FS.tag, fontWeight: FW.bold, letterSpacing: '1.2px', color: UI.faint }, 'RANK ADVANCE'));
+    barrow.appendChild(
+      div(
+        { fontFamily: MONO, fontSize: FS.tag, fontWeight: FW.bold, letterSpacing: '0.4px', color: UI.dim },
+        np.next ? `${np.remaining.toLocaleString()} TO ${np.next.name.toUpperCase()}` : 'TOP RANK',
+      ),
+    );
+    card.appendChild(barrow);
+
+    const track = div({ height: '6px', borderRadius: R.pill, background: UI.track, overflow: 'hidden' });
+    track.appendChild(div({ height: '100%', width: `${Math.round(np.frac * 100)}%`, borderRadius: R.pill, background: tier.color, boxShadow: `0 0 12px ${tier.color}` }));
+    card.appendChild(track);
+    return card;
+  }
+
+  // --- Today header ----------------------------------------------------------
+
+  /** Today's-race strip above its board: the label + date + how it's ranked. Frames the per-day shared
+   *  province board as a recurring race, not just another mission. */
+  private todayHeader(): HTMLDivElement {
     const card = div({
       display: 'flex',
       alignItems: 'center',
@@ -348,14 +415,16 @@ class Leaderboard {
     const left = div({ minWidth: '0' });
     left.appendChild(div({ fontSize: FS.label, fontWeight: FW.heavy, letterSpacing: '2px', color: UI.fire }, '🔥 TODAY'));
     left.appendChild(div({ fontSize: FS.title, fontWeight: FW.heavy, marginTop: '2px' }, dailyDateLabel(new Date())));
-    left.appendChild(div({ fontSize: FS.meta, color: UI.dim, marginTop: '2px' }, 'One shared map · ranked by score, then time'));
+    left.appendChild(
+      div({ fontSize: FS.meta, color: UI.dim, marginTop: '2px' }, `${regionDisplayName(TODAY_REGION)} · ranked by score, then time`),
+    );
     card.appendChild(left);
     return card;
   }
 
   // --- Context bar -----------------------------------------------------------
 
-  private contextBar(total: number, standing: Ranked | null): HTMLDivElement {
+  private contextBar(total: number, standing: Ranked | null, today: boolean): HTMLDivElement {
     const bar = div({
       display: 'flex',
       alignItems: 'center',
@@ -364,10 +433,11 @@ class Leaderboard {
       margin: '2px 2px 10px',
       flexWrap: 'wrap',
     });
+    const noun = total === 1 ? 'PILOT' : 'PILOTS';
     bar.appendChild(
       div(
         { fontSize: FS.meta, fontWeight: FW.bold, letterSpacing: '1.6px', color: UI.faint, fontFamily: MONO },
-        `${total.toLocaleString()} ${total === 1 ? 'PILOT' : 'PILOTS'} ON THE GRID`,
+        `${total.toLocaleString()} ${noun} ${today ? 'TODAY' : 'RANKED'}`,
       ),
     );
     if (standing) {
@@ -461,20 +531,20 @@ class Leaderboard {
     // Avatar — initials on the team colour.
     el.appendChild(avatarDot(r.pilot, team, r.mine));
 
-    // Who — callsign (+ YOU pill) over the sub line.
+    // Who — callsign (+ YOU pill) over the sub line (rank tier + N shifts on All-Time; time on Today).
     const who = div({ flex: '1', minWidth: '0' });
     const nameRow = div({ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '0', overflow: 'hidden' });
     nameRow.appendChild(
+      // flex:'0 1 auto' + minWidth:0 so a long callsign actually shrinks & ellipsizes WITHIN the cell
+      // instead of overflowing into the score column (the flex-item default min-width:auto breaks ellipsis).
       div(
-        // flex:'0 1 auto' + minWidth:0 so a long callsign actually shrinks & ellipsizes WITHIN the cell
-        // instead of overflowing into the score column (the flex-item default min-width:auto breaks ellipsis).
         { flex: '0 1 auto', minWidth: '0', fontSize: FS.lg, fontWeight: FW.bold, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
         r.pilot,
       ),
     );
     if (r.mine) nameRow.appendChild(youPill());
     who.appendChild(nameRow);
-    if (r.sub) who.appendChild(div({ fontSize: FS.meta, color: UI.dim, marginTop: '2px' }, r.sub));
+    if (r.tier || r.sub) who.appendChild(subLine(r.tier, r.sub));
     el.appendChild(who);
 
     // Right — the score over the gap-to-leader interval.
@@ -484,7 +554,7 @@ class Leaderboard {
 
   /** Your own row, pinned to the bottom of the scroll so you always see where you stand. Same tower
    *  grammar as a list row, ember-ringed and lifted. */
-  private youRow(s: Ranked, total: number, leader: number): HTMLDivElement {
+  private youRow(s: Ranked, total: number, leader: number, tier: RankTier | null): HTMLDivElement {
     // Movement for the sticky row too (it shares the board snapshot already written by applyMovement,
     // so re-reading the previous value here would be self-referential — show it as a stable pin, no Δ).
     const team = teamColor(s.key);
@@ -520,7 +590,7 @@ class Leaderboard {
     );
     nameRow.appendChild(youPill());
     who.appendChild(nameRow);
-    who.appendChild(div({ fontSize: FS.meta, color: UI.dim, marginTop: '2px' }, `${pctText(s.rank, total)} of ${total.toLocaleString()} pilots`));
+    who.appendChild(subLine(tier, `${pctText(s.rank, total)} of ${total.toLocaleString()} pilots`));
     card.appendChild(who);
 
     card.appendChild(scoreCell(s.value, s.rank === 1 ? null : leader - s.num, true));
@@ -554,7 +624,7 @@ class Leaderboard {
 
   private renderOffline(): void {
     const wrap = div({});
-    if (this.active === 'daily') wrap.appendChild(this.dailyHeader()); // streak is local — still useful offline
+    if (this.active === 'today') wrap.appendChild(this.todayHeader());
     wrap.appendChild(
       this.note(
         'The global leaderboard is offline. Your scores are still saved on this device — ' +
@@ -567,26 +637,24 @@ class Leaderboard {
   }
 
   /**
-   * "This device" record — shown in the offline/empty states so the panel still has something to
-   * say. Reads the local progress store: career totals on the Career tab, this mission's best
-   * otherwise. Returns null when there's nothing recorded yet (a fresh pilot sees just the note).
+   * "This device" record — shown in the offline/empty states so the panel still has something to say.
+   * Reads the open-world progression: lifetime REPUTATION, the RANK tier it earns, and your best single
+   * shift. Returns null when there's nothing recorded yet (a fresh pilot sees just the note). The Today
+   * tab is the shared per-day race — its standing already rides the table + sticky YOU row, so it has no
+   * separate "your device" panel (that's the All-Time ladder's job).
    */
   private localPanel(): HTMLDivElement | null {
-    // The Today tab is the shared per-day race; its standing already rides in the table + the sticky
-    // YOU row, so it has no separate "your device" SCORE panel (that's the all-time Total tab's job).
-    if (this.active === 'daily') return null;
+    if (this.active === 'today') return null;
 
-    const prog = getProgress();
-    const tiles: { label: string; value: string }[] = [];
-    const cleared = prog.completed.length;
-    if (cleared === 0) return null;
-    const careerScore = Object.values(prog.best).reduce((a, b) => a + b, 0);
-    const topMission = Object.values(prog.best).reduce((m, b) => Math.max(m, b), 0);
-    tiles.push(
-      { label: 'Missions', value: `${cleared}/${this.catalog.length}` },
-      { label: 'Career score', value: careerScore.toLocaleString() },
-      { label: 'Best mission', value: topMission.toLocaleString() },
-    );
+    const pts = careerScore();
+    const best = bestShift();
+    if (pts <= 0 && best <= 0) return null;
+    const tier = rankFor(pts);
+    const tiles: { label: string; value: string; color?: string }[] = [
+      { label: 'Reputation', value: pts.toLocaleString() },
+      { label: 'Rank', value: tier.name, color: tier.color },
+      { label: 'Best shift', value: best.toLocaleString() },
+    ];
 
     const panel = div({
       maxWidth: '440px',
@@ -597,11 +665,11 @@ class Leaderboard {
       padding: '14px 16px',
     });
     setBlur(panel);
-    panel.appendChild(div({ fontSize: FS.label, fontWeight: FW.bold, letterSpacing: '2px', color: UI.faint, marginBottom: '11px' }, 'YOUR DEVICE'));
+    panel.appendChild(div({ fontSize: FS.label, fontWeight: FW.bold, letterSpacing: '2px', color: UI.faint, marginBottom: '11px' }, 'ON THIS DEVICE'));
     const row = div({ display: 'flex', gap: '26px', flexWrap: 'wrap' });
     for (const t of tiles) {
       const tile = div({});
-      tile.appendChild(div({ fontSize: FS.title, fontWeight: FW.heavy, color: UI.text, lineHeight: '1.1', fontFamily: MONO }, t.value));
+      tile.appendChild(div({ fontSize: FS.title, fontWeight: FW.heavy, color: t.color ?? UI.text, lineHeight: '1.1', fontFamily: MONO }, t.value));
       tile.appendChild(div({ fontSize: FS.label, fontWeight: FW.bold, letterSpacing: '1.2px', color: UI.faint, marginTop: '3px' }, t.label.toUpperCase()));
       row.appendChild(tile);
     }
@@ -638,6 +706,23 @@ class Leaderboard {
 }
 
 // --- Cell renderers ---------------------------------------------------------
+
+/** The sub line under a callsign: an optional heat-ramp rank dot + tier name (All-Time), then the dim
+ *  trailing text (N shifts · ago / time · ago). Built as a flex row so the tier stays put and the text
+ *  ellipsizes within the PILOT column. */
+function subLine(tier: RankTier | null, text: string): HTMLDivElement {
+  const sub = div({ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px', minWidth: '0', overflow: 'hidden' });
+  if (tier) {
+    sub.appendChild(div({ width: '6px', height: '6px', borderRadius: R.round, background: tier.color, boxShadow: `0 0 6px ${tier.color}`, flex: 'none' }));
+    sub.appendChild(div({ fontSize: FS.meta, fontWeight: FW.bold, color: tier.color, whiteSpace: 'nowrap', flex: 'none' }, tier.name));
+  }
+  if (text) {
+    sub.appendChild(
+      div({ fontSize: FS.meta, color: UI.dim, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }, tier ? `· ${text}` : text),
+    );
+  }
+  return sub;
+}
 
 /** The Δ column: a coloured arrow + the number of places moved (▲3 / ▼1), a flat dash, or NEW. */
 function movementCell(delta: number | null): HTMLDivElement {
@@ -772,7 +857,7 @@ function pctText(rank: number, total: number): string {
   return `Top ${pct}%`;
 }
 
-/** Seconds → "⏱ m:ss" for a mission-board sub-label. */
+/** Seconds → "⏱ m:ss" for a Today-board sub-label. */
 function fmtTime(sec: number): string {
   const s = Math.max(0, Math.round(sec));
   return `⏱ ${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
@@ -818,10 +903,10 @@ function loadSnaps(): Snaps {
 
 function saveSnaps(store: Snaps): void {
   try {
-    // Keep 'total' plus the most recent few daily boards so the store can't grow without bound.
+    // Keep 'allTime' plus the most recent few daily boards so the store can't grow without bound.
     const keys = Object.keys(store);
     if (keys.length > 6) {
-      const drop = keys.filter((k) => k !== 'total').sort().slice(0, keys.length - 6);
+      const drop = keys.filter((k) => k !== 'allTime').sort().slice(0, keys.length - 6);
       for (const k of drop) delete store[k];
     }
     localStorage.setItem(SNAP_KEY, JSON.stringify(store));
