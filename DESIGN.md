@@ -251,10 +251,17 @@ thumb, skeleton-shimmer gradient) keep their tuned alphas. Those are rendering d
   home-indicators in landscape.
 - **Content column:** full-screen overlays centre a `max-width` column (mission select uses
   `980px`; leaderboard `640px`) so everything aligns to one left edge.
-- **Radii (`R`):** `R.round` 50% (LEDs, avatars, and the in-flight HUD touch buttons *only*) ·
-  `R.pill` 99px (chips, tabs, badges, fill tracks — **not** buttons) · `R.xs` 2 · `R.sm` 8 ·
-  `R.md` 12 (cards, chips — the default) · `R.lg` 10 (**the one `.btn` radius** + panels —
-  tighter/rugged, never a round pill) · `R.xl` 18 (modals, hero cards). One scale; pick the nearest step.
+- **Radii (`R`):** `R.round` 50% (LEDs, avatars, status dots, and the in-flight HUD touch buttons
+  *only*) · `R.pill` 99px (fill tracks, the toggle switch, carousel dots — **not** chips/badges,
+  **not** buttons) · `R.xs` 2 · `R.sm` 8 (the square chip / badge radius) · `R.md` 12 (cards, chips —
+  the default) · `R.lg` 10 (**the one `.btn` radius** + panels — tighter/rugged, never a round pill) ·
+  `R.xl` 18 (modals, hero cards). One scale; pick the nearest step.
+- **Corner-cut — the brand "panel notch":** every `.card` carries a chamfered corner via `clip-path`
+  (it's the DEFAULT on `.card`, not just an opt-in `.cut`): top-left on panels (`--cut-tl`),
+  bottom-right on list/grid cards (`--cut-br` — mission + aircraft cards), and a deeper bottom-right on
+  the hero poster (`.artcard`). The geometry has one source — the `--cut-*` vars in `home/styles.ts`.
+  This is a **card** signature: chips stay **square** (small radius), never round-pill, and the one
+  chamfered chip is the rank insignia (`.rank`).
 - **Density:** comfortable. Pods/cells size from `layout.ts` breakpoints (`podSize`), shrinking
   ~8% on compact. The instrument strip wraps to a second row on a narrow phone, capped so it never
   collides with the radar.
@@ -308,3 +315,4 @@ only adaptive runtime lever.
 | 2026-06-07 | Single token source: `theme.ts` → `tokens.ts` → generated `mockups/tokens.css` | `mockups/kit.css` hand-mirrored the tokens and drifted silently (its own README admitted it). Now mockups `@import` a generated file; `gen:tokens` writes it and `verify:tokens` (in the deploy gate) fails on drift. `verify:ui` now also scans `.css` so styling moved out of `.ts` can't hide. Added `textSubtle` for the ~0.82 body whites that had no token. (107a7f3, 1e05d7b) |
 | 2026-06-07 | One button of record: global `.btn`, emitted by `makeButton`; round pills removed | The button had re-forked into `.bmf-app .btn` (8px + a round-pill `.ember`) vs `makeButton` (10px, inline styles). Unified into one global `.btn` in the kit; `makeButton` emits the classes; rugged `R.lg` radius, no pills, `cockpit`/`fight` registers, `locked` folded in. HUD touch controls + the title hero PLAY are documented carve-outs. (f340607, 3198f4a) |
 | 2026-06-07 | Callsign sanitized on load, not just on save | `loadProfile()` runs `cleanCallsign`, closing a tampered-storage / cloud-restore self-XSS at the one chokepoint every screen reads through. (107a7f3) |
+| 2026-06-09 | Brand corner-cut is the DEFAULT on every `.card`; home chips squared | The notch had drifted: the hub's cards cut, but the Settings `.card`s, the Open Skies `.helicard` grid, and the Hangar wallet chip (`.pts-bal`) were plain rounded / a round pill. Made `clip-path` the default on `.card` (so Settings auto-cuts), centralized the geometry into `--cut-tl`/`--cut-br`, added the notch to `.helicard`, and squared `.pts-bal` (`R.pill` → `R.sm`). Rule: cards chamfer, chips stay square. Also corrected the stale Radii note that listed chips/badges as `R.pill`. |

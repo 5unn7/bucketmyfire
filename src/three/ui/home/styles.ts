@@ -19,6 +19,12 @@ const VARS = `.bmf-app{
   --metal:linear-gradient(160deg,#22262a 0%,#15191d 40%,#0d1013 100%);
   --metal-hi:linear-gradient(160deg,#2c3137 0%,#1a1e23 55%,#101317 100%);
   --bevel-top:rgba(255,255,255,0.14); --rail-h:72px;
+  /* Brand corner-cut geometry — ONE source for the chamfered "panel notch" so every card cuts the same.
+     --cut-tl = the top-left panel notch (.card); --cut-br = the bottom-right card notch (list + grid cards).
+     The hero poster (.artcard) keeps a deeper notch of its own. This is screen geometry, not a brand token,
+     so it lives here with the other --metal/--bevel cosmetics rather than in theme.ts. */
+  --cut-tl:polygon(16px 0, 100% 0, 100% 100%, 0 100%, 0 16px);
+  --cut-br:polygon(0 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%);
 }`;
 
 const CSS = `
@@ -229,10 +235,14 @@ const CSS = `
 @keyframes bmf-sheen{ 0%{transform:translateX(-130%);} 18%{transform:translateX(130%);} 100%{transform:translateX(130%);} }
 
 .bmf-app .card{ position:relative; background:var(--metal-hi); border:1px solid var(--stroke); border-top-color:var(--bevel-top);
-  border-radius:var(--r-md); box-shadow:var(--shadow-card), inset 0 1px 0 rgba(255,255,255,0.05); padding:14px 15px; }
+  border-radius:var(--r-md); box-shadow:var(--shadow-card), inset 0 1px 0 rgba(255,255,255,0.05); padding:14px 15px;
+  clip-path:var(--cut-tl); }
 .bmf-app .card.metal{ background:var(--metal); }
 .bmf-app .card.warm{ background:radial-gradient(120% 140% at 82% 0%, rgba(255,120,40,0.12), transparent 55%), var(--metal-hi); }
-.bmf-app .card.cut{ clip-path:polygon(16px 0,100% 0,100% 100%,0 100%,0 16px); }
+/* The notch is the DEFAULT on every .card (above) — so a bare class="card" (e.g. the Settings panels)
+   cuts the same as the hub's warm "card cut". .cut stays as an explicit alias so existing markup still
+   reads intentionally; it's a no-op now but harmless. (Brand law: every card carries the corner-cut.) */
+.bmf-app .card.cut{ clip-path:var(--cut-tl); }
 .bmf-app .card.click{ cursor:pointer; transition:transform .12s, border-color .12s; }
 .bmf-app .card.click:hover{ transform:translateY(-2px); border-color:var(--warm-stroke); }
 .bmf-app .card.crt{ overflow:hidden; }
@@ -480,7 +490,7 @@ const CSS = `
 /* Hangar points economy: the spendable-balance chip (right of the appbar title) + a foot that stacks
    the "Clear N missions" gate over the "Unlock · N pts" buy button. All colour from tokens. */
 .bmf-app .pts-bal{ margin-left:auto; display:inline-flex; align-items:center; gap:6px; flex:0 0 auto;
-  padding:5px 11px; border-radius:var(--r-pill); background:var(--card-glass); border:1px solid var(--hair);
+  padding:5px 11px; border-radius:var(--r-sm); background:var(--card-glass); border:1px solid var(--hair);
   font-size:var(--fs-meta); font-weight:var(--fw-semibold); letter-spacing:.04em; color:var(--dim); white-space:nowrap; }
 .bmf-app .pts-bal svg{ width:14px; height:14px; color:var(--ember-hi); flex:none; }
 .bmf-app .pts-bal b{ color:var(--menu); font-weight:var(--fw-bold); }
@@ -491,7 +501,7 @@ const CSS = `
    (ember) and a locked (dimmed + lock corner) state. All colour comes from the accent var + tokens. */
 .bmf-app .heligrid{ display:grid; grid-template-columns:repeat(3,1fr); gap:9px; margin-top:11px; }
 .bmf-app .helicard{ position:relative; display:flex; flex-direction:column; align-items:stretch; gap:8px; min-height:0;
-  padding:9px 9px 11px; border-radius:var(--r-lg); border:1px solid var(--stroke); background:var(--card-bg); color:var(--text);
+  padding:9px 9px 11px; border-radius:var(--r-lg); clip-path:var(--cut-br); border:1px solid var(--stroke); background:var(--card-bg); color:var(--text);
   font:inherit; cursor:pointer; text-align:center; overflow:hidden; -webkit-tap-highlight-color:transparent;
   transition:border-color .16s ease, box-shadow .22s ease, transform .12s ease; }
 .bmf-app .helicard:hover{ border-color:var(--warm-stroke); transform:translateY(-2px); }
@@ -567,7 +577,7 @@ const CSS = `
 .bmf-app .mcard{ position:relative; display:block; width:100%; text-align:left; cursor:pointer; overflow:hidden;
   border-radius:var(--r-lg); border:1px solid var(--stroke-strong); background:var(--card-bg); color:inherit; font:inherit;
   box-shadow:var(--shadow-card); transition:border-color .18s, box-shadow .25s, transform .12s;
-  clip-path:polygon(0 0,100% 0,100% calc(100% - 16px),calc(100% - 16px) 100%,0 100%); -webkit-tap-highlight-color:transparent; }
+  clip-path:var(--cut-br); -webkit-tap-highlight-color:transparent; }
 .bmf-app .mcard:hover{ border-color:var(--warm-stroke); transform:translateY(-2px); }
 .bmf-app .mcard.active{ border-color:var(--menu-soft); box-shadow:var(--shadow-card), 0 0 26px var(--ember-14); transform:none; }
 .bmf-app .mcard:focus-visible{ outline:none; border-color:var(--ember); box-shadow:0 0 0 3px var(--ember-22); }
