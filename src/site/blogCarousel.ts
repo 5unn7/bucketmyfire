@@ -10,16 +10,14 @@
  * `.fd-rail` host scroll-snaps the cards; a `.fd-mgrid` host tiles them like the campaign showcase.
  */
 
+import { esc } from './siteNav.mjs';
+
 interface FeedArticle {
   slug: string;
   title: string;
   description: string;
   pillarTitle: string;
   dateLabel: string;
-}
-
-function esc(s: string): string {
-  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
 }
 
 // Per-card light position so the procedural posters don't read as identical clones (geometry only,

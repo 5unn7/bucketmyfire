@@ -10,10 +10,7 @@
  * only CSS (every value a `var(--*)` from theme.ts). No Three, no game bundle.
  */
 import { type CatalogItem } from '../three/ui/profile';
-
-function esc(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
-}
+import { esc } from './siteNav.mjs';
 
 /** A poster pick card — the corner-cut poster card (`.fd-mcard`), reframed for the picker as an
  *  IMAGE-FORWARD poster: the art is the hero, the copy is a tight tagline kicker + the name + a glanceable

@@ -24,54 +24,10 @@ import { tabbarHtml, footerBrandHtml } from './siteNav.mjs';
 
 export type ShellPage = 'home' | 'campaign' | 'prepare';
 
-/** The four-item sitemap. Real anchors (no JS) so the nav is crawlable and middle-clickable. */
-export const NAV: { key: ShellPage | 'shop'; label: string; href: string; external?: boolean }[] = [
-  { key: 'home', label: 'Home', href: '/' },
-  { key: 'campaign', label: 'Campaign', href: '/campaign/' },
-  { key: 'prepare', label: 'Prepare', href: '/prepare/' },
-  {
-    key: 'shop',
-    label: 'Shop',
-    href: 'https://shop.bucketmyfire.com/?utm_source=bucketmyfire&utm_medium=frontdoor&utm_campaign=nav',
-    external: true,
-  },
-];
-
-/** The brand flame glyph chip (matches index.html's appbar mark). */
-function glyph(size = 17): string {
-  return `<span class="fd-glyph"><img src="/brand/icon_white.svg" alt="" width="${size}" height="${size}" /></span>`;
-}
-
-/** Build the appbar's center nav as real anchors, with the active page marked. */
-export function navMarkup(active: ShellPage): string {
-  return NAV.map((n) => {
-    const cur = n.key === active ? ' aria-current="page"' : '';
-    const ext = n.external ? ' target="_self" rel="noopener"' : '';
-    const shop = n.key === 'shop' ? ' shop' : '';
-    return `<a class="fd-navlink${shop}" href="${n.href}"${cur}${ext}>${n.label}</a>`;
-  }).join('');
-}
-
 /** The mobile bottom tab bar — the shared tab bar (siteNav). Kept as a thin re-export so the front-door
  *  controllers + the live-fire overlay call one name; the markup + `.fd-tabbar` CSS live in siteNav. */
 export function tabbarMarkup(active: ShellPage): string {
   return tabbarHtml(active);
-}
-
-/** The full appbar `<header>` for a page (used by the Campaign/Prepare controllers; the Home keeps an
- *  identical static copy in index.html for a zero-FOUC first paint). */
-export function buildAppbar(active: ShellPage): string {
-  return (
-    `<header class="fd-bar">` +
-    `<a class="fd-brand" href="/" aria-label="Bucket My Fire — home">${glyph()}<b>Bucket My Fire</b></a>` +
-    `<nav class="fd-nav" aria-label="Primary">${navMarkup(active)}</nav>` +
-    `<span class="fd-spacer"></span>` +
-    `<div class="fd-chrome">` +
-    `<span id="fd-dossier-pill" hidden></span>` +
-    `<button class="fd-gear" id="fd-gear" type="button" aria-label="Settings">${GEAR_ICON}</button>` +
-    `</div>` +
-    `</header>`
-  );
 }
 
 /** The shared footer — slimmed to the two things every page must carry: the safety disclaimer and the
@@ -87,8 +43,6 @@ export function buildFooter(): string {
     `</div></footer>`
   );
 }
-
-const GEAR_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm9.4 4-2 .9.3 2.2-1.6 1.6-2.2-.3-.9 2-2.3.5-1-2-2.2-.5-1 2-2.3-.5-.9-2-2.2.3L2.7 15l.3-2.2-2-.9L1 9.6l2-.9-.3-2.2L4.3 5l2.2.3.9-2 2.3-.5 1 2 2.2.5 1-2 2.3.5.9 2 2.2-.3L23.3 9l-.3 2.2 2 .9z"/></svg>`;
 
 /** Inject the shared stylesheet ONCE. Idempotent. Call after injectKitStyles() so the tokens resolve. */
 export function injectShellStyles(): void {

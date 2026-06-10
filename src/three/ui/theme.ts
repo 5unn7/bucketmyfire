@@ -127,6 +127,18 @@ export const UI = {
   fontMono: '"JetBrains Mono Variable", ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace',
 };
 
+/** `UI.accent` at an arbitrary alpha — for the cockpit-cyan glow RAMPS (the joystick's axis ticks, the
+ *  coach pulse's box-shadow keyframes) whose half-dozen stops don't each warrant a token. Keeps the
+ *  accent's channel values in ONE home, so retinting `UI.accent` retints every derived glow; modules
+ *  must call this instead of hand-typing `rgba(103,232,255,…)` (the hand copies are what drift). */
+export function accentAlpha(alpha: number): string {
+  const hex = UI.accent;
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
 // Home-hub (.bmf-app) WARM "fight"-register ramp — fixed-alpha stops of the brand ember (#ff6a2c),
 // fire (#ff7a45 / the 255,122,69 secondary), warm glow (255,140,50/60), gold (#ffc24a), the shared
 // success-green (UI.ok #63d68a) and danger-red (UI.warn #ff5d4d), plus the card backplate + rank ember.

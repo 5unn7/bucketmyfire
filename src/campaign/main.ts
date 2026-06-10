@@ -16,6 +16,7 @@ import { injectKitStyles } from '../three/ui/components/base';
 import { injectHomeStyles } from '../three/ui/home/styles';
 import { DEFS } from '../three/ui/home/icons';
 import { injectShellStyles, applyMotionPref, buildFooter, tabbarMarkup } from '../site/shell';
+import { esc } from '../site/siteNav.mjs';
 import { injectFrontShell, frontScene, frontAppbar, spawnFrontEmbers, wireFrontAppbar } from '../site/frontShell';
 import { pickCard, wireFlyPicker, injectFlyPickerStyles } from '../site/flyPicker';
 import { MAPS, HELIS, isHeliUnlocked, firstAvailable } from '../three/ui/profile';
@@ -28,10 +29,6 @@ injectShellStyles(); // the shared footer, mobile tab bar, the corner-cut .fd-mc
 injectFrontShell(); // the front-door chrome (.bmf-app.front scroll shell + .fhome-bar appbar)
 injectFlyPickerStyles(); // the SHARED pick-poster carousel (.fly-strip/.fly-dots + image-forward .fd-m-* overrides)
 injectCampaignStyles(); // this page's small content layout (hero + the two-step wizard chrome)
-
-function esc(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
-}
 
 let mapId = firstAvailable(MAPS).id;
 

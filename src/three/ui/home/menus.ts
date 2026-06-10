@@ -38,6 +38,7 @@ import { countFires, filterCountry, filterReportedCountry, countryLabel, COUNTRI
 import { LIVEFIRE } from '../../config';
 import type { Hotspot, ReportedFire, ReportedFeed, FireHistoryPoint, NationalSummary, BurnFeed, AlertFeed, AlertItem, BanFeed, BanArea, FeedMeta, LiveFireFeed, CountryFilter } from '../../livefire/types';
 import type { FireMap, FireLayer } from '../../livefire/FireMap';
+import { esc } from '../../../site/siteNav.mjs';
 
 const MUTE_KEY = 'bmf.audio.muted.v1';
 
@@ -446,10 +447,8 @@ export function openSolo(): void {
 }
 
 // ============================ LIVE WILDFIRES (the real-fire tracker) ============================
-/** Escape API strings before they reach innerHTML (agency/fuel/ecozone are server-provided). */
-function esc(s: string): string {
-  return s.replace(/[&<>"]/g, (c) => (c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : '&quot;'));
-}
+// Server-provided strings (agency/fuel/ecozone) are escaped with the shared `esc` (siteNav.mjs)
+// before they reach innerHTML — the local copy here had drifted (it didn't escape single quotes).
 
 /** Render grouped detail fields from a record's property bag (empty fields dropped). Shared by the
  *  hotspot + reported-fire detail panels — same row markup, different field groups. */

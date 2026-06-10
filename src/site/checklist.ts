@@ -8,6 +8,7 @@
  * shell styles (`.fd-item`, `.fd-ring`, `.fd-box`) and the in-game `.chev`.
  */
 import { ic } from '../three/ui/home/icons';
+import { esc } from './siteNav.mjs';
 
 const STORE_KEY = 'bmf.prepare.v1';
 const COLLAPSE_KEY = 'bmf.prepare.collapsed.v1';
@@ -89,10 +90,6 @@ function saveCollapsed(collapsed: boolean): void {
   } catch {
     /* storage blocked — the toggle still works for the session */
   }
-}
-
-function esc(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
 }
 
 /** Build the checklist into `host` (the TOP `.card warm cut` on Prepare), restoring saved progress + the

@@ -30,7 +30,10 @@ export const NAV = [
   },
 ];
 
-function esc(s) {
+/** Escape a string for safe interpolation into HTML — the ONE escaper of record for both worlds
+ *  (the TS front door imports it here; the Node-run blog/legal renderers get it via this module).
+ *  Don't re-implement it per file: the copies had already drifted (one dropped `'` escaping). */
+export function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }
 

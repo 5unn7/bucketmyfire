@@ -124,6 +124,12 @@ export function restHeaders(extra?: Record<string, string>): Record<string, stri
  * Submit a winning run. Fire-and-forget: resolves to true on a 2xx, false on any failure
  * (unconfigured, network error, timeout, non-2xx). Never throws — the caller can ignore the
  * promise entirely.
+ *
+ * Goes through the `submit_score` SECURITY DEFINER RPC (not a direct `scores` table insert): direct
+ * anon INSERT was revoked because the public anon key in the static bundle let anyone script an
+ * unbounded flood of rows, and the 45s live-board cadence piled up a row per tick even for honest
+ * play. The RPC UPSERTS one row per (mission, pilot, device) keeping the MAX, throttles per device,
+ * and clamps the range server-side. Requires supabase/schema.sql to be applied to the project.
  */
 export async function submitScore(s: ScoreSubmission): Promise<boolean> {
   if (!isConfigured()) return false;
@@ -136,55 +142,16 @@ export async function submitScore(s: ScoreSubmission): Promise<boolean> {
     pilot = `Pilot-${tag}`;
   }
   pilot = pilot.slice(0, 24);
-  const body = [
-    {
-      pilot,
-      mission_id: s.missionId.slice(0, 40),
-      score: Math.max(0, Math.min(1_000_000, Math.round(s.score))),
-      time_s: s.timeS !== undefined && isFinite(s.timeS) ? Math.max(0, Math.round(s.timeS * 10) / 10) : null,
-      client_id: getClientId(),
-    },
-  ];
-  const t = withTimeout(8000);
-  try {
-    const res = await fetch(`${URL_BASE}/rest/v1/scores`, {
-      method: 'POST',
-      headers: headers({ 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
-      body: JSON.stringify(body),
-      signal: t.signal,
-    });
-    return res.ok;
-  } catch {
-    return false;
-  } finally {
-    t.done();
-  }
-}
-
-/**
- * Capture a marketing lead — the player's PLAINTEXT email + where it came from (`source`, e.g.
- * 'shop' / 'coop'). Unlike cloud-save (which hashes the email so we can NEVER contact them), this
- * stores a real, emailable address so we can actually reach them when the feature ships.
- *
- * Goes through the `submit_lead` SECURITY DEFINER RPC (not a direct table insert): the locked
- * `leads` table denies anon direct access, and the RPC validates + DEDUPES + THROTTLES server-side
- * so the public anon key can't be scripted to flood the table. Fire-and-forget: true on a 2xx,
- * false on anything else. Never throws. Requires supabase/schema.sql to be applied to the project.
- */
-export async function submitLead(email: string, source: string, pilot?: string): Promise<boolean> {
-  if (!isConfigured()) return false;
-  const e = email.trim().toLowerCase();
-  if (e.length < 5 || e.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return false;
-  const clean = pilot ? cleanCallsign(pilot).slice(0, 24) : '';
   const body = {
-    p_email: e,
-    p_source: source.slice(0, 24),
-    p_pilot: clean.length >= 2 ? clean : null,
+    p_pilot: pilot,
+    p_mission_id: s.missionId.slice(0, 40),
+    p_score: Math.max(0, Math.min(1_000_000, Math.round(s.score))),
+    p_time_s: s.timeS !== undefined && isFinite(s.timeS) ? Math.max(0, Math.round(s.timeS * 10) / 10) : null,
     p_client_id: getClientId(),
   };
   const t = withTimeout(8000);
   try {
-    const res = await fetch(`${URL_BASE}/rest/v1/rpc/submit_lead`, {
+    const res = await fetch(`${URL_BASE}/rest/v1/rpc/submit_score`, {
       method: 'POST',
       headers: headers({ 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
       body: JSON.stringify(body),

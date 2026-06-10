@@ -26,7 +26,7 @@
  */
 import { CAMERA } from './config';
 import type { LookOffset } from './ChaseCamera';
-import { UI, FW, FS, R, div, button, setBlur, anchor, prefersReducedMotion } from './ui/theme';
+import { UI, FW, FS, R, div, button, setBlur, anchor, prefersReducedMotion, accentAlpha } from './ui/theme';
 import { makeIconSvg } from './ui/svgIcons';
 import { injectHudStyles } from './hud/styles';
 import { HelpModal, hasSeenHelp, markHelpSeen } from './ui/HelpModal';
@@ -403,7 +403,7 @@ export class Input {
         height: '8px',
         marginLeft: '-1px',
         borderRadius: R.xs,
-        background: 'rgba(103,232,255,0.35)',
+        background: accentAlpha(0.35),
         transform: `rotate(${i * 90}deg)`,
       });
       tick.className = 'stick-tick';
@@ -703,12 +703,12 @@ function injectPulseStyles(): void {
   const tag = document.createElement('style');
   tag.textContent = `
   @keyframes bmf-coach-pulse-kf {
-    0%, 100% { box-shadow: 0 0 0 2px rgba(103,232,255,0.5), 0 0 16px 2px rgba(103,232,255,0.32); }
-    50% { box-shadow: 0 0 0 3px rgba(103,232,255,0.95), 0 0 26px 7px rgba(103,232,255,0.55); }
+    0%, 100% { box-shadow: 0 0 0 2px ${accentAlpha(0.5)}, 0 0 16px 2px ${accentAlpha(0.32)}; }
+    50% { box-shadow: 0 0 0 3px ${accentAlpha(0.95)}, 0 0 26px 7px ${accentAlpha(0.55)}; }
   }
   .bmf-coach-pulse { animation: bmf-coach-pulse-kf 1.1s ease-in-out infinite; }
   @media (prefers-reduced-motion: reduce) {
-    .bmf-coach-pulse { animation: none; box-shadow: 0 0 0 3px rgba(103,232,255,0.85), 0 0 18px 3px rgba(103,232,255,0.45); }
+    .bmf-coach-pulse { animation: none; box-shadow: 0 0 0 3px ${accentAlpha(0.85)}, 0 0 18px 3px ${accentAlpha(0.45)}; }
   }
   `;
   document.head.appendChild(tag);

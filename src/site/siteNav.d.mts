@@ -17,6 +17,7 @@ export const FLAME: string;
 export const NAV_DEFS: string;
 export const navCss: string;
 
+export function esc(s: string): string;
 export function brandNavHtml(active?: string): string;
 export function appbarHtml(opts?: { active?: string; actions?: 'app' | 'play' | 'none' }): string;
 export function tabbarHtml(active?: string): string;

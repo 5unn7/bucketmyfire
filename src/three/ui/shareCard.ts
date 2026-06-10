@@ -28,7 +28,6 @@ export interface ScoreCardData {
   stars?: number; // 0..3
   won?: boolean;
   callsign?: string;
-  streak?: number; // Daily Burn consecutive-day streak — shown as a "🔥 N-day streak" flex when ≥ 2
   url?: string; // default https://bucketmyfire.com
 }
 
@@ -118,13 +117,6 @@ export function renderScoreCard(data: ScoreCardData): HTMLCanvasElement {
     ctx.fillStyle = UI.water;
     ctx.fillText(truncate(ctx, `Pilot ${data.callsign}`, 540), CARD_W - 64, 394);
   }
-  // Daily Burn streak — a "don't break the chain" flex (only worth showing from 2 days on).
-  if (typeof data.streak === 'number' && data.streak >= 2) {
-    ctx.font = '700 28px system-ui, sans-serif';
-    ctx.fillStyle = UI.warm;
-    ctx.fillText(`🔥 ${data.streak}-day streak`, CARD_W - 64, 440);
-  }
-
   // Footer: domain + CTA.
   ctx.textAlign = 'left';
   ctx.font = '600 30px system-ui, sans-serif';
@@ -142,10 +134,9 @@ export function renderScoreCard(data: ScoreCardData): HTMLCanvasElement {
 export async function shareScoreCard(data: ScoreCardData): Promise<ShareOutcome> {
   const url = data.url ?? 'https://bucketmyfire.com';
   const place = data.location || data.missionName;
-  const streak = typeof data.streak === 'number' && data.streak >= 2 ? ` 🔥 ${data.streak}-day streak!` : '';
   const text = data.won
-    ? `I saved ${place} with ${data.score.toLocaleString()} pts${starsText(data.stars)} in Bucket My Fire.${streak} Think you can beat it?`
-    : `I scored ${data.score.toLocaleString()} pts in Bucket My Fire.${streak} Think you can beat it?`;
+    ? `I saved ${place} with ${data.score.toLocaleString()} pts${starsText(data.stars)} in Bucket My Fire. Think you can beat it?`
+    : `I scored ${data.score.toLocaleString()} pts in Bucket My Fire. Think you can beat it?`;
 
   let blob: Blob | null = null;
   try {
