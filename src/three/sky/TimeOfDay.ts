@@ -168,3 +168,86 @@ export function applyAtmosphere(
   scene.fog = new THREE.Fog(preset.horizon, preset.fogNear, preset.fogFar);
   scene.background = new THREE.Color(preset.horizon); // fallback behind the dome
 }
+
+// --- Live time-of-day arc (TOD_ARC) -------------------------------------------------------------
+// Every SkyPreset field is trivially lerpable, but the presets are plain hex + a shared Vector3 —
+// so the arc lerps into a REUSED snapshot of THREE objects (no per-frame allocation) which
+// `applyAtmosphereLive` then writes onto the live lights/fog IN PLACE (never `new THREE.Fog` per
+// frame). The dome's colour uniforms are written from the same snapshot by the caller (Game).
+
+/** A fully-lerped, mutable atmosphere snapshot — allocate ONCE (makeLerpedSky), reuse per frame. */
+export interface LerpedSky {
+  zenith: THREE.Color;
+  horizon: THREE.Color;
+  sunHalo: THREE.Color;
+  sunColor: THREE.Color;
+  sunIntensity: number;
+  hemiSky: THREE.Color;
+  hemiGround: THREE.Color;
+  hemiIntensity: number;
+  fogNear: number;
+  fogFar: number;
+  sunDir: THREE.Vector3;
+}
+
+/** Allocate the reusable arc snapshot (seeded from GOLDEN so a pre-first-write read is sane). */
+export function makeLerpedSky(): LerpedSky {
+  return {
+    zenith: new THREE.Color(GOLDEN.zenith),
+    horizon: new THREE.Color(GOLDEN.horizon),
+    sunHalo: new THREE.Color(GOLDEN.sunHalo),
+    sunColor: new THREE.Color(GOLDEN.sunColor),
+    sunIntensity: GOLDEN.sunIntensity,
+    hemiSky: new THREE.Color(GOLDEN.hemiSky),
+    hemiGround: new THREE.Color(GOLDEN.hemiGround),
+    hemiIntensity: GOLDEN.hemiIntensity,
+    fogNear: GOLDEN.fogNear,
+    fogFar: GOLDEN.fogFar,
+    sunDir: GOLDEN.sunDir.clone(),
+  };
+}
+
+// Scratch colours for the hex→Color lerp (module-level, reused — alloc-free per frame).
+const _ca = new THREE.Color();
+const _cb = new THREE.Color();
+function lerpHex(out: THREE.Color, a: number, b: number, t: number): void {
+  out.copy(_ca.setHex(a)).lerp(_cb.setHex(b), t);
+}
+
+/** Lerp every field of two presets into `out` (colours mix, scalars mix, sunDir nlerps). */
+export function lerpPreset(a: SkyPreset, b: SkyPreset, t: number, out: LerpedSky): LerpedSky {
+  lerpHex(out.zenith, a.zenith, b.zenith, t);
+  lerpHex(out.horizon, a.horizon, b.horizon, t);
+  lerpHex(out.sunHalo, a.sunHalo, b.sunHalo, t);
+  lerpHex(out.sunColor, a.sunColor, b.sunColor, t);
+  lerpHex(out.hemiSky, a.hemiSky, b.hemiSky, t);
+  lerpHex(out.hemiGround, a.hemiGround, b.hemiGround, t);
+  out.sunIntensity = a.sunIntensity + (b.sunIntensity - a.sunIntensity) * t;
+  out.hemiIntensity = a.hemiIntensity + (b.hemiIntensity - a.hemiIntensity) * t;
+  out.fogNear = a.fogNear + (b.fogNear - a.fogNear) * t;
+  out.fogFar = a.fogFar + (b.fogFar - a.fogFar) * t;
+  out.sunDir.copy(a.sunDir).lerp(b.sunDir, t).normalize(); // nlerp — fine for the small golden→dusk swing
+  return out;
+}
+
+/** Per-frame apply: write the snapshot onto the live lights/fog/background IN PLACE (zero alloc).
+ *  Requires `applyAtmosphere` to have run once (it creates the Fog this mutates). */
+export function applyAtmosphereLive(
+  scene: THREE.Scene,
+  sun: THREE.DirectionalLight,
+  hemi: THREE.HemisphereLight,
+  p: LerpedSky,
+): void {
+  sun.color.copy(p.sunColor);
+  sun.intensity = p.sunIntensity;
+  hemi.color.copy(p.hemiSky);
+  hemi.groundColor.copy(p.hemiGround);
+  hemi.intensity = p.hemiIntensity;
+  const fog = scene.fog as THREE.Fog | null;
+  if (fog) {
+    fog.color.copy(p.horizon);
+    fog.near = p.fogNear;
+    fog.far = p.fogFar;
+  }
+  if (scene.background instanceof THREE.Color) scene.background.copy(p.horizon);
+}

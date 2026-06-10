@@ -204,6 +204,13 @@ export const FOREST = {
   aoGradient: 0.5, // how dark the crown BASE is vs the tips (0 = flat/old look, 1 = black base) — fakes self-shadow/AO
   topLift: 1.15, // brightness multiplier at the sun-caught apex (1 = no lift)
   gradientJitter: 0.08, // subtle per-vertex brightness noise so the needles don't read as a smooth ramp
+  // --- Canopy floor tint (the bare-hills fix, half 2): tint the TERRAIN vertex colour toward the
+  // forest canopy where trees stand, scaled by tree density. Up close it reads as understory shadow
+  // under the stands; at distance — past the tree cull — the hills still read FORESTED instead of
+  // bare green (the terrain used to be the same colour with or without trees). Baked in the streamed
+  // colour pass (load-time, free per-frame). 0 = off (the old look).
+  floorCanopy: 0.5, // max mix toward the canopy tint at full tree density
+  floorCanopyDarken: 0.78, // the canopy tint is darkened by this for the FLOOR (shadowed understory, not crown)
 } as const;
 
 // Flight model — momentum integrator with helicopter-style steering: the pilot
@@ -1248,9 +1255,13 @@ export const QUALITY = {
     // terrain/waterSegments TRIMMED in the load-perf pass: every terrain vertex + lake-disc edge samples
     // groundHeightAt (which loops all lakes/rivers) at BUILD time, so grid resolution drives boot cost O(n²).
     // Lower res = faster boot + fewer runtime verts, at a slightly softer carved shoreline.
-    low: { name: 'low', dprCap: 1, shadows: false, shadowMapSize: 512, waterSegments: 88, terrainSegments: 128, bloom: 0, msaa: 0 }, // dprCap 1: low-end devices skip the ~2.5s startup jank of rendering at 2× before the watchdog steps down
-    med: { name: 'med', dprCap: 2, shadows: true, shadowMapSize: 1024, waterSegments: 128, terrainSegments: 168, bloom: 1, msaa: 0 },
-    high: { name: 'high', dprCap: 2, shadows: true, shadowMapSize: 2048, waterSegments: 160, terrainSegments: 208, bloom: 1, msaa: 4 },
+    // treeViewDist = forest chunk cull radius (meshes/trees.ts). The fog now starts ~880-1050u out
+    // (every SKY preset), so the old shared 480u cull stopped the forest in CLEAR AIR — a visible
+    // treeless ring with bare hills beyond it. Med/high push the (cheap single-cone LOD) ring out
+    // toward the fog; low keeps the original radius — its fill/draw budget is the tightest.
+    low: { name: 'low', dprCap: 1, shadows: false, shadowMapSize: 512, waterSegments: 88, terrainSegments: 128, bloom: 0, msaa: 0, treeViewDist: 480 }, // dprCap 1: low-end devices skip the ~2.5s startup jank of rendering at 2× before the watchdog steps down
+    med: { name: 'med', dprCap: 2, shadows: true, shadowMapSize: 1024, waterSegments: 128, terrainSegments: 168, bloom: 1, msaa: 0, treeViewDist: 720 },
+    high: { name: 'high', dprCap: 2, shadows: true, shadowMapSize: 2048, waterSegments: 160, terrainSegments: 208, bloom: 1, msaa: 4, treeViewDist: 860 },
   },
   // Adaptive render-resolution watchdog (the only runtime lever — recompile-free).
   dpr: {
@@ -1286,7 +1297,7 @@ export const POSTFX = {
 // load, zero per-frame work. Gated OFF on the low tier (saves the extra IBL ambient + a little
 // VRAM). Keep `intensity` low: the hemisphere light still does the heavy lifting; this is polish.
 export const ENV = {
-  enabled: false,
+  enabled: true, // was false — the IBL was fully wired but dark on every tier. Med/high only (main.ts gate).
   file: 'textures/hdri/autumn_field_puresky_1k.hdr',
   intensity: 0.35,
 } as const;
@@ -1350,8 +1361,13 @@ export const TREE_TEX = {
 // to frame-test on a real phone; if it ever costs too much, drop `samples` or gate to high only.
 export const GODRAYS = {
   enabled: true,
-  samples: 36, // ray-march steps from each pixel toward the sun (compile-time constant). Perf pass 48→36:
-  // the shaft quality is near-identical but it's a per-fragment loop on med/high, so fewer steps = real headroom.
+  samples: 36, // ray-march steps from each pixel toward the sun (compile-time constant, MED tier). Perf
+  // pass 48→36: it's a per-fragment loop, so fewer steps = real headroom on mid phones.
+  samplesHigh: 48, // the HIGH tier buys the fuller march back (picked once at load — still never recompiles)
+  jitter: 1.0, // per-pixel march-START dither, in fractions of one step. An undersampled radial blur
+  // shows STEPPED repeats of bright edges along each shaft (banding "frames"); offsetting where each
+  // pixel's march begins (interleaved gradient noise from gl_FragCoord) turns those bands into
+  // imperceptible noise that the film grain sits on top of. 0 = the old banded look. ~3 ALU per pixel.
   density: 0.9, // how far along the screen-vector to the sun each march reaches (0..1)
   decay: 0.95, // per-step brightness falloff → shafts fade out with distance from the sun
   weight: 0.5, // per-sample contribution to the accumulated shaft
@@ -1376,7 +1392,33 @@ export const GRADE = {
   contrast: 1.07, // gentle S-curve contrast around mid grey (1.05→1.07 — a hair more punch with the saturation)
   vignette: 0.32, // edge darkening strength (0 = none)
   grain: 0.035, // film grain amount (animated per frame)
+  // --- Reactive lens (the game→grade signal channel): exposure and colour become storytelling.
+  // Game.update drives Game.lens each frame; main.ts writes toneMappingExposure (ALL tiers, even
+  // low's bare renderer) and Composer writes the grade uniforms (med/high). All decays are eased —
+  // the lens breathes, it never pops.
+  smokeExposureDrop: 0.32, // exposure shed inside a full smoke column (× smokeVeil) — smoked-out glass
+  douseFlash: 0.45, // warm-white flash strength when a drop lands REAL water on fire (the hit-confirm)
+  douseFlashHeat: 0.5, // cumulative heat a pour must knock down to earn the flash (skip trivial clips)
+  flashDecay: 5, // per-second exponential decay of the flash (~200ms visible)
+  flashExposure: 0.22, // exposure pop fraction at full flash (the low-tier path — no composer needed)
+  damageVignette: 0.5, // vignette pulse added on an airframe hit / structure loss (scaled by severity)
+  damageDecay: 2.2, // per-second exponential decay of the damage pulse
+  weatherWarm: 0.06, // extra warm-highlight push at the session's peak escalation (a bad afternoon LOOKS hotter)
 } as const;
+
+// Time-of-day ARC (the light tells the story of the shift). The Living Province / Open Skies used to
+// be eternal golden hour — every session one frozen screenshot. Now the atmosphere LERPS from the
+// golden opener toward the ember-dusk climax as the shift escalates (same clock as the dispatch
+// fire-weather curve, so the world darkens exactly as the fight peaks and the fire glow owns the
+// frame). Per-frame cost is ~a dozen colour lerps + uniform writes — zero added GPU (the shadow pass
+// and every uSunDir consumer already update per frame). Endless/living modes only; an authored
+// mission's fixed `timeOfDay` preset is never overridden.
+export const TOD_ARC = {
+  enabled: true,
+  fullSec: 300, // shift-seconds to reach the dusk climax (= PROVINCE.fwiPeakSec — light tracks the weather)
+  max: 1, // how far toward DUSK the arc reaches at peak (0..1) — 1 = land exactly on the dusk preset
+} as const;
+
 export const FIRELIGHT = {
   count: 5, // pooled hero lights (repositioned to the nearest hot fires). Raised from 3 so a long
   // sustained fire LINE lays a continuous warm glow on the forest (the pool resizes once at load).
@@ -1700,6 +1742,24 @@ export const CAMERA = {
   bombingArmWater: 1, // engage only when carrying ≥ this many litres
   bombingArmFireDist: 180, // engage only when the nearest active fire is within this (units)
   bombingEngageLerp: 0.05, // per-60fps ease of the 0..1 engage factor IN and OUT — glides, never snaps
+  // --- Operated-camera pack: the camera stops being a tripod. All O(1) math in ChaseCamera.update;
+  // every signal is a plain number Game already owns (sim boundary intact). Shake is ROTATION-ONLY —
+  // the sky dome / forest cull / ambient embers read camera.position right after chase.update, so a
+  // positional shake would jitter the culling. All of it scales to 0 under prefers-reduced-motion. ---
+  speedFovMax: 8, // extra vertical FOV (deg) at the top-speed cap — full throttle WIDENS the lens
+  speedFovEase: 0.06, // per-60fps ease of the FOV change (slow zoom, never a pump)
+  rollFollow: 0.22, // fraction of the airframe's visual bank the camera leans into a turn (0 = old flat
+  // horizon). Negative flips the lean if a future model's pose reads mirrored.
+  shakeAmp: 0.035, // peak shake rotation (rad) at full trauma — a violent kick, still readable
+  shakeDecay: 1.7, // trauma shed per second (an impulse rings ~0.6s)
+  rumbleWash: 0.22, // continuous trauma-floor from rotor wash in ground effect (× wash.surface)
+  rumbleHeat: 0.4, // continuous trauma-floor skimming a fire (× proximity falloff) — the heat tremble
+  rumbleHeatDist: 70, // full heat tremble at the fire's seat, fading to none this far out (units)
+  kickDrop: 0.18, // impulse when 600L releases (the recoil dip)
+  kickDouse: 0.3, // impulse when the drop lands REAL water on fire (with the lens flash — the thump)
+  kickLanding: 0.55, // impulse on a survivable hard landing (× severity)
+  kickStrike: 0.7, // impulse at the instant of a tree/bridge strike (the airframe is going down)
+  kickCrash: 1.0, // impulse when the wreck detonates
 };
 
 // Title / attract screen — the home-screen 3D backdrop that renders BEHIND the menu (ui/title/
@@ -1870,7 +1930,7 @@ export const CONFIG_REGISTRY: Record<string, Record<string, unknown>> = {
   FLIGHT, STARTUP, WASH, INSTRUMENTS, BUCKET3D, DROP_PHYSICS, DROP_FX, FIREHEAD,
   HELI_CLASSES, HEALTH, CRASH, BRIDGE,
   FIRE3D, STRUCTURES, STRUCT_FIRE, COMMUNITIES, SETTLEMENT3D, ROADS, SCORE, MISSIONS, FFA, PROVINCE, FAUNA, HELIPAD, TERRAIN_TEX, TREE_TEX,
-  QUALITY, POSTFX, ENV, GODRAYS, GRADE, FIRELIGHT, EMBERS, AMBIENT_EMBERS,
+  QUALITY, POSTFX, ENV, GODRAYS, GRADE, TOD_ARC, FIRELIGHT, EMBERS, AMBIENT_EMBERS,
   WATER, CLOUDS, SPRAY, SMOKE, HAZE, AUDIO, CAMERA, TITLE, LIVEFIRE,
 };
 

@@ -15,8 +15,8 @@ import { GODRAYS } from '../config';
  * is baked into the GLSL at module load — a fixed-length loop, never recompiled at runtime
  * (mobile-60fps invariant). Gated to med/high tiers by virtue of living in the composer chain.
  */
-export function createGodRaysShader() {
-  const SAMPLES = Math.max(8, Math.floor(GODRAYS.samples));
+export function createGodRaysShader(samples: number = GODRAYS.samples) {
+  const SAMPLES = Math.max(8, Math.floor(samples));
   return {
     uniforms: {
       tDiffuse: { value: null as THREE.Texture | null },
@@ -27,6 +27,7 @@ export function createGodRaysShader() {
       uWeight: { value: GODRAYS.weight },
       uExposure: { value: GODRAYS.exposure },
       uThreshold: { value: GODRAYS.threshold },
+      uJitter: { value: GODRAYS.jitter },
     },
     vertexShader: /* glsl */ `
       varying vec2 vUv;
@@ -43,6 +44,7 @@ export function createGodRaysShader() {
       uniform float uWeight;
       uniform float uExposure;
       uniform float uThreshold;
+      uniform float uJitter;
       varying vec2 vUv;
 
       const int SAMPLES = ${SAMPLES};
@@ -54,7 +56,14 @@ export function createGodRaysShader() {
         // March from this pixel toward the sun, accumulating bright (sky/sun) samples. Dark
         // geometry sampled along the way adds ~nothing, so it occludes the shaft.
         vec2 delta = (vUv - uSunPos) * (uDensity / float(SAMPLES));
-        vec2 coord = vUv;
+        // Anti-banding: a fixed-step march makes neighbouring pixels hit the same bright edge at
+        // quantized offsets, so the edge REPEATS as discrete stepped "frames" along the shaft.
+        // Offset each pixel's march start by [0,1) of one step with interleaved gradient noise
+        // (Jimenez '14 — pure ALU, no texture) and the bands dissolve into invisible noise. Kept
+        // STATIC on purpose: the animated film grain already sits on top, and a time-jittered
+        // start would crawl/shimmer instead.
+        float ign = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+        vec2 coord = vUv - delta * (ign * uJitter);
         float illum = 1.0;
         vec3 rays = vec3(0.0);
         for (int i = 0; i < SAMPLES; i++) {

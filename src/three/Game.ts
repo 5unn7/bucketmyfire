@@ -41,9 +41,9 @@ import { SmokePlume } from './vfx/SmokePlume';
 import { Embers } from './vfx/Embers';
 import { AmbientEmbers } from './vfx/AmbientEmbers';
 import { createSkyDome } from './sky/SkyDome';
-import { applyAtmosphere, SKY_PRESETS, SUN_DISTANCE } from './sky/TimeOfDay';
+import { applyAtmosphere, applyAtmosphereLive, lerpPreset, makeLerpedSky, SKY_PRESETS, SUN_DISTANCE } from './sky/TimeOfDay';
 import { HeroFireLights } from './lighting/HeroFireLights';
-import type { HazeSource } from './postfx/Composer';
+import type { HazeSource, LensState } from './postfx/Composer';
 import { HeliAudio } from './audio/HeliAudio';
 import { Profile } from './ui/profile';
 import { createCrewFigures, CrewFigures } from './meshes/crewFigures';
@@ -71,7 +71,7 @@ import { seedFires, structurePlan, crewZones, resolveCrewZone, igniteFromPlaceme
 import { ProvinceMode, type TownPin, type ShiftResult } from './province/ProvinceMode';
 import { provinceTownRefs } from './province/buildProvince';
 import { markFlown as markProvinceFlown, recordShift as recordProvinceShift, type ShiftSummary } from './province/career';
-import { WORLD3D, FLIGHT, STARTUP, BUCKET3D, DROP_PHYSICS, DROP_FX, FIREHEAD, CAMERA, FIRE3D, WATER, WASH, SPRAY, SMOKE, EMBERS, INSTRUMENTS, ROADS, MISSIONS, FFA, PROVINCE, COMMUNITIES, SETTLEMENT3D, HELIPAD, SCORE, FOREST, TREE_TEX, STRUCT_FIRE, CRASH, BRIDGE, resolveHeliClass } from './config';
+import { WORLD3D, FLIGHT, STARTUP, BUCKET3D, DROP_PHYSICS, DROP_FX, FIREHEAD, CAMERA, FIRE3D, WATER, WASH, SPRAY, SMOKE, EMBERS, INSTRUMENTS, ROADS, MISSIONS, FFA, PROVINCE, COMMUNITIES, SETTLEMENT3D, HELIPAD, SCORE, FOREST, TREE_TEX, STRUCT_FIRE, CRASH, BRIDGE, GRADE, TOD_ARC, resolveHeliClass } from './config';
 
 // Instrument calibration factors (world units → real-world HUD units). Derived from
 // the FLIGHT caps so the gauges stay consistent if those are retuned.
@@ -227,6 +227,17 @@ export class Game {
   private smokeAccum = 0; // throttles per-fire smoke puff bursts to SMOKE.emitInterval
   private emberAccum = 0; // throttles per-fire ember bursts to EMBERS.emitInterval
   private smokeVeil = 0; // C5: eased blinding-smoke veil opacity (camera-in-plume)
+  // Reactive lens (GRADE.* reactive fields): exposure/flash/warm/vignette signals eased here each
+  // frame; main.ts routes exposure to renderer.toneMappingExposure (ALL tiers) and the Composer
+  // writes the rest as grade uniforms (med/high). The lens narrates: smoke dims, a douse flashes,
+  // damage pulses the vignette, the escalating shift warms the grade.
+  readonly lens: LensState = { exposure: 1, flash: 0, warmPush: 0, vignettePulse: 0 };
+  private dropFlashFired = false; // one douse-confirm flash per pour (re-armed in beginDropTally)
+  // Time-of-day arc (TOD_ARC): golden → ember-dusk over the shift, endless/living modes only.
+  private readonly liveSky = makeLerpedSky(); // the reused lerp snapshot (zero per-frame alloc)
+  private readonly skyUniforms: Record<string, THREE.IUniform>; // the dome's live colour uniforms
+  private readonly hemi: THREE.HemisphereLight; // kept for the per-frame atmosphere writes
+  private readonly treeViewDist: number; // per-tier forest cull radius (QUALITY.presets.treeViewDist)
   // B4 heat haze: a pooled list of the active fire crowns + heat, refreshed each frame and read
   // by the postfx HeatHaze pass (Composer.render). Pooled to maxActive so there's no per-frame
   // alloc; entries past `hazeCount` carry heat 0 and the pass skips them.
@@ -485,6 +496,7 @@ export class Game {
     // light, all configured from one time-of-day preset so they stay coherent (fog
     // fades distant hills into the sky's horizon band; the sun glows in the dome).
     const hemi = new THREE.HemisphereLight();
+    this.hemi = hemi; // kept: the time-of-day arc re-writes the hemisphere per frame
     this.scene.add(hemi);
     this.sun = new THREE.DirectionalLight();
     this.sun.castShadow = true;
@@ -506,6 +518,10 @@ export class Game {
     applyAtmosphere(this.scene, this.sun, hemi, sky);
     this.skyDome = createSkyDome(this.frame, sky);
     this.scene.add(this.skyDome); // follows the camera each frame (see update)
+    // The dome's colour uniforms, kept LIVE so the time-of-day arc can write them per frame
+    // (they were baked once at creation; grabbing the refs costs nothing and recompiles nothing).
+    this.skyUniforms = ((this.skyDome as THREE.Mesh).material as THREE.ShaderMaterial).uniforms;
+    this.treeViewDist = tier.current.treeViewDist; // per-tier forest cull radius for every tree field
 
     // C5 fire field DataTexture — sized to the world's rectangular fire grid (square map = 160², the
     // legacy 2100u mapping byte-identical). Built HERE (not as a field initializer) so `this.world`
@@ -683,6 +699,7 @@ export class Game {
       },
       rng: speciesRng(WORLD3D.seed ^ 0x1a2b3c4d),
       burnable: false,
+      viewDist: this.treeViewDist,
     });
     nearPatch.object.position.set(spawn.x, 0, spawn.z); // shift the origin-built patch onto the spawn
     this.scene.add(nearPatch.object);
@@ -733,6 +750,7 @@ export class Game {
       rng: speciesRng(WORLD3D.seed ^ 0x6f1bbcdd), // own stream → safe to scatter across deferred frames
       burnable: true, // C5: conifers ignite + char + collapse when the fire field reaches them
       deferred: true, // stream the candidate scatter + per-chunk meshing via buildStep (pumped in main.ts)
+      viewDist: this.treeViewDist, // med/high reach the forest toward the fog (the bare-hills fix)
     });
     this.forest = forest;
     this.scene.add(forest.object); // present but EMPTY now — fills as the deferred stepper runs
@@ -1064,6 +1082,7 @@ export class Game {
       rng: speciesRng(WORLD3D.seed ^ 0x2bd1e995),
       species: deciduousSpecies(),
       burnable: true, // C5: birch/aspen groves burn too
+      viewDist: this.treeViewDist,
     });
     this.scene.add(this.groves.object);
     const gFol = this.groves.object.getObjectByName('TreeFoliage') as THREE.Mesh | null;
@@ -1077,6 +1096,7 @@ export class Game {
       sample: (x, z) => ({ treeDensity: this.world.biomes.sample(x, z).treeDensity * 0.07 * this.world.clearingFactor(x, z), treeTint: [0.3, 0.28, 0.25] }),
       rng: speciesRng(WORLD3D.seed ^ 0x7f4a7c13),
       species: snagSpecies(),
+      viewDist: this.treeViewDist,
     });
     this.scene.add(this.snags.object);
   }
@@ -1443,6 +1463,7 @@ export class Game {
         if (cas.lost >= 0) {
           const label = this.crew.views[cas.lost]?.label ?? 'the LZ';
           this.hud.pushComms('warning', `We've lost the family at ${label}. The fire got there first.`, 'alert');
+          this.lens.vignettePulse = Math.min(1, this.lens.vignettePulse + GRADE.damageVignette);
           this.hud.flashDamage(0.6);
           this.audio.playSquelch('alert');
         }
@@ -1711,9 +1732,27 @@ export class Game {
 
     // --- Sun shadow follows the aircraft; camera trails it; HUD reflects state ---
     const hp = this.heliSim.position;
-    // The sun rides at the mission's time-of-day offset (set once from the preset's sunDir):
-    // low + raking for dawn/golden/dusk, high overhead for noon. The god-ray pass reads this
-    // direction (via frame.uSunDir) so the shafts emanate from wherever the sun actually sits.
+    // Time-of-day ARC (endless/living modes): the atmosphere lerps golden → ember dusk on the same
+    // clock as the dispatch fire-weather escalation, so the world darkens as the fight peaks. Pure
+    // uniform/colour writes (applyAtmosphereLive mutates the fog in place; the dome colours are live
+    // uniforms; the moving sunOffset feeds the SAME per-frame sun-follow + shadow pass below) —
+    // zero added GPU, ~a dozen lerps of CPU. Authored missions keep their fixed preset.
+    if (TOD_ARC.enabled && (this.endless || this.living)) {
+      const raw = Math.min(1, this.missionElapsed / Math.max(1, TOD_ARC.fullSec)) * TOD_ARC.max;
+      const t = raw * raw * (3 - 2 * raw); // smoothstep — eases out of golden, settles into dusk
+      const p = lerpPreset(SKY_PRESETS.golden, SKY_PRESETS.dusk, t, this.liveSky);
+      applyAtmosphereLive(this.scene, this.sun, this.hemi, p);
+      this.sunOffset.copy(p.sunDir).multiplyScalar(SUN_DISTANCE);
+      (this.skyUniforms.uZenith.value as THREE.Color).copy(p.zenith);
+      (this.skyUniforms.uHorizon.value as THREE.Color).copy(p.horizon);
+      (this.skyUniforms.uSunHalo.value as THREE.Color).copy(p.sunHalo);
+      // The grade warms with the escalation — the reactive-lens half of the same story.
+      this.lens.warmPush = t * GRADE.weatherWarm;
+    }
+    // The sun rides at the mission's time-of-day offset (set once from the preset's sunDir —
+    // or per frame by the arc above): low + raking for dawn/golden/dusk, high overhead for noon.
+    // The god-ray pass reads this direction (via frame.uSunDir) so the shafts emanate from
+    // wherever the sun actually sits.
     this.sun.position.copy(hp).add(this.sunOffset);
     this.sun.target.position.set(hp.x, hp.y, hp.z);
     // Bombing-run assist (portrait readability, concern 6): when lining up a drop — low, slow, carrying
@@ -1731,7 +1770,18 @@ export class Game {
     // Spool progress (0..1) drives the cold-start fly-in pull-out; 1 once the engine is up (or under a
     // QA skip) so the camera holds the normal flight trail thereafter.
     const spool = this.engineStarted ? 1 : this.rotorRpm;
-    this.chase.update(dt, this.heliSim.position, this.heliSim.yaw, this.input.look, armBombing, spool);
+    // Operated-camera signals (plain numbers — the sim boundary holds): airspeed widens the lens,
+    // the airframe's VISUAL bank (sim bank × the model's chirality sign) leans the view into turns,
+    // and rotor wash in ground effect + fire proximity feed the continuous shake floor. Impulse
+    // kicks (drop recoil / douse thump / hard landing / strike / detonation) arrive via chase.kick
+    // at their events. A crash fall rides a high rumble so the tumble reads violent.
+    const speed01 = Math.min(1, this.heliSim.speed / FLIGHT.maxSpeed);
+    const visualBank = this.heliSim.bank * this.heli.bankSign;
+    const heatProx = Math.max(0, 1 - this.nearestFireDist(hp.x, hp.z, activeFires) / CAMERA.rumbleHeatDist);
+    const rumble = this.heliSim.crashing
+      ? 0.8
+      : this.wash.surface * CAMERA.rumbleWash + heatProx * CAMERA.rumbleHeat;
+    this.chase.update(dt, this.heliSim.position, this.heliSim.yaw, this.input.look, armBombing, spool, speed01, visualBank, rumble);
     this.skyDome.position.copy(this.chase.camera.position); // keep the sky centered on the eye
     // Ambient amber motes drift in the air around the eye and thicken near a blaze (atmosphere).
     const cam = this.chase.camera.position;
@@ -1766,6 +1816,19 @@ export class Game {
       const target = Math.min(FIRE3D.smokeBlindMax, s * 1.3) * aglFade;
       this.smokeVeil += (target - this.smokeVeil) * Math.min(1, 4 * dt);
       this.hud.setSmoke(this.smokeVeil);
+    }
+
+    // --- Reactive lens easing: smoke dims the exposure (smoked-out glass — main.ts routes this to
+    // toneMappingExposure, so even the low tier's bare renderer gets it), the douse flash and the
+    // damage vignette decay exponentially toward rest. warmPush is written by the time-of-day arc. ---
+    {
+      const L = this.lens;
+      const expTarget = 1 - GRADE.smokeExposureDrop * this.smokeVeil;
+      L.exposure += (expTarget - L.exposure) * Math.min(1, 6 * dt);
+      L.flash *= Math.max(0, 1 - GRADE.flashDecay * dt);
+      if (L.flash < 1e-3) L.flash = 0;
+      L.vignettePulse *= Math.max(0, 1 - GRADE.damageDecay * dt);
+      if (L.vignettePulse < 1e-3) L.vignettePulse = 0;
     }
 
     // --- Animate the water: age ripples, spawn rings from scoop/drop, tick the
@@ -2619,6 +2682,8 @@ export class Game {
     // fire VFX pools — no new scene objects, no recompiles), plus a hard red screen flash + boom.
     for (let i = 0; i < CRASH.explodeEmbers; i++) this.embers.emit(p.x, p.y + 1.5, p.z, 1);
     for (let i = 0; i < CRASH.explodeSmoke; i++) this.smoke.emit(p.x, p.y + 2, p.z, 1);
+    this.chase.kick(CAMERA.kickCrash); // the detonation slams the camera
+    this.lens.vignettePulse = 1; // and the lens flinches hard
     this.hud.flashDamage(1);
     this.hud.setAlert(null); // the warnings have done their job — it's a wreck now
     this.audio.playCrash();
@@ -2645,6 +2710,7 @@ export class Game {
     if (this.heliSim.crashing || this.won || this.lost) return;
     this.crashCause = 'tree';
     this.heliSim.beginCrash();
+    this.chase.kick(CAMERA.kickStrike); // the rotor strike — the world hits back
     this.hud.flashDamage(1);
     this.hud.setAlert(null);
     this.hud.pushComms('warning', 'Mayday — rotor strike! Going down!', 'alert');
@@ -2661,6 +2727,7 @@ export class Game {
     this.crashCause = 'bridge';
     for (const st of this.bridgePass) st.under = false; // a clipped pass is not a clean one
     this.heliSim.beginCrash();
+    this.chase.kick(CAMERA.kickStrike); // clipped the truss — same violent read as a tree strike
     this.hud.flashDamage(1);
     this.hud.setAlert(null);
     this.hud.pushComms('warning', 'Clipped the bridge — mayday, going in!', 'alert');
@@ -2756,6 +2823,8 @@ export class Game {
   private reportAirframeHit(lost: number): void {
     const critical = this.healthSim.low; // airframe now in the warning band
     const sev = Math.min(1, lost / 0.25); // a ~quarter-bar loss reads as a full-strength flash
+    this.chase.kick(CAMERA.kickLanding * sev); // the touchdown jolt, scaled by how hard you hit
+    this.lens.vignettePulse = Math.min(1, this.lens.vignettePulse + GRADE.damageVignette * sev);
     this.hud.flashDamage(critical ? Math.max(sev, 0.7) : sev);
     if (critical) {
       this.hud.pushComms('warning', 'Hard impact — airframe critical! Set down at a base to repair.', 'alert');
@@ -3198,6 +3267,7 @@ export class Game {
     if (!this.dropActive) {
       this.beginDropTally();
       this.dropActive = true;
+      this.chase.kick(CAMERA.kickDrop); // the payload releases — the airframe (and camera) feel it go
     }
     const p = this.resolveDrop(this.bucketSim.position.x, this.bucketSim.position.z, this.bucketSim.position.y);
     const res = this.fireSystem.douse(p.cx, p.cz, p.radius, released, p.densityMul);
@@ -3216,6 +3286,13 @@ export class Game {
     if (res.heatPresent > t.peakHeatPresent) t.peakHeatPresent = res.heatPresent; // peak (don't double-count cells)
     t.effSum += p.densityMul * released;
     t.litreSum += released;
+    // Douse-confirm beat (once per pour): the drop just knocked REAL heat down → a warm-white lens
+    // flash + a camera thump. The hit-confirm of the whole game, fired the frame the water bites.
+    if (!this.dropFlashFired && t.heatRemoved >= GRADE.douseFlashHeat) {
+      this.dropFlashFired = true;
+      this.lens.flash = Math.min(1, this.lens.flash + GRADE.douseFlash);
+      this.chase.kick(CAMERA.kickDouse);
+    }
     return released > 0;
   }
 
@@ -3274,6 +3351,7 @@ export class Game {
     t.peakHeatPresent = 0;
     t.effSum = 0;
     t.litreSum = 0;
+    this.dropFlashFired = false; // re-arm the douse-confirm flash for this pour
   }
 
   /**

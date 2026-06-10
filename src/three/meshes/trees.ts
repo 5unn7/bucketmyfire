@@ -58,6 +58,7 @@ export interface TreeFieldOptions {
   species?: TreeSpecies; // optional — defaults to the boreal conifer below
   burnable?: boolean; // if set, trees ignite + char + collapse when the fire field reaches them
   deferred?: boolean; // if set, return an EMPTY field + a `buildStep(budgetMs)` to mesh it across frames
+  viewDist?: number; // chunk cull radius override (QUALITY.presets.treeViewDist) — defaults to VIEW_DIST
 }
 
 /**
@@ -120,7 +121,8 @@ export interface TreeField {
 // its own InstancedMesh pair with a TIGHT bounding sphere — so Three frustum-culls
 // the cells you aren't looking at, and `cull()` drops the ones past VIEW_DIST.
 const CHUNK = 200; // world units per forest cell
-const VIEW_DIST = 480; // cull chunks farther than this from the camera (just past the fog)
+const VIEW_DIST = 480; // default cull radius — callers pass QUALITY.presets.treeViewDist to reach
+// toward the (now ~880-1050u) fog on med/high; this floor keeps low tier / legacy callers unchanged
 // Geometry LOD: within LOD_DIST a chunk renders full 3-cone trees + trunks; from there
 // out to VIEW_DIST it swaps to a cheap single-cone impostor (no trunk), which the fog is
 // already softening — a big vertex saving on the mid-distance ring of the big map.
@@ -141,6 +143,7 @@ const COLLIDE_RADIUS = 1.5 * 0.85; // widest foliage tier (1.5), trimmed so you 
 export function createTreeField(opts: TreeFieldOptions): TreeField {
   const { candidates, size, heightAt, sample, rng } = opts;
   const sizeZ = opts.sizeZ ?? size; // rectangular maps scatter Z over a different extent than X
+  const viewDist = opts.viewDist ?? VIEW_DIST; // per-tier cull radius (QUALITY.presets.treeViewDist)
 
   const group = new THREE.Group();
   group.name = 'TreeField';
@@ -322,7 +325,7 @@ export function createTreeField(opts: TreeFieldOptions): TreeField {
   }
 
   const cull = (camX: number, camZ: number): void => {
-    const view2 = VIEW_DIST * VIEW_DIST;
+    const view2 = viewDist * viewDist;
     const near2 = LOD_DIST * LOD_DIST;
     for (const c of chunkList) {
       const dx = camX - c.cx;

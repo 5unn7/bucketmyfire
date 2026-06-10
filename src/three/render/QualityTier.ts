@@ -25,6 +25,7 @@ export interface QualitySettings {
   readonly terrainSegments: number;
   readonly bloom: number; // > 0 enables the post-fx composer; 0 = bare renderer (cheapest)
   readonly msaa: number; // composer multisample count (0 = none)
+  readonly treeViewDist: number; // forest chunk cull radius (med/high reach toward the fog; low stays tight)
 }
 
 export class QualityTier {

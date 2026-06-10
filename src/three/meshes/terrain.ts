@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { World } from '../World';
-import { CLOUDS, TERRAIN_TEX } from '../config';
+import { CLOUDS, FOREST, TERRAIN_TEX } from '../config';
 import { FrameContext } from '../render/FrameContext';
 import { loadAlbedo } from './pbrTextures';
 
@@ -118,7 +118,24 @@ export function createTerrain(
     while (cursor < pos.count) {
       const end = Math.min(pos.count, cursor + BAND);
       for (let i = cursor; i < end; i++) {
-        const [r, g, b] = richerColor(world.biomes.sample(pos.getX(i), pos.getZ(i)).color, pos.getX(i), pos.getZ(i));
+        const vx = pos.getX(i);
+        const vz = pos.getZ(i);
+        const s = world.biomes.sample(vx, vz);
+        let [r, g, b] = richerColor(s.color, vx, vz);
+        // Canopy floor tint (the bare-hills fix): where trees actually STAND (biome density ×
+        // the same clearing/editor thinning the forest scatter respects), pull the floor toward
+        // the darkened canopy tint. Up close it reads as understory shadow grounding the stands;
+        // past the tree cull the hills still read forested instead of bare green.
+        if (FOREST.floorCanopy > 0 && s.treeDensity > 0) {
+          const dens = s.treeDensity * world.clearingFactor(vx, vz) * world.authoredFoliageMul(vx, vz);
+          if (dens > 0) {
+            const w = Math.min(1, dens) * FOREST.floorCanopy;
+            const k = FOREST.floorCanopyDarken;
+            r += (s.treeTint[0] * k - r) * w;
+            g += (s.treeTint[1] * k - g) * w;
+            b += (s.treeTint[2] * k - b) * w;
+          }
+        }
         const shade = reliefShadeGrid(heights, i, N, stepX, stepZ);
         colors[i * 3] = r * shade;
         colors[i * 3 + 1] = g * shade;

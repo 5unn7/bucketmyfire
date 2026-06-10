@@ -40,10 +40,28 @@ export class ChaseCamera {
   // when the engine-start ritual starts, and `update`'s `spool` pulls it back to 1 as the rotor tops out.
   // Monotonic toward 1 so a released START dial that bleeds RPM never pushes the camera back in.
   private introT = 1;
+  // --- Operated-camera pack (speed-FOV / roll-into-bank / impulse shake) ---
+  private baseVfov = CAMERA.fov; // the aspect-derived vertical FOV (Hor+ in portrait) — speed widens FROM this
+  private fovOffset = 0; // eased extra FOV from speed (deg)
+  private rollCur = 0; // eased camera lean (rad) following the airframe's visual bank
+  // Trauma spring: impulses (drop recoil, douse thump, hard landing, crash) ADD trauma which decays
+  // exponentially; continuous sources (rotor wash in ground effect, fire-proximity heat) feed a rumble
+  // FLOOR per frame. The perturbation ∝ trauma² is applied as ROTATION-ONLY noise after lookAt — the
+  // sky dome / forest cull / ambient embers read camera.position right after update, so a positional
+  // shake would jitter the culling. Honors prefers-reduced-motion (shake + roll scale to 0).
+  private trauma = 0;
+  private shakeT = 0; // running clock for the shake noise (decoupled from world time)
+  private readonly motionScale =
+    typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 0 : 1;
 
   constructor(aspect: number, private readonly world: World) {
     this.camera = new THREE.PerspectiveCamera(CAMERA.fov, aspect, 0.1, 2000);
     this.setAspect(aspect);
+  }
+
+  /** Add an impulse to the shake spring (0..1 — a drop recoil ~0.2, a detonation 1). Clamped. */
+  kick(strength: number): void {
+    this.trauma = Math.min(1, this.trauma + Math.max(0, strength));
   }
 
   /**
@@ -75,7 +93,8 @@ export class ChaseCamera {
       const w = s * s * (3 - 2 * s); // smoothstep
       vfov = CAMERA.fov + (cap - CAMERA.fov) * w;
     }
-    this.camera.fov = vfov;
+    this.baseVfov = vfov; // speed-FOV widens from this aspect-correct base each frame
+    this.camera.fov = vfov + this.fovOffset;
     this.camera.aspect = aspect;
     this.camera.updateProjectionMatrix();
   }
@@ -84,8 +103,21 @@ export class ChaseCamera {
    * Re-aim behind `pos` for heading `yaw`. Call every frame after the sim. `arm` (0..1) requests the
    * gentle "bombing-run" look-down (Game arms it when low + slow + carrying water near a fire); it's
    * ignored while free-looking and — when `bombingPortraitOnly` — in landscape, and always eases in/out.
+   * The operated-camera signals are all plain numbers: `speed01` (airspeed / cap) widens the lens,
+   * `bank` (the airframe's VISUAL roll, rad) leans the camera into turns, and `rumble` (0..1) is the
+   * continuous shake floor (wash buzz / fire-heat tremble) under the impulse trauma from `kick()`.
    */
-  update(dt: number, pos: THREE.Vector3, yaw: number, look?: LookOffset, arm = 0, spool = 1): void {
+  update(
+    dt: number,
+    pos: THREE.Vector3,
+    yaw: number,
+    look?: LookOffset,
+    arm = 0,
+    spool = 1,
+    speed01 = 0,
+    bank = 0,
+    rumble = 0,
+  ): void {
     // Free-look: while active, add the drag DELTA directly so the camera orbits 1:1 with the finger /
     // mouse (Input accumulated the movement between frames). Yaw is unbounded (trig wraps it), so a
     // long drag can swing a full 360°. On release, fold any accumulated spins into (-π, π] so the ease
@@ -165,6 +197,44 @@ export class ChaseCamera {
     }
 
     this.camera.lookAt(this.lookTarget);
+
+    // --- Operated-camera pack (all AFTER lookAt: pure view-orientation work, position untouched) ---
+    const ease60 = (k: number): number => 1 - Math.pow(1 - k, dt * 60);
+
+    // Speed-FOV: full throttle widens the lens (quadratic — only real speed reads). The projection
+    // recompute is a single mat4 — recompile-free, negligible.
+    const s01 = clampN(speed01, 0, 1);
+    const fovTarget = CAMERA.speedFovMax * s01 * s01;
+    this.fovOffset += (fovTarget - this.fovOffset) * ease60(CAMERA.speedFovEase);
+    const fov = this.baseVfov + this.fovOffset;
+    if (Math.abs(fov - this.camera.fov) > 1e-3) {
+      this.camera.fov = fov;
+      this.camera.updateProjectionMatrix();
+    }
+
+    // Roll-into-bank: lean a fraction of the airframe's visual bank around the view axis so turns
+    // read FLOWN, not surveilled. The camera looks along the heli's forward (≈ its roll axis), so the
+    // lean is a local-Z roll; eased so a stick flick never snaps the horizon. Suppressed while
+    // free-looking (the orbit can face any direction — a heading-frame roll there reads wrong).
+    const rollTarget = look?.active ? 0 : -bank * CAMERA.rollFollow * this.motionScale;
+    this.rollCur += (rollTarget - this.rollCur) * ease60(0.08);
+    if (Math.abs(this.rollCur) > 1e-4) this.camera.rotateZ(this.rollCur);
+
+    // Impulse/rumble shake — rotation-only (culling reads camera.position; see the field comment).
+    this.trauma = Math.max(0, this.trauma - CAMERA.shakeDecay * dt);
+    const eff = Math.min(1, this.trauma + clampN(rumble, 0, 1));
+    if (eff > 1e-3 && this.motionScale > 0) {
+      this.shakeT += dt;
+      const t = this.shakeT;
+      const amp = CAMERA.shakeAmp * eff * eff * this.motionScale;
+      // Three detuned sine pairs ≈ smooth noise — deterministic, alloc-free, no Math.random.
+      const nx = Math.sin(t * 31.7) + 0.6 * Math.sin(t * 47.3 + 1.7);
+      const ny = Math.sin(t * 27.1 + 4.2) + 0.6 * Math.sin(t * 41.9 + 0.8);
+      const nz = Math.sin(t * 23.3 + 2.5) + 0.6 * Math.sin(t * 53.1 + 3.9);
+      this.camera.rotateX(nx * amp);
+      this.camera.rotateY(ny * amp * 0.6);
+      this.camera.rotateZ(nz * amp * 0.4);
+    }
   }
 }
 

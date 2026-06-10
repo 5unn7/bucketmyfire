@@ -3,7 +3,7 @@ import { Game } from './Game';
 import { QualityTier } from './render/QualityTier';
 import { Composer } from './postfx/Composer';
 import { loadEnvironment, applyEnvironment } from './render/Environment';
-import { ENV } from './config';
+import { ENV, GRADE } from './config';
 import { shouldAutostart, defaultProfile } from './ui/Onboarding';
 import { HomeScreen } from './ui/home/HomeScreen';
 import { NewPilotScreen } from './ui/home/NewPilot';
@@ -308,8 +308,13 @@ function buildAndRunMission(mission: MissionDef): Game {
   // Cinematic lens: ACES filmic tone mapping rolls the HDR fire core off into film-like
   // highlights instead of clipping to flat white — the single biggest "Hollywood" lever.
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.02; // lowered: 1.15 lifted the whole golden-hour frame into a
-  // milky wash; a near-neutral exposure keeps deep shadows so the fire + dark smoke read with punch
+  // Base exposure (lowered from 1.15: that lifted the whole golden-hour frame into a milky wash; a
+  // near-neutral exposure keeps deep shadows so the fire + dark smoke read with punch). The render
+  // loop multiplies it by the game's reactive lens each frame — smoke dims it, a confirmed douse
+  // pops it — which is PRE-tonemap and renderer-level, so even the low tier's bare render gets the
+  // storytelling. Recompile-free (toneMappingExposure is a uniform).
+  const BASE_EXPOSURE = 1.02;
+  renderer.toneMappingExposure = BASE_EXPOSURE;
   container.appendChild(renderer.domElement);
 
   // Context-loss recovery (launch-readiness P0.2): under mobile memory pressure the GPU can yank
@@ -456,7 +461,11 @@ function buildAndRunMission(mission: MissionDef): Game {
     try {
       tier.sample(dt); // adaptive frame-time watchdog (scales DPR down under load, up under headroom)
       game.update(dt);
-      composer.render(renderer, game.scene, game.camera, game.sunDir, game.hazeSources);
+      // Reactive lens: exposure rides the renderer (all tiers — smoke dims, a douse pops); the
+      // flash/warm/vignette signals ride the composer's grade uniforms (med/high).
+      renderer.toneMappingExposure =
+        BASE_EXPOSURE * game.lens.exposure * (1 + game.lens.flash * GRADE.flashExposure);
+      composer.render(renderer, game.scene, game.camera, game.sunDir, game.hazeSources, game.lens);
       if (params.has('qa') && !firstFrameLogged) {
         firstFrameLogged = true;
         console.log('[boot] first frame at', Math.round(performance.now() - tBoot), 'ms (since Game ctor start)');

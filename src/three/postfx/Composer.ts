@@ -17,6 +17,16 @@ export interface HazeSource {
   heat: number;
 }
 
+/** The game→lens signal channel (GRADE reactive fields). Game owns + eases one instance per frame;
+ *  main.ts routes `exposure` to renderer.toneMappingExposure (ALL tiers — it works on low's bare
+ *  renderer too) and passes the rest here for the grade uniforms (med/high only). */
+export interface LensState {
+  exposure: number; // 1 = neutral; dims inside smoke, pops on a douse (pre-tonemap, all tiers)
+  flash: number; // 0..1 warm-white douse-confirm flash (grade mix)
+  warmPush: number; // extra warm-highlight grade as the session escalates
+  vignettePulse: number; // transient vignette deepening on damage/loss beats
+}
+
 /**
  * Post-process chain (Track B3 + cinematic lens). A thin wrapper over an EffectComposer:
  *
@@ -43,6 +53,11 @@ const GRADE_SHADER = {
     uContrast: { value: GRADE.contrast },
     uVignette: { value: GRADE.vignette },
     uGrain: { value: GRADE.grain },
+    // Reactive-lens channel (GRADE.douseFlash / weatherWarm / damageVignette) — written per frame
+    // from the game's LensState. Live uniforms only: zero recompile risk.
+    uFlash: { value: 0 },
+    uWarmPush: { value: 0 },
+    uVigPulse: { value: 0 },
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -60,6 +75,9 @@ const GRADE_SHADER = {
     uniform float uContrast;
     uniform float uVignette;
     uniform float uGrain;
+    uniform float uFlash;
+    uniform float uWarmPush;
+    uniform float uVigPulse;
     varying vec2 vUv;
 
     float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
@@ -69,17 +87,22 @@ const GRADE_SHADER = {
       float lum = dot(col, vec3(0.299, 0.587, 0.114));
 
       // Teal-orange grade: cool the shadows, warm the highlights (split-tone by luma).
+      // uWarmPush rides the session's fire-weather escalation — a bad afternoon grades hotter.
       vec3 cool = vec3(-0.5, 0.05, 1.0) * uCool;   // toward teal in the shadows
-      vec3 warm = vec3(1.0, 0.35, -0.6) * uWarm;   // toward orange in the highlights
+      vec3 warm = vec3(1.0, 0.35, -0.6) * (uWarm + uWarmPush);   // toward orange in the highlights
       col += mix(cool, warm, smoothstep(0.15, 0.85, lum));
 
       // Saturation + a gentle contrast S-curve around mid grey.
       col = mix(vec3(lum), col, uSat);
       col = (col - 0.5) * uContrast + 0.5;
 
-      // Vignette: darken toward the corners to frame the eye on the action.
+      // Douse-confirm flash: a brief warm-white lift when a drop lands real water on fire.
+      col = mix(col, vec3(1.0, 0.93, 0.80), clamp(uFlash, 0.0, 1.0) * 0.8);
+
+      // Vignette: darken toward the corners to frame the eye on the action. uVigPulse deepens it
+      // for a beat on damage/loss (a flinch of the lens), then eases home.
       vec2 d = vUv - 0.5;
-      float vig = 1.0 - uVignette * dot(d, d) * 2.4;
+      float vig = 1.0 - clamp(uVignette + uVigPulse, 0.0, 1.0) * dot(d, d) * 2.4;
       col *= clamp(vig, 0.0, 1.0);
 
       // Fine animated film grain — a touch heavier in the shadows (where film grain lives).
@@ -134,9 +157,12 @@ export class Composer {
     this.composer.addPass(this.renderPass);
 
     // God-rays first (operating on the lit HDR scene) so the shafts then bloom + tonemap with
-    // everything else. Tier-gated automatically: this whole composer only exists on med/high.
+    // everything else. Tier-gated automatically: this whole composer only exists on med/high —
+    // and HIGH bakes the fuller 48-step march at construction (a load-time pick, never recompiled).
     if (GODRAYS.enabled) {
-      const godrays = new ShaderPass(createGodRaysShader());
+      const godrays = new ShaderPass(
+        createGodRaysShader(tier.current.name === 'high' ? GODRAYS.samplesHigh : GODRAYS.samples),
+      );
       this.composer.addPass(godrays);
       this.godrays = godrays;
     }
@@ -201,10 +227,21 @@ export class Composer {
     camera: THREE.Camera,
     sunDir?: THREE.Vector3,
     fires?: readonly HazeSource[],
+    lens?: LensState,
   ): void {
     if (this.composer) {
       const now = performance.now() * 0.001;
-      if (this.grade) this.grade.uniforms.uTime.value = now;
+      if (this.grade) {
+        const u = this.grade.uniforms;
+        u.uTime.value = now;
+        if (lens) {
+          // The reactive lens: live uniform writes only (the exposure half rides
+          // renderer.toneMappingExposure in main.ts so low tier gets it too).
+          u.uFlash.value = lens.flash;
+          u.uWarmPush.value = lens.warmPush;
+          u.uVigPulse.value = lens.vignettePulse;
+        }
+      }
       if (this.godrays && sunDir) this.updateSunRays(camera, sunDir);
       if (this.haze) this.updateHaze(camera, now, fires);
       this.composer.render();
