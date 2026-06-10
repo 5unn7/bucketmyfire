@@ -56,11 +56,13 @@ export interface CatalogItem {
 
 // --- Maps -------------------------------------------------------------------
 // DERIVED from the maps/ registry (the single source of map identity — src/three/maps/). The map
-// DATA stays bundler-agnostic (BASE_URL-relative imageUrl); the UI prefixes BASE_URL here so the
-// Node verify bundle never sees import.meta.env. Add a map = a folder under src/three/maps/, not here.
+// DATA stays bundler-agnostic (root-relative imageUrl path); the UI roots it here. ROOT-absolute,
+// NOT import.meta.env.BASE_URL: with vite `base:'./'` BASE_URL is page-relative, which 404s on the
+// sub-path pages that consume this catalog (/campaign/, /open-skies/). The site deploys at the
+// domain root (hub.ts already hard-codes /images/...). Add a map = a folder under src/three/maps/.
 export const MAPS: CatalogItem[] = mapCards().map((c) => ({
   ...c,
-  imageUrl: c.imageUrl ? import.meta.env.BASE_URL + c.imageUrl : undefined,
+  imageUrl: c.imageUrl ? '/' + c.imageUrl : undefined,
 }));
 
 // --- Helicopters ------------------------------------------------------------
@@ -77,9 +79,10 @@ export const MAPS: CatalogItem[] = mapCards().map((c) => ({
 // and a points purchase is permanent.) The mission gate stays the "free" path; `cost` is the shortcut.
 //
 // `imageUrl` is a cinematic key-art render of each airframe in its livery over a boreal wildfire
-// (public/images/heli/, BASE_URL-prefixed here so the data stays portable across static hosts) —
+// (public/images/heli/, ROOT-absolute — BASE_URL is './' in prod, i.e. page-relative, and 404s on
+// the sub-path pickers /campaign/ + /open-skies/ that render these cards) —
 // the pickers show it full-bleed behind the scrim, with the procedural "hangar bay" art as fallback.
-const HELI_ART = import.meta.env.BASE_URL + 'images/heli/';
+const HELI_ART = '/images/heli/';
 export const HELIS: CatalogItem[] = [
   {
     id: 'bell-205a1',
