@@ -315,9 +315,7 @@ h1,h2,h3,h4{font-weight:800;letter-spacing:-0.01em;line-height:1.15;color:#fff}
   border-radius:var(--r-lg);padding:14px 24px;min-height:50px;font-size:var(--fs-md)}
 .btn.primary{background:var(--cta);color:var(--cta-ink);box-shadow:0 1px 0 rgba(255,255,255,0.5) inset,0 8px 20px var(--cta-glow)}
 .fn-foot{max-width:760px;margin:0 auto;padding:30px max(16px,env(safe-area-inset-left)) calc(40px + env(safe-area-inset-bottom));border-top:1px solid var(--hair)}
-.fn-cause{color:var(--text-subtle);font-size:var(--fs-md);max-width:60ch;line-height:1.55;margin:0 0 12px}
-.fn-disclaimer{color:var(--dim);font-size:var(--fs-sm);margin:0 0 12px}
-.fn-sources{color:var(--faint);font-family:var(--mono);font-size:var(--fs-meta);letter-spacing:0.06em;margin:0 0 16px}
+.fn-disclaimer{color:var(--dim);font-size:var(--fs-sm);max-width:60ch;line-height:1.55;margin:0 0 12px}
 .fn-foot-links{display:flex;flex-wrap:wrap;gap:8px 18px}
 .fn-foot-links a{font-family:var(--mono);font-size:var(--fs-meta);letter-spacing:0.1em;text-transform:uppercase;color:var(--dim)}
 .fn-foot-links a:hover{color:var(--ember-hi)}

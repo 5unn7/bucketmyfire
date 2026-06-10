@@ -110,7 +110,4 @@ const FRONT_CSS = `
 @media (min-width: 760px) { .bmf-app.front .pad.fhome { padding-bottom: 40px; } }
 .bmf-app.front .fhome-eyebrow { margin: 0 0 11px; font-family: var(--mono); font-size: 10.5px; letter-spacing: .26em; text-transform: uppercase; color: var(--menu); font-weight: var(--fw-bold); }
 .bmf-app.front .fhome-eyebrow.cool { color: var(--accent); }
-
-/* The shared footer reads on the dark page; just give it breathing room in this column. */
-.bmf-app.front .fd-foot { margin-top: 6px; }
 `;

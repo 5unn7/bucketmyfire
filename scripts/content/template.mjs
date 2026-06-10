@@ -85,19 +85,11 @@ function pageShell({ title, description, canonical, ogImage, ogType = 'article',
 ${body}
     </main>
     <footer class="fn-foot">
-      <p class="fn-cause">
-        Bucket My Fire is a helicopter wildfire flight sim, and a window onto the real fire season it
-        is set in. The game is the hook. The data is real.
-      </p>
       <p class="fn-disclaimer">
         General information, not an emergency tool. In an emergency, follow official sources and local
         authorities.
       </p>
-      <p class="fn-sources">Sources: CWFIS (NRCan) · CIFFC · ECCC · FireSmart Canada</p>
       <div class="fn-foot-links">
-        <a href="${BLOG_BASE}/">Field Notes</a>
-        <a href="/">Play</a>
-        <a href="https://shop.bucketmyfire.com/?utm_source=bucketmyfire&utm_medium=fieldnotes&utm_campaign=footer">Wear the fight</a>
         <a href="/privacy.html">Privacy</a>
         <a href="/terms.html">Terms</a>
       </div>

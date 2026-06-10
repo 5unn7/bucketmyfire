@@ -18,7 +18,7 @@ import { navigateRail, openLiveFires, setMenuCatalog } from './three/ui/home/men
 import { DEFS, FLAME, HELMET, ic } from './three/ui/home/icons';
 import { loadProfile } from './three/ui/profile';
 import { careerScore, rankFor, nextRankProgress } from './three/missions/rank';
-import { injectShellStyles, tabbarMarkup } from './site/shell';
+import { injectShellStyles, tabbarMarkup, buildFooter } from './site/shell';
 import { injectFrontShell, frontScene, frontAppbar, spawnFrontEmbers, wireFrontAppbar } from './site/frontShell';
 import { mountBlogCarousel } from './site/blogCarousel';
 import { SPLASH_CSS, SPINNER_MARKUP, SPLASH_ATTRS } from './three/ui/spinner';
@@ -94,7 +94,7 @@ function buildFrontDoor(): void {
   injectFonts();
   injectKitStyles();
   injectHomeStyles(); // the REAL component vocabulary (.card/.cut/.helmet/.sheen/.shopbanner/.badge/.btn)
-  injectShellStyles(); // shared chrome the home borrows: .fd-tabbar mobile tab bar, the corner-cut .fd-mcard notes cards
+  injectShellStyles(); // shared chrome the home borrows: .fd-foot footer, .fd-tabbar mobile tab bar, the corner-cut .fd-mcard notes cards
   injectFrontShell(); // the SHARED front-door chrome (.bmf-app.front scroll shell + .fhome-bar appbar + scene/embers) — the same module Campaign + Prepare use, so the three front pages can't drift
   injectHomeBentoStyles(); // the home-ONLY bento grid + hero/play/ticker/map/merch/prep LAYOUT, scoped .bmf-app.front
   setMenuCatalog([]); // the Board reads this (campaign retired → empty; the board keys off live ids)
@@ -216,6 +216,8 @@ ${frontAppbar('home')}
       <div class="fd-rail" id="fd-notes-rail"></div>
     </section>
   </div>
+
+  ${buildFooter()}
 </div>
 ${tabbarMarkup('home')}`;
 }
@@ -231,7 +233,9 @@ function wire(app: HTMLElement): void {
         case 'coop':
           return navigateRail('coop'); // Open Skies — the live shared shift (pick aircraft → Fly)
         case 'fires':
-          return openLiveFires(); // the full live-fire tracker (layers + smoke scrubber + detail)
+          // The full live-fire tracker (layers + smoke scrubber + detail). Pass the front-door tabbar so
+          // this front-door surface wears the SAME nav as Home/Campaign/Prepare, not the in-game mode rail.
+          return openLiveFires(tabbarMarkup('home'));
         case 'shop':
           return navigateRail('shop'); // the standalone storefront (same tab)
       }

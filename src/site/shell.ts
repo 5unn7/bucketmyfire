@@ -9,7 +9,7 @@
  *     from `injectKitStyles()`, so it's one visual language with the in-game home). Covers the appbar +
  *     nav, the `.fd-card` bento system, section headers, the national-data grid, the readouts, the
  *     Prepare cards, mission cards, the Field Notes carousel, the checklist, the live-map overlay +
- *     fire-detail sheet, the footer, and the mobile bottom tab bar.
+ *     fire-detail sheet, the footer (safety disclaimer + policy links), and the mobile bottom tab bar.
  *   - `hydrateChrome({active})` — marks the active nav/tab item and fills the returning-pilot dossier
  *     pill + the settings gear popover. Reads only localStorage + the Three-free rank ladder.
  *
@@ -87,16 +87,13 @@ export function buildAppbar(active: ShellPage): string {
   );
 }
 
-/** The shared footer (cause + honest-window disclaimer + sources + links). */
+/** The shared footer — slimmed to the two things every page must carry: the safety disclaimer and the
+ *  policy links (Privacy + Terms). */
 export function buildFooter(): string {
   return (
     `<footer class="fd-foot">` +
-    `<p class="fd-cause">Bucket My Fire is a helicopter wildfire flight sim, and a window onto the real fire season it's set in. The game is the hook; the data is real.</p>` +
     `<p class="fd-disclaimer">A window onto real data, not an emergency tool. Always follow official sources and local authorities.</p>` +
-    `<p class="fd-sources">Sources: CWFIS (NRCan) · CIFFC · ECCC</p>` +
     `<div class="fd-foot-links">` +
-    `<a class="warm" href="/blog/">Field Notes</a>` +
-    `<a href="${NAV[3].href.replace('nav', 'footer')}">Wear the fight</a>` +
     `<a href="/privacy.html">Privacy</a>` +
     `<a href="/terms.html">Terms</a>` +
     `</div></footer>`
@@ -428,6 +425,9 @@ const SHELL_CSS = `
 .fd-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .fd-legend i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
 .leaflet-container { background: var(--card-bg) !important; font-family: var(--mono); }
+/* Sun-readability: lift the dark basemap (contrast > brightness → blacks stay black, grey labels/roads
+   sharpen) so the map still reads in direct glare instead of collapsing to uniform black. Tiles only. */
+.fd-map .leaflet-tile { filter: contrast(1.14) brightness(1.06); }
 .fd-detail-back { position: fixed; inset: 0; z-index: 90; display: flex; align-items: flex-end; justify-content: center;
   background: rgba(4,8,6,0.64); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
 .fd-detail { width: 100%; max-width: 560px; max-height: 78dvh; display: flex; flex-direction: column; background: var(--metal-hi);
@@ -449,14 +449,11 @@ const SHELL_CSS = `
   min-height: 44px; appearance: none; background: none; border: 0; padding: 0; cursor: pointer; font-family: var(--font); }
 .fd-link:hover { color: var(--ember); }
 
-/* ── Footer (shared). ─────────────────────────────────────────────────────────── */
-.fd-foot { color: var(--dim); padding-top: 8px; }
-.fd-foot .fd-cause { margin: 0 0 11px; font-size: var(--fs-md); color: var(--text); max-width: 60ch; }
-.fd-foot .fd-disclaimer { margin: 0 0 9px; font-size: var(--fs-sm); max-width: 60ch; }
-.fd-foot .fd-sources { margin: 0 0 16px; font-family: var(--mono); font-size: var(--fs-micro); color: var(--faint); }
+/* ── Footer (shared): safety disclaimer + policy links. ───────────────────────── */
+.fd-foot { color: var(--dim); padding-top: 8px; margin-top: 6px; }
+.fd-foot .fd-disclaimer { margin: 0 0 11px; font-size: var(--fs-sm); max-width: 60ch; }
 .fd-foot-links { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; }
 .fd-foot-links a { text-decoration: none; color: var(--dim); font-size: var(--fs-sm); font-weight: var(--fw-semibold); min-height: 44px; display: inline-flex; align-items: center; }
-.fd-foot-links a.warm { color: var(--ember-hi); }
 .fd-foot-links a:hover { color: var(--text); }
 
 /* ── Mobile bottom tab bar. ───────────────────────────────────────────────────── */
