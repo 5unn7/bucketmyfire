@@ -243,6 +243,15 @@ export const R = {
   round: '50%', // LEDs, avatars, round buttons
 };
 
+// Aspect-ratio scale — `aspect-ratio` strings, emitted by tokens.ts as `--ar-*`. One value of record
+// for a recurring card SHAPE, the same way `R` is the one source for a radius. A POSTER/art card —
+// any card carrying key-art (the Field Notes `.fd-mcard` rail, the Maps/Hangar `.artcard` carousel,
+// the mockup `.poster`) — is PORTRAIT: on a phone a wide key-art card flattens into a letterbox and
+// throws the poster read away, so it locks taller-than-wide everywhere (DESIGN.md → Spacing & Layout).
+export const AR = {
+  poster: '3 / 4', // portrait poster/art card — Field Notes rail, Maps/Hangar carousel, mockup posters
+};
+
 // --- DOM helpers ------------------------------------------------------------
 
 /** Create an element with inline styles (+ optional text). Generic over tag so

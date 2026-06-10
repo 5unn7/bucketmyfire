@@ -363,7 +363,11 @@ const SHELL_CSS = `
 .fd-mgrid { display: grid; gap: 12px; grid-template-columns: 1fr; }
 @media (min-width: 620px) { .fd-mgrid { grid-template-columns: repeat(2, 1fr); } }
 @media (min-width: 980px) { .fd-mgrid { grid-template-columns: repeat(4, 1fr); } }
-.fd-mcard { position: relative; display: flex; flex-direction: column; justify-content: flex-end; min-height: 230px; overflow: hidden;
+/* Poster rule (DESIGN.md → Spacing & Layout): a key-art card is PORTRAIT. The host fixes the WIDTH
+   (rail flex-basis / grid track), so --ar-poster derives the height — the card never flattens to a
+   landscape letterbox on a wide phone. min-height stays a floor for UAs without aspect-ratio, and
+   content taller than the aspect still expands the box (so a long title never clips). */
+.fd-mcard { position: relative; display: flex; flex-direction: column; justify-content: flex-end; aspect-ratio: var(--ar-poster); min-height: 230px; overflow: hidden;
   text-decoration: none; color: var(--text); padding: 0;
   clip-path: polygon(18px 0, 100% 0, 100% 100%, 0 100%, 0 18px); }
 .fd-mcard .fd-m-art { position: absolute; inset: 0; z-index: 0; }

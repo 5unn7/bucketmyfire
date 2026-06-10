@@ -323,8 +323,10 @@ body{ font-family:var(--font); color:var(--text); background:#05080b; overflow:h
 /* poster (mission/map/heli card) */
 .poster{ position:relative; width:clamp(230px, 74vw, 280px); border-radius:var(--r-md); overflow:hidden; border:1px solid var(--stroke-strong); background:#0a0e12; box-shadow:var(--shadow-card); }
 .poster.locked{ filter:grayscale(.5) brightness(.7); }
-.poster__img{ width:100%; aspect-ratio:5/6; object-fit:cover; display:block; }
-.poster__fallback{ width:100%; aspect-ratio:5/6; background:radial-gradient(120% 90% at 50% 120%, rgba(255,106,44,0.5), transparent 60%), linear-gradient(160deg,#2a2030,#160d12 70%); display:grid; place-items:center; }
+/* Poster rule: a key-art card is PORTRAIT — the aspect is the one tokenised value (--ar-poster from
+   theme.ts AR), not a hand-set ratio, so the mockup pattern can't drift from the live .fd-mcard / .artcard. */
+.poster__img{ width:100%; aspect-ratio:var(--ar-poster); object-fit:cover; display:block; }
+.poster__fallback{ width:100%; aspect-ratio:var(--ar-poster); background:radial-gradient(120% 90% at 50% 120%, rgba(255,106,44,0.5), transparent 60%), linear-gradient(160deg,#2a2030,#160d12 70%); display:grid; place-items:center; }
 .poster__fallback .ghost{ font-family:var(--mono); font-weight:var(--fw-black); font-size:64px; color:rgba(255,255,255,0.07); }
 .poster__scrim{ position:absolute; inset:0; background:linear-gradient(180deg, transparent 40%, rgba(4,3,2,0.92) 100%); }
 .poster__body{ position:absolute; left:0; right:0; bottom:0; padding:12px 13px; }

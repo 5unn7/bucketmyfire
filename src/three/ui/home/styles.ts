@@ -462,6 +462,16 @@ const CSS = `
   .bmf-app .pad:has(> .carousel) .cslide{ height:100%; }
   .bmf-app .pad:has(> .carousel) .cslide .artcard .inner{ min-height:0; height:100%; }
 }
+/* Poster rule — portrait ALWAYS (DESIGN.md). A tall portrait phone fills the card to the full height
+   above and it reads portrait already. But a SHORT / landscape phone (≤739px wide and short) would
+   flatten that height-filled hero into a landscape letterbox. There, centre the card in its slide and
+   let its WIDTH derive from the available height at the locked --ar-poster aspect — it shrinks to
+   stay taller-than-wide instead of going wide. (The card is now a flex item, so a definite height +
+   auto width + aspect-ratio resolves the width; a plain block would just fill the slide.) */
+@media (max-width:739px) and (max-height:500px){
+  .bmf-app .pad:has(> .carousel) .cslide{ display:flex; justify-content:center; }
+  .bmf-app .pad:has(> .carousel) .cslide .artcard{ flex:0 0 auto; width:auto; max-width:100%; aspect-ratio:var(--ar-poster); }
+}
 
 /* heli hero — procedural "hangar bay" art tinted by the airframe accent (--accent) */
 .bmf-app .artcard.heli .heli-art{ position:absolute; inset:0; z-index:0; overflow:hidden;

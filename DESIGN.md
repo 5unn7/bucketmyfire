@@ -262,6 +262,14 @@ thumb, skeleton-shimmer gradient) keep their tuned alphas. Those are rendering d
   the hero poster (`.artcard`). The geometry has one source — the `--cut-*` vars in `home/styles.ts`.
   This is a **card** signature: chips stay **square** (small radius), never round-pill, and the one
   chamfered chip is the rank insignia (`.rank`).
+- **Poster cards are portrait (`AR.poster` → `--ar-poster`, `3 / 4`):** any card that carries
+  **key-art** — the Field Notes posters (`.fd-mcard`, rail + showcase grid), the Maps / Hangar
+  carousel slides (`.artcard`), the mockup `.poster` — locks to a tall portrait aspect, **always, and
+  especially on a phone**, where a wide key-art card flattens into a landscape letterbox and throws
+  the poster read away. The host fixes the width (rail flex-basis / grid track) and `--ar-poster`
+  derives the height; on a height-filled phone carousel it works the other way — a short / landscape
+  viewport shrinks the card's width to stay taller-than-wide rather than going wide. One value of
+  record (`theme.ts` `AR`, the aspect-ratio analog of `R`) — never hand-set a card aspect.
 - **Density:** comfortable. Pods/cells size from `layout.ts` breakpoints (`podSize`), shrinking
   ~8% on compact. The instrument strip wraps to a second row on a narrow phone, capped so it never
   collides with the radar.
@@ -315,4 +323,5 @@ only adaptive runtime lever.
 | 2026-06-07 | Single token source: `theme.ts` → `tokens.ts` → generated `mockups/tokens.css` | `mockups/kit.css` hand-mirrored the tokens and drifted silently (its own README admitted it). Now mockups `@import` a generated file; `gen:tokens` writes it and `verify:tokens` (in the deploy gate) fails on drift. `verify:ui` now also scans `.css` so styling moved out of `.ts` can't hide. Added `textSubtle` for the ~0.82 body whites that had no token. (107a7f3, 1e05d7b) |
 | 2026-06-07 | One button of record: global `.btn`, emitted by `makeButton`; round pills removed | The button had re-forked into `.bmf-app .btn` (8px + a round-pill `.ember`) vs `makeButton` (10px, inline styles). Unified into one global `.btn` in the kit; `makeButton` emits the classes; rugged `R.lg` radius, no pills, `cockpit`/`fight` registers, `locked` folded in. HUD touch controls + the title hero PLAY are documented carve-outs. (f340607, 3198f4a) |
 | 2026-06-07 | Callsign sanitized on load, not just on save | `loadProfile()` runs `cleanCallsign`, closing a tampered-storage / cloud-restore self-XSS at the one chokepoint every screen reads through. (107a7f3) |
+| 2026-06-09 | Poster/art cards lock to a portrait aspect (`AR.poster` `3 / 4` → `--ar-poster`) | A key-art card flattens to a landscape letterbox on a wide phone — the Field Notes rail card sits at 78% width, and the in-game Maps/Hangar carousel fills the viewport height (so a short/landscape phone went wide). Added an `AR` aspect-ratio scale to `theme.ts` (one value of record, the analog of `R`), applied it to `.fd-mcard` (rail + showcase) and the `.artcard` carousel (a short-viewport guard derives the card width from the available height so it shrinks instead of flattening), and pointed the mockup `.poster` at the same token so the documented pattern can't drift. |
 | 2026-06-09 | Brand corner-cut is the DEFAULT on every `.card`; home chips squared | The notch had drifted: the hub's cards cut, but the Settings `.card`s, the Open Skies `.helicard` grid, and the Hangar wallet chip (`.pts-bal`) were plain rounded / a round pill. Made `clip-path` the default on `.card` (so Settings auto-cuts), centralized the geometry into `--cut-tl`/`--cut-br`, added the notch to `.helicard`, and squared `.pts-bal` (`R.pill` → `R.sm`). Rule: cards chamfer, chips stay square. Also corrected the stale Radii note that listed chips/badges as `R.pill`. |
