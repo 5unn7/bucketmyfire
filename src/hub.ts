@@ -13,12 +13,13 @@
  */
 import { injectFonts } from './three/ui/fonts';
 import { injectKitStyles } from './three/ui/components/base';
-import { injectHomeStyles, spawnEmbers } from './three/ui/home/styles';
-import { navigateRail, openSettings, openBoard, openLiveFires, setMenuCatalog } from './three/ui/home/menus';
+import { injectHomeStyles } from './three/ui/home/styles';
+import { navigateRail, openLiveFires, setMenuCatalog } from './three/ui/home/menus';
 import { DEFS, FLAME, HELMET, ic } from './three/ui/home/icons';
 import { loadProfile } from './three/ui/profile';
 import { careerScore, rankFor, nextRankProgress } from './three/missions/rank';
 import { injectShellStyles, tabbarMarkup, buildFooter } from './site/shell';
+import { injectFrontShell, frontScene, frontAppbar, spawnFrontEmbers, wireFrontAppbar } from './site/frontShell';
 import { mountBlogCarousel } from './site/blogCarousel';
 import { SPLASH_CSS, SPINNER_MARKUP, SPLASH_ATTRS } from './three/ui/spinner';
 import { fetchSummary, fetchReportedFires } from './three/livefire/client';
@@ -93,8 +94,9 @@ function buildFrontDoor(): void {
   injectFonts();
   injectKitStyles();
   injectHomeStyles(); // the REAL component vocabulary (.card/.cut/.helmet/.sheen/.shopbanner/.badge/.btn)
-  injectShellStyles(); // shared chrome the home borrows: .fd-foot footer, .fd-tabbar, the .fd-mcard notes cards
-  injectFrontStyles(); // the front-door LAYOUT only (bento grid + nav + national grid), scoped .bmf-app.front
+  injectShellStyles(); // shared chrome the home borrows: .fd-foot footer, .fd-tabbar, the corner-cut .fd-mcard notes cards
+  injectFrontShell(); // the SHARED front-door chrome (.bmf-app.front scroll shell + .fhome-bar appbar + scene/embers) — the same module Campaign + Prepare use, so the three front pages can't drift
+  injectHomeBentoStyles(); // the home-ONLY bento grid + hero/play/ticker/map/merch/prep LAYOUT, scoped .bmf-app.front
   setMenuCatalog([]); // the Board reads this (campaign retired → empty; the board keys off live ids)
 
   const game = document.getElementById('game');
@@ -106,10 +108,9 @@ function buildFrontDoor(): void {
   game.appendChild(app);
   document.getElementById('fd-boot')?.remove();
 
-  const embers = app.querySelector<HTMLElement>('.embers');
-  if (embers) spawnEmbers(embers, 13);
-
-  wire(app);
+  spawnFrontEmbers(app, 13); // the ambient ember field (same helper Campaign + Prepare use)
+  wireFrontAppbar(app); // trophy → leaderboard, gear → settings (the appbar's two icon buttons)
+  wire(app); // the bento data-act surfaces (Open Skies · Map · Shop)
   void hydrateNational();
   void mountCarousel(app);
 }
@@ -121,10 +122,10 @@ function dossierMarkup(): string {
   if (!profile?.name) {
     return (
       `<header class="card warm cut fhome-dossier">` +
-      `<div class="row" style="gap:13px;align-items:center;">` +
+      `<div class="row fhome-dnew">` +
       `<div class="brand">${FLAME}</div>` +
-      `<div class="grow"><div class="h-screen" style="font-size:var(--fs-title)">New pilot</div>` +
-      `<div class="mono" style="font-size:var(--fs-meta);color:var(--dim);margin-top:4px;">Fly once and you'll get a callsign, a rank, and a place on the board.</div></div>` +
+      `<div class="grow"><div class="h-screen fhome-dnew-h">New pilot</div>` +
+      `<div class="mono fhome-dnew-sub">Fly once and you'll get a callsign, a rank, and a place on the board.</div></div>` +
       `</div></header>`
     );
   }
@@ -135,34 +136,22 @@ function dossierMarkup(): string {
   const xpLine = np.next ? `${np.next.name} in ${np.remaining.toLocaleString('en-US')}` : 'Top rank';
   return (
     `<header class="card warm cut fhome-dossier">` +
-    `<div class="row rise" style="gap:13px;">` +
+    `<div class="row rise fhome-drow">` +
     `<div class="helmet"><div class="clip">${HELMET}<span class="sheen"></span></div></div>` +
     `<div class="grow">` +
-    `<div class="row wrap" style="gap:9px;"><span class="h-screen">${name}</span><span class="rank" style="--rk:${rank.color}"><i></i>${rank.name}</span></div>` +
-    `<div class="row mono" style="gap:8px;margin-top:7px;font-size:var(--fs-meta);color:var(--dim);"><span><b style="color:var(--menu);font-weight:var(--fw-bold)">${pts.toLocaleString('en-US')}</b> pts</span><span>·</span><span>Career</span></div>` +
+    `<div class="row wrap fhome-did"><span class="h-screen">${name}</span><span class="rank" style="--rk:${rank.color}"><i></i>${rank.name}</span></div>` +
+    `<div class="row mono fhome-dmeta"><span><b>${pts.toLocaleString('en-US')}</b> pts</span><span>·</span><span>Career</span></div>` +
     `</div></div>` +
-    `<div style="margin-top:14px;"><div class="barrow"><span class="l">Rank advance</span><span class="r">${xpLine}</span></div>` +
+    `<div class="fhome-dadv"><div class="barrow"><span class="l">Rank advance</span><span class="r">${xpLine}</span></div>` +
     `<div class="bar"><i style="width:${Math.round(np.frac * 100)}%"></i></div></div>` +
     `</header>`
   );
 }
 
 function homeMarkup(): string {
-  const navLinks =
-    `<a class="fhome-nav-a" href="/" aria-current="page">Home</a>` +
-    `<a class="fhome-nav-a" href="/campaign/">Campaign</a>` +
-    `<a class="fhome-nav-a" href="/prepare/">Prepare</a>` +
-    `<a class="fhome-nav-a shop" href="https://shop.bucketmyfire.com/?utm_source=bucketmyfire&utm_medium=frontdoor&utm_campaign=nav">Shop</a>`;
-
   return `
-<div class="scene"></div><div class="embers"></div>
-<header class="fhome-bar">
-  <a class="brand fhome-brand" href="/" aria-label="Bucket My Fire — home"><span class="bmk">${FLAME}</span><b>BUCKET MY FIRE</b></a>
-  <nav class="fhome-nav" aria-label="Primary">${navLinks}</nav>
-  <span class="grow"></span>
-  <button class="iconbtn" data-act="board" aria-label="Leaderboard">${ic('trophy')}</button>
-  <button class="iconbtn" data-act="settings" aria-label="Settings">${ic('settings')}</button>
-</header>
+${frontScene()}
+${frontAppbar('home')}
 
 <div class="pad fhome">
   ${dossierMarkup()}
@@ -218,7 +207,7 @@ function homeMarkup(): string {
     <!-- Prepare row — the 15-min checklist promo + the Field Notes rail. -->
     <a class="card warm cut fhome-prep" href="/prepare/#checklist">
       <p class="fhome-eyebrow">Prepare</p>
-      <span class="h-big" style="font-size:var(--fs-hero)">15 minutes to ready</span>
+      <span class="h-big fhome-prep-h">15 minutes to ready</span>
       <span class="fhome-prep-b">An interactive wildfire-readiness checklist. Six concrete actions that lower your wildfire risk.</span>
       <span class="fhome-prep-go">Start the checklist →</span>
     </a>
@@ -233,7 +222,8 @@ function homeMarkup(): string {
 ${tabbarMarkup('home')}`;
 }
 
-/** Wire the data-act surfaces (all REUSE the built in-game builders) + the sitemap nav. */
+/** Wire the bento data-act surfaces (all REUSE the built in-game builders). The appbar's board/settings
+ *  buttons are wired separately by `wireFrontAppbar` (shared with Campaign + Prepare). */
 function wire(app: HTMLElement): void {
   app.querySelectorAll<HTMLElement>('[data-act]').forEach((el) => {
     el.addEventListener('click', (e) => {
@@ -246,10 +236,6 @@ function wire(app: HTMLElement): void {
           return openLiveFires(); // the full live-fire tracker (layers + smoke scrubber + detail)
         case 'shop':
           return navigateRail('shop'); // the standalone storefront (same tab)
-        case 'board':
-          return openBoard(); // the F1 timing-tower leaderboard
-        case 'settings':
-          return openSettings(); // sound / reduced-motion / callsign / cloud / reset
       }
     });
   });
@@ -310,40 +296,26 @@ function paintNational(summary: NationalSummary | null, feed: ReportedFeed | nul
   if (fresh) fresh.textContent = `${publishedWhen(pub)} · CIFFC`;
 }
 
-// ── Front-door LAYOUT only (the components come from injectHomeStyles; this is the bento + nav + grid,
-//    scoped `.bmf-app.front` so it never touches the in-game home's fixed-viewport hub layout). ──
+// ── Home-ONLY bento LAYOUT (the shared front-door chrome — scroll shell + appbar + scene/embers + the
+//    `.pad.fhome` column + `.fhome-eyebrow` — now comes from injectFrontShell, the same module Campaign
+//    and Prepare use. This is just the home's bento grid + its hero/play/ticker/map/merch/prep tiles +
+//    the dossier text classes, scoped `.bmf-app.front` so it never touches the in-game hub layout). ──
 
-function injectFrontStyles(): void {
-  if (document.getElementById('fd-front-css')) return;
+function injectHomeBentoStyles(): void {
+  if (document.getElementById('fd-bento-css')) return;
   const s = document.createElement('style');
-  s.id = 'fd-front-css';
+  s.id = 'fd-bento-css';
   s.textContent = `
-/* Override the in-game hub's fixed full-viewport shell: the front door is a SCROLLING content page. */
-.bmf-app.front { position: relative; inset: auto; height: auto; min-height: 100dvh; overflow: visible; display: block; }
-.bmf-app.front .scene { position: fixed; }
-.bmf-app.front .embers { position: fixed; }
-
-/* Sitemap appbar (sticky). */
-.bmf-app.front .fhome-bar { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 10px; min-height: 56px;
-  max-width: 1080px; margin: 0 auto; padding: 10px max(14px, env(safe-area-inset-left));
-  background: linear-gradient(180deg, rgba(7,10,13,0.92), rgba(7,10,13,0.4)); backdrop-filter: blur(10px) saturate(120%); -webkit-backdrop-filter: blur(10px) saturate(120%); border-bottom: 1px solid var(--hair); }
-.bmf-app.front .fhome-brand { gap: 10px; }
-.bmf-app.front .fhome-brand .bmk { width: 30px; height: 30px; display: grid; place-items: center; border-radius: var(--r-md); border: 1px solid var(--warm-stroke); background: radial-gradient(circle at 40% 30%, var(--warm-38), rgba(10,12,14,0.9)); box-shadow: inset 0 0 10px var(--ember-35), 0 0 14px var(--ember-12); }
-.bmf-app.front .fhome-brand .bmk svg { width: 15px; height: 15px; filter: drop-shadow(0 0 4px var(--glow-80)); }
-.bmf-app.front .fhome-brand b { font-family: var(--mono); font-weight: var(--fw-heavy); font-size: 13px; letter-spacing: .16em; }
-@media (max-width: 560px) { .bmf-app.front .fhome-brand b { display: none; } }
-.bmf-app.front .fhome-nav { display: none; align-items: center; gap: 2px; }
-@media (min-width: 760px) { .bmf-app.front .fhome-nav { display: inline-flex; } }
-.bmf-app.front .fhome-nav-a { text-decoration: none; color: var(--dim); font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; font-weight: var(--fw-bold); padding: 10px 11px; min-height: 44px; display: inline-flex; align-items: center; }
-.bmf-app.front .fhome-nav-a:hover { color: var(--ember-hi); }
-.bmf-app.front .fhome-nav-a[aria-current="page"] { color: var(--text); }
-.bmf-app.front .fhome-nav-a.shop { color: var(--ember-hi); }
-
-/* The pad becomes a normal centred content column (not the 452px mobile hub). */
-.bmf-app.front .pad.fhome { position: relative; z-index: 2; flex: none; width: 100%; max-width: 1080px; margin: 0 auto; overflow: visible;
-  display: flex; flex-direction: column; gap: 12px; padding: 14px max(14px, env(safe-area-inset-left)) calc(96px + env(safe-area-inset-bottom)); }
-@media (min-width: 760px) { .bmf-app.front .pad.fhome { padding-bottom: 40px; } }
 .bmf-app.front .fhome-dossier { margin: 0; }
+/* Dossier text (de-inlined from the markup so the page carries no inline style attrs). */
+.bmf-app.front .fhome-dossier .fhome-dnew { gap: 13px; }
+.bmf-app.front .fhome-dossier .fhome-dnew-h { font-size: var(--fs-title); }
+.bmf-app.front .fhome-dossier .fhome-dnew-sub { margin-top: 4px; font-size: var(--fs-meta); color: var(--dim); }
+.bmf-app.front .fhome-dossier .fhome-drow { gap: 13px; }
+.bmf-app.front .fhome-dossier .fhome-did { gap: 9px; }
+.bmf-app.front .fhome-dossier .fhome-dmeta { gap: 8px; margin-top: 7px; font-size: var(--fs-meta); color: var(--dim); }
+.bmf-app.front .fhome-dossier .fhome-dmeta b { color: var(--menu); font-weight: var(--fw-bold); }
+.bmf-app.front .fhome-dossier .fhome-dadv { margin-top: 14px; }
 
 /* Bento grid. */
 .bmf-app.front .fhome-grid { display: grid; gap: 12px; grid-template-columns: 1fr; }
@@ -357,8 +329,6 @@ function injectFrontStyles(): void {
   .bmf-app.front .fhome-prep { grid-area: prep; }
   .bmf-app.front .fhome-notes { grid-area: notes; }
 }
-.bmf-app.front .fhome-eyebrow { margin: 0 0 11px; font-family: var(--mono); font-size: 10.5px; letter-spacing: .26em; text-transform: uppercase; color: var(--menu); font-weight: var(--fw-bold); }
-.bmf-app.front .fhome-eyebrow.cool { color: var(--accent); }
 
 /* Shared key-art backdrop (hero + play): image with a RIGHT-TO-LEFT fade so the LEFT copy reads. */
 .bmf-app.front .fhome-art { position: absolute; inset: 0; z-index: 0; }
@@ -396,7 +366,7 @@ function injectFrontStyles(): void {
 /* Map entry. */
 .bmf-app.front .fhome-map { display: flex; align-items: center; gap: 13px; cursor: pointer; text-align: left; width: 100%; padding: 16px 17px; }
 .bmf-app.front .fhome-map:hover { transform: translateY(-2px); border-color: var(--accent); }
-.bmf-app.front .fhome-map-ic { width: 38px; height: 38px; flex: 0 0 auto; display: grid; place-items: center; border-radius: var(--r-sm); border: 1px solid var(--hair); background: rgba(103,232,255,0.08); color: var(--accent); }
+.bmf-app.front .fhome-map-ic { width: 38px; height: 38px; flex: 0 0 auto; display: grid; place-items: center; border-radius: var(--r-sm); border: 1px solid var(--hair); background: var(--accent-fill); color: var(--accent); }
 .bmf-app.front .fhome-map-ic svg { width: 20px; height: 20px; }
 .bmf-app.front .fhome-map-tx { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .bmf-app.front .fhome-map-tx b { font-size: 14px; font-weight: var(--fw-heavy); color: #fff; }
@@ -407,6 +377,7 @@ function injectFrontStyles(): void {
 /* Prepare promo + notes rail. */
 .bmf-app.front .fhome-merch { margin-top: 0; }
 .bmf-app.front .fhome-prep { display: flex; flex-direction: column; text-decoration: none; color: var(--text); padding: 18px 19px; }
+.bmf-app.front .fhome-prep .fhome-prep-h { font-size: var(--fs-hero); }
 .bmf-app.front .fhome-prep-b { margin-top: 9px; font-size: 13px; line-height: 1.5; color: var(--text-subtle); flex: 1; }
 .bmf-app.front .fhome-prep-go { margin-top: 14px; color: var(--ember-hi); font-weight: var(--fw-bold); font-size: 13.5px; }
 .bmf-app.front .fhome-prep:hover .fhome-prep-go { color: var(--menu); }
