@@ -74,10 +74,9 @@ const SETTINGS = ic('<path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy=
  *  it wears the SAME logo+wordmark+nav as every page (`.fhome-nav` is desktop-only; mobile uses the tab
  *  bar). Needs the flame `<defs>` in scope (NAV_DEFS on a static page; the front door injects it). */
 export function brandNavHtml(active = '') {
-  const nav = NAV.map((n) => {
+  const nav = NAV.filter((n) => n.key !== 'shop').map((n) => {
     const cur = n.key === active ? ' aria-current="page"' : '';
-    const shop = n.key === 'shop' ? ' shop' : '';
-    return `<a class="fhome-nav-a${shop}" href="${n.href}"${cur}>${n.label}</a>`;
+    return `<a class="fhome-nav-a" href="${n.href}"${cur}>${n.label}</a>`;
   }).join('');
   return (
     `<a class="fhome-brand" href="/" aria-label="Bucket My Fire — home"><span class="bmk">${FLAME}</span><b>Bucket My Fire</b></a>` +
@@ -86,6 +85,8 @@ export function brandNavHtml(active = '') {
 }
 
 export function appbarHtml({ active = '', actions = 'app' } = {}) {
+  const shopItem = NAV.find((n) => n.key === 'shop');
+  const shopLink = shopItem ? `<a class="fhome-shop" href="${shopItem.href}">Shop</a>` : '';
   const right =
     actions === 'app'
       ? `<button class="iconbtn" data-front="board" type="button" aria-label="Leaderboard">${TROPHY}</button>` +
@@ -93,7 +94,7 @@ export function appbarHtml({ active = '', actions = 'app' } = {}) {
       : actions === 'play'
         ? `<a class="fhome-cta" href="/?province=1">Fight the fire</a>`
         : ''; // 'none' → brand + nav only (editorial content pages that don't nudge readers into the game)
-  return `<header class="fhome-bar">` + brandNavHtml(active) + `<span class="fhome-grow"></span>` + right + `</header>`;
+  return `<header class="fhome-bar">` + brandNavHtml(active) + `<span class="fhome-grow"></span>` + shopLink + right + `</header>`;
 }
 
 /** The mobile bottom tab bar (same four top-level destinations, icon + label, active marked). */
@@ -171,7 +172,12 @@ export const navCss = `
   text-transform: uppercase; font-weight: var(--fw-bold); padding: 10px 11px; min-height: 44px; display: inline-flex; align-items: center; }
 .fhome-nav-a:hover { color: var(--ember-hi); }
 .fhome-nav-a[aria-current="page"] { color: var(--text); }
-.fhome-nav-a.shop { color: var(--ember-hi); }
+/* Shop pill — right side of the desktop appbar, beside the action buttons. */
+.fhome-shop { display: none; align-items: center; min-height: 36px; padding: 0 14px; border-radius: var(--r-lg);
+  text-decoration: none; font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+  font-weight: var(--fw-bold); color: var(--ember-hi); border: 1px solid color-mix(in srgb, var(--ember-hi) 35%, transparent); }
+@media (min-width: 760px) { .fhome-shop { display: inline-flex; } }
+.fhome-shop:hover { color: #fff; background: color-mix(in srgb, var(--ember-hi) 18%, transparent); }
 /* "Fight the fire" CTA (static pages with no game bundle). */
 .fhome-cta { display: inline-flex; align-items: center; min-height: 40px; padding: 0 16px; border-radius: var(--r-lg);
   text-decoration: none; font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
