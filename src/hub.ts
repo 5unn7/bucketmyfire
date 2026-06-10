@@ -14,19 +14,21 @@
 import { injectFonts } from './three/ui/fonts';
 import { injectKitStyles } from './three/ui/components/base';
 import { injectHomeStyles } from './three/ui/home/styles';
+import { attachCardGlow } from './three/ui/fx/cardGlow';
 import { navigateRail, openLiveFires, setMenuCatalog } from './three/ui/home/menus';
-import { DEFS, FLAME, HELMET, ic } from './three/ui/home/icons';
+import { DEFS, ic } from './three/ui/home/icons';
 import { loadProfile, availablePoints } from './three/ui/profile';
-import { careerScore, rankFor, nextRankProgress } from './three/missions/rank';
+import { careerScore, rankFor } from './three/missions/rank';
+import { provinceSessionId } from './three/province/buildProvince';
 import { injectShellStyles, tabbarMarkup, buildFooter } from './site/shell';
 import { brandNavHtml, tabbarHtml } from './site/siteNav.mjs';
 import { injectFrontShell, frontScene, frontAppbar, spawnFrontEmbers, wireFrontAppbar } from './site/frontShell';
 import { mountBlogCarousel } from './site/blogCarousel';
 import { SPLASH_CSS, SPINNER_MARKUP, SPLASH_ATTRS } from './three/ui/spinner';
-import { fetchSummary, fetchReportedFires } from './three/livefire/client';
-import { filterReportedCountry } from './three/livefire/normalize';
+import { fetchSummary, fetchReportedFires, fetchActiveFires } from './three/livefire/client';
+import { filterReportedCountry, filterCountry } from './three/livefire/normalize';
 import { fmtInt, fmtHa, publishedWhen, LIVEFIRE_SOURCES } from './three/livefire/strings';
-import type { NationalSummary, ReportedFeed } from './three/livefire/types';
+import type { NationalSummary, ReportedFeed, LiveFireFeed } from './three/livefire/types';
 
 const params = new URLSearchParams(location.search);
 
@@ -111,95 +113,150 @@ function buildFrontDoor(): void {
 
   spawnFrontEmbers(app, 13); // the ambient ember field (same helper Campaign + Prepare use)
   wireFrontAppbar(app); // trophy → leaderboard, gear → settings (the appbar's two icon buttons)
+  mountPilotBanner(app); // returning-pilot identity → the Open Skies card's top overlay banner (the dossier's new home)
+  setPilotsLive(-1); // neutral "Open Skies live" until the realtime tally lands (no fabricated number)
+  void hydratePilotsLive(); // count pilots flying in today's province RIGHT NOW (silent realtime listener)
   wire(app); // the bento data-act surfaces (Open Skies · Map · Shop)
+  attachCardGlow(app); // faint cursor spotlight + floating glazing rim on the glass bento tiles
   void hydrateNational();
   void mountCarousel(app);
   if (params.has('map')) openMap(); // deep link from the nav's "Map" item (works from any page → /?map)
 }
 
-/** The returning-pilot dossier card — REUSED verbatim from HomeScreen (helmet + sheen + rank + career +
- *  advance bar). A first-run visitor gets an invite line instead. */
-function dossierMarkup(): string {
+/** The returning-pilot identity, slimmed from the old full-width dossier card into the Open Skies card's
+ *  top OVERLAY banner: callsign (primary) over a rank chip + spendable points (secondary). A first-run
+ *  visitor gets an invite line instead. Populated into the `#fhome-pilot` (`.fpb-id`) slot; the callsign
+ *  (the one user value) is set via textContent, never innerHTML. */
+function mountPilotBanner(app: HTMLElement): void {
+  const host = app.querySelector<HTMLElement>('#fhome-pilot');
+  if (!host) return;
   const profile = loadProfile();
   if (!profile?.name) {
-    return (
-      `<header class="card warm cut fhome-dossier">` +
-      `<div class="fd-hero">` +
-      `<div class="fd-hero-lead"><div class="brand">${FLAME}</div></div>` +
-      `<div class="fd-hero-main">` +
-      `<p class="fd-hero-eyebrow">Welcome</p>` +
-      `<div class="fd-hero-head">New pilot</div>` +
-      `<p class="fd-hero-sub">Fly once and you'll get a callsign, a rank, and a place on the board.</p>` +
-      `</div></div></header>`
-    );
+    host.classList.add('is-new');
+    host.innerHTML = `<span class="fpb-cs">New pilot</span><span class="fpb-meta"><span class="fpb-hint">Fly to earn your rank</span></span>`;
+    return;
   }
-  const name = profile.name.toUpperCase();
-  const pts = careerScore();
-  const wallet = availablePoints(); // the spendable points balance (career minus what's been spent on aircraft)
-  const rank = rankFor(pts);
-  const np = nextRankProgress(pts);
-  const xpLine = np.next ? `${np.next.name} in ${np.remaining.toLocaleString('en-US')}` : 'Top rank';
-  return (
-    `<header class="card warm cut fhome-dossier">` +
-    `<div class="fd-hero rise">` +
-    `<div class="fd-hero-lead"><div class="helmet"><div class="clip">${HELMET}<span class="sheen"></span></div></div></div>` +
-    `<div class="fd-hero-main">` +
-    `<p class="fd-hero-eyebrow">Pilot</p>` +
-    `<div class="fd-hero-head">${name}</div>` +
-    `<p class="fd-hero-sub"><span class="pts-ic">${ic('spark')}<b>${wallet.toLocaleString('en-US')}</b> pts</span> · ${pts.toLocaleString('en-US')} Career</p>` +
-    `</div>` +
-    `<div class="fd-hero-trail"><span class="rank" style="--rk:${rank.color}"><i></i>${rank.name}</span></div>` +
-    `</div>` +
-    `<div class="fhome-dadv"><div class="barrow"><span class="l">Rank advance</span><span class="r">${xpLine}</span></div>` +
-    `<div class="bar"><i style="width:${Math.round(np.frac * 100)}%"></i></div></div>` +
-    `</header>`
+  const rank = rankFor(careerScore());
+  host.innerHTML =
+    `<span class="fpb-cs"></span>` +
+    `<span class="fpb-meta">` +
+    `<span class="rank" style="--rk:${rank.color}"><i></i>${rank.name}</span>` +
+    `<span class="fpb-pts pts-ic mono">${ic('spark')}<b>${availablePoints().toLocaleString('en-US')}</b> pts</span>` +
+    `</span>`;
+  const cs = host.querySelector('.fpb-cs');
+  if (cs) cs.textContent = profile.name.toUpperCase();
+}
+
+/** Paint the "N Pilots Live" presence chip on the Open Skies card. A real count (>=1) shows the number;
+ *  0 / unknown / source-down falls back to a neutral "Open Skies live" (the mode is always live — the
+ *  fires never stop) rather than a deflating "0" or a fabricated number (the honest-window rule applies
+ *  to presence too). The live dot stays lit either way. Wired to the realtime channel by hydratePilotsLive(). */
+function setPilotsLive(n: number): void {
+  const el = document.getElementById('fhome-pilots-live');
+  if (!el) return;
+  const num = el.querySelector('b');
+  const label = el.querySelector<HTMLElement>('span');
+  if (n >= 1) {
+    if (num) num.textContent = n.toLocaleString('en-US');
+    if (label) label.textContent = n === 1 ? 'Pilot live' : 'Pilots live';
+  } else {
+    if (num) num.textContent = '';
+    if (label) label.textContent = 'Open Skies live';
+  }
+}
+
+/** A pilot counts as "live" if its pose arrived in the last 6s (poses broadcast at ~12 Hz); re-tally the
+ *  chip every 4s so it tracks pilots joining + leaving. */
+const LIVE_STALE_MS = 6000;
+const LIVE_REFRESH_MS = 4000;
+
+/** Live "N Pilots Live" presence on the Open Skies card. Opens the SAME realtime channel the game joins
+ *  for today's Living Province (`os:prov-<region>-<ymd>`) as a SILENT LISTENER — we never broadcast a
+ *  pose, so we never appear as a ghost; we just tally the pilots who do. `@supabase/realtime-js` is
+ *  lazy-loaded here (after first paint) so the initial front-door JS stays light; the session id is
+ *  already bundled (menus.ts uses it). Best-effort: an unconfigured Supabase or any failure leaves the
+ *  neutral "Open Skies live" chip. */
+async function hydratePilotsLive(): Promise<void> {
+  let mod: typeof import('./three/net/openSkies');
+  try {
+    mod = await import('./three/net/openSkies');
+  } catch {
+    return; // realtime chunk failed to load → keep the neutral chip
+  }
+  if (!mod.openSkiesConfigured()) return; // no Supabase → no live presence (neutral chip stays)
+  const net = mod.connectOpenSkies(provinceSessionId(new Date()), { id: 'fd-listener', name: '', heli: '' }, LIVE_STALE_MS);
+  if (!net) return;
+  const tick = (): void => setPilotsLive(net.remotes().length); // remotes() prunes stale, then we count
+  const first = window.setTimeout(tick, 1400); // let peers broadcast a first pose before the first tally
+  const iv = window.setInterval(tick, LIVE_REFRESH_MS);
+  window.addEventListener(
+    'pagehide',
+    () => {
+      window.clearTimeout(first);
+      window.clearInterval(iv);
+      net.close();
+    },
+    { once: true },
   );
 }
 
 function homeMarkup(): string {
   return `
 ${frontScene()}
+<div class="fhome-bg" aria-hidden="true"><img src="/images/missions/saskatchewan/ThreeTown.webp" alt="" /></div>
 ${frontAppbar('home')}
 
 <div class="pad fhome">
-  ${dossierMarkup()}
-
   <div class="fhome-grid">
-    <!-- Hero — the brand claim over the dawn key-art; copy left over a right-to-left fade. -->
-    <section class="card warm cut fhome-hero">
-      <div class="fhome-art"><img src="/images/missions/saskatchewan/FirstLight.webp" alt="A helicopter with a slung water bucket over a dawn boreal lake, wildfire smoke beyond" /></div>
-      <div class="fhome-art-fade"></div>
+    <!-- HERO — the live fire, right now. The data IS the hero (no CTA), written BARE (no card) directly over
+         the full-page ThreeTown key-art. When both authoritative feeds are unreachable the live figure
+         hides and an honest fallback takes its place (paintNational). Open Skies + the Map card carry nav. -->
+    <section class="fhome-hero" aria-label="Wildfire across Canada, right now">
       <div class="fhome-tx">
-        <p class="fhome-eyebrow">Free · in your browser</p>
-        <h1 class="fhome-head">Fight the fire.</h1>
-        <p class="fhome-sub">Experience the thrill of real-3D helicopter firefighting.</p>
+        <div class="fhome-hero-top">
+          <span class="badge ok" id="fd-live">Live</span>
+          <span class="fhome-fresh" id="fd-fresh">CIFFC + CWFIS</span>
+        </div>
+        <h1 class="fhome-eyebrow fhome-hero-kick">Wildfires across Canada<br>Right now</h1>
+        <!-- The live figure — hydrated by paintNational(). -->
+        <div id="fhome-live">
+          <div class="fhome-fig"><b id="ro-active">—</b><span>active fires</span></div>
+          <div class="fhome-stats">
+            <span class="fhome-stat hot"><b id="ro-oc">—</b><span>out of control</span></span>
+            <span class="fhome-stat"><b id="ro-hot">—</b><span>satellite hotspots</span></span>
+            <span class="fhome-stat"><b id="ro-area">—</b><span>burned this year</span></span>
+            <span class="fhome-stat"><b id="ro-prep">—</b><span>prep level</span></span>
+          </div>
+        </div>
+        <!-- Honest fallback when both feeds are down (not "no fires") — shown by paintNational. -->
+        <p class="fhome-sub" id="fhome-fallback" hidden>Live totals are offline. Check official sources for the current picture.</p>
       </div>
     </section>
 
-    <!-- National-data TICKER — slim live CIFFC strip (scrolls horizontally on a phone). -->
-    <section class="card metal fhome-ticker" aria-label="Live national wildfire data">
-      <span class="badge ok" id="fd-live">Live</span>
-      <span class="fhome-tk"><b id="ro-active">—</b> active</span>
-      <span class="fhome-tk hot"><b id="ro-oc">—</b> out of control</span>
-      <span class="fhome-tk"><b id="ro-area">—</b> burned this yr</span>
-      <span class="fhome-tk"><b id="ro-prep">—</b> prep level</span>
-      <span class="fhome-tk dim" id="fd-fresh">CIFFC + CWFIS</span>
-    </section>
-
-    <!-- OPEN SKIES — the play CTA over the live-fire key-art; copy left over a right-to-left fade. -->
+    <!-- OPEN SKIES — the play CTA over the live-fire key-art. A top OVERLAY banner carries the slimmed
+         dossier (the pilot's identity: callsign + rank + points) on the left and the live presence
+         ("N Pilots Live") on the right; the Open Skies copy + Fly CTA stay at the base. The banner's
+         profile slot is populated by mountPilotBanner() (an invite line when first-run); the live count
+         by hydratePilotsLive(). -->
     <button class="card warm cut fhome-play" data-act="coop" aria-label="Play Open Skies">
-      <div class="fhome-art"><img src="/images/missions/saskatchewan/Backburn.webp" alt="A helicopter dropping water on a burning forest at dusk" /></div>
+      <div class="fhome-art"><img src="/images/ui/homescreen-bg.webp" alt="A Bell helicopter with a slung Bambi bucket dropping water on a wildfire over boreal lake country" /></div>
       <div class="fhome-art-fade"></div>
+      <div class="fhome-play-banner">
+        <div class="fpb-id" id="fhome-pilot"></div>
+        <span class="fpb-live" id="fhome-pilots-live" aria-live="polite"><i class="fpb-dot"></i><b>—</b><span>Pilots Live</span></span>
+      </div>
       <div class="fhome-tx fhome-play-tx">
-        <span class="fhome-play-ey">Fly · live fire</span>
-        <span class="h-big fhome-play-h">Open Skies</span>
-        <span class="fhome-play-sub">Take the controls over live fire. The fires never stop.</span>
+        <span class="fhome-play-ey">Real-time gameplay</span>
+        <span class="h-big fhome-play-h">Fight the Fire</span>
+        <span class="fhome-play-sub">Experience the glimpse of aerial firefighting.Fight along side your friends in real-time!</span>
         <span class="btn primary fhome-play-go">${ic('play')}Fly now</span>
       </div>
     </button>
 
-    <!-- Map — opens the full live wildfire tracker (layer toggles + smoke scrubber + detail sheet). -->
+    <!-- Map — opens the full live wildfire tracker (layer toggles + smoke scrubber + detail sheet). The
+         faint cyan cartographic grid (.fhome-map-grid) makes it read as a tactical map readout. -->
     <button class="card fhome-map" data-act="fires" aria-label="Open the live wildfire map">
+      <span class="fhome-map-grid" aria-hidden="true"></span>
       <span class="fhome-map-ic">${ic('map')}</span>
       <span class="fhome-map-tx"><b>Live fire map</b><span>Reported fires, hotspots, fire weather &amp; smoke</span></span>
       <span class="fhome-map-go">${ic('chevron-right')}</span>
@@ -239,7 +296,10 @@ function wire(app: HTMLElement): void {
       e.stopPropagation();
       switch (el.dataset.act) {
         case 'coop':
-          return navigateRail('coop'); // Open Skies — the live shared shift (pick aircraft → Fly)
+          // Open Skies is its own front-door PAGE now (open-skies/index.html → src/openskies/main.ts), built
+          // in the same .fd-card system as Campaign/Prepare — not an in-game overlay bolted under site chrome.
+          location.assign('/open-skies/');
+          return;
         case 'fires':
           return openMap(); // the full live-fire tracker, as a front-door page (brand bar + nav, Map active)
         case 'shop':
@@ -264,11 +324,12 @@ async function mountCarousel(app: HTMLElement): Promise<void> {
 // ── Live national-data grid ─────────────────────────────────────────────────────────────────────────
 
 async function hydrateNational(): Promise<void> {
-  const [summary, feed] = await Promise.all([
+  const [summary, feed, hotspots] = await Promise.all([
     fetchSummary().catch(() => null),
     fetchReportedFires().catch(() => null),
+    fetchActiveFires().catch(() => null),
   ]);
-  paintNational(summary, feed);
+  paintNational(summary, feed, hotspots);
 }
 
 function resolveNational(summary: NationalSummary | null, feed: ReportedFeed | null): { n: number; pub: number } {
@@ -283,48 +344,55 @@ function ocActive(feed: ReportedFeed | null): number {
   return filterReportedCountry(feed.fires, 'CA').filter((f) => f.stage === 'OC').length;
 }
 
-function paintNational(summary: NationalSummary | null, feed: ReportedFeed | null): void {
+function paintNational(summary: NationalSummary | null, feed: ReportedFeed | null, hotspots: LiveFireFeed | null): void {
   const set = (id: string, text: string): void => {
     const n = document.getElementById(id);
     if (n) n.textContent = text;
   };
   const fresh = document.getElementById('fd-fresh');
+  const live = document.getElementById('fhome-live');
+  const fallback = document.getElementById('fhome-fallback');
+  const badge = document.getElementById('fd-live');
   const summaryOk = !!summary && summary.meta.status === 'live';
   const feedOk = !!feed && feed.meta.status === 'live';
 
+  // Both authoritative feeds down → the live figure is replaced by the honest fallback (NOT "no fires"),
+  // and the freshness line points at the official sources. (The hotspot feed alone can't anchor the hero.)
   if (!summaryOk && !feedOk) {
-    set('ro-active', '—');
-    set('ro-oc', '—');
-    set('ro-area', '—');
-    set('ro-prep', '—');
+    if (live) live.hidden = true;
+    if (fallback) fallback.hidden = false;
+    if (badge) badge.hidden = true;
     if (fresh) fresh.innerHTML = `Live data unavailable · <a href="${LIVEFIRE_SOURCES.summary.url}" target="_blank" rel="noopener">official sources →</a>`;
     return;
   }
 
+  if (live) live.hidden = false;
+  if (fallback) fallback.hidden = true;
+  if (badge) badge.hidden = false;
+
   const { n: national, pub } = resolveNational(summary, feed);
   const oc = ocActive(feed);
+  // Raw satellite heat detections (CWFIS) for Canada — the "hotspots" number, distinct from reported fires.
+  const hot = hotspots && hotspots.meta.status === 'live' ? filterCountry(hotspots.hotspots, 'CA').length : -1;
   set('ro-active', national >= 0 ? fmtInt(national) : '—');
   set('ro-oc', oc >= 0 ? fmtInt(oc) : '—');
+  set('ro-hot', hot >= 0 ? fmtInt(hot) : '—');
   set('ro-area', summaryOk && summary!.areaBurnedHa > 0 ? fmtHa(summary!.areaBurnedHa) : '—');
   set('ro-prep', summaryOk && summary!.prepLevel > 0 ? `L${summary!.prepLevel}` : '—');
 
-  if (fresh) fresh.textContent = `${publishedWhen(pub)} · CIFFC`;
+  if (fresh) fresh.textContent = `${publishedWhen(pub)} · CIFFC + CWFIS`;
 }
 
 // ── Home-ONLY bento LAYOUT (the shared front-door chrome — scroll shell + appbar + scene/embers + the
 //    `.pad.fhome` column + `.fhome-eyebrow` — now comes from injectFrontShell, the same module Campaign
-//    and Prepare use. This is just the home's bento grid + its hero/play/ticker/map/merch/prep tiles +
-//    the dossier text classes, scoped `.bmf-app.front` so it never touches the in-game hub layout). ──
+//    and Prepare use. This is just the home's bento grid + its data-hero/play/map/merch/prep tiles,
+//    scoped `.bmf-app.front` so it never touches the in-game hub layout). ──
 
 function injectHomeBentoStyles(): void {
   if (document.getElementById('fd-bento-css')) return;
   const s = document.createElement('style');
   s.id = 'fd-bento-css';
   s.textContent = `
-.bmf-app.front .fhome-dossier { margin: 0; }
-/* The dossier now leads with the shared .fd-hero standard (frontShell); only its advance bar is local. */
-.bmf-app.front .fhome-dossier .fhome-dadv { margin-top: 14px; }
-
 /* Bento grid. Grid items default to min-width:auto, so a nowrap child (the ticker line) or a
    horizontal scroller (the notes rail) would force the single 1fr column wider than the phone
    viewport and overflow the page. min-width:0 lets every card shrink to the column, and the
@@ -332,67 +400,111 @@ function injectHomeBentoStyles(): void {
 .bmf-app.front .fhome-grid { display: grid; gap: 12px; grid-template-columns: 1fr; }
 .bmf-app.front .fhome-grid > * { min-width: 0; }
 @media (min-width: 880px) {
-  .bmf-app.front .fhome-grid { grid-template-columns: 1.05fr 1fr; grid-template-areas: "hero play" "ticker ticker" "map merch" "prep notes"; align-items: stretch; }
+  .bmf-app.front .fhome-grid { grid-template-columns: 2fr 1fr; grid-template-areas: "hero play" "map merch" "prep notes"; align-items: stretch; }
   .bmf-app.front .fhome-hero { grid-area: hero; }
   .bmf-app.front .fhome-play { grid-area: play; }
-  .bmf-app.front .fhome-ticker { grid-area: ticker; }
   .bmf-app.front .fhome-map { grid-area: map; }
   .bmf-app.front .fhome-merch { grid-area: merch; }
   .bmf-app.front .fhome-prep { grid-area: prep; }
   .bmf-app.front .fhome-notes { grid-area: notes; }
 }
 
-/* Shared key-art backdrop (hero + play): image with a RIGHT-TO-LEFT fade so the LEFT copy reads. */
+/* The ThreeTown aerial key-art fills the WHOLE front door as a fixed cinematic background. Home ONLY — Campaign/Prepare
+   don't emit .fhome-bg, so the shared frontShell .scene is untouched. It sits above .scene (z-0, painted
+   later) and under .embers (z-1) + the content (z-2), so the embers drift over the photo and the bento
+   floats above it. The scrim (::after) buys the BARE hero data its contrast now that it sits on the page
+   instead of inside a card: it darkens the lower-left where the live figure + cards sit, leaving the
+   fire plume + horizon lit. (Photographic scrims are art literals — same rgba(7,10,13) base as the fades.) */
+.bmf-app.front .fhome-bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+.bmf-app.front .fhome-bg img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 42%; display: block; }
+.bmf-app.front .fhome-bg::after { content: ""; position: absolute; inset: 0;
+  background:
+    linear-gradient(180deg, rgba(7,10,13,0.34) 0%, rgba(7,10,13,0.55) 54%, rgba(7,10,13,0.86) 100%),
+    linear-gradient(90deg, rgba(7,10,13,0.78) 0%, rgba(7,10,13,0.32) 52%, transparent 100%); }
+
+/* Key-art backdrop for the Open Skies play tile (the hero now uses the page background instead): a
+   RIGHT-TO-LEFT fade — dark down the full-height LEFT edge so BOTH the top banner info (New pilot) and the
+   bottom copy (heading/sub/CTA) read — a bottom scrim for the base copy, and an extra bottom-LEFT radial
+   pooling the darkest weight under the heading/CTA stack. */
 .bmf-app.front .fhome-art { position: absolute; inset: 0; z-index: 0; }
-.bmf-app.front .fhome-art img { width: 100%; height: 100%; object-fit: cover; object-position: 64% center; display: block; }
+.bmf-app.front .fhome-art img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 26%; display: block; }
 .bmf-app.front .fhome-art-fade { position: absolute; inset: 0; z-index: 1; background:
+  radial-gradient(125% 95% at 0% 100%, rgba(5,7,9,0.97) 0%, rgba(7,10,13,0.6) 26%, rgba(7,10,13,0.22) 52%, transparent 100%),
   linear-gradient(90deg, rgba(7,10,13,0.95) 0%, rgba(7,10,13,0.82) 26%, rgba(7,10,13,0.45) 62%, rgba(7,10,13,0.1) 100%),
-  linear-gradient(0deg, rgba(7,10,13,0.45) 0%, transparent 36%); }
+  linear-gradient(0deg, rgba(7,10,13,0.68) 0%, rgba(7,10,13,0.32) 22%, transparent 50%); }
 .bmf-app.front .fhome-tx { position: relative; z-index: 2; }
 
-/* Hero — big, copy stacked at the base over the fade. */
-.bmf-app.front .fhome-hero { position: relative; overflow: hidden; min-height: 360px; display: flex; flex-direction: column; justify-content: flex-end; padding: 24px; }
-.bmf-app.front .fhome-head { font-size: clamp(30px, 4.2vw, 52px); line-height: 1.02; color: #fff; max-width: 16ch; text-wrap: balance; text-shadow: 0 2px 14px rgba(0,0,0,0.6); }
+/* HERO — the live-data panel, BARE (no card) over the full-page ThreeTown key-art. The status row
+   floats at the top; the live figure + supporting stats stack at the base over the page scrim. */
+.bmf-app.front .fhome-hero { position: relative; min-height: 360px; display: flex; flex-direction: column; padding: 24px 18px; }
+/* .fhome-tx fills the hero as a flex column so the status row (margin-bottom:auto) floats to the TOP and
+   the live figure + stats sink to the BASE — mirroring the Open Skies card's top-banner / base-copy split,
+   so the two row-1 tiles align: the Live badge sits level with the presence banner, the figure with the
+   headline. (Was inert: .fhome-tx wasn't a flex column, so the whole block dropped to the bottom.) */
+.bmf-app.front .fhome-hero .fhome-tx { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
+.bmf-app.front .fhome-hero-top { display: flex; align-items: center; gap: 10px; }
+.bmf-app.front .fhome-hero-top .badge { flex: 0 0 auto; }
+.bmf-app.front .fhome-fresh { font-family: var(--mono); font-size: var(--fs-micro); letter-spacing: .04em; color: var(--faint); }
+.bmf-app.front .fhome-fresh a { color: var(--ember-hi); text-decoration: none; }
+.bmf-app.front .fhome-hero-kick { margin: 18px 0 0; max-width: 22ch; }
+/* The live figure — the hero number leads, its unit label sits beside it on the baseline. */
+.bmf-app.front .fhome-fig { display: flex; align-items: flex-end; gap: 12px; margin-top: 10px; }
+.bmf-app.front .fhome-fig b { font-family: var(--mono); font-weight: var(--fw-black); font-size: clamp(52px, 9vw, 104px); line-height: .88; color: #fff; letter-spacing: -0.02em; text-shadow: 0 2px 18px rgba(0,0,0,0.6); }
+.bmf-app.front .fhome-fig span { font-size: clamp(15px, 1.8vw, 19px); line-height: 1.1; color: var(--text-subtle); max-width: 7ch; text-shadow: 0 1px 8px rgba(0,0,0,0.7); }
+/* Supporting stats — out-of-control (warn), hotspots, area, prep. Equal-width flex cells so they
+   distribute evenly and wrap into a tidy 2×2 on a phone — alignment from the layout, no chrome. */
+.bmf-app.front .fhome-stats { display: flex; flex-wrap: wrap; gap: 16px 24px; margin-top: 18px; }
+.bmf-app.front .fhome-stat { flex: 1 1 0; min-width: 120px; display: flex; flex-direction: column; gap: 4px; }
+.bmf-app.front .fhome-stat b { font-family: var(--mono); font-size: var(--fs-xl); font-weight: var(--fw-bold); color: var(--text); line-height: 1; text-shadow: 0 1px 8px rgba(0,0,0,0.6); }
+.bmf-app.front .fhome-stat.hot b { color: var(--warn); }
+.bmf-app.front .fhome-stat span { font-family: var(--mono); font-size: var(--fs-micro); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
 .bmf-app.front .fhome-sub { margin-top: 13px; font-size: clamp(14px, 1.5vw, 17px); line-height: 1.5; color: var(--text-subtle); max-width: 40ch; text-shadow: 0 1px 8px rgba(0,0,0,0.7); }
 
-/* OPEN SKIES play tile — key-art backdrop + the same fade, copy at the base. */
-.bmf-app.front .fhome-play { position: relative; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; cursor: pointer; min-height: 360px; padding: 24px; text-align: left; }
+/* OPEN SKIES play tile — key-art backdrop + the same fade. The top overlay banner (profile + live
+   presence) and the base copy split top/bottom via space-between, both above the art/fade. */
+.bmf-app.front .fhome-play { position: relative; overflow: hidden; display: flex; flex-direction: column; justify-content: space-between; cursor: pointer; aspect-ratio: 4 / 5; padding: 24px 17px; text-align: left; }
 .bmf-app.front .fhome-play:hover { transform: translateY(-2px); }
+/* Top overlay banner: profile cluster (left) + live presence chip (right). */
+.bmf-app.front .fhome-play-banner { position: relative; z-index: 2; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.bmf-app.front .fpb-id { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.bmf-app.front .fpb-cs { font-family: var(--mono); font-weight: var(--fw-black); font-size: var(--fs-lg); letter-spacing: .04em; color: #fff; line-height: 1;
+  text-shadow: 0 1px 8px rgba(0,0,0,0.75); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 14ch; }
+.bmf-app.front .fpb-meta { display: inline-flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.bmf-app.front .fpb-pts { font-size: var(--fs-meta); color: var(--text-subtle); text-shadow: 0 1px 6px rgba(0,0,0,0.8); }
+.bmf-app.front .fpb-hint { font-family: var(--mono); font-size: var(--fs-meta); color: var(--text-subtle); text-shadow: 0 1px 6px rgba(0,0,0,0.8); }
+/* Live presence chip — frosted pill so it reads over the bright part of the art; a pulsing "live" dot. */
+.bmf-app.front .fpb-live { flex: 0 0 auto; display: inline-flex; align-items: baseline; gap: 7px; padding: 6px 10px; border-radius: var(--r-pill);
+  background: rgba(7,10,13,0.62); border: 1px solid var(--hair); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  font-family: var(--mono); font-size: var(--fs-micro); letter-spacing: .08em; text-transform: uppercase; color: var(--text-subtle); white-space: nowrap; }
+.bmf-app.front .fpb-live b { color: #fff; font-weight: var(--fw-bold); font-size: var(--fs-sm); }
+.bmf-app.front .fpb-live b:empty { display: none; }
+.bmf-app.front .fpb-dot { align-self: center; width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: var(--ok); box-shadow: 0 0 7px var(--ok); animation: fpb-pulse 1.8s ease-in-out infinite; }
+@keyframes fpb-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+@media (prefers-reduced-motion: reduce) { .bmf-app.front .fpb-dot { animation: none; } }
 .bmf-app.front .fhome-play-tx { display: flex; flex-direction: column; align-items: flex-start; }
-.bmf-app.front .fhome-play-ey { font-family: var(--mono); font-size: 10.5px; letter-spacing: .26em; text-transform: uppercase; color: var(--menu); font-weight: var(--fw-bold); }
-.bmf-app.front .fhome-play-h { margin-top: 10px; font-size: clamp(30px, 4.2vw, 50px); text-shadow: 0 2px 14px rgba(0,0,0,0.6); }
-.bmf-app.front .fhome-play-sub { margin-top: 11px; font-size: 14px; line-height: 1.45; color: var(--text-subtle); max-width: 24ch; text-shadow: 0 1px 8px rgba(0,0,0,0.7); }
+.bmf-app.front .fhome-play-ey { font-family: var(--mono); font-size: 10.5px; letter-spacing: .26em; text-transform: uppercase; color: var(--menu); font-weight: var(--fw-Regular); }
+.bmf-app.front .fhome-play-h { margin-top: 10px; font-size: clamp(24px, 3.2vw, 36px); text-shadow: 0 2px 14px rgba(0,0,0,0.6); }
+.bmf-app.front .fhome-play-sub { margin-top: 11px; font-size: 14px; line-height: 1.45; color: var(--text-subtle); max-width: 60ch; text-align: left; text-shadow: 0 1px 8px rgba(0,0,0,0.7); }
 .bmf-app.front .fhome-play-go { margin-top: 18px; pointer-events: none; }
 
-/* National-data TICKER — DESKTOP is a slim single-line strip; phones get the cluster below. */
-.bmf-app.front .fhome-ticker { display: flex; align-items: center; gap: 0; padding: 0 6px; min-height: 48px; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
-.bmf-app.front .fhome-ticker::-webkit-scrollbar { display: none; }
-.bmf-app.front .fhome-ticker .badge { flex: 0 0 auto; margin: 0 10px; }
-.bmf-app.front .fhome-tk { flex: 0 0 auto; padding: 0 14px; font-family: var(--mono); font-size: var(--fs-meta); color: var(--dim); border-left: 1px solid var(--hair); }
-.bmf-app.front .fhome-ticker .badge + .fhome-tk { border-left: 0; }
-.bmf-app.front .fhome-tk b { color: var(--text); font-weight: var(--fw-bold); font-size: var(--fs-md); }
-.bmf-app.front .fhome-tk.hot b { color: var(--warn); }
-.bmf-app.front .fhome-tk.dim { color: var(--faint); }
-.bmf-app.front .fhome-tk a { color: var(--ember-hi); text-decoration: none; }
-/* PHONE / narrow (below the bento's 2-col breakpoint): a single-line strip pushes half its numbers
-   off the right edge and demands a sideways scroll. Re-lay it as a compact instrument cluster — one
-   header row (Live badge left, "updated · source" right) over a 2×2 grid of the four stats (every
-   value visible, no scroll), hairline-divided. Freshness shares the header rather than taking its own
-   footer row, and the padding is tight, so the cluster stays short. The higher-specificity
-   .fhome-ticker .fhome-tk selectors override the base strip; the desktop strip is left exactly as-is. */
-@media (max-width: 879.98px) {
-  .bmf-app.front .fhome-ticker { display: grid; grid-template-columns: 1fr 1fr; gap: 0; padding: 0; min-height: 0; overflow: visible; white-space: normal; }
-  .bmf-app.front .fhome-ticker .badge { grid-column: 1; grid-row: 1; justify-self: start; align-self: center; margin: 6px 0 6px 14px; }
-  .bmf-app.front .fhome-ticker #fd-fresh { grid-column: 2; grid-row: 1; justify-self: end; align-self: center; flex-direction: row; align-items: center; gap: 6px; text-align: right; padding: 6px 14px 6px 0; font-size: var(--fs-micro); border-top: 0; }
-  .bmf-app.front .fhome-ticker .fhome-tk { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 7px 14px; font-size: var(--fs-micro); border-top: 1px solid var(--hair); border-left: 0; }
-  .bmf-app.front .fhome-ticker .fhome-tk:nth-child(odd) { border-left: 1px solid var(--hair); }
-  .bmf-app.front .fhome-ticker .fhome-tk b { font-size: var(--fs-md); line-height: 1.1; }
-}
-
-/* Map entry. */
-.bmf-app.front .fhome-map { display: flex; align-items: center; gap: 13px; cursor: pointer; text-align: left; width: 100%; padding: 16px 17px; }
+/* Map entry — a tactical "map readout" tile (cool / instrument register, so it opts OUT of the warm
+   cardGlow glaze in cardGlow.ts). A FAINT cyan cartographic grid blooms from behind the map icon and
+   fades across the card; the grid + icon brighten on hover to make it pop. Every .card carries the
+   corner-cut clip-path, which also clips the grid child to the notch (no overflow needed) — and clips
+   any OUTER box-shadow, so the "pop" glow lives on the interior icon, not the card. */
+.bmf-app.front .fhome-map { position: relative; isolation: isolate; display: flex; align-items: center; gap: 13px; cursor: pointer; text-align: left; width: 100%; padding: 16px 17px; }
+.bmf-app.front .fhome-map > :not(.fhome-map-grid) { position: relative; z-index: 1; }
+.bmf-app.front .fhome-map-grid { position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    repeating-linear-gradient(90deg, var(--accent-fill) 0 1px, transparent 1px 19px),
+    repeating-linear-gradient(0deg, var(--accent-fill) 0 1px, transparent 1px 19px);
+  -webkit-mask: radial-gradient(150% 150% at 9% 50%, #000 0%, rgba(0,0,0,0.42) 38%, transparent 78%);
+  mask: radial-gradient(150% 150% at 9% 50%, #000 0%, rgba(0,0,0,0.42) 38%, transparent 78%);
+  opacity: .8; transition: opacity .26s ease; }
 .bmf-app.front .fhome-map:hover { transform: translateY(-2px); border-color: var(--accent); }
-.bmf-app.front .fhome-map-ic { width: 38px; height: 38px; flex: 0 0 auto; display: grid; place-items: center; border-radius: var(--r-sm); border: 1px solid var(--hair); background: var(--accent-fill); color: var(--accent); }
+.bmf-app.front .fhome-map:hover .fhome-map-grid { opacity: 1; }
+.bmf-app.front .fhome-map-ic { width: 38px; height: 38px; flex: 0 0 auto; display: grid; place-items: center; border-radius: var(--r-sm); border: 1px solid var(--hair); background: var(--accent-fill); color: var(--accent); transition: box-shadow .26s ease, border-color .26s ease, color .26s ease; }
+.bmf-app.front .fhome-map:hover .fhome-map-ic { border-color: var(--accent-soft); color: var(--accent-hi); box-shadow: var(--glow); }
 .bmf-app.front .fhome-map-ic svg { width: 20px; height: 20px; }
 .bmf-app.front .fhome-map-tx { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .bmf-app.front .fhome-map-tx b { font-size: 14px; font-weight: var(--fw-heavy); color: #fff; }
@@ -401,17 +513,23 @@ function injectHomeBentoStyles(): void {
 .bmf-app.front .fhome-map-go svg { width: 18px; height: 18px; }
 
 /* Prepare promo + notes rail. */
-.bmf-app.front .fhome-merch { margin-top: 0; }
-.bmf-app.front .fhome-prep { display: flex; flex-direction: column; text-decoration: none; color: var(--text); padding: 18px 19px; }
+.bmf-app.front .fhome-merch { margin-top: 0; padding: 14px 17px; }
+.bmf-app.front .fhome-prep { display: flex; flex-direction: column; text-decoration: none; color: var(--text); padding: 18px 17px; }
 .bmf-app.front .fhome-prep .fhome-prep-h { font-size: var(--fs-hero); }
 .bmf-app.front .fhome-prep-b { margin-top: 9px; font-size: 13px; line-height: 1.5; color: var(--text-subtle); flex: 1; }
 .bmf-app.front .fhome-prep-go { margin-top: 14px; color: var(--ember-hi); font-weight: var(--fw-bold); font-size: 13.5px; }
 .bmf-app.front .fhome-prep:hover .fhome-prep-go { color: var(--menu); }
-.bmf-app.front .fhome-notes { display: flex; flex-direction: column; }
+.bmf-app.front .fhome-notes { display: flex; flex-direction: column; padding: 14px 17px; }
 .bmf-app.front .fhome-notes .fd-rail { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; padding-bottom: 4px; scrollbar-width: none; }
 .bmf-app.front .fhome-notes .fd-rail::-webkit-scrollbar { display: none; }
 .bmf-app.front .fhome-notes .fd-mcard { scroll-snap-align: start; flex: 0 0 78%; max-width: 320px; }
 @media (min-width: 760px) { .bmf-app.front .fhome-notes .fd-mcard { flex-basis: 46%; } }
+
+/* Home hero (mobile + desktop): more breathing room above it, and the live data pulled DOWN so it sits close to the
+   next card (the play tile) instead of floating high over the art with empty space below. */
+.bmf-app.front .fhome-grid { padding-top: 22px; }
+.bmf-app.front .fhome-hero .fhome-tx { justify-content: flex-end; }
+.bmf-app.front .fhome-hero { padding-bottom: 12px; }
 
 `;
   document.head.appendChild(s);

@@ -20,7 +20,8 @@
   --card-glass:rgba(16,24,32,0.60);--card-soft:rgba(16,24,32,0.42);--warm-glass:rgba(44,17,13,0.46);
   --track:rgba(255,255,255,0.10);--recess:rgba(5,9,13,0.55);--field:rgba(8,13,18,0.60);--rowmine:rgba(103,232,255,0.14);
   --stroke:rgba(255,255,255,0.12);--stroke-strong:rgba(255,255,255,0.18);--warm-stroke:rgba(255,138,110,0.85);--hair:rgba(255,255,255,0.07);
-  --shadow-card:0 8px 30px rgba(0,0,0,0.45);--ember-glow:0 0 16px rgba(255,106,44,0.5);--blur:blur(12px) saturate(120%);
+  --shadow-card:0 8px 30px rgba(0,0,0,0.45);--shadow-card-rich:0 10px 36px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.13), inset 1px 0 0 rgba(255,255,255,0.05), inset 0 -1px 0 rgba(0,0,0,0.22);--bevel-top:rgba(255,255,255,0.14);--ember-glow:0 0 16px rgba(255,106,44,0.5);--blur:blur(12px) saturate(120%);
+  --card-gradient:linear-gradient(158deg, rgba(22,32,44,0.72) 0%, rgba(12,18,26,0.68) 52%, rgba(8,12,18,0.64) 100%);--card-gradient-fight:linear-gradient(158deg, rgba(32,22,14,0.74) 0%, rgba(16,10,6,0.70) 52%, rgba(10,6,4,0.66) 100%);
   --accent:#67e8ff;--accent-hi:#9af1ff;--accent-soft:rgba(103,232,255,0.55);--accent-fill:rgba(103,232,255,0.10);--glow:0 0 10px rgba(103,232,255,0.45);
   --ember-05:rgba(255,106,44,0.05);--ember-10:rgba(255,106,44,0.10);--ember-12:rgba(255,106,44,0.12);--ember-14:rgba(255,106,44,0.14);--ember-18:rgba(255,106,44,0.18);--ember-20:rgba(255,106,44,0.20);--ember-22:rgba(255,106,44,0.22);--ember-30:rgba(255,106,44,0.30);--ember-32:rgba(255,106,44,0.32);--ember-35:rgba(255,106,44,0.35);--ember-40:rgba(255,106,44,0.40);--ember-42:rgba(255,106,44,0.42);--ember-50:rgba(255,106,44,0.50);
   --fire-06:rgba(255,122,69,0.06);--fire-12:rgba(255,122,69,0.12);--fire-16:rgba(255,122,69,0.16);--fire-28:rgba(255,122,69,0.28);--fire-55:rgba(255,122,69,0.55);
@@ -56,7 +57,12 @@
   text-transform: uppercase; font-weight: var(--fw-bold); padding: 10px 11px; min-height: 44px; display: inline-flex; align-items: center; }
 .fhome-nav-a:hover { color: var(--ember-hi); }
 .fhome-nav-a[aria-current="page"] { color: var(--text); }
-.fhome-nav-a.shop { color: var(--ember-hi); }
+/* Shop pill — right side of the desktop appbar, beside the action buttons. */
+.fhome-shop { display: none; align-items: center; min-height: 36px; padding: 0 14px; border-radius: var(--r-lg);
+  text-decoration: none; font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+  font-weight: var(--fw-bold); color: var(--ember-hi); border: 1px solid color-mix(in srgb, var(--ember-hi) 35%, transparent); }
+@media (min-width: 760px) { .fhome-shop { display: inline-flex; } }
+.fhome-shop:hover { color: #fff; background: color-mix(in srgb, var(--ember-hi) 18%, transparent); }
 /* "Fight the fire" CTA (static pages with no game bundle). */
 .fhome-cta { display: inline-flex; align-items: center; min-height: 40px; padding: 0 16px; border-radius: var(--r-lg);
   text-decoration: none; font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
@@ -64,8 +70,10 @@
 .fhome-cta:hover { color: var(--cta-ink); filter: brightness(1.05); }
 
 /* ── Footer brand lockup (mini icon + wordmark) — shared by the front-door .fd-foot and the static
-   .fn-foot, so every footer wears the same logo lockup as the appbar. ─────────────────────────── */
-.site-foot-brand { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; color: var(--text-subtle); margin: 0 0 12px; }
+   .fn-foot, so every footer wears the same logo lockup as the appbar. Each footer is a wrapping flex
+   row; the lockup is the last item (order 3), pushed to the right with margin-left:auto and sitting on
+   the same bottom line as the policy links (align-self bottom; the front door re-centres it). ─────── */
+.site-foot-brand { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; color: var(--text-subtle); margin: 0 0 0 auto; order: 3; align-self: end; }
 .site-foot-mark { width: 20px; height: 22px; flex: 0 0 auto; display: grid; place-items: center; }
 .site-foot-mark .flame { width: auto; height: 20px; fill: url(#flameGrad); filter: drop-shadow(0 0 4px var(--glow-80)); }
 .site-foot-brand b { font-family: var(--mono); font-weight: var(--fw-heavy); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; }
@@ -122,9 +130,9 @@ h1,h2,h3{font-weight:800;letter-spacing:-0.01em;line-height:1.2;color:#fff}
 .fn-legal li{margin:7px 0}
 .fn-legal a{font-weight:600}
 .fn-takeaways{background:var(--card-soft);border:1px solid var(--stroke);border-left:3px solid var(--ember);border-radius:var(--r-md);padding:16px 20px;margin:0 0 26px;color:var(--text-subtle)}
-.fn-foot{max-width:760px;margin:0 auto;padding:30px max(16px,env(safe-area-inset-left)) calc(40px + env(safe-area-inset-bottom));border-top:1px solid var(--hair)}
-.fn-disclaimer{color:var(--dim);font-size:var(--fs-sm);max-width:60ch;line-height:1.55;margin:0 0 12px}
-.fn-foot-links{display:flex;flex-wrap:wrap;gap:8px 18px}
+.fn-foot{max-width:760px;margin:0 auto;padding:30px max(16px,env(safe-area-inset-left)) calc(40px + env(safe-area-inset-bottom));border-top:1px solid var(--hair);display:flex;flex-wrap:wrap;align-items:flex-end;column-gap:24px;row-gap:10px}
+.fn-disclaimer{order:1;flex:1 1 100%;color:var(--dim);font-size:var(--fs-sm);max-width:60ch;line-height:1.55;margin:0}
+.fn-foot-links{order:2;flex:0 1 auto;min-width:0;display:flex;flex-wrap:wrap;gap:8px 18px}
 .fn-foot-links a{font-family:var(--mono);font-size:var(--fs-meta);letter-spacing:0.1em;text-transform:uppercase;color:var(--dim)}
 .fn-foot-links a:hover{color:var(--ember-hi)}
 </style>
@@ -132,7 +140,7 @@ h1,h2,h3{font-weight:800;letter-spacing:-0.01em;line-height:1.2;color:#fff}
   <body class="fn">
     <a class="fn-skip" href="#fn-main">Skip to content</a>
     <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><linearGradient id="flameGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffc24a"/><stop offset="1" stop-color="#ff6a2c"/></linearGradient></defs></svg>
-    <header class="fhome-bar"><a class="fhome-brand" href="/" aria-label="Bucket My Fire — home"><span class="bmk"><svg class="flame" viewBox="0 0 149.7 184.72"><polygon points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/><path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/><path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/></svg></span><b>Bucket My Fire</b></a><nav class="fhome-nav" aria-label="Primary"><a class="fhome-nav-a" href="/">Home</a><a class="fhome-nav-a" href="/campaign/">Campaign</a><a class="fhome-nav-a" href="/prepare/">Prepare</a><a class="fhome-nav-a" href="/?map">Map</a><a class="fhome-nav-a shop" href="https://shop.bucketmyfire.com/?utm_source=bucketmyfire&utm_medium=frontdoor&utm_campaign=nav">Shop</a></nav><span class="fhome-grow"></span></header>
+    <header class="fhome-bar"><a class="fhome-brand" href="/" aria-label="Bucket My Fire — home"><span class="bmk"><svg class="flame" viewBox="0 0 149.7 184.72"><polygon points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/><path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/><path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/></svg></span><b>Bucket My Fire</b></a><nav class="fhome-nav" aria-label="Primary"><a class="fhome-nav-a" href="/">Home</a><a class="fhome-nav-a" href="/campaign/">Campaign</a><a class="fhome-nav-a" href="/prepare/">Prepare</a><a class="fhome-nav-a" href="/?map">Map</a></nav><span class="fhome-grow"></span><a class="fhome-shop" href="https://shop.bucketmyfire.com/?utm_source=bucketmyfire&utm_medium=frontdoor&utm_campaign=nav">Shop</a></header>
     <main id="fn-main" class="fn-wrap">
       <nav class="site-crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span class="site-crumb-sep" aria-hidden="true">/</span><span aria-current="page">Privacy</span></nav>
       <header class="fd-hero"><div class="fd-hero-main">
@@ -176,7 +184,7 @@ h1,h2,h3{font-weight:800;letter-spacing:-0.01em;line-height:1.2;color:#fff}
         <p>We may update this policy as the game grows; the "last updated" date above will change. Material changes will be noted in the game.</p>
       </div>
     </main>
-    <nav class="fd-tabbar" aria-label="Primary"><a class="fd-tab" href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg><span>Home</span></a><a class="fd-tab" href="/campaign/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22V4"/></svg><span>Campaign</span></a><a class="fd-tab" href="/prepare/"><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg><span>Prepare</span></a><a class="fd-tab" href="/?map"><svg viewBox="0 0 24 24" aria-hidden="true"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21 3 6"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg><span>Map</span></a><a class="fd-tab" href="https://shop.bucketmyfire.com/?utm_source=bucketmyfire&utm_medium=frontdoor&utm_campaign=nav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg><span>Shop</span></a></nav>
+    <nav class="fd-tabbar" aria-label="Primary"><a class="fd-tab" href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg><span>Home</span></a><a class="fd-tab" href="/campaign/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22V4"/></svg><span>Campaign</span></a><a class="fd-tab" href="/?map"><svg viewBox="0 0 24 24" aria-hidden="true"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21 3 6"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg><span>Map</span></a><a class="fd-tab" href="/prepare/"><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg><span>Prepare</span></a><a class="fd-tab" href="https://shop.bucketmyfire.com/?utm_source=bucketmyfire&utm_medium=frontdoor&utm_campaign=nav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg><span>Shop</span></a></nav>
     <footer class="fn-foot">
       <a class="site-foot-brand" href="/" aria-label="Bucket My Fire — home"><span class="site-foot-mark"><svg class="flame" viewBox="0 0 149.7 184.72"><polygon points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/><path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/><path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/></svg></span><b>Bucket My Fire</b></a>
       <p class="fn-disclaimer">General information, not an emergency tool. In an emergency, follow official sources and local authorities.</p>

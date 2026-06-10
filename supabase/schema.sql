@@ -424,7 +424,7 @@ grant select on public.fire_snapshots   to anon;
 grant select on public.national_summary to anon;
 
 -- ---------------------------------------------------------------------------
--- Scheduling — pg_cron pings the public `ingest-fires` Edge Function every 20 minutes.
+-- Scheduling — pg_cron pings the public `ingest-fires` Edge Function every 10 minutes.
 -- ---------------------------------------------------------------------------
 -- The function is deployed with verify_jwt = FALSE (like report-error) but gates writes behind a
 -- shared secret it reads from its own env (INGEST_SECRET), so a random public POST can't drive it.
@@ -436,8 +436,8 @@ grant select on public.national_summary to anon;
 --   create extension if not exists pg_net;
 --
 --   select cron.schedule(
---     'ingest-fires-20min',
---     '*/20 * * * *',
+--     'ingest-fires-10min',
+--     '*/10 * * * *',
 --     $cron$
 --       select net.http_post(
 --         url     := 'https://<PROJECT_REF>.supabase.co/functions/v1/ingest-fires',
@@ -448,7 +448,7 @@ grant select on public.national_summary to anon;
 --     $cron$
 --   );
 --
--- To inspect / unschedule:  select * from cron.job;   select cron.unschedule('ingest-fires-20min');
+-- To inspect / unschedule:  select * from cron.job;   select cron.unschedule('ingest-fires-10min');
 
 -- ===========================================================================
 -- Provincial-agency wildfire feeds (the richer layer on top of national CIFFC).
@@ -486,8 +486,8 @@ drop policy if exists "provincial_fires: anyone can read" on public.provincial_f
 create policy "provincial_fires: anyone can read" on public.provincial_fires for select using (true);
 grant select on public.provincial_fires to anon;
 
--- Schedule (run after deploying ingest-provincial; staggered :05/:25/:45 vs ingest-fires' :00/:20/:40):
---   select cron.schedule('ingest-provincial-20min', '5,25,45 * * * *', $cron$
+-- Schedule (run after deploying ingest-provincial; staggered :05/:15/… vs ingest-fires' :00/:10/…):
+--   select cron.schedule('ingest-provincial-10min', '5,15,25,35,45,55 * * * *', $cron$
 --     select net.http_post(
 --       url := 'https://<PROJECT_REF>.supabase.co/functions/v1/ingest-provincial',
 --       headers := jsonb_build_object('Content-Type','application/json'),

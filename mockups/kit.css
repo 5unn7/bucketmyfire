@@ -159,7 +159,7 @@ body{ font-family:var(--font); color:var(--text); background:#05080b; overflow:h
 
 /* ===================== CARDS / PLACARDS ===================== */
 .card{ position:relative; background:var(--metal-hi); border:1px solid var(--stroke); border-top-color:var(--bevel-top);
-  border-radius:var(--r-md); box-shadow: var(--shadow-card), inset 0 1px 0 rgba(255,255,255,0.05); padding:14px 15px; }
+  border-radius:var(--r-md); box-shadow: var(--shadow-card), inset 0 1px 0 rgba(255,255,255,0.13), inset 1px 0 0 rgba(255,255,255,0.05), inset 0 -1px 0 rgba(0,0,0,0.22); padding:14px 15px; }
 .card--metal{ background:var(--metal); }
 .card--glass{ background:var(--card-glass); backdrop-filter:var(--blur); }
 .card--cut{ clip-path: polygon(16px 0, 100% 0, 100% 100%, 0 100%, 0 16px); }
@@ -187,14 +187,15 @@ body{ font-family:var(--font); color:var(--text); background:#05080b; overflow:h
 
 /* ART card (image + scrim + overlaid content) */
 .artcard{ position:relative; border-radius:var(--r-xl); overflow:hidden; border:1px solid var(--stroke-strong);
-  box-shadow: var(--shadow-card), 0 0 26px rgba(255,106,44,0.12); background:#0a0e12;
+  box-shadow: var(--shadow-card), 0 0 30px rgba(255,106,44,0.14), inset 0 1px 0 rgba(255,255,255,0.10), inset 0 -1px 0 rgba(0,0,0,0.35); background:#0a0e12;
   clip-path: polygon(0 0, 100% 0, 100% calc(100% - 22px), calc(100% - 22px) 100%, 0 100%); }
 .artcard__img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:50% 34%; z-index:0; transform:scale(1.04); transition:transform .6s ease; }
 .artcard:hover .artcard__img{ transform:scale(1.08); }
 .artcard__scrim{ position:absolute; inset:0; z-index:1; pointer-events:none;
   background:
-    linear-gradient(180deg, rgba(8,6,4,0.05) 0%, rgba(8,6,4,0.10) 32%, rgba(6,4,3,0.80) 74%, rgba(4,3,2,0.95) 100%),
-    linear-gradient(90deg, rgba(4,3,2,0.6) 0%, transparent 46%); }
+    radial-gradient(ellipse 80% 35% at 50% 100%, rgba(255,106,44,0.14) 0%, transparent 72%),
+    linear-gradient(180deg, rgba(8,6,4,0.03) 0%, rgba(8,6,4,0.08) 30%, rgba(6,4,3,0.82) 72%, rgba(4,3,2,0.97) 100%),
+    linear-gradient(90deg, rgba(4,3,2,0.65) 0%, transparent 48%); }
 .artcard__inner{ position:relative; z-index:3; padding:15px 16px 18px; display:flex; flex-direction:column; }
 .artcard .brackets{ z-index:2; }
 

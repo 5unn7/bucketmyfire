@@ -30,7 +30,8 @@
     "lint": "eslint \"src/**/*.ts\"",
     "format": "prettier --write \"src/**/*.{ts,html,css}\"",
     "optimize:assets": "node scripts/optimize-assets.mjs",
-    "bake:heightmap": "node scripts/bake-heightmap.mjs"
+    "bake:heightmap": "node scripts/bake-heightmap.mjs",
+    "gen:blog-images": "node scripts/gen-blog-images.mjs"
   },
   "dependencies": {
     "@fontsource-variable/jetbrains-mono": "^5.2.8",

@@ -193,6 +193,35 @@ const CSS = `
 .bmf-app .firesheet .btn.block{ margin-top:6px; }
 .bmf-app .alertnote{ font-size:var(--fs-micro); color:var(--faint); line-height:1.4; margin-top:12px; }
 .bmf-app .credits a{ color:var(--menu); }
+
+/* ===== ambient fire data strip — slim world-state ticker above the dossier. A warm glass bar
+   showing the live fire count (settles async). Tapping opens the full fire map overlay. No corner
+   cut (too tall relative to the strip height); just a rounded rectangle with a warm-tint fill. ===== */
+.bmf-app.home .datastrip{ display:flex; align-items:center; gap:9px; width:100%; padding:8px 13px;
+  background:linear-gradient(135deg, var(--fire-16) 0%, var(--ember-10) 60%, transparent 100%);
+  border:1px solid var(--warm-stroke); border-radius:var(--r-md);
+  color:inherit; font:inherit; cursor:pointer; text-align:left;
+  -webkit-tap-highlight-color:transparent;
+  transition:background .14s ease, border-color .14s ease; }
+.bmf-app.home .datastrip:hover{ border-color:var(--ember); background:linear-gradient(135deg, var(--ember-18) 0%, var(--ember-12) 60%, transparent 100%); }
+.bmf-app.home .datastrip:active{ opacity:.82; }
+.bmf-app.home .ds-ic{ flex:0 0 auto; color:var(--ember-hi); display:grid; place-items:center; }
+.bmf-app.home .ds-ic svg{ width:14px; height:14px; }
+.bmf-app.home .ds-text{ flex:1; min-width:0; font-family:var(--mono); font-size:var(--fs-meta); color:var(--dim);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.bmf-app.home .ds-arr{ flex:0 0 auto; color:var(--ember-hi); display:grid; place-items:center; }
+.bmf-app.home .ds-arr svg{ width:13px; height:13px; }
+
+/* ===== compact dossier card — tighter padding + smaller avatar; the brand-row is gone (board +
+   settings moved inline next to the name). The name truncates rather than wrapping so the
+   button cluster always fits on one line. ===== */
+.bmf-app.home header.card{ padding:11px 14px; }
+.bmf-app.home header.card .helmet{ width:46px; height:46px; }
+.bmf-app.home header.card .helmet .clip{ width:30px; height:30px; border-radius:7px; }
+.bmf-app.home header.card .helmet .clip svg{ width:30px; height:30px; }
+/* Name truncates rather than wrapping so the button cluster always fits on one row */
+.bmf-app.home .doss-name{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+
 .bmf-app.home .sec{ margin:0 2px 8px; }
 .bmf-app.home .z-cont .artcard{ min-height:200px; }
 /* Province dispatch card — shift the backdrop right to frame the helicopter in the photo
@@ -249,10 +278,10 @@ const CSS = `
 @keyframes bmf-sheen{ 0%{transform:translateX(-130%);} 18%{transform:translateX(130%);} 100%{transform:translateX(130%);} }
 
 .bmf-app .card{ position:relative; background:var(--metal-hi); border:1px solid var(--stroke); border-top-color:var(--bevel-top);
-  border-radius:var(--r-md); box-shadow:var(--shadow-card), inset 0 1px 0 rgba(255,255,255,0.05); padding:14px 15px;
+  border-radius:var(--r-md); box-shadow:var(--shadow-card), inset 0 1px 0 rgba(255,255,255,0.13), inset 1px 0 0 rgba(255,255,255,0.05), inset 0 -1px 0 rgba(0,0,0,0.22); padding:14px 15px;
   clip-path:var(--cut-tl); }
 .bmf-app .card.metal{ background:var(--metal); }
-.bmf-app .card.warm{ background:radial-gradient(120% 140% at 82% 0%, rgba(255,120,40,0.12), transparent 55%), var(--metal-hi); }
+.bmf-app .card.warm{ background:radial-gradient(140% 160% at 88% -8%, rgba(255,140,40,0.18) 0%, rgba(255,100,30,0.08) 40%, transparent 62%), var(--metal-hi); }
 /* The notch is the DEFAULT on every .card (above) — so a bare class="card" (e.g. the Settings panels)
    cuts the same as the hub's warm "card cut". .cut stays as an explicit alias so existing markup still
    reads intentionally; it's a no-op now but harmless. (Brand law: every card carries the corner-cut.) */
@@ -266,8 +295,32 @@ const CSS = `
   background:linear-gradient(90deg,transparent,var(--ember) 30%,var(--ember-hi) 50%,var(--ember) 70%,transparent); animation:bmf-flick 3.4s ease-in-out infinite; }
 @keyframes bmf-flick{ 0%,100%{opacity:.5} 30%{opacity:.95} 55%{opacity:.6} 80%{opacity:1} }
 
+/* ===== Glass-cockpit card FX — a FAINT cursor-follow spotlight + a floating "glazing" rim glow, opt-in
+   via .cardfx (the cardGlow.ts helper tags the flat glass cards; image-backed heroes keep their scrim).
+   Both layers are token-only and sit at z-index:-1 inside an isolated stacking context, so they wash
+   over the glass UNDER the content and never intercept taps (pointer-events:none). --mx/--my track the
+   cursor (set in JS; default centre so a non-pointer / pre-move state reads calm); --rim-ang angles the
+   rim specular toward the cursor. border/clip inherit so each layer traces the card's corner-cut. ===== */
+.bmf-app .card.cardfx{ isolation:isolate; }
+.bmf-app .card.cardfx::before, .bmf-app .card.cardfx::after{ content:""; position:absolute; inset:0; z-index:-1; pointer-events:none; border-radius:inherit; clip-path:inherit; }
+/* (1) cursor spotlight — a faint ember radial that follows the pointer; fades in only while hovered. */
+.bmf-app .card.cardfx::before{ opacity:0; transition:opacity .26s ease;
+  background:radial-gradient(230px circle at var(--mx,50%) var(--my,50%), var(--ember-18), var(--ember-10) 28%, transparent 64%); }
+.bmf-app .card.cardfx:hover::before{ opacity:1; }
+/* (2) floating glazing rim — an always-on 1px specular edge (bevel light → ember toward the cursor side),
+   masked to the border only so the glass looks lit at its rim (the "floating" read). A slow brightness
+   breath keeps it alive at rest; hover lifts it. The mask uses an opaque token (alpha is all that matters). */
+.bmf-app .card.cardfx::after{ padding:1px; opacity:.5; transition:opacity .26s ease;
+  background:linear-gradient(var(--rim-ang,135deg), var(--bevel-top), transparent 40%, transparent 58%, var(--ember-30));
+  -webkit-mask:linear-gradient(var(--text) 0 0) content-box, linear-gradient(var(--text) 0 0); -webkit-mask-composite:xor;
+  mask:linear-gradient(var(--text) 0 0) content-box, linear-gradient(var(--text) 0 0); mask-composite:exclude;
+  animation:bmf-rimbreath 7s ease-in-out infinite; }
+.bmf-app .card.cardfx:hover::after{ opacity:.85; }
+@keyframes bmf-rimbreath{ 0%,100%{ filter:brightness(.82); } 50%{ filter:brightness(1.18); } }
+@media (prefers-reduced-motion: reduce){ .bmf-app .card.cardfx::after{ animation:none; } }
+
 .bmf-app .artcard{ position:relative; border-radius:var(--r-xl); overflow:hidden; border:1px solid var(--stroke-strong); background:var(--card-bg);
-  box-shadow:var(--shadow-card), 0 0 26px var(--ember-12); clip-path:polygon(0 0,100% 0,100% calc(100% - 22px),calc(100% - 22px) 100%,0 100%); }
+  box-shadow:var(--shadow-card), 0 0 30px var(--ember-14), inset 0 1px 0 rgba(255,255,255,0.10), inset 0 -1px 0 rgba(0,0,0,0.35); clip-path:polygon(0 0,100% 0,100% calc(100% - 22px),calc(100% - 22px) 100%,0 100%); }
 /* The Continue hero is a single tap target — give it tactile lift on hover + a press response so it
    reads as the primary action (transform/shadow only; home-scoped so the menu carousels are untouched). */
 .bmf-app.home .artcard[data-act]{ cursor:pointer; transition:transform .16s cubic-bezier(.16,.84,.3,1), box-shadow .25s ease, border-color .16s ease; }
@@ -298,7 +351,7 @@ const CSS = `
 .bmf-app .artcard .fallback{ position:absolute; inset:0; z-index:0; background:radial-gradient(120% 90% at 50% 120%, var(--ember-50), transparent 60%), linear-gradient(160deg,#2a2030,#160d12 70%); display:grid; place-items:center; }
 .bmf-app .artcard .fallback b{ font-family:var(--mono); font-weight:var(--fw-black); font-size:64px; color:rgba(255,255,255,0.07); }
 .bmf-app .artcard .scrim{ position:absolute; inset:0; z-index:1; pointer-events:none;
-  background:linear-gradient(180deg, rgba(8,6,4,0.05) 0%, rgba(8,6,4,0.1) 32%, rgba(6,4,3,0.8) 74%, rgba(4,3,2,0.95) 100%), linear-gradient(90deg, rgba(4,3,2,0.6) 0%, transparent 46%); }
+  background:radial-gradient(ellipse 80% 35% at 50% 100%, var(--ember-14) 0%, transparent 72%), linear-gradient(180deg, rgba(8,6,4,0.03) 0%, rgba(8,6,4,0.08) 30%, rgba(6,4,3,0.82) 72%, rgba(4,3,2,0.97) 100%), linear-gradient(90deg, rgba(4,3,2,0.65) 0%, transparent 48%); }
 .bmf-app .artcard .inner{ position:relative; z-index:3; padding:15px 16px 18px; display:flex; flex-direction:column; }
 /* auto-layout: the title/body/footer stack sits at the BASE of the poster (margin-top:auto), one gap
    between its rows — no spacer div, no per-element margins. Shared by the Map + Hangar poster cards. */
@@ -751,12 +804,17 @@ const CSS = `
    shed: the hub scrolls now, so the daily brief + campaign progress stay reachable. ===== */
 @media (max-height:820px){
   .bmf-app.home .pad{ gap:8px; padding-top:calc(env(safe-area-inset-top) + 9px); padding-bottom:calc(var(--rail-h) + env(safe-area-inset-bottom) + 9px); }
-  .bmf-app.home header.card{ padding-top:12px; padding-bottom:12px; }
-  .bmf-app.home .helmet{ width:48px; height:48px; }
+  .bmf-app.home header.card{ padding-top:10px; padding-bottom:10px; }
+  .bmf-app.home header.card .helmet{ width:42px; height:42px; }
+  .bmf-app.home header.card .helmet .clip{ width:28px; height:28px; }
+  .bmf-app.home header.card .helmet .clip svg{ width:28px; height:28px; }
   .bmf-app.home .sec{ margin:0 2px 6px; }
 }
 @media (max-height:600px){
-  .bmf-app.home .helmet{ width:42px; height:42px; }
+  .bmf-app.home header.card .helmet{ width:38px; height:38px; }
+  .bmf-app.home header.card .helmet .clip{ width:24px; height:24px; }
+  .bmf-app.home header.card .helmet .clip svg{ width:24px; height:24px; }
+  .bmf-app.home .datastrip{ padding:6px 11px; }
 }
 
 @media (prefers-reduced-motion: reduce){

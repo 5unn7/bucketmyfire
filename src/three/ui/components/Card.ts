@@ -26,16 +26,19 @@ export interface CardHandle {
 export function makeCard(opts: CardOpts = {}): CardHandle {
   const t = tone(opts.register ?? 'cockpit');
   const reduce = prefersReducedMotion();
-  const restFill = opts.surface === 'soft' ? UI.cardSoft : UI.cardGlass;
+  const restBg = opts.surface === 'soft' ? UI.cardSoft
+    : opts.register === 'fight' ? UI.cardGradientFight
+    : UI.cardGradient;
 
   const card = div({
     position: 'relative',
     display: 'flex',
     flexDirection: 'column',
-    background: restFill,
+    background: restBg,
     border: `1px solid ${UI.stroke}`,
+    borderTopColor: UI.bevelTop,
     borderRadius: R.lg,
-    boxShadow: UI.shadowCard,
+    boxShadow: UI.shadowCardRich,
     padding: opts.padding ?? '15px 16px',
     transition: reduce ? 'border-color 0.15s ease, background 0.15s ease' : 'transform 0.14s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.2s ease',
   });
@@ -44,8 +47,8 @@ export function makeCard(opts: CardOpts = {}): CardHandle {
   if (opts.meta || opts.title || opts.trailing) {
     const head = div({ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px', marginBottom: '10px' });
     const left = div({ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: '0' });
-    if (opts.meta) left.appendChild(div({ fontSize: FS.label, fontWeight: FW.bold, letterSpacing: '1.6px', textTransform: 'uppercase', color: UI.faint }, opts.meta));
-    if (opts.title) left.appendChild(div({ fontSize: FS.title, fontWeight: FW.bold, color: UI.text, lineHeight: '1.15' }, opts.title));
+    if (opts.meta) left.appendChild(div({ fontSize: FS.label, fontWeight: FW.bold, letterSpacing: '2px', textTransform: 'uppercase', color: UI.faint }, opts.meta));
+    if (opts.title) left.appendChild(div({ fontSize: FS.title, fontWeight: FW.heavy, color: UI.text, lineHeight: '1.12' }, opts.title));
     head.appendChild(left);
     if (opts.trailing) head.appendChild(opts.trailing);
     card.appendChild(head);
@@ -64,7 +67,8 @@ export function makeCard(opts: CardOpts = {}): CardHandle {
     body,
     setSelected: (on) => {
       card.style.borderColor = on ? t.fg : UI.stroke;
-      card.style.background = on ? t.fill : restFill;
+      if (!on) card.style.borderTopColor = UI.bevelTop;
+      card.style.background = on ? t.fill : restBg;
     },
   };
 }

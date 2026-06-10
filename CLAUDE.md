@@ -4,53 +4,82 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-**bucketmyfire** is a mobile-browser helicopter simulator: fly over
-northern Saskatchewan, scoop water into a slung Bambi bucket from lakes, and drop it
-on forest fires before they spread. It runs entirely client-side — no backend. Art is
-**procedural-first** (geometry + GLSL + runtime textures), with a **few licensed downloaded
-assets** swapped in behind procedural fallbacks: the glTF helicopters under `public/models/`,
-the wildlife glb, the `public/textures/smoke-puff.png` sprite, and the rotor-audio mp3 — each
-credited by a `license.txt`/`ATTRIBUTION.txt` beside it. (The old "zero binary assets" rule has
-softened to "procedural unless procedural can't get there, then a credited fallback.")
+**bucketmyfire** (bucketmyfire.com) has grown from "a game" into a **wildfire website** built
+around a mobile-browser helicopter simulator. Three public surfaces share **one** design
+system and ship from **one** static client-side build:
 
-> **One optional exception to "no backend":** the global leaderboard
-> (`src/three/leaderboard/`) talks to Supabase via plain `fetch` (no SDK) when
-> `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` are set at build time (see
-> `.env.example` + `supabase/schema.sql`). It is **fully env-gated and degrades to an
-> "offline" board** when unconfigured — the game itself stays 100% client-side, and the
-> local best-score store (`missions/progress.ts`) remains authoritative for unlocks.
+1. **The game** — fly over northern Saskatchewan (and BC/AB/ON), scoop water into a slung Bambi
+   bucket from lakes, and fight wildfire before it overruns the towns. Real-3D Three.js
+   (`src/three/`), entirely client-side.
+2. **A live wildfire tracker** — the front door is a live window onto *real* wildfire across
+   Canada (agency-reported active fires, out-of-control count, area burned, satellite hotspots,
+   fire weather) sourced from **CIFFC + CWFIS**, with a full Leaflet map overlay
+   (`src/three/livefire/`). Keyless public feeds; an honest view, **not** an emergency tool.
+3. **"Field Notes" + merch** — an SEO/AEO/GEO content blog (`content/*.md` → pre-rendered
+   `/blog/`) and a **"Wear the fight."** merch funnel to the standalone store at
+   shop.bucketmyfire.com (a separate repo).
+
+Art is **procedural-first** (geometry + GLSL + runtime textures), with a **few licensed
+downloaded assets** swapped in behind procedural fallbacks: the glTF helicopters under
+`public/models/`, the wildlife glb, the `public/textures/smoke-puff.png` sprite, and the
+rotor-audio mp3 — each credited by a `license.txt`/`ATTRIBUTION.txt` beside it. (The old "zero
+binary assets" rule has softened to "procedural unless procedural can't get there, then a
+credited fallback.")
+
+> **One optional exception to "no backend":** the global leaderboard + the **Open Skies / Living
+> Province shared lobby** (`src/three/leaderboard/` + `@supabase/realtime-js`) talk to Supabase
+> when `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` are set at build time (see `.env.example` +
+> `supabase/schema.sql`). It is **fully env-gated and degrades to an "offline" board / solo flight**
+> when unconfigured — the game itself stays 100% client-side, and the local best-score store
+> (`missions/progress.ts`) remains authoritative.
 
 Design intent: a **real-3D** game with a Forza/GTA chase-cam sensibility, great
 generative visuals, and flight/payload physics that *feel real* (momentum, inertia,
 a bucket that swings and lags) — all holding 60fps on mobile browsers.
 
 > **The game pivoted from 2D Phaser to real-3D Three.js.** The live game is the
-> Three.js build under `src/three/`. The old Phaser prototype (`src/main.ts`,
-> `src/scenes/`, `src/objects/`, `src/controls/`, `src/constants.ts`) and the
-> `phaser` dependency were **removed** once the 3D build was proven — `src/` is now
-> just `three/` + `vite-env.d.ts`. `index.html` boots `src/three/main.ts`. See
-> `docs/ROADMAP.md` for the approved vision and phase status.
+> Three.js build under `src/three/`. The old Phaser prototype was **removed** once the 3D build
+> was proven. **Entry point (changed):** `index.html` now boots **`src/hub.ts`** — the light
+> **front-door controller** that paints the marketing/live-data home and lazy-loads the ~1 MB 3D
+> game (`src/three/main.ts`) **only** when a play/QA deep-link is present (`?province`, `?ffa`,
+> `?m`, `?autostart`, `?qa`, `?editor`, `?dev`, …). A bare URL = the front door. See
+> `docs/ROADMAP.md` for the approved game vision; the site/content/front-door work sits in the
+> `docs/FRONT-DOOR-PLAN.md` / `docs/CONTENT-STRATEGY.md` / `docs/livefire-honest-window-design.md`
+> plans.
+
+> **The game is the open-world "Living Province."** One play mode: an endless fight where dispatch
+> calls emerge over a climbing fire-weather curve and you hold the province's towns. It runs as
+> **Open Skies** (`?ffa`, shared daily-seed map, ghost pilots, live board), the **Living Province**
+> (`?province`, the same shared fight with a dispatch director + onboarding arc), or a private
+> **Solo** round (`?solo=1`). See "The Living Province" below.
 
 > **This IS a git repo now** (`main` branch), and **every push to `main` auto-deploys** to
 > GitHub Pages via `.github/workflows/deploy.yml` (CI builds → publishes `dist/` to `gh-pages`;
-> manual fallback `scripts/deploy.ps1`). The game is live at **5unn7.github.io/bucketmyfire**.
+> manual fallback `scripts/deploy.ps1`). It is live at **bucketmyfire.com** (GitHub Pages custom domain).
 > Prefer additive changes, but normal git hygiene applies — branch, commit, and don't be afraid
 > to delete proven-dead code.
 
-> **Project-specific skills live in `.claude/skills/`.** When the task matches, use them:
-> **`bmf-verify`** (headless verification — there's no test runner), **`bmf-mission`** (author a
-> campaign mission), **`bmf-tune`** (balance values in `config.ts`), **`bmf-asset`** (add a
-> procedural mesh / pooled VFX / shader / model).
+> **Project-specific skills (`.claude/skills/` + the gstack registry).** When the task matches, use
+> them: **`bmf-verify`** (headless verification — there's no test runner), **`bmf-tune`** (balance
+> values in `config.ts`), **`bmf-asset`** (procedural mesh / pooled VFX / shader / model),
+> **`bmf-ui`** (the DOM HUD/menus/front-door glass-cockpit UI), **`bmf-map`** (per-region maps under
+> `maps/<region>/`), **`bmf-content`** (a Field Notes blog article / the content engine),
+> **`bmf-art`** (on-brand image-generation prompts), and **`bmf-mission`** (mission *scenario* data —
+> the `MissionDef` shape, the factory archetypes, and the completability oracle the Living Province uses).
 
 ## Commands
 
 ```bash
 npm run dev        # Vite dev server on :5173, exposed on LAN (test on a real phone)
-npm run build      # tsc --noEmit type-gate, then vite build → dist/ (static site)
+npm run build      # tsc --noEmit type-gate, then vite build → dist/ (multi-page static site + /blog/)
 npm run typecheck  # tsc --noEmit only
 npm run preview    # serve the production build locally
 npm run verify:campaign  # esbuild-bundle the pure sims → Node; prove every mission is completable
-npm run verify     # full pure-Node gate suite (campaign·crash·voice·feel·world·coach·ui·tokens)
+npm run verify     # full pure-Node gate suite (see the list below — 12 gates now)
+npm run verify:all # the above + verify:render (the only headless gate; catches broken shaders)
+npm run build:content    # render content/*.md → dist/blog/ (also runs inside vite build via a plugin)
+npm run build:legal      # regenerate public/privacy.html + public/terms.html
+npm run gen:blog-images  # generate blog hero/OG images (scripts/gen-blog-images.mjs, sharp)
 npm run gen:tokens # regenerate mockups/tokens.css FROM theme.ts — run after ANY token change
 npm run verify:tokens    # CI check: mockups/tokens.css is in sync with theme.ts (red ⇒ run gen:tokens)
 npm run lint       # eslint over src/
@@ -82,11 +111,52 @@ Three escalating levels (use the cheapest that catches your bug class):
    `scripts/shot.mjs` is a full screenshot example. The **`bmf-verify`** skill documents the
    "MCP Playwright browser is locked" workaround (vite preview + temp `playwright-core`).
 
-The full pure-Node gate is **`npm run verify`** (campaign · crash · voice · feel · world · coach ·
-ui · tokens); **`npm run verify:all`** adds the headless render/shader smoke (`verify:render`). All
-are wired into `deploy.yml`, so a red gate blocks the deploy. **`verify:tokens`** fails when
+The full pure-Node gate is **`npm run verify`** — now **12** gates: campaign · crash · voice ·
+feel · world · coach · **province** · **livefire** · ui · **contrast** · **content** · tokens.
+**`npm run verify:all`** adds the headless render/shader smoke (`verify:render`). All are wired
+into `deploy.yml`, so a red gate blocks the deploy. New since the old list:
+**`verify:province`** (the open-world dispatch mode stays winnable), **`verify:livefire`** (the
+CIFFC/CWFIS feed normalizers parse the real shapes), **`verify:contrast`** (WCAG-AA on the token
+palette), **`verify:content`** (every blog article's external links are on the official-sources
+allowlist + the Markdown/JSON-LD render is well-formed). **`verify:tokens`** fails when
 `mockups/tokens.css` has drifted from `theme.ts` — regenerate with **`npm run gen:tokens`** and
 commit the result (it is generated; do not hand-edit it).
+
+## The site shell (front door + content + live-fire) — `src/hub.ts`, `src/site/`, `content/`
+
+The page that loads is **not** the game — it's a light, crawlable, content-first **front door**.
+Keep this layer Three-free: the ~1 MB game bundle must download **only** on a play deep-link.
+
+- **`src/hub.ts`** — the front-door controller `index.html` boots. A bare URL builds the
+  glass-cockpit **marketing bento** (positioning hero over the *live* national fire data, an Open
+  Skies play tile, the Map card, the "Wear the fight." merch banner, a Prepare promo, and a Field
+  Notes carousel). It **reuses the in-game home's component system** (`injectKitStyles` /
+  `injectHomeStyles` / `home/menus.ts` builders) so the front door and the in-game hub are one
+  visual language. Any `GAME_PARAMS` (`?m`,`autostart`,`qa`,`ffa`,`province`,`daily`,`editor`,`dev`,
+  `heliview`,`kit`,`tune`) hand straight off to `import('./three/main')`.
+- **Multi-page static site** (`vite.config.ts` `rollupOptions.input`): `index.html → src/hub.ts`,
+  `campaign/index.html → src/campaign/main.ts`, `prepare/index.html → src/prepare/main.ts`. Plus the
+  rendered **`/blog/`** tree and the generated legal pages (`public/privacy.html`,
+  `public/terms.html`). Each page is light + crawlable and lazy-loads the game only on a play link.
+- **`src/site/siteNav.mjs` is THE single source of site chrome** — appbar, mobile tab bar,
+  breadcrumb, footer brand, and the `NAV` list (Home · Campaign · Prepare · Map · Shop; Field Notes
+  nests *under* Prepare). It is **zero-import plain ESM** so BOTH worlds consume it: the Vite-bundled
+  TS front door (`src/site/{frontShell,shell,blogCarousel,checklist}.ts`, `hub.ts`) imports it, and
+  the **Node-run blog/legal renderers** (`scripts/content/*.mjs`) import it at build time and inline
+  its CSS. Add a nav item **here** — nowhere else — or the two worlds drift.
+- **Live-fire (`src/three/livefire/`)** — the CIFFC + CWFIS data layer (keyless, CORS-`*` public
+  feeds): `client.ts` (fetch), `normalize.ts` (parse to POJOs), `fields.ts`/`types.ts`/`strings.ts`,
+  and `FireMap.ts` (the lazy Leaflet map with layer toggles + smoke scrubber + detail sheet). It
+  hydrates BOTH the front-door national-data grid (`hub.ts hydrateNational`) **and** the full Map
+  overlay (`openLiveFires`). When both authoritative feeds are down it shows an **honest fallback**
+  ("live data unavailable → official sources"), never "no fires".
+- **Content engine / "Field Notes" blog** — articles are Markdown in `content/<slug>.md`, rendered
+  at build to pre-rendered static HTML under `/blog/<slug>/` (Article + FAQ + HowTo JSON-LD, OG card,
+  sitemap) by `scripts/content/` (`render`/`template`/`markdown`/`art`/`legal`.mjs), via the
+  `renderContent` Vite plugin (`closeBundle`) with a dev mirror (`serveBlogInDev`); standalone =
+  `npm run build:content`. **The backbone rule** (the E-E-A-T / GEO moat, gated by
+  `verify:content`): every external link must be on **`content/sources.allowlist.json`** —
+  official-government / provincial / recognized-authority sources only. See the `bmf-content` skill.
 
 ## Architecture (the live 3D build, `src/three/`)
 
@@ -117,9 +187,11 @@ main.ts (renderer + loop + QualityTier + Composer + campaign router)
        ├─ postfx/ ............ EffectComposer: bloom, god-rays, heat-haze, color grade
        ├─ lighting/ .......... pooled hero fire point-lights (no recompiles)
        ├─ render/ ............ FrameContext (shared uniforms) + QualityTier + FireFieldTexture
-       ├─ missions/ .......... MissionDef catalog (thin assembler) + factory/ + oracle + runtime + director + progress
-       ├─ leaderboard/ ....... env-gated Supabase PostgREST client (plain fetch, RLS)
-       ├─ ui/ ................ HUD, home-hub menus (mission/map pickers), onboarding, leaderboard, profile/picker
+       ├─ province/ .......... the GAME MODE: open-world dispatch (buildProvince · ProvinceMode · DispatchDirector · career · OnboardingScript)
+       ├─ missions/ .......... scenario plumbing (types/scenario/runtime/director) + freeforall + factory/ + oracle; catalog assembles 0 campaign missions now
+       ├─ livefire/ .......... CIFFC+CWFIS real-data layer (client/normalize/fields) + the Leaflet FireMap (shared with the front door)
+       ├─ leaderboard/ ....... env-gated Supabase client (plain fetch) + cloudSave; Open Skies adds a realtime shared lobby
+       ├─ ui/ ................ HUD, home hub, onboarding/coach, leaderboard, profile/picker (the same builders the front door reuses)
        ├─ audio/ ............. HeliAudio (recorded rotor loop + procedural SFX)
        ├─ ChaseCamera.ts ..... trailing follow-cam with ground-clearance guard + free-look
        ├─ Input.ts ........... keyboard + touch merged behind read(): ControlState
@@ -163,10 +235,12 @@ gated on `fit==='bounds'`). Engine-decided SIZE: a bounds map's extent = its rea
 ### Maps are data — `src/three/maps/` is the per-region source of truth
 
 A map is a self-contained `src/three/maps/<region>/` module (`region` geo/anchors/lakes/names, optional
-`terrain` profile + `missions` campaign + `card`), resolved through `maps/registry.ts`
+`terrain` profile + `card`), resolved through `maps/registry.ts`
 (`getMap`/`getRegion`/`getTerrainProfile`/`mapCards`/`allMissions`/`missionById`). `World(seed, {regionId, …})`
-grows the chosen region. **The old `world/regions.ts` + `world/terrainProfile.ts` + `world/maps/saskatchewan-true.ts`
-are DELETED** — do not reference them; add a map under `maps/`, not to those.
+grows the chosen region. **Four regions ship now:** `saskatchewan` (the primary, true-shape `fit:'bounds'`
+playfield, with `terrain` + `card`), plus `british-columbia`, `alberta`, and `ontario` (geography fleshed
+out to varying depth). **The old `world/regions.ts` + `world/terrainProfile.ts` + `world/maps/saskatchewan-true.ts`
+are DELETED** — do not reference them; add a map under `maps/`, not to those. See the `bmf-map` skill.
 
 ### The sim boundary (architecture invariant — hold it)
 
@@ -255,36 +329,41 @@ In `water/WaterMaterial.ts` (onBeforeCompile over `MeshStandardMaterial`), patch
 normal at the `<lights_physical_fragment>` chunk, **not** `<lights_fragment_begin>` — the
 PBR material struct is built before the latter, so patching there renders white.
 
-### Missions & campaign (see the `bmf-mission` skill)
+### The Living Province (the game) — `src/three/province/`
 
-An **8-mission linear-unlock campaign** sits on top of the sandbox. A `MissionDef`
-(`missions/types.ts`) is **pure SCENARIO data** (seed, where the fires/crews/structures sit, win/lose) —
-`config.ts` `MISSIONS` holds the mechanic VALUES. The campaign missions live in
-`maps/saskatchewan/missions.ts`; `missions/catalog.ts` is now a **thin assembler** (`CAMPAIGN = allMissions()`
-from the maps registry). Placements are RELATIVE + seed-robust and may be authored in real **km / lat-lon**
-(`offsetKm`/`distanceKm`/`spreadKm`/`lengthKm`, `point` lat/lon) so they transfer across map sizes. `Game`
-resolves a def's specs against the seeded `World` (`missions/scenario.ts`) and feeds a per-frame
-`MissionSignals` snapshot to `missions/MissionRuntime.ts`, which latches objectives (`extinguishAll`/
-`extinguishCount`/`deliver`/`evacuate`/`survive`/`backburn`) and fails (`protect`/`timeout`/`fuelOut`/`rescue`).
-`missions/MissionDirector.ts` runs the reactive radio-comms/ignite/wind **beats**. `main.ts` routes
-`?m=<id>` / the home-hub menus (`ui/home/menus.ts`); **switching a mission is a page reload** (no Three.js
-teardown). `missions/progress.ts` persists unlock + best score to localStorage and is authoritative
-for unlocks.
+The game's one mode is an endless open-world fight over a seeded `World`.
+`province/buildProvince.ts` (`isProvinceId`) assembles the scenario; `ProvinceMode` +
+`DispatchDirector.ts` emit dispatch calls over a climbing fire-weather curve while you hold the
+province's towns; `career.ts` (`isOnboarded`) gates a new pilot's guided first shift
+(`OnboardingScript.ts`, `?onboard=1/0`). `main.ts` routes it three ways (each reloads to (re)boot;
+RETRY rebuilds a Game in place, no full reload):
 
-**Mission factory + oracle (the generator layer).** `missions/oracle.ts` is the engine-agnostic "perfect
-player" (`build`/`run`/`isCompletable`) — the shared completability trust anchor for the CI gate AND the
-factory. `missions/factory/` (`archetypes.ts` = parametric templates · `index.ts` `generateMission(...)` ·
-`MapContext.ts` build-time town adapter) is a deterministic PRODUCER of the SAME `MissionDef` — zero downstream
-churn. The **Daily Burn** (`missions/daily.ts`) is a thin factory shim, pinned to the always-winnable
-`extinguish` archetype. Archetypes emit construct-correct (feature-relative, no World build at runtime) defs;
-`verify:campaign` proves completability + in-province fires across many seeds OFFLINE (never run the oracle on
-a phone). The 8 hand-authored missions stay canonical; the factory + the hold-the-line/mop-up archetypes
-(rotation, co-op) are reserved for future modes once balanced — see the maps-foundation handoff/memory.
+- **`?province`** — the Living Province: shared daily seed (fair board + ghost pilots) + the dispatch
+  director + onboarding. `?region=<id>` picks the map (default Saskatchewan).
+- **`?ffa`** — **Open Skies**, the endless free-for-all on the same daily-seeded map
+  (`missions/freeforall.ts` `buildFreeForAll`/`isFfaId`): live shared lobby, ghost pilots, personal
+  score, re-enterable anytime, always boots in flight.
+- **`?solo=1`** — a PRIVATE round of the dispatch (no ghosts, no shared board) for a picked map.
 
-**3 helicopters are playable** (`meshes/heliModels.ts` registry + `ui/profile.ts`
-picker; physics is shared). Audio is `audio/HeliAudio.ts` (a recorded rotor loop + procedural
-scoop/drop/win SFX). The optional global leaderboard (`leaderboard/`) posts scores to Supabase via
-env-gated plain `fetch` and degrades to "offline" when unconfigured.
+A nameless pilot hitting any of these deep links registers a callsign first (`bootNamed`) — it's what
+the board flies under. `missions/progress.ts` persists best score to localStorage.
+
+**`missions/` is the shared scenario engine the province builds on.** A `MissionDef`
+(`missions/types.ts`) is **pure SCENARIO data** (seed + placements + win/lose; `config.ts` `MISSIONS`
+holds the mechanic VALUES); `missions/scenario.ts` resolves specs against the seeded `World` and feeds
+a per-frame `MissionSignals` snapshot to `missions/MissionRuntime.ts` (latches objectives + fails).
+`missions/oracle.ts` is the engine-agnostic "perfect player" trust anchor, and `missions/factory/`
+(`archetypes.ts` parametric templates · `generateMission` · `MapContext.ts`) deterministically
+produces `MissionDef`s; `verify:campaign` + `verify:province` prove completability OFFLINE across
+seeds — never run the oracle on a phone. `missions/catalog.ts` exports `CAMPAIGN = allMissions()`,
+which is empty today (no map ships hand-authored missions), so a `?m=<id>` deep-link or `?autostart`
+falls through to the province — old bookmarks + the headless QA harness still land on a live game.
+
+**3 helicopters are playable** (`meshes/heliModels.ts` registry + `ui/profile.ts` picker; physics is
+shared; unlock via career points OR spending wallet points). Audio is `audio/HeliAudio.ts` (a recorded
+rotor loop + procedural scoop/drop/win SFX). The optional global leaderboard (`leaderboard/`) posts
+scores to Supabase via env-gated plain `fetch` and degrades to "offline" when unconfigured; Open Skies
+adds a `@supabase/realtime-js` shared lobby for ghost pilots.
 
 ### Input
 
@@ -348,8 +427,9 @@ the right block.
 `docs/ROADMAP.md` is the approved plan and is **largely shipped**: Phase 1 (unified `World` + AGL
 flight), Track **A** (noise → biomes → placement → rivers), Track **B** (water, atmosphere, bloom,
 smoke/embers, terrain shading, models/foliage + tree LOD), Track **C** (fire dynamics + stakes,
-fire size classes, rotor wash + ground effect), and Track **D** (the 8-mission campaign, which
-also realized the C6 fuel/range model) are all marked **done**. Remaining/optional: C5 assists,
+fire size classes, rotor wash + ground effect), and Track **D** (the campaign work, which delivered
+the C6 fuel/range model now carried by the Living Province) are all marked **done**.
+Remaining/optional: C5 assists,
 C6 forward fuel caches, SSAO, and a few polish items — check the roadmap's status markers before
 starting.
 
@@ -357,11 +437,21 @@ starting.
 longer a fixed 2100u square. Slice 1 made the engine **scale-invariant** (rectangular fire grid via
 `fireGridFor`, km-authored placements, engine-decided size, `missions/oracle.ts`); Slice 2 **flipped
 Saskatchewan to its true province shape** (`geo.fit:'bounds'`, ~1029×1996u, outline-masked); Slice 3 added
-the **mission factory** (`missions/factory/`). The canonical record + remaining increments (the varied/rotating
-daily, co-op `buildCoop`, the pre-bake table) are in the spec `~/.claude/plans/mutable-inventing-trinket.md`
-and the auto-memory `map-foundation-and-mission-factory`. Consult `docs/ROADMAP.md` so a new feature lands in
-the right track. (Live Playwright visual passes are noted as "pending" on several phases — the MCP browser was
-repeatedly locked; see the **`bmf-verify`** skill for how to verify live anyway.)
+the **mission factory** (`missions/factory/`). The canonical record is in the spec
+`~/.claude/plans/mutable-inventing-trinket.md` and the auto-memory `map-foundation-and-mission-factory`.
+
+**Beyond that — the product is now a wildfire *website* (the last few days, mostly uncommitted on `main`):**
+(1) **Living Province** — one open-world mode (`province/` + Open Skies / Solo), where the fires keep coming.
+(2) **Front door** — `index.html` boots `src/hub.ts`, a content-first marketing/live-data home that lazy-loads
+the game; a multi-page static site (Home/Campaign/Prepare/Field Notes) shares one nav source
+(`src/site/siteNav.mjs`). (3) **Live wildfire tracker** — `src/three/livefire/` surfaces real CIFFC + CWFIS
+data on the front door and a Leaflet map. (4) **"Field Notes" content engine** — `content/*.md` →
+pre-rendered SEO/AEO `/blog/`, gated by an official-sources allowlist. (5) **"Wear the fight." merch funnel**
+to the standalone store at shop.bucketmyfire.com. These are tracked in `docs/FRONT-DOOR-PLAN.md`,
+`docs/CONTENT-STRATEGY.md`, `docs/FREE-FOR-ALL.md`, `docs/livefire-honest-window-design.md`, and the
+`MEMORY.md` auto-memory index.
+(Live Playwright visual passes remain "pending" — the MCP browser was repeatedly locked; see the
+**`bmf-verify`** skill for how to verify live anyway.)
 
 ## Skill routing
 
@@ -384,8 +474,12 @@ Key routing rules (gstack):
 Project skills (bucketmyfire-specific — see "Project-specific skills" above):
 - Verify a `src/three/` change (no test runner) → invoke /bmf-verify
 - Balance/tune a gameplay or visual value in `config.ts` → invoke /bmf-tune
-- Author/edit a campaign mission → invoke /bmf-mission
+- Build/refine the DOM HUD / menus / front-door UI → invoke /bmf-ui
+- Add/polish a per-region map under `maps/<region>/` → invoke /bmf-map
+- Write/manage a Field Notes blog article (`content/`) → invoke /bmf-content
+- Write an on-brand image-generation prompt → invoke /bmf-art
 - Add a procedural mesh / pooled VFX / shader / model → invoke /bmf-asset
+- Author/edit a mission *scenario* (the `MissionDef` machinery the province uses) → invoke /bmf-mission
 
 Deploy caveat: every push to `main` auto-deploys to prod (GitHub Pages). Treat /ship and any
 `git push` as outward-facing — confirm before pushing, since it goes live immediately.

@@ -1088,8 +1088,11 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
           ? summary.activeFires
           : reported.length || countFires(hs);
       headEl.textContent = active > 0 ? C.head(active, label) : `${C.emptyTitle} · ${label}`;
-      // Freshness = the SOURCE's publish time (reported sitrep, else satellite pass) — NOT our fetch time.
-      const freshMs = reportedFeed.meta.publishedAt || hsFeed.meta.publishedAt;
+      // Freshness = the FRESHEST source on the map (satellite pass usually beats the ~daily CIFFC sitrep),
+      // honestly stamped to that layer's own publish time — NEVER our fetch time. This sub-line counts
+      // satellite detections, so the satellite pass is the consistent datum; CIFFC's older sitrep date keeps
+      // its own honest row in the source ledger.
+      const freshMs = Math.max(reportedFeed.meta.publishedAt, hsFeed.meta.publishedAt);
       subEl.textContent = C.subStats(hs.length, publishedWhen(freshMs));
     }
 

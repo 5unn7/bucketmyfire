@@ -16,7 +16,8 @@ import { isConfigured, fetchCareerStanding } from '../../leaderboard/client';
 import { setMenuCatalog, navigateRail, openSettings, openBoard, openLiveFires } from './menus';
 import { railNav } from './rail';
 import { injectHomeStyles, spawnEmbers } from './styles';
-import { DEFS, FLAME, FLAME_ONLY, HELMET, ic } from './icons';
+import { attachCardGlow } from '../fx/cardGlow';
+import { DEFS, FLAME_ONLY, HELMET, ic } from './icons';
 import { fetchActiveFires, fetchSummary, getCountryPref } from '../../livefire/client';
 import { filterCountry, countFires, countryLabel } from '../../livefire/normalize';
 import { LIVEFIRE_COPY } from '../../livefire/strings';
@@ -24,6 +25,7 @@ import { LIVEFIRE_COPY } from '../../livefire/strings';
 export class HomeScreen {
   private root: HTMLDivElement;
   private disposed = false;
+  private glowOff: () => void = () => {};
 
   constructor(parent: HTMLElement, catalog: MissionDef[]) {
     injectHomeStyles();
@@ -37,6 +39,7 @@ export class HomeScreen {
     const embers = this.root.querySelector<HTMLElement>('.embers');
     if (embers) spawnEmbers(embers, 13);
     this.wire();
+    this.glowOff = attachCardGlow(this.root); // faint cursor spotlight + floating glazing rim on the glass cards
     this.loadGlobalRank();
     this.loadLiveFires();
   }
@@ -44,6 +47,7 @@ export class HomeScreen {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.glowOff();
     this.root.remove();
   }
 
@@ -71,48 +75,43 @@ export class HomeScreen {
 <div class="scene"></div><div class="embers"></div>
 <div class="pad">
 
-  <!-- profile -->
-  <header class="card warm cut rise d1">
-    <div class="row between">
-      <div class="brand">${FLAME}</div>
-      <div class="row" style="gap:8px;">
-        ${grank}
-        <button class="iconbtn" data-act="board" aria-label="Leaderboard">${ic('trophy')}</button>
-        <button class="iconbtn" data-act="settings" aria-label="Settings">${ic('settings')}</button>
-      </div>
-    </div>
-    <div class="row rise" style="gap:13px;margin-top:12px;">
+  <!-- ambient fire data strip — slim world-state ticker at the top; taps to open the full fire map.
+       Settles from the CIFFC summary (same source as the old fire banner) via loadLiveFires(). -->
+  <button class="datastrip rise d1" data-act="fires" aria-label="Live wildfire tracker">
+    <span class="ds-ic">${ic('fire')}</span>
+    <span class="ds-text" data-ds-strip>${LIVEFIRE_COPY.title}</span>
+    <span class="ds-arr">${ic('chevron-right')}</span>
+  </button>
+
+  <!-- profile / dossier — compact identity card (brand row removed; board+settings inline with name) -->
+  <header class="card warm cut rise d2">
+    <div class="row" style="gap:11px;align-items:center;">
       <div class="helmet"><div class="clip">${HELMET}<span class="sheen"></span></div></div>
-      <div class="grow">
-        <div class="row wrap" style="gap:9px;"><span class="h-screen">${name}</span><span class="rank" style="--rk:${rank.color}"><i></i>${rank.name}</span></div>
-        <div class="row mono" style="gap:8px;margin-top:7px;font-size:var(--fs-meta);color:var(--dim);"><span class="pts-ic">${ic('spark')}<b>${wallet.toLocaleString('en-US')}</b> pts</span><span>·</span><span>${pts.toLocaleString('en-US')} Career</span></div>
+      <div class="grow" style="min-width:0;">
+        <div class="row between" style="gap:6px;align-items:center;">
+          <span class="h-screen doss-name">${name}</span>
+          <div class="row" style="gap:5px;flex-shrink:0;">
+            ${grank}
+            <button class="iconbtn" data-act="board" aria-label="Leaderboard">${ic('trophy')}</button>
+            <button class="iconbtn" data-act="settings" aria-label="Settings">${ic('settings')}</button>
+          </div>
+        </div>
+        <div class="row" style="gap:8px;margin-top:5px;flex-wrap:wrap;">
+          <span class="rank" style="--rk:${rank.color}"><i></i>${rank.name}</span>
+          <span class="pts-ic mono" style="font-size:var(--fs-meta);color:var(--dim);">${ic('spark')}<b>${wallet.toLocaleString('en-US')}</b> pts</span>
+        </div>
       </div>
     </div>
-    <div style="margin-top:14px;">
+    <div style="margin-top:9px;">
       <div class="barrow"><span class="l">Rank advance</span><span class="r">${xpLine}</span></div>
       <div class="bar"><i style="width:${Math.round(np.frac * 100)}%"></i></div>
     </div>
   </header>
 
-  <div class="zone z-fires">
-  <!-- LIVE wildfire tracker — today's REAL Saskatchewan fires (CWFIS). Rides high (under the dossier,
-       above the Dispatch hero) so "what's burning now" motivates the FLY below. The count settles in
-       via loadLiveFires(); the banner opens the full tracker overlay (openLiveFires). The firebanner
-       class keeps it visible on cramped windows (it must NOT inherit the shop banner's short-win hide). -->
-  <button class="shopbanner firebanner card warm cut rise d2" data-act="fires" aria-label="Live wildfire tracker">
-    <span class="sb-ic">${ic('fire')}</span>
-    <span class="sb-copy">
-      <span class="sb-title">${LIVEFIRE_COPY.title}</span>
-      <span class="sb-sub" data-lf-count>${LIVEFIRE_COPY.bannerLoading}</span>
-    </span>
-    <span class="sb-go">${ic('chevron-right')}</span>
-  </button>
-  </div>
-
   <div class="zone z-cont">
   <!-- the province MISSION CARD — the game's open-world front door (pick aircraft → fly the shift) -->
-  <div class="sec rise d2"><span class="tag">Dispatch</span><span class="line"></span><span class="stamp">${regionName}</span></div>
-  <article class="artcard rise d2" data-act="province">
+  <div class="sec rise d3"><span class="tag">Dispatch</span><span class="line"></span><span class="stamp">${regionName}</span></div>
+  <article class="artcard rise d3" data-act="province">
     ${provinceImg ? `<img class="img" src="${provinceImg}" alt="">` : `<div class="fallback"><b>SK</b></div>`}
     <div class="scrim"></div>
     <div class="brackets"><i></i><i></i><i></i></div>
@@ -129,8 +128,8 @@ export class HomeScreen {
   <div class="zone z-shop">
   <!-- gear promo — opens the standalone bucketmyfire storefront. Desktop shows the section label; the
        banner shows on phone/tablet too and drops only on the shortest viewports (styles.ts). -->
-  <div class="sec shop-sec rise d3"><span class="tag">BMF Gear</span><span class="line"></span><span class="stamp">Coming soon</span></div>
-  <button class="shopbanner card warm cut rise d3" data-act="shop" aria-label="Open the BMF Gear store">
+  <div class="sec shop-sec rise d4"><span class="tag">BMF Gear</span><span class="line"></span><span class="stamp">Coming soon</span></div>
+  <button class="shopbanner card warm cut rise d4" data-act="shop" aria-label="Open the BMF Gear store">
     <span class="sb-ic">${ic('shop')}</span>
     <span class="sb-copy">
       <span class="sb-title">Wear the fight.</span>
@@ -203,12 +202,11 @@ ${railNav('home')}`;
       .catch(() => settle(null));
   }
 
-  /** Settle the home banner's count line from the live feed (best-effort, like loadGlobalRank). Prefers
-   *  the AUTHORITATIVE CIFFC national summary ("95 active fires · 148k ha burned this year"); if that's
-   *  unreachable it falls back to the satellite clustered count. The banner stays tappable in every state
-   *  (it's the entry point to the full tracker overlay) — a quiet/offline result just softens the line. */
+  /** Settle the data strip's fire count from the live feed (best-effort). Prefers the AUTHORITATIVE CIFFC
+   *  national summary; falls back to the satellite clustered count. The strip stays tappable in every
+   *  state — a quiet/offline result just softens the line without hiding the fire-map entry point. */
   private loadLiveFires(): void {
-    const el = this.root.querySelector<HTMLElement>('[data-lf-count]');
+    const el = this.root.querySelector<HTMLElement>('[data-ds-strip]');
     if (!el) return;
     fetchSummary()
       .then((s) => {

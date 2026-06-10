@@ -105,8 +105,8 @@ export function tabbarHtml(active = '') {
   const items = [
     { key: 'home', label: 'Home', href: '/', icon: TAB.home },
     { key: 'campaign', label: 'Campaign', href: '/campaign/', icon: TAB.campaign },
-    { key: 'prepare', label: 'Prepare', href: '/prepare/', icon: TAB.prepare },
     { key: 'map', label: 'Map', href: '/?map', icon: TAB.map },
+    { key: 'prepare', label: 'Prepare', href: '/prepare/', icon: TAB.prepare },
     { key: 'shop', label: 'Shop', href: shop ? shop.href : '/', icon: TAB.shop },
   ];
   return (
@@ -187,8 +187,10 @@ export const navCss = `
 .fhome-cta:hover { color: var(--cta-ink); filter: brightness(1.05); }
 
 /* ── Footer brand lockup (mini icon + wordmark) — shared by the front-door .fd-foot and the static
-   .fn-foot, so every footer wears the same logo lockup as the appbar. ─────────────────────────── */
-.site-foot-brand { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; color: var(--text-subtle); margin: 0 0 12px; }
+   .fn-foot, so every footer wears the same logo lockup as the appbar. Each footer is a wrapping flex
+   row; the lockup is the last item (order 3), pushed to the right with margin-left:auto and sitting on
+   the same bottom line as the policy links (align-self bottom; the front door re-centres it). ─────── */
+.site-foot-brand { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; color: var(--text-subtle); margin: 0 0 0 auto; order: 3; align-self: end; }
 .site-foot-mark { width: 20px; height: 22px; flex: 0 0 auto; display: grid; place-items: center; }
 .site-foot-mark .flame { width: auto; height: 20px; fill: url(#flameGrad); filter: drop-shadow(0 0 4px var(--glow-80)); }
 .site-foot-brand b { font-family: var(--mono); font-weight: var(--fw-heavy); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; }
