@@ -700,26 +700,33 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
 
   // The header is now TWO slim rows, not three: a control bar (region filter + refresh + the Layers /
   // Sources sheet buttons) and the compact status block above — so the map keeps far more height.
+  // The map keeps a slim two-item control bar (region filter + refresh); the Layers + Sources sheet
+  // openers FLOAT as icon buttons over the map's top-right corner (Leaflet's zoom is top-left, so the
+  // corner is clear). On a phone that's the only place they fit — in the bar they overflowed off-screen.
   const body = `<div class="firewrap">
     <div class="firebar">
       ${topNav ?? ''}
       <select class="firesel" data-lf-country aria-label="Country filter">${options}</select>
       <span class="grow"></span>
       <button class="iconbtn" data-lf-refresh aria-label="Refresh">${ic('refresh')}</button>
-      <button class="ftbtn" data-lf-layers aria-label="Map layers">${ic('map')}<span class="lbl">${C.layersBtn}</span><span class="ftn" data-lf-layern></span></button>
-      <button class="ftbtn" data-lf-sources aria-label="Data sources &amp; freshness">${ic('shield')}<span class="lbl">${C.sourcesBtn}</span></button>
     </div>
     <div class="firestats" data-lf-stats>${statStrip}</div>
-    <div class="firemap" data-lf-map></div>
-    <div class="firescrub" data-lf-scrub hidden>
-      <button class="iconbtn" data-lf-play aria-label="Play forecast">${ic('play')}</button>
-      <div class="scrubtrack" data-lf-scrubtrack>
-        <input type="range" class="scrubrange" data-lf-range min="0" max="0" value="0" step="1" aria-label="Forecast time" />
-        <div class="scrubrail"><span data-lf-rail-a>Now</span><span data-lf-rail-b>+${LIVEFIRE.smokeForecastHours} h</span></div>
+    <div class="firemapwrap">
+      <div class="firemap" data-lf-map></div>
+      <div class="firefloat">
+        <button class="fmbtn" data-lf-layers aria-label="${esc(C.layersBtn)}" title="${esc(C.layersBtn)}">${ic('layers')}<span class="fmn" data-lf-layern></span></button>
+        <button class="fmbtn" data-lf-sources aria-label="${esc(C.sourcesBtn)}" title="${esc(C.sourcesBtn)}">${ic('shield')}</button>
       </div>
-      <div class="scrublabel"><span class="scrubwhen"><b data-lf-scrub-time>—</b><i data-lf-scrub-lead>Now</i></span><span class="scrubtag">Forecast</span></div>
+      <div class="firescrub" data-lf-scrub hidden>
+        <button class="iconbtn" data-lf-play aria-label="Play forecast">${ic('play')}</button>
+        <div class="scrubtrack" data-lf-scrubtrack>
+          <input type="range" class="scrubrange" data-lf-range min="0" max="0" value="0" step="1" aria-label="Forecast time" />
+          <div class="scrubrail"><span data-lf-rail-a>Now</span><span data-lf-rail-b>+${LIVEFIRE.smokeForecastHours} h</span></div>
+        </div>
+        <div class="scrublabel"><span class="scrubwhen"><b data-lf-scrub-time>—</b><i data-lf-scrub-lead>Now</i></span><span class="scrubtag">Forecast</span></div>
+      </div>
+      <div class="firesheet" data-lf-sheet hidden></div>
     </div>
-    <div class="firesheet" data-lf-sheet hidden></div>
   </div>`;
   // The Leaflet map lives in a lazy chunk, so it's built asynchronously below. `closed` guards every
   // async continuation: if the overlay is dismissed (Esc / rail / another panel) before the chunk
@@ -935,7 +942,7 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
   //    Summoned from the Layers button so the permanent control row stays short and the map keeps height. ──
   const updateLayerCount = (): void => {
     const n = (Object.keys(layerOn) as FireLayer[]).filter((k) => layerOn[k]).length;
-    layerCountEl.textContent = n ? `· ${n}` : '';
+    layerCountEl.textContent = n ? String(n) : ''; // corner badge on the floating Layers button
   };
   updateLayerCount();
 
