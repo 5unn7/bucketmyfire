@@ -2,91 +2,65 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="./icon.svg" />
+    <link rel="icon" type="image/svg+xml" href="../icon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="theme-color" content="#05080b" />
-    <link rel="manifest" href="./manifest.webmanifest" />
-    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
-    <title>Bucket My Fire — Live Wildfire Tracker &amp; Helicopter Fire-Fight Sim</title>
-
+    <link rel="apple-touch-icon" href="../apple-touch-icon.png" />
+    <title>Campaign — Fly Solo · Bucket My Fire</title>
     <meta
       name="description"
-      content="The only live wildfire tracker you can fly into — agency-reported fires, area burned, and fire weather from CIFFC and CWFIS across Canada, plus a helicopter you fly into the fight. Free in your browser."
+      content="Fly solo in Bucket My Fire: pick your map and your helicopter, then fly a private round over the open world. Defend the towns against live, endless fire. Free in your browser."
     />
-    <link rel="canonical" href="https://bucketmyfire.com/" />
+    <link rel="canonical" href="https://bucketmyfire.com/campaign/" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Bucket My Fire" />
-    <meta property="og:url" content="https://bucketmyfire.com/" />
-    <meta property="og:title" content="Bucket My Fire — Live Wildfire Tracker &amp; Helicopter Fire-Fight Sim" />
-    <meta
-      property="og:description"
-      content="See real wildfire across Canada, live — then fly a helicopter into the fight. Real CIFFC + CWFIS data, free in your browser."
-    />
+    <meta property="og:url" content="https://bucketmyfire.com/campaign/" />
+    <meta property="og:title" content="Campaign — Fly Solo · Bucket My Fire" />
+    <meta property="og:description" content="Pick your map and your helicopter, then fly a private round over the open world." />
     <meta property="og:image" content="https://bucketmyfire.com/og-image.jpg" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="A helicopter with a slung water bucket flying over a burning northern forest." />
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Bucket My Fire — Live Wildfire Tracker &amp; Helicopter Fire-Fight Sim" />
-    <meta name="twitter:description" content="See real wildfire across Canada, live — then fly a helicopter into the fight. Real CIFFC + CWFIS data, free in your browser." />
-    <meta name="twitter:image" content="https://bucketmyfire.com/og-image.jpg" />
 
-    <!-- SEO + AEO structured data (WebSite + VideoGame + FAQPage JSON-LD) is injected as a STATIC tag at
-         build time by the bmf-structured-data plugin in vite.config.ts. -->
-
-    <!-- Critical paint: the cockpit backdrop + token fallbacks, so the FIRST frame is the ember-lit glass
-         scene before src/hub.ts injects the REAL theme.ts tokens + the in-game home stylesheet (the same
-         components the hub uses: dossier sheen, cut cards, .shopbanner specular, squared badges). -->
+    <!-- Critical paint: the cockpit backdrop + the one token the boot scene needs, so the FIRST frame is
+         the ember-lit glass scene before src/campaign/main.ts injects the REAL theme.ts tokens + the
+         in-game component vocabulary (injectHomeStyles) + the front-door chrome (frontShell). Same
+         boot-backdrop pattern index.html / prepare/index.html use. This page SCROLLS (a marketing
+         content page), so the body clips only the horizontal axis — never the vertical. -->
     <style>
       :root { --ember: #ff6a2c; }
       * { box-sizing: border-box; }
       html, body { margin: 0; padding: 0; background: #05080b; color: rgba(255,255,255,0.94);
         font-family: "Saira Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
         -webkit-font-smoothing: antialiased; overflow-x: clip; }
-      /* The front door is a CONTENT page — it scrolls. The game re-locks the viewport on entry. */
-      body.bmf-playing { overflow: hidden; height: 100dvh; touch-action: none; overscroll-behavior: none; }
-      body.bmf-playing #game { position: fixed; inset: 0; width: 100vw; height: 100dvh; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-      body.bmf-playing canvas { display: block; }
-      #fd-boot { position: fixed; inset: 0; z-index: 0; background:
+      #fd-boot { position: fixed; inset: 0; z-index: 0; pointer-events: none; background:
         radial-gradient(130% 60% at 50% -8%, rgba(255,106,44,0.2) 0%, rgba(255,106,44,0.05) 30%, transparent 56%),
         radial-gradient(150% 90% at 50% 118%, rgba(255,120,40,0.1) 0%, transparent 52%),
         linear-gradient(180deg, #0a0d10 0%, #0b0e10 42%, #07090b 100%); }
     </style>
-    <script type="module" crossorigin src="./assets/main-BW0aEYQB.js"></script>
-    <link rel="modulepreload" crossorigin href="./assets/frontShell-Sy5hzW8x.js">
-    <link rel="modulepreload" crossorigin href="./assets/blogCarousel-BDJKjqHP.js">
+    <script type="module" crossorigin src="../assets/campaign-wQ9_UCfK.js"></script>
+    <link rel="modulepreload" crossorigin href="../assets/frontShell-Sy5hzW8x.js">
+    <link rel="modulepreload" crossorigin href="../assets/flyPicker-CdJt1YqK.js">
     <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://bucketmyfire.com/#org","name":"Bucket My Fire","url":"https://bucketmyfire.com/"},{"@type":"WebSite","@id":"https://bucketmyfire.com/#website","name":"Bucket My Fire","url":"https://bucketmyfire.com/","description":"A live window onto real wildfire across Saskatchewan and Canada — agency-reported fires, area burned, and fire weather from CIFFC and CWFIS — plus a helicopter you can fly into the fight.","inLanguage":"en","publisher":{"@id":"https://bucketmyfire.com/#org"}},{"@type":["VideoGame","SoftwareApplication"],"@id":"https://bucketmyfire.com/#videogame","isPartOf":{"@id":"https://bucketmyfire.com/#website"},"name":"Bucket My Fire","alternateName":"Bucket My Fire — Helicopter Wildfire Flight Sim","url":"https://bucketmyfire.com/","image":"https://bucketmyfire.com/og-image.jpg","description":"Fly a helicopter, fill from the lakes, and fight the fire before it reaches the town. A real-feel helicopter flight sim, free in your browser.","genre":["Flight simulator","Helicopter game","Wildfire firefighting game"],"gamePlatform":"Web browser","applicationCategory":"GameApplication","operatingSystem":"Any modern web browser (iOS, Android, Windows, macOS)","playMode":"SinglePlayer","inLanguage":"en","author":{"@id":"https://bucketmyfire.com/#org"},"publisher":{"@id":"https://bucketmyfire.com/#org"},"offers":{"@type":"Offer","price":"0","priceCurrency":"USD","availability":"https://schema.org/InStock"}},{"@type":"FAQPage","@id":"https://bucketmyfire.com/#faq","isPartOf":{"@id":"https://bucketmyfire.com/#website"},"mainEntity":[{"@type":"Question","name":"What is Bucket My Fire?","acceptedAnswer":{"@type":"Answer","text":"Bucket My Fire is a free browser-based helicopter wildfire flight sim. You fly a helitanker, fill a slung bucket from lakes, and fight a spreading fire before it reaches the town."}},{"@type":"Question","name":"Is Bucket My Fire free to play?","acceptedAnswer":{"@type":"Answer","text":"Yes. It is completely free and runs in your web browser. No download, install, or sign-up required."}},{"@type":"Question","name":"How do you play Bucket My Fire?","acceptedAnswer":{"@type":"Answer","text":"Fly the helicopter low over a lake to fill your slung bucket, then drop the water on the fire. Keep the fire off the towns — it is an open-world fight where the fires keep coming, not a fixed set of levels."}},{"@type":"Question","name":"What devices does Bucket My Fire run on?","acceptedAnswer":{"@type":"Answer","text":"Any modern web browser on phone, tablet, or desktop. It is built mobile-first with touch controls and keyboard support."}},{"@type":"Question","name":"Is there multiplayer?","acceptedAnswer":{"@type":"Answer","text":"You can fly the same live map alongside other pilots in Open Skies, or fly solo. Full co-op is in development. A global leaderboard tracks every pilot."}},{"@type":"Question","name":"Does Bucket My Fire show real wildfire data?","acceptedAnswer":{"@type":"Answer","text":"Yes. The front page is a live window onto real wildfire across Saskatchewan and Canada — agency-reported active fires, area burned this year, and fire weather, sourced from CIFFC and CWFIS (Natural Resources Canada). It is an honest view, not an emergency tool; always follow official sources."}}]}]}</script>
   </head>
   <body>
-    <!-- Crawlable / no-JS fallback: the positioning claim + the real authorities. The interactive
-         glass-cockpit hub (and the 3D game) need JavaScript. -->
+    <!-- Crawlable / no-JS fallback: the lead + the sitemap. The two-step picker needs JavaScript; live
+         Open Skies is one click away without it. -->
     <noscript>
       <div style="position:relative;z-index:1;padding:28px 18px;max-width:680px;margin:0 auto;line-height:1.6">
-        <h1 style="color:#ff6a2c">Fight the fire.</h1>
-        <p>Watch real wildfire across Canada from CIFFC and CWFIS, then fly a helicopter into the fight. The live
-          fire map and the 3D game both need JavaScript; please enable it and reload.</p>
+        <h1 style="color:#ff6a2c">Fly solo.</h1>
+        <p>Pick your map and your helicopter, then fly a private round over the open world. The picker
+          needs JavaScript; please enable it and reload, or jump into live
+          <a style="color:#ffc24a" href="/?ffa=1">Open Skies</a>.</p>
         <p>
-          <a style="color:#ffc24a" href="/campaign/">Campaign</a> ·
+          <a style="color:#ffc24a" href="/">Home</a> ·
           <a style="color:#ffc24a" href="/prepare/">Prepare</a> ·
-          <a style="color:#ffc24a" href="https://shop.bucketmyfire.com/">Shop</a> ·
-          <a style="color:#ffc24a" href="/blog/">Field Notes</a>
-        </p>
-        <p>For authoritative wildfire information, see
-          <a style="color:#ffc24a" href="https://ciffc.net/">CIFFC</a>,
-          <a style="color:#ffc24a" href="https://cwfis.cfs.nrcan.gc.ca/">CWFIS</a>, and
-          <a style="color:#ffc24a" href="https://www.getprepared.gc.ca/">Get Prepared Canada</a>.
+          <a style="color:#ffc24a" href="/blog/">Field Notes</a> ·
+          <a style="color:#ffc24a" href="https://shop.bucketmyfire.com/">Shop</a>
         </p>
       </div>
     </noscript>
 
     <div id="fd-boot" aria-hidden="true"></div>
-    <!-- The hub mounts the glass-cockpit home here (and lazy-loads the 3D game only on a play link). -->
+    <!-- The campaign controller mounts the glass-cockpit picker here (no Three, no game bundle). -->
     <div id="game"></div>
 
-
-    <!-- Visitor analytics: NONE here on purpose — Cloudflare Web Analytics auto-injects the privacy-first
-         beacon at the edge; a manual beacon would double-count. -->
   </body>
 </html>

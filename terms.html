@@ -1,153 +1,189 @@
 <!doctype html>
-<!--
-  Plain-language Terms of Use for bucketmyfire. Not legal advice — have it reviewed before scaling.
-  Governing law set to Saskatchewan, Canada; update if the operator's jurisdiction differs.
--->
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#05080b" />
     <meta name="robots" content="index,follow" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>Terms of Use — Bucket My Fire</title>
     <link rel="canonical" href="https://bucketmyfire.com/terms.html" />
-    <style>
-      :root {
-        --bg: #0e160f;
-        --panel: #16241a;
-        --ink: #f4ead9;
-        --dim: #b9b2a3;
-        --accent: #ff7a2f;
-      }
-      * {
-        box-sizing: border-box;
-      }
-      body {
-        margin: 0;
-        background: var(--bg);
-        color: var(--ink);
-        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-        line-height: 1.65;
-        font-size: 17px;
-      }
-      .wrap {
-        max-width: 760px;
-        margin: 0 auto;
-        padding: 40px 22px 80px;
-      }
-      a {
-        color: var(--accent);
-      }
-      h1 {
-        font-size: 30px;
-        margin: 0 0 6px;
-      }
-      h2 {
-        font-size: 20px;
-        margin: 34px 0 8px;
-        color: var(--accent);
-      }
-      .meta {
-        color: var(--dim);
-        font-size: 14px;
-        margin-bottom: 26px;
-      }
-      ul {
-        padding-left: 22px;
-      }
-      li {
-        margin: 6px 0;
-      }
-      .back {
-        display: inline-block;
-        margin-bottom: 26px;
-        text-decoration: none;
-        font-weight: 600;
-      }
-      footer {
-        margin-top: 40px;
-        color: var(--dim);
-        font-size: 14px;
-        border-top: 1px solid rgba(255, 255, 255, 0.08);
-        padding-top: 18px;
-      }
-    </style>
+    <style>/* GENERATED from src/three/ui/theme.ts via src/three/ui/tokens.ts — DO NOT EDIT BY HAND.
+   Regenerate: npm run gen:tokens    Check (CI): npm run verify:tokens */
+:root{
+  --ember:#ff6a2c;--ember-hi:#ffc24a;--fire:#ff7a45;
+  --menu:#ffc24a;--menu-soft:rgba(255,194,74,0.55);--menu-fill:rgba(255,194,74,0.12);
+  --cta:linear-gradient(180deg, #ffd45e 0%, #efaa2b 100%);--cta-hi:linear-gradient(180deg, #ffdd76 0%, #f4b441 100%);--cta-ink:#3a2406;--cta-glow:rgba(239,170,43,0.42);
+  --warn:#ff5d4d;--ok:#63d68a;--caution:#ffc861;--gold:#ffd66b;--silver:#cfe0ee;--bronze:#e6a268;
+  --text:rgba(255,255,255,0.94);--text-subtle:rgba(255,255,255,0.82);--ink:#0c1410;--dim:rgba(255,255,255,0.60);--faint:rgba(255,255,255,0.48);
+  --card-glass:rgba(16,24,32,0.60);--card-soft:rgba(16,24,32,0.42);--warm-glass:rgba(44,17,13,0.46);
+  --track:rgba(255,255,255,0.10);--recess:rgba(5,9,13,0.55);--field:rgba(8,13,18,0.60);--rowmine:rgba(103,232,255,0.14);
+  --stroke:rgba(255,255,255,0.12);--stroke-strong:rgba(255,255,255,0.18);--warm-stroke:rgba(255,138,110,0.85);--hair:rgba(255,255,255,0.07);
+  --shadow-card:0 8px 30px rgba(0,0,0,0.45);--shadow-card-rich:0 10px 36px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.13), inset 1px 0 0 rgba(255,255,255,0.05), inset 0 -1px 0 rgba(0,0,0,0.22);--bevel-top:rgba(255,255,255,0.14);--ember-glow:0 0 16px rgba(255,106,44,0.5);--blur:blur(12px) saturate(120%);
+  --card-gradient:linear-gradient(158deg, rgba(22,32,44,0.72) 0%, rgba(12,18,26,0.68) 52%, rgba(8,12,18,0.64) 100%);--card-gradient-fight:linear-gradient(158deg, rgba(32,22,14,0.74) 0%, rgba(16,10,6,0.70) 52%, rgba(10,6,4,0.66) 100%);
+  --accent:#67e8ff;--accent-hi:#9af1ff;--accent-soft:rgba(103,232,255,0.55);--accent-fill:rgba(103,232,255,0.10);--glow:0 0 10px rgba(103,232,255,0.45);
+  --ember-05:rgba(255,106,44,0.05);--ember-10:rgba(255,106,44,0.10);--ember-12:rgba(255,106,44,0.12);--ember-14:rgba(255,106,44,0.14);--ember-18:rgba(255,106,44,0.18);--ember-20:rgba(255,106,44,0.20);--ember-22:rgba(255,106,44,0.22);--ember-30:rgba(255,106,44,0.30);--ember-32:rgba(255,106,44,0.32);--ember-35:rgba(255,106,44,0.35);--ember-40:rgba(255,106,44,0.40);--ember-42:rgba(255,106,44,0.42);--ember-50:rgba(255,106,44,0.50);
+  --fire-06:rgba(255,122,69,0.06);--fire-12:rgba(255,122,69,0.12);--fire-16:rgba(255,122,69,0.16);--fire-28:rgba(255,122,69,0.28);--fire-55:rgba(255,122,69,0.55);
+  --glow-50:rgba(255,140,50,0.5);--glow-60:rgba(255,140,50,0.6);--glow-80:rgba(255,140,50,0.8);--glow-90:rgba(255,140,50,0.9);--warm-26:rgba(255,140,60,0.26);--warm-38:rgba(255,140,60,0.38);
+  --gold-32:rgba(255,194,74,0.32);--gold-70:rgba(255,194,74,0.7);--ok-12:rgba(99,214,138,0.12);--ok-50:rgba(99,214,138,0.5);
+  --caution-12:rgba(255,200,97,0.12);--caution-50:rgba(255,200,97,0.5);
+  --warn-10:rgba(255,93,77,0.1);--warn-16:rgba(255,93,77,0.16);--warn-18:rgba(255,93,77,0.18);--warn-22:rgba(255,93,77,0.22);--warn-50:rgba(255,93,77,0.5);
+  --rank:#ffa033;--card-bg:#0a0e12;
+  --font:"Saira Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;--mono:"JetBrains Mono Variable", ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  --fs-micro:8px;--fs-tag:9px;--fs-label:10px;--fs-meta:11px;--fs-sm:12px;--fs-body:13px;--fs-md:14px;--fs-lg:15px;--fs-xl:16px;--fs-title:18px;--fs-hero:20px;--fs-display:24px;--fs-banner:32px;--fs-mega:42px;
+  --fw-medium:500;--fw-semibold:600;--fw-bold:700;--fw-heavy:800;--fw-black:900;
+  --r-sm:8px;--r-md:12px;--r-lg:10px;--r-xl:18px;--r-pill:99px;--r-round:50%;
+  --ar-poster:3 / 4;
+}
+
+
+/* ── Sticky top appbar ───────────────────────────────────────────────────────── */
+.fhome-bar { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 10px; min-height: 56px;
+  max-width: 1080px; margin: 0 auto; padding: 10px max(14px, env(safe-area-inset-left));
+  background: linear-gradient(180deg, rgba(7,10,13,0.92), rgba(7,10,13,0.4)); backdrop-filter: blur(10px) saturate(120%);
+  -webkit-backdrop-filter: blur(10px) saturate(120%); border-bottom: 1px solid var(--hair); }
+.fhome-brand { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); }
+.fhome-brand .bmk { width: 30px; height: 30px; flex: 0 0 auto; display: grid; place-items: center; }
+.fhome-brand .bmk .flame { width: auto; height: 28px; fill: url(#flameGrad); filter: drop-shadow(0 0 5px var(--glow-80)); }
+.fhome-brand b { font-family: var(--mono); font-weight: var(--fw-heavy); font-size: 13px; letter-spacing: .16em; text-transform: uppercase; white-space: nowrap; }
+/* Keep the wordmark next to the mark at every width (the icon + wordmark IS the logo lockup); just
+   tighten it on the narrowest phones so it never crowds the right-hand actions. */
+@media (max-width: 400px) { .fhome-brand b { font-size: 11.5px; letter-spacing: .1em; } }
+.fhome-grow { flex: 1; }
+.fhome-nav { display: none; align-items: center; gap: 2px; }
+@media (min-width: 760px) { .fhome-nav { display: inline-flex; } }
+.fhome-nav-a { text-decoration: none; color: var(--dim); font-family: var(--mono); font-size: 11px; letter-spacing: .12em;
+  text-transform: uppercase; font-weight: var(--fw-bold); padding: 10px 11px; min-height: 44px; display: inline-flex; align-items: center; }
+.fhome-nav-a:hover { color: var(--ember-hi); }
+.fhome-nav-a[aria-current="page"] { color: var(--text); }
+/* Shop pill — right side of the desktop appbar, beside the action buttons. */
+.fhome-shop { display: none; align-items: center; min-height: 36px; padding: 0 14px; border-radius: var(--r-lg);
+  text-decoration: none; font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+  font-weight: var(--fw-bold); color: var(--ember-hi); border: 1px solid color-mix(in srgb, var(--ember-hi) 35%, transparent); }
+@media (min-width: 760px) { .fhome-shop { display: inline-flex; } }
+.fhome-shop:hover { color: #fff; background: color-mix(in srgb, var(--ember-hi) 18%, transparent); }
+/* "Fight the fire" CTA (static pages with no game bundle). */
+.fhome-cta { display: inline-flex; align-items: center; min-height: 40px; padding: 0 16px; border-radius: var(--r-lg);
+  text-decoration: none; font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+  font-weight: var(--fw-heavy); color: var(--cta-ink); background: var(--cta); box-shadow: 0 1px 0 rgba(255,255,255,0.4) inset, 0 8px 20px var(--cta-glow); }
+.fhome-cta:hover { color: var(--cta-ink); filter: brightness(1.05); }
+
+/* ── Footer brand lockup (mini icon + wordmark) — shared by the front-door .fd-foot and the static
+   .fn-foot, so every footer wears the same logo lockup as the appbar. Each footer is a wrapping flex
+   row; the lockup is the last item (order 3), pushed to the right with margin-left:auto and sitting on
+   the same bottom line as the policy links (align-self bottom; the front door re-centres it). ─────── */
+.site-foot-brand { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; color: var(--text-subtle); margin: 0 0 0 auto; order: 3; align-self: end; }
+.site-foot-mark { width: 20px; height: 22px; flex: 0 0 auto; display: grid; place-items: center; }
+.site-foot-mark .flame { width: auto; height: 20px; fill: url(#flameGrad); filter: drop-shadow(0 0 4px var(--glow-80)); }
+.site-foot-brand b { font-family: var(--mono); font-weight: var(--fw-heavy); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; }
+.site-foot-brand:hover b { color: var(--ember-hi); }
+
+/* ── Breadcrumb trail (below the appbar on pages with a hierarchy) ─────────────── */
+.site-crumbs { font-family: var(--mono); font-size: var(--fs-meta); letter-spacing: .06em; color: var(--dim); margin: 0 0 18px; }
+.site-crumbs a { color: var(--dim); text-decoration: none; }
+.site-crumbs a:hover { color: var(--ember-hi); }
+.site-crumbs span[aria-current="page"] { color: var(--text-subtle); }
+.site-crumb-sep { opacity: .5; margin: 0 6px; }
+
+/* ── Mobile bottom tab bar ────────────────────────────────────────────────────── */
+.fd-tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; display: grid; grid-template-columns: repeat(5, 1fr);
+  background: linear-gradient(180deg, rgba(7,10,13,0.86), rgba(7,10,13,0.98)); backdrop-filter: blur(12px) saturate(120%);
+  -webkit-backdrop-filter: blur(12px) saturate(120%); border-top: 1px solid var(--hair); padding-bottom: env(safe-area-inset-bottom); }
+@media (min-width: 760px) { .fd-tabbar { display: none; } }
+.fd-tab { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 9px 4px 8px;
+  text-decoration: none; color: var(--dim); min-height: 56px; }
+.fd-tab svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.fd-tab span { font-family: var(--mono); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }
+.fd-tab[aria-current="page"] { color: var(--ember-hi); }
+/* Clear the fixed tab bar on static pages (blog/legal use body.fn). The front door pads its own column. */
+@media (max-width: 759px) { body.fn { padding-bottom: calc(72px + env(safe-area-inset-bottom)); } }
+
+/* ── Page title card "hero" — the ONE first-card / page-title standard, shared by the front-door first
+   cards (Home dossier, Campaign intro, Prepare checklist head) AND the blog + legal page titles. Every
+   one leads with the same anatomy: an eyebrow, a headline, and a sub, with an optional lead slot
+   (brand glyph / helmet / progress ring) and an optional trailing slot (rank pill / chevron). ─── */
+.fd-hero { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; }
+.fd-hero-lead { flex: 0 0 auto; display: grid; place-items: center; }
+.fd-hero-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.fd-hero-eyebrow { margin: 0; font-family: var(--mono); font-size: var(--fs-label); letter-spacing: .28em; text-transform: uppercase; color: var(--menu); font-weight: var(--fw-bold); }
+.fd-hero-head { margin: 0; font-size: clamp(24px, 3.6vw, 36px); font-weight: var(--fw-black); line-height: 1.08; letter-spacing: .01em; color: #fff; text-wrap: balance; }
+.fd-hero-sub { margin: 0; font-size: clamp(13.5px, 1.5vw, 15.5px); line-height: 1.5; color: var(--text-subtle); max-width: 56ch; text-wrap: pretty; }
+.fd-hero-sub b { color: var(--menu); font-weight: var(--fw-bold); }
+.fd-hero-trail { flex: 0 0 auto; margin-left: auto; align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; }
+
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body.fn{ background: radial-gradient(130% 60% at 50% -8%, var(--ember-20) 0%, var(--ember-05) 30%, transparent 56%), linear-gradient(180deg,#0a0d10 0%,#0b0e10 42%,#07090b 100%); background-attachment:fixed; color:var(--text); font-family:var(--font); line-height:1.65; -webkit-font-smoothing:antialiased; }
+a{color:var(--ember-hi);text-decoration:none} a:hover{color:var(--ember)}
+.fn-skip{position:absolute;left:-9999px;top:0;background:var(--menu);color:#3a2406;padding:8px 12px;border-radius:8px}
+.fn-skip:focus{left:8px;top:8px;z-index:50}
+h1,h2,h3{font-weight:800;letter-spacing:-0.01em;line-height:1.2;color:#fff}
+.fn-wrap{max-width:760px;margin:0 auto;padding:26px max(16px,env(safe-area-inset-left)) 64px}
+/* Page title (eyebrow + headline) uses the SHARED .fd-hero standard from siteNav navCss. */
+.fn-dateline{font-family:var(--mono);font-size:var(--fs-sm);color:var(--dim);margin:10px 0 26px}
+.fn-legal{font-size:var(--fs-lg);line-height:1.65}
+.fn-legal h2{font-size:clamp(18px,2.6vw,22px);margin:30px 0 10px;color:var(--ember-hi)}
+.fn-legal p{margin:0 0 16px;color:var(--text-subtle)}
+.fn-legal ul{margin:0 0 16px;padding-left:22px;color:var(--text-subtle)}
+.fn-legal li{margin:7px 0}
+.fn-legal a{font-weight:600}
+.fn-takeaways{background:var(--card-soft);border:1px solid var(--stroke);border-left:3px solid var(--ember);border-radius:var(--r-md);padding:16px 20px;margin:0 0 26px;color:var(--text-subtle)}
+.fn-foot{max-width:760px;margin:0 auto;padding:30px max(16px,env(safe-area-inset-left)) calc(40px + env(safe-area-inset-bottom));border-top:1px solid var(--hair);display:flex;flex-wrap:wrap;align-items:flex-end;column-gap:24px;row-gap:10px}
+.fn-disclaimer{order:1;flex:1 1 100%;color:var(--dim);font-size:var(--fs-sm);max-width:60ch;line-height:1.55;margin:0}
+.fn-foot-links{order:2;flex:0 1 auto;min-width:0;display:flex;flex-wrap:wrap;gap:8px 18px}
+.fn-foot-links a{font-family:var(--mono);font-size:var(--fs-meta);letter-spacing:0.1em;text-transform:uppercase;color:var(--dim)}
+.fn-foot-links a:hover{color:var(--ember-hi)}
+</style>
   </head>
-  <body>
-    <div class="wrap">
-      <a class="back" href="/">← Back to the game</a>
-      <h1>Terms of Use</h1>
-      <p class="meta">Bucket My Fire · Last updated 4 June 2026</p>
+  <body class="fn">
+    <a class="fn-skip" href="#fn-main">Skip to content</a>
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><linearGradient id="flameGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffc24a"/><stop offset="1" stop-color="#ff6a2c"/></linearGradient></defs></svg>
+    <header class="fhome-bar"><a class="fhome-brand" href="/" aria-label="Bucket My Fire — home"><span class="bmk"><svg class="flame" viewBox="0 0 149.7 184.72"><polygon points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/><path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/><path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/></svg></span><b>Bucket My Fire</b></a><nav class="fhome-nav" aria-label="Primary"><a class="fhome-nav-a" href="/">Home</a><a class="fhome-nav-a" href="/campaign/">Campaign</a><a class="fhome-nav-a" href="/prepare/">Prepare</a><a class="fhome-nav-a" href="/?map">Map</a></nav><span class="fhome-grow"></span><a class="fhome-shop" href="https://shop.bucketmyfire.com/?utm_source=bucketmyfire&utm_medium=frontdoor&utm_campaign=nav">Shop</a></header>
+    <main id="fn-main" class="fn-wrap">
+      <nav class="site-crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span class="site-crumb-sep" aria-hidden="true">/</span><span aria-current="page">Terms</span></nav>
+      <header class="fd-hero"><div class="fd-hero-main">
+        <p class="fd-hero-eyebrow">Bucket My Fire</p>
+        <h1 class="fd-hero-head">Terms of Use</h1>
+      </div></header>
+      <p class="fn-dateline">Last updated 4 June 2026</p>
+      <div class="fn-legal">
+        <p>By playing Bucket My Fire ("the game") you agree to these Terms. If you don't agree, please don't use the game.</p>
 
-      <p>
-        By playing Bucket My Fire ("the game") you agree to these Terms. If you don't agree, please
-        don't use the game.
-      </p>
+        <h2>The game</h2>
+        <p>Bucket My Fire is provided free of charge, "as is," for personal entertainment. We may change, suspend, or discontinue any part of it — including the leaderboard and cloud save — at any time, and features may be reset or removed.</p>
 
-      <h2>The game</h2>
-      <p>
-        Bucket My Fire is provided free of charge, "as is," for personal entertainment. We may change,
-        suspend, or discontinue any part of it — including the leaderboard and cloud save — at any
-        time, and features may be reset or removed.
-      </p>
+        <h2>Your licence to play</h2>
+        <p>We grant you a personal, non-commercial, revocable licence to play the game in your browser. You may not copy, resell, redistribute, reverse-engineer, scrape, or clone the game or its assets, or use it to build a competing product.</p>
 
-      <h2>Your licence to play</h2>
-      <p>
-        We grant you a personal, non-commercial, revocable licence to play the game in your browser.
-        You may not copy, resell, redistribute, reverse-engineer, scrape, or clone the game or its
-        assets, or use it to build a competing product.
-      </p>
+        <h2>Fair play &amp; conduct</h2>
+        <ul>
+          <li>Choose an appropriate callsign. Names that are offensive, hateful, impersonate others, or contain another person's private information may be removed.</li>
+          <li>Don't cheat, exploit, automate, or tamper with the leaderboard or cloud save. We may remove scores or entries we believe are fraudulent or abusive.</li>
+        </ul>
 
-      <h2>Fair play & conduct</h2>
-      <ul>
-        <li>
-          Choose an appropriate callsign. Names that are offensive, hateful, impersonate others, or
-          contain another person's private information may be removed.
-        </li>
-        <li>
-          Don't cheat, exploit, automate, or tamper with the leaderboard or cloud save. We may remove
-          scores or entries we believe are fraudulent or abusive.
-        </li>
-      </ul>
+        <h2>Merchandise</h2>
+        <p>Any merchandise is sold through a third-party print-on-demand store under that provider's own terms, pricing, shipping, and return policies. Your purchase contract is with that store, not with us, and your payment details are handled entirely by them.</p>
 
-      <h2>Merchandise</h2>
-      <p>
-        Any merchandise is sold through a third-party print-on-demand store under that provider's own
-        terms, pricing, shipping, and return policies. Your purchase contract is with that store, not
-        with us, and your payment details are handled entirely by them.
-      </p>
+        <h2>Intellectual property &amp; fictional setting</h2>
+        <p>"Bucket My Fire," its name, art, and code are owned by the operator. All other product names, trademarks, place names, and brands belong to their respective owners and are used for descriptive or setting purposes only. The game is a work of fiction: it is not affiliated with, sponsored by, or endorsed by any government, agency, community, manufacturer, or company, and any resemblance to real operations is for atmosphere, not accuracy.</p>
 
-      <h2>Intellectual property & fictional setting</h2>
-      <p>
-        "Bucket My Fire," its name, art, and code are owned by the operator. All other product names,
-        trademarks, place names, and brands belong to their respective owners and are used for
-        descriptive or setting purposes only. The game is a work of fiction: it is not affiliated
-        with, sponsored by, or endorsed by any government, agency, community, manufacturer, or
-        company, and any resemblance to real operations is for atmosphere, not accuracy.
-      </p>
+        <h2>No warranty; limitation of liability</h2>
+        <p>The game is provided "as is," without warranties of any kind. To the fullest extent permitted by law, we are not liable for any indirect, incidental, or consequential damages arising from your use of the game. Some jurisdictions don't allow certain limitations, so some of these may not apply to you.</p>
 
-      <h2>No warranty; limitation of liability</h2>
-      <p>
-        The game is provided "as is," without warranties of any kind. To the fullest extent permitted
-        by law, we are not liable for any indirect, incidental, or consequential damages arising from
-        your use of the game. Some jurisdictions don't allow certain limitations, so some of these may
-        not apply to you.
-      </p>
+        <h2>Governing law</h2>
+        <p>These Terms are governed by the laws of the Province of Saskatchewan and the federal laws of Canada applicable there, without regard to conflict-of-laws rules.</p>
 
-      <h2>Governing law</h2>
-      <p>
-        These Terms are governed by the laws of the Province of Saskatchewan and the federal laws of
-        Canada applicable there, without regard to conflict-of-laws rules.
-      </p>
-
-      <h2>Changes & contact</h2>
-      <p>
-        We may update these Terms; the "last updated" date will change. Questions:
-        <a href="mailto:privacy@bucketmyfire.com">privacy@bucketmyfire.com</a>.
-      </p>
-
-      <footer>
-        See also our <a href="/privacy.html">Privacy Policy</a>. © 2026 Bucket My Fire.
-      </footer>
-    </div>
+        <h2>Changes &amp; contact</h2>
+        <p>We may update these Terms; the "last updated" date will change. Questions: <a href="mailto:privacy@bucketmyfire.com">privacy@bucketmyfire.com</a>.</p>
+      </div>
+    </main>
+    <nav class="fd-tabbar" aria-label="Primary"><a class="fd-tab" href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg><span>Home</span></a><a class="fd-tab" href="/campaign/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22V4"/></svg><span>Campaign</span></a><a class="fd-tab" href="/?map"><svg viewBox="0 0 24 24" aria-hidden="true"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21 3 6"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg><span>Map</span></a><a class="fd-tab" href="/prepare/"><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg><span>Prepare</span></a><a class="fd-tab" href="https://shop.bucketmyfire.com/?utm_source=bucketmyfire&utm_medium=frontdoor&utm_campaign=nav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg><span>Shop</span></a></nav>
+    <footer class="fn-foot">
+      <a class="site-foot-brand" href="/" aria-label="Bucket My Fire — home"><span class="site-foot-mark"><svg class="flame" viewBox="0 0 149.7 184.72"><polygon points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/><path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/><path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/></svg></span><b>Bucket My Fire</b></a>
+      <p class="fn-disclaimer">General information, not an emergency tool. In an emergency, follow official sources and local authorities.</p>
+      <div class="fn-foot-links"><a href="/privacy.html">Privacy</a><a href="/terms.html">Terms</a></div>
+    </footer>
   </body>
 </html>
