@@ -41,14 +41,19 @@ export const FLAME = `<svg class="flame" viewBox="0 0 149.7 184.72"><polygon poi
  *  FLAME resolves its `url(#flameGrad)` fill. The in-game front door already injects the home DEFS. */
 export const NAV_DEFS = `<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><linearGradient id="flameGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffc24a"/><stop offset="1" stop-color="#ff6a2c"/></linearGradient></defs></svg>`;
 
-// Mobile tab-bar glyphs (filled, 24px) — mirror shell.ts TAB_ICON.
+// Mobile tab-bar glyphs — Lucide (MIT) stroke icons, so the bar speaks the SAME icon language as the
+// appbar actions + the in-game HUD/menus (src/three/ui/home/icons.ts). Rendered stroked (not filled)
+// by `.fd-tab svg` in navCss. home/map/shop reuse the exact paths from icons.ts (no drift).
 const TAB = {
-  home: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>`,
-  campaign: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>`,
-  prepare: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>`,
-  // Map = a filled location pin (the tab glyphs are filled; the folded-map outline reads as a blob filled).
-  map: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>`,
-  shop: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7V6a6 6 0 0 1 12 0v1h3v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7zm2 0h8V6a4 4 0 0 0-8 0z"/></svg>`,
+  home: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg>`,
+  // Campaign = the mission ladder → a planted-objective flag (Lucide `flag`).
+  campaign: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22V4"/></svg>`,
+  // Prepare = the wildfire-readiness checklist (Lucide `clipboard-check`).
+  prepare: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg>`,
+  // Map = the folded field map (Lucide `map`).
+  map: `<svg viewBox="0 0 24 24" aria-hidden="true"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21 3 6"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg>`,
+  // Shop = the storefront bag (Lucide `shopping-bag`).
+  shop: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>`,
 };
 
 // Appbar action glyphs (stroke, 24px) — mirror the home icons.ts `ic('trophy'|'settings')`.
@@ -85,7 +90,9 @@ export function appbarHtml({ active = '', actions = 'app' } = {}) {
     actions === 'app'
       ? `<button class="iconbtn" data-front="board" type="button" aria-label="Leaderboard">${TROPHY}</button>` +
         `<button class="iconbtn" data-front="settings" type="button" aria-label="Settings">${SETTINGS}</button>`
-      : `<a class="fhome-cta" href="/?province=1">Fight the fire</a>`;
+      : actions === 'play'
+        ? `<a class="fhome-cta" href="/?province=1">Fight the fire</a>`
+        : ''; // 'none' → brand + nav only (editorial content pages that don't nudge readers into the game)
   return `<header class="fhome-bar">` + brandNavHtml(active) + `<span class="fhome-grow"></span>` + right + `</header>`;
 }
 
@@ -108,6 +115,17 @@ export function tabbarHtml(active = '') {
       })
       .join('') +
     `</nav>`
+  );
+}
+
+/** A compact icon + wordmark lockup for the footer — the same flame mark + "Bucket My Fire" wordmark
+ *  as the appbar, sized down. The whole lockup links home. Needs the flame `<defs>` in scope (the front
+ *  door injects the home DEFS; static blog/legal pages include NAV_DEFS). Styled by `.site-foot-brand`
+ *  in navCss, so it reads identically in the front-door `.fd-foot` and the static `.fn-foot`. */
+export function footerBrandHtml() {
+  return (
+    `<a class="site-foot-brand" href="/" aria-label="Bucket My Fire — home">` +
+    `<span class="site-foot-mark">${FLAME}</span><b>Bucket My Fire</b></a>`
   );
 }
 
@@ -140,12 +158,12 @@ export const navCss = `
   background: linear-gradient(180deg, rgba(7,10,13,0.92), rgba(7,10,13,0.4)); backdrop-filter: blur(10px) saturate(120%);
   -webkit-backdrop-filter: blur(10px) saturate(120%); border-bottom: 1px solid var(--hair); }
 .fhome-brand { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); }
-.fhome-brand .bmk { width: 30px; height: 30px; flex: 0 0 auto; display: grid; place-items: center; border-radius: var(--r-md);
-  border: 1px solid var(--warm-stroke); background: radial-gradient(circle at 40% 30%, var(--warm-38), rgba(10,12,14,0.9));
-  box-shadow: inset 0 0 10px var(--ember-35), 0 0 14px var(--ember-12); }
-.fhome-brand .bmk .flame { width: 15px; height: 15px; fill: url(#flameGrad); filter: drop-shadow(0 0 4px var(--glow-80)); }
+.fhome-brand .bmk { width: 30px; height: 30px; flex: 0 0 auto; display: grid; place-items: center; }
+.fhome-brand .bmk .flame { width: auto; height: 28px; fill: url(#flameGrad); filter: drop-shadow(0 0 5px var(--glow-80)); }
 .fhome-brand b { font-family: var(--mono); font-weight: var(--fw-heavy); font-size: 13px; letter-spacing: .16em; text-transform: uppercase; white-space: nowrap; }
-@media (max-width: 560px) { .fhome-brand b { display: none; } }
+/* Keep the wordmark next to the mark at every width (the icon + wordmark IS the logo lockup); just
+   tighten it on the narrowest phones so it never crowds the right-hand actions. */
+@media (max-width: 400px) { .fhome-brand b { font-size: 11.5px; letter-spacing: .1em; } }
 .fhome-grow { flex: 1; }
 .fhome-nav { display: none; align-items: center; gap: 2px; }
 @media (min-width: 760px) { .fhome-nav { display: inline-flex; } }
@@ -159,6 +177,14 @@ export const navCss = `
   text-decoration: none; font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
   font-weight: var(--fw-heavy); color: var(--cta-ink); background: var(--cta); box-shadow: 0 1px 0 rgba(255,255,255,0.4) inset, 0 8px 20px var(--cta-glow); }
 .fhome-cta:hover { color: var(--cta-ink); filter: brightness(1.05); }
+
+/* ── Footer brand lockup (mini icon + wordmark) — shared by the front-door .fd-foot and the static
+   .fn-foot, so every footer wears the same logo lockup as the appbar. ─────────────────────────── */
+.site-foot-brand { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; color: var(--text-subtle); margin: 0 0 12px; }
+.site-foot-mark { width: 20px; height: 22px; flex: 0 0 auto; display: grid; place-items: center; }
+.site-foot-mark .flame { width: auto; height: 20px; fill: url(#flameGrad); filter: drop-shadow(0 0 4px var(--glow-80)); }
+.site-foot-brand b { font-family: var(--mono); font-weight: var(--fw-heavy); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; }
+.site-foot-brand:hover b { color: var(--ember-hi); }
 
 /* ── Breadcrumb trail (below the appbar on pages with a hierarchy) ─────────────── */
 .site-crumbs { font-family: var(--mono); font-size: var(--fs-meta); letter-spacing: .06em; color: var(--dim); margin: 0 0 18px; }
@@ -174,7 +200,7 @@ export const navCss = `
 @media (min-width: 760px) { .fd-tabbar { display: none; } }
 .fd-tab { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 9px 4px 8px;
   text-decoration: none; color: var(--dim); min-height: 56px; }
-.fd-tab svg { width: 21px; height: 21px; fill: currentColor; }
+.fd-tab svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
 .fd-tab span { font-family: var(--mono); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }
 .fd-tab[aria-current="page"] { color: var(--ember-hi); }
 /* Clear the fixed tab bar on static pages (blog/legal use body.fn). The front door pads its own column. */

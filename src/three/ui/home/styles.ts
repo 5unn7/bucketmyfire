@@ -790,7 +790,9 @@ const CSS = `
   /* The live-fire MAP is the exception — a map wants the whole desktop, not a 760px phone column. Full
      bleed (no max-width, no top padding: the firebar IS the top chrome), so it fills the screen. */
   .bmf-app:not(.home):not(.newpilot) .pad:has(> .firewrap){ max-width:none; padding-top:0; padding-bottom:calc(var(--rail-h) + env(safe-area-inset-bottom)); }
-  .bmf-app.front-nav:not(.home):not(.newpilot) .pad:has(> .firewrap){ padding-bottom:calc(58px + env(safe-area-inset-bottom)); }
+  /* Front-door map on desktop: the tab bar is hidden (≥760 the merged top bar's nav takes over), so the
+     map runs full-bleed to the bottom — no reserved strip. */
+  .bmf-app.front-nav:not(.home):not(.newpilot) .pad:has(> .firewrap){ padding-bottom:0; }
   /* Carousels (Campaign region picker · Hangar) become a GRID on desktop — every card visible at
      once, no chevrons, no per-view paging. Maps (4) and aircraft (3) each fit one balanced row that
      fills the wider column, so a desktop stops reading like a stretched phone. The carousel JS still

@@ -19,6 +19,7 @@ import { DEFS, FLAME, HELMET, ic } from './three/ui/home/icons';
 import { loadProfile, availablePoints } from './three/ui/profile';
 import { careerScore, rankFor, nextRankProgress } from './three/missions/rank';
 import { injectShellStyles, tabbarMarkup, buildFooter } from './site/shell';
+import { brandNavHtml, tabbarHtml } from './site/siteNav.mjs';
 import { injectFrontShell, frontScene, frontAppbar, spawnFrontEmbers, wireFrontAppbar } from './site/frontShell';
 import { mountBlogCarousel } from './site/blogCarousel';
 import { SPLASH_CSS, SPINNER_MARKUP, SPLASH_ATTRS } from './three/ui/spinner';
@@ -113,6 +114,7 @@ function buildFrontDoor(): void {
   wire(app); // the bento data-act surfaces (Open Skies · Map · Shop)
   void hydrateNational();
   void mountCarousel(app);
+  if (params.has('map')) openMap(); // deep link from the nav's "Map" item (works from any page → /?map)
 }
 
 /** The returning-pilot dossier card — REUSED verbatim from HomeScreen (helmet + sheen + rank + career +
@@ -239,14 +241,19 @@ function wire(app: HTMLElement): void {
         case 'coop':
           return navigateRail('coop'); // Open Skies — the live shared shift (pick aircraft → Fly)
         case 'fires':
-          // The full live-fire tracker (layers + smoke scrubber + detail). Pass the front-door tabbar so
-          // this front-door surface wears the SAME nav as Home/Campaign/Prepare, not the in-game mode rail.
-          return openLiveFires(tabbarMarkup('home'));
+          return openMap(); // the full live-fire tracker, as a front-door page (brand bar + nav, Map active)
         case 'shop':
           return navigateRail('shop'); // the standalone storefront (same tab)
       }
     });
   });
+}
+
+/** Open the live-fire tracker as a FRONT-DOOR page: the merged top bar carries the logo + wordmark +
+ *  sitemap nav (Map active), and the bottom tab bar marks Map too — so it reads like Home/Campaign/Prepare,
+ *  reachable from the nav on every page. Shared by the home 'Map' bento card AND the `/?map` deep link. */
+function openMap(): void {
+  openLiveFires(tabbarHtml('map'), brandNavHtml('map'));
 }
 
 async function mountCarousel(app: HTMLElement): Promise<void> {

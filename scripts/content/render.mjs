@@ -166,7 +166,7 @@ export async function buildContent({ root = ROOT, outDir, log = () => {} } = {})
   for (const a of articles) {
     const dir = path.join(outBlog, a.slug);
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, 'index.html'), articlePage(a, css));
+    fs.writeFileSync(path.join(dir, 'index.html'), articlePage(a, css, articles));
     log(`  blog/${a.slug}/`);
   }
 
@@ -226,8 +226,10 @@ h1,h2,h3,h4{font-weight:800;letter-spacing:-0.01em;line-height:1.15;color:#fff}
 .fn-wrap{max-width:760px;margin:0 auto;padding:26px max(16px,env(safe-area-inset-left)) 64px}
 /* Page titles (eyebrow + headline + lede) use the SHARED .fd-hero standard from siteNav navCss. */
 .fn-dateline{font-family:var(--mono);font-size:var(--fs-sm);color:var(--dim);margin:10px 0 26px}
-.fn-hero{margin:0 0 22px;border-radius:var(--r-lg);overflow:hidden;border:1px solid var(--stroke);
-  border-top-color:var(--stroke-strong);box-shadow:var(--shadow-card);aspect-ratio:1200/630;background:var(--card-bg)}
+/* The hero wears the brand cut-corner (top-left clip) like every poster card + .card.cut surface. */
+.fn-hero{margin:0 0 22px;border-radius:var(--r-md);overflow:hidden;border:1px solid var(--stroke);
+  border-top-color:var(--stroke-strong);box-shadow:var(--shadow-card);aspect-ratio:1200/630;background:var(--card-bg);
+  clip-path:polygon(18px 0,100% 0,100% 100%,0 100%,0 18px)}
 .fn-hero img{display:block;width:100%;height:100%;object-fit:cover}
 .fn-lede{font-size:var(--fs-xl);color:var(--text-subtle);max-width:60ch;line-height:1.55}
 .fn-takeaways{background:var(--card-soft);border:1px solid var(--stroke);border-left:3px solid var(--ember);
@@ -258,14 +260,12 @@ h1,h2,h3,h4{font-weight:800;letter-spacing:-0.01em;line-height:1.15;color:#fff}
 .fn-srcbox{margin:38px 0 0;background:var(--recess);border:1px solid var(--hair);border-radius:var(--r-md);padding:16px 20px}
 .fn-srcbox h2{font-size:var(--fs-meta);letter-spacing:0.14em;text-transform:uppercase;color:var(--dim);margin:0 0 10px}
 .fn-srcbox ul{margin:0;padding-left:18px}.fn-srcbox li{margin:6px 0;font-size:var(--fs-md)}
-.fn-bridge{margin:44px 0 0;background:radial-gradient(120% 140% at 82% 0%,var(--ember-12),transparent 55%),var(--card-glass);
-  border:1px solid var(--warm-stroke);border-radius:var(--r-xl);padding:24px;text-align:center}
-.fn-bridge p{margin:0 0 16px;font-size:var(--fs-xl);color:#fff;font-weight:600}
 .fn-related{margin:44px 0 0}
-.fn-related h2{font-size:var(--fs-title);margin:0 0 12px}
-.fn-related ul{list-style:none;margin:0;padding:0}
-.fn-related li{margin:8px 0}
-.fn-related a{color:var(--ember-hi);font-weight:600}
+.fn-related h2{font-size:var(--fs-title);margin:0 0 14px}
+/* "Keep reading" links are PORTRAIT poster cards — the index grid's .fn-card at --ar-poster (3/4). */
+.fn-related .fn-card{aspect-ratio:var(--ar-poster)}
+/* A link with no per-article art (Prepare hub / pillar index) gets a warm procedural poster. */
+.fn-card-proc{background:radial-gradient(120% 90% at 70% 18%,var(--ember-22),transparent 60%),var(--metal)}
 .fn-hub-head{margin:0 0 28px}
 .fn-sec{display:flex;align-items:center;gap:12px;margin:38px 0 6px}
 .fn-sec-tag{font-family:var(--mono);font-size:var(--fs-meta);letter-spacing:0.16em;text-transform:uppercase;color:var(--menu);font-weight:700;white-space:nowrap}
@@ -297,10 +297,6 @@ h1,h2,h3,h4{font-weight:800;letter-spacing:-0.01em;line-height:1.15;color:#fff}
   display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .fn-card-go{margin-top:11px;font-family:var(--mono);font-size:var(--fs-micro);letter-spacing:0.06em;text-transform:uppercase;color:var(--ember-hi)}
 .fn-card:hover .fn-card-go{color:var(--ember)}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:9px;cursor:pointer;font-family:var(--font);
-  font-weight:800;letter-spacing:0.06em;text-transform:uppercase;line-height:1;border:1px solid transparent;
-  border-radius:var(--r-lg);padding:14px 24px;min-height:50px;font-size:var(--fs-md)}
-.btn.primary{background:var(--cta);color:var(--cta-ink);box-shadow:0 1px 0 rgba(255,255,255,0.5) inset,0 8px 20px var(--cta-glow)}
 .fn-foot{max-width:760px;margin:0 auto;padding:30px max(16px,env(safe-area-inset-left)) calc(40px + env(safe-area-inset-bottom));border-top:1px solid var(--hair)}
 .fn-disclaimer{color:var(--dim);font-size:var(--fs-sm);max-width:60ch;line-height:1.55;margin:0 0 12px}
 .fn-foot-links{display:flex;flex-wrap:wrap;gap:8px 18px}

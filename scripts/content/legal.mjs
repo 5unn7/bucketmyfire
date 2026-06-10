@@ -7,7 +7,7 @@
  * nav/token change). Plain Node, no DOM, no Vite.
  */
 
-import { appbarHtml, tabbarHtml, breadcrumbHtml, NAV_DEFS } from '../../src/site/siteNav.mjs';
+import { appbarHtml, tabbarHtml, breadcrumbHtml, footerBrandHtml, NAV_DEFS } from '../../src/site/siteNav.mjs';
 
 const BASE_URL = 'https://bucketmyfire.com';
 
@@ -29,7 +29,7 @@ function legalShell({ title, slug, crumb, updated, css, body }) {
   <body class="fn">
     <a class="fn-skip" href="#fn-main">Skip to content</a>
     ${NAV_DEFS}
-    ${appbarHtml({ active: '', actions: 'play' })}
+    ${appbarHtml({ active: '', actions: 'none' })}
     <main id="fn-main" class="fn-wrap">
       ${breadcrumbHtml([{ label: 'Home', href: '/' }, { label: crumb }])}
       <header class="fd-hero"><div class="fd-hero-main">
@@ -43,6 +43,7 @@ ${body}
     </main>
     ${tabbarHtml('')}
     <footer class="fn-foot">
+      ${footerBrandHtml()}
       <p class="fn-disclaimer">General information, not an emergency tool. In an emergency, follow official sources and local authorities.</p>
       <div class="fn-foot-links"><a href="/privacy.html">Privacy</a><a href="/terms.html">Terms</a></div>
     </footer>

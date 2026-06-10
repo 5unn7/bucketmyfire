@@ -20,7 +20,7 @@
 import { cleanCallsign } from '../three/ui/callsign';
 import { careerScore, rankFor, nextRankProgress } from '../three/missions/rank';
 import { fmtInt } from '../three/livefire/strings';
-import { tabbarHtml } from './siteNav.mjs';
+import { tabbarHtml, footerBrandHtml } from './siteNav.mjs';
 
 export type ShellPage = 'home' | 'campaign' | 'prepare';
 
@@ -79,6 +79,7 @@ export function buildAppbar(active: ShellPage): string {
 export function buildFooter(): string {
   return (
     `<footer class="fd-foot">` +
+    footerBrandHtml() +
     `<p class="fd-disclaimer">A window onto real data, not an emergency tool. Always follow official sources and local authorities.</p>` +
     `<div class="fd-foot-links">` +
     `<a href="/privacy.html">Privacy</a>` +
@@ -444,12 +445,12 @@ const SHELL_CSS = `
 /* The base .fd-tabbar / .fd-tab rules now live in siteNav.mjs (navCss) — ONE source shared with the
    blog + legal pages. Injected by injectFrontShell() → injectNavStyles(). The override below is the
    front-door-only special case. */
-/* The live-fire tracker is a front-door surface rendered inside a full-screen .bmf-app overlay
-   (openLiveFires, when reached from the front door, tags the root .front-nav + renders this tabbar). That
-   overlay has no top appbar, so keep the tabbar visible at EVERY width here — overriding the desktop hide
-   above — and tighten the map's bottom reservation so it sits flush on the bar instead of leaving a seam. */
-.bmf-app.front-nav .fd-tabbar { display: grid; }
+/* The live-fire tracker is a front-door surface in a full-screen .bmf-app overlay (openLiveFires, when
+   reached from the front door, tags the root .front-nav). On MOBILE the bottom tab bar carries the nav, so
+   reserve its height; on DESKTOP (≥760) the tab bar hides (its default) and the merged top bar's own
+   .fhome-nav takes over — so the map runs full-bleed to the bottom with no redundant second nav. */
 .bmf-app.front-nav .pad:has(> .firewrap) { padding-bottom: calc(58px + env(safe-area-inset-bottom)); }
+@media (min-width: 760px) { .bmf-app.front-nav .pad:has(> .firewrap) { padding-bottom: 0; } }
 /* Make room above the fixed tab bar on phones so nothing hides behind it. */
 @media (max-width: 759px) { .fd-app { padding-bottom: calc(78px + env(safe-area-inset-bottom)) !important; } }
 

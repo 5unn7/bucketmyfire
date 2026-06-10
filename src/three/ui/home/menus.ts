@@ -647,9 +647,12 @@ function banDetailHtml(b: BanArea): string {
  * the Home banner (like Board/Settings — not a rail tab); the map owns its own pan/zoom (page never scrolls).
  */
 /** The live wildfire tracker. `navMarkup` (optional) overrides the bottom nav: the FRONT DOOR passes its
- *  own tabbar (`tabbarMarkup`) so the tracker reads as a front-door page; called bare (from the in-game
- *  home) it falls back to the mode rail with Home lit. */
-export function openLiveFires(navMarkup?: string): void {
+ *  own tabbar (`tabbarMarkup('map')`) so the tracker reads as a front-door page; called bare (from the
+ *  in-game home) it falls back to the mode rail with Home lit. `topNav` (optional) is the brand+nav
+ *  fragment (`brandNavHtml('map')`) the front door slips into the LEFT of the control bar — so the map
+ *  wears the logo + wordmark + sitemap nav like every other front-door page (one merged bar, no 2nd row;
+ *  `.fhome-nav` is desktop-only, mobile leans on the tab bar). */
+export function openLiveFires(navMarkup?: string, topNav?: string): void {
   activeOverlay?.close(); // opened directly (not via the rail) — clear any panel that was up
   const options = COUNTRIES.map((c) => `<option value="${c.id}">${c.label}</option>`).join('');
   const C = LIVEFIRE_COPY;
@@ -699,6 +702,7 @@ export function openLiveFires(navMarkup?: string): void {
   // Sources sheet buttons) and the compact status block above — so the map keeps far more height.
   const body = `<div class="firewrap">
     <div class="firebar">
+      ${topNav ?? ''}
       <select class="firesel" data-lf-country aria-label="Country filter">${options}</select>
       <span class="grow"></span>
       <button class="iconbtn" data-lf-refresh aria-label="Refresh">${ic('refresh')}</button>

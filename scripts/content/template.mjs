@@ -7,7 +7,7 @@
 
 import { escapeHtml } from './markdown.mjs';
 import { scene } from './art.mjs';
-import { appbarHtml, tabbarHtml, breadcrumbHtml, NAV_DEFS } from '../../src/site/siteNav.mjs';
+import { appbarHtml, tabbarHtml, breadcrumbHtml, footerBrandHtml, NAV_DEFS } from '../../src/site/siteNav.mjs';
 
 export const BASE_URL = 'https://bucketmyfire.com';
 export const BLOG_BASE = '/blog';
@@ -73,12 +73,13 @@ function pageShell({ title, description, canonical, ogImage, ogType = 'article',
   <body class="fn">
     <a class="fn-skip" href="#fn-main">Skip to content</a>
     ${NAV_DEFS}
-    ${appbarHtml({ active: 'prepare', actions: 'play' })}
+    ${appbarHtml({ active: 'prepare', actions: 'none' })}
     <main id="fn-main" class="fn-wrap">
 ${body}
     </main>
     ${tabbarHtml('prepare')}
     <footer class="fn-foot">
+      ${footerBrandHtml()}
       <p class="fn-disclaimer">
         General information, not an emergency tool. In an emergency, follow official sources and local
         authorities.
@@ -93,8 +94,9 @@ ${body}
 `;
 }
 
-/** Build the article page. `a` is the resolved article object (see render.mjs). */
-export function articlePage(a, css) {
+/** Build the article page. `a` is the resolved article object (see render.mjs); `allArticles` is the
+ *  full set, used to resolve "Keep reading" links to real poster cards. */
+export function articlePage(a, css, allArticles = []) {
   const canonical = `${BASE_URL}${BLOG_BASE}/${a.slug}/`;
   const ogAbs = a.ogImage.startsWith('http') ? a.ogImage : `${BASE_URL}${a.ogImage}`;
   const pTitle = pillarTitle(a.pillar);
@@ -134,9 +136,7 @@ export function articlePage(a, css) {
   const related = (a.internalLinks || []).length
     ? `<nav class="fn-related" aria-label="Related Field Notes">
         <h2>Keep reading</h2>
-        <ul>${a.internalLinks
-          .map((l) => `<li><a href="${escapeHtml(l.href)}">${escapeHtml(l.label)}</a></li>`)
-          .join('')}</ul>
+        <div class="fn-grid">${a.internalLinks.map((l) => relatedCard(l, allArticles)).join('')}</div>
       </nav>`
     : '';
 
@@ -167,10 +167,6 @@ ${a.bodyHtml}
         </div>
         ${faq}
         ${sources}
-        <aside class="fn-bridge">
-          <p>See it from the air. Fly a helicopter into the fight, free in your browser.</p>
-          <a class="btn primary" href="/">Fight the fire</a>
-        </aside>
         ${related}
       </article>`;
 
@@ -278,6 +274,27 @@ function articleCard(a) {
           <span class="fn-card-h">${escapeHtml(a.title)}</span>
           <span class="fn-card-d">${escapeHtml(a.description)}</span>
           <span class="fn-card-go">Read article →</span>
+        </span>
+      </a>`;
+}
+
+/**
+ * One "Keep reading" link as a PORTRAIT poster card. When the href resolves to a real Field Note we
+ * render its full poster card (the SAME art + title + description as the index grid, so they can't
+ * drift). A link to the Prepare hub or a pillar index has no per-article art, so it gets a warm
+ * procedural poster carrying just its label. Either way the section reads as a row of blog cards.
+ */
+function relatedCard(link, allArticles) {
+  const m = /^\/blog\/([^/]+)\/$/.exec(link.href || '');
+  const art = m ? allArticles.find((x) => x.slug === m[1]) : null;
+  if (art) return articleCard(art);
+  const eyebrow = (link.href || '').startsWith('/blog/') ? 'Field Notes' : 'Prepare';
+  return `<a class="fn-card fn-card-proc" href="${escapeHtml(link.href)}" aria-label="${escapeHtml(link.label)}">
+        <span class="fn-card-scrim"></span>
+        <span class="fn-card-top"><span class="fn-card-pillar">${escapeHtml(eyebrow)}</span></span>
+        <span class="fn-card-body">
+          <span class="fn-card-h">${escapeHtml(link.label)}</span>
+          <span class="fn-card-go">Read →</span>
         </span>
       </a>`;
 }
