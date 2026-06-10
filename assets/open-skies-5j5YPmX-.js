@@ -1,4 +1,4 @@
-import{a as p,i as d,b as l,c as f,d as m,e as k,D as h,s as u,w as v,g as b,h as y,j as g,x as S,H as x,k as j}from"./frontShell-Sy5hzW8x.js";import{i as w,p as o,w as E}from"./flyPicker-CdJt1YqK.js";p();d();l();f();m();k();w();L();const a=document.getElementById("game");if(a){const e=document.createElement("div");e.className="bmf-app front",e.innerHTML=h+H(),a.innerHTML="",a.appendChild(e),document.getElementById("fd-boot")?.remove(),u(e,13),v(e),F(e)}function H(){return`
+import{a as p,i as d,b as l,c as f,d as m,e as k,D as h,s as u,w as v,g as b,h as y,j as g,x as S,H as x,k as j}from"./frontShell-l_uKb0hn.js";import{i as w,p as o,w as E}from"./flyPicker-CdJt1YqK.js";p();d();l();f();m();k();w();L();const a=document.getElementById("game");if(a){const e=document.createElement("div");e.className="bmf-app front",e.innerHTML=h+H(),a.innerHTML="",a.appendChild(e),document.getElementById("fd-boot")?.remove(),u(e,13),v(e),F(e)}function H(){return`
 ${b()}
 ${y("open-skies")}
 <div class="pad fhome">
