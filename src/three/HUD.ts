@@ -18,8 +18,9 @@
 
 import type { TrackerItem, CommsSpeaker, CommsUrgency, MissionDef } from './missions/types';
 import type { FireFieldView } from './sim/FireSystem';
-import { UI, FS, FW, R, el, frosted, makeCanvas, clamp01, anchor, prefersReducedMotion } from './ui/theme';
+import { UI, FS, FW, R, el, makeCanvas, clamp01, prefersReducedMotion } from './ui/theme';
 import { onLayout, type LayoutState } from './ui/layout';
+import { injectHudStyles } from './hud/styles';
 import { Radar } from './hud/Radar';
 import { EndScreen } from './hud/EndScreen';
 import { EngineStart } from './hud/engineStart';
@@ -32,9 +33,10 @@ import type { HudState, EndScreenHooks, MapLabels } from './hud/types';
 // Re-exported so every existing `import { … } from './HUD'` keeps working unchanged.
 export type { HudState, EndScreenHooks, MapLabels };
 
-// Design tokens + DOM helpers (el / frosted / makeCanvas / clamp01) live in ui/theme.ts and are
-// imported above, so the HUD and the touch controls share one glass-cockpit language. `anchor()`
-// (also from theme) + `onLayout` (layout.ts) drive the responsive, safe-area-aware placement.
+// Design tokens + DOM helpers (el / makeCanvas / clamp01) live in ui/theme.ts; the responsive LAYOUT now
+// lives in the injected `.bmf-hud` stylesheet (hud/styles.ts) — CSS grid + clamp() + real @media
+// breakpoints — so this class only builds the DOM, writes per-frame state, and re-sizes the one canvas
+// (the radar) that genuinely needs JS pixels via `onLayout` (layout.ts).
 
 const TAPE_W = 78; // jet tape canvas width
 const TAPE_H = 188; // jet tape canvas height (the scrolling window)
@@ -45,17 +47,10 @@ const LOW_AGL_FT = 250; // altimeter reads LOW (red) below this AGL in feet
 // can paint instantly before the World/HUD are built — see main.ts bootMission.)
 const MONO = UI.fontMono;
 
-// Inject the warning-caption flash keyframes once (the GPWS-style "SINK RATE" / "PULL UP" / "TERRAIN"
-// alert pulses to read as urgent). Pattern mirrors ui/flow/chrome.ts. Reduced-motion users get a
-// steady caption instead (HUD.setAlert skips the animation), so this is purely the throb.
-let alertStylesInjected = false;
-function ensureAlertStyles(): void {
-  if (alertStylesInjected) return;
-  alertStylesInjected = true;
-  const tag = document.createElement('style');
-  tag.textContent = `@keyframes bmf-alert-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.45; } }`;
-  document.head.appendChild(tag);
-}
+// The GPWS-style hazard-caption flash keyframe (`bmf-alert-pulse`) now lives in the injected `.bmf-hud`
+// stylesheet (hud/styles.ts); reduced-motion users still get a steady caption (HUD.setAlert skips the
+// animation). The instrument strip + every gauge cell are laid out by that stylesheet's classes too — this
+// class only builds the DOM and writes per-frame STATE (numbers, colours, bar fills) into it.
 
 export class HUD {
   private readonly root: HTMLDivElement;
@@ -75,7 +70,6 @@ export class HUD {
   private readonly crewPod: Pod; // crew aboard count (delivery/evac missions only — hidden otherwise)
   private readonly compassPod: Pod; // heading in degrees (replaces the scrolling heading tape)
   private readonly windPod: Pod; // wind speed in knots + a heading-relative direction arrow
-  private readonly pods: Pod[];
   private menuCell?: HTMLDivElement; // ☰ tucked at the head of the strip (campaign only)
   private readonly objPanel: HTMLDivElement; // campaign objective checklist (hidden in sandbox)
   private objSig = ''; // last-rendered objective signature (skip DOM churn when unchanged)
@@ -87,26 +81,22 @@ export class HUD {
   private readonly crewBarLabel: HTMLDivElement;
   private readonly crewBarFill: HTMLDivElement;
   private crewBarShown = false; // last visibility (re-seat the bar only when it toggles)
-  // The ONE top-center glass advisory bar: dispatch/comms + contextual hints + idle flying tips, all
-  // through a single pill (replaces the old split status-hint bubble and under-radar comms toast stack).
+  // The ONE glass advisory bar: dispatch/comms + contextual hints + idle flying tips, all through a single
+  // pill, mounted in the top-band grid's centre column (hud/styles.ts `.hud-comms`). It can no longer
+  // overlap a corner, so the old getBoundingClientRect measure-and-nudge (positionMessages) is gone.
   private readonly messages: MessageBar;
-  private readonly topLeft: HTMLDivElement; // top-left anchor (measured to drop the bar below it on portrait)
-  private readonly topCenter: HTMLDivElement; // message-bar column — dropped below the instrument band on portrait
-  private readonly topRight: HTMLDivElement; // radar column — help "?" tucks under the map
-  private portraitMessages = false; // the hint drops below the band (phone/portrait) vs rides at the top (wide)
-  private bandClear = 0; // floor px the hint is dropped by when portraitMessages
+  private readonly hudRight: HTMLDivElement; // top-band grid RADAR column — the help "?" tucks under the map (mountUnderRadar)
   private readonly smoke: HTMLDivElement; // C5: blinding-smoke veil when the camera is in a plume
   private readonly hitFlash: HTMLDivElement; // red impact vignette pulsed on a hard-landing airframe dent
   private hitFlashTimer = 0; // setTimeout id: fade the impact flash back out
   private readonly alertEl: HTMLDivElement; // big centred GPWS-style caption (SINK RATE / PULL UP / TERRAIN)
   private alertText: string | null = null; // current caption (idempotent guard — never re-trigger the same one)
 
-  // Fighter-jet scrolling tapes (canvas): airspeed left of the heli, altitude right.
+  // Fighter-jet scrolling tapes (canvas): airspeed left of the heli, altitude right. Only the 2D contexts
+  // are kept — the canvases are placed + scaled by CSS (`.tape.spd` / `.tape.alt`), so there's no element
+  // ref to hold. The backing stores are fixed-size (TAPE_W × TAPE_H); CSS only transforms the display.
   private readonly spdCtx: CanvasRenderingContext2D;
   private readonly altCtx: CanvasRenderingContext2D;
-  private tapeGap = 70; // px from center to each flight tape (set by applyLayout)
-  private spdCanvas!: HTMLCanvasElement;
-  private altCanvas!: HTMLCanvasElement;
 
   private readonly pilotName?: string; // callsign from onboarding — personalizes the radio comms + briefing
 
@@ -125,16 +115,16 @@ export class HUD {
     end?: EndScreenHooks,
   ) {
     this.pilotName = pilotName?.trim() || undefined;
+    injectHudStyles(); // the responsive `.bmf-hud` stylesheet (idempotent): tokens + clamp() sizing + grid
 
     this.root = el('div', {
       position: 'absolute',
       inset: '0',
       pointerEvents: 'none',
-      fontFamily: UI.font,
-      color: UI.text,
       userSelect: 'none',
       textRendering: 'geometricPrecision',
     });
+    this.root.className = 'bmf-hud';
 
     // --- Blinding-smoke veil (C5) — a full-screen haze that thickens when the camera flies
     // into a fire's plume. Appended FIRST so it sits behind the gauges (instruments stay
@@ -166,8 +156,8 @@ export class HUD {
     // --- Hazard caption — the unmissable, aviation-correct warning before a crash: "SINK RATE" /
     // "PULL UP" while descending too fast and low, "TERRAIN — PULL UP" closing on the canopy. Big,
     // centred, red, pulsing (GPWS-style). Driven idempotently by setAlert() each frame; hidden when
-    // there's nothing to warn about, so it costs nothing while flying clean. ---
-    ensureAlertStyles();
+    // there's nothing to warn about, so it costs nothing while flying clean. (The pulse keyframe is in the
+    // injected `.bmf-hud` stylesheet now — see injectHudStyles, called at the top of this constructor.) ---
     this.alertEl = el('div', {
       position: 'absolute',
       top: '21%',
@@ -191,30 +181,25 @@ export class HUD {
     });
     this.root.appendChild(this.alertEl);
 
-    // --- Left instrument column. Stacked in a flex column (was three absolutely-positioned
-    // chips) so the campaign's optional FUEL gauge and OBJECTIVE checklist can slot in without
-    // colliding. Water → fuel → fires → threat → objectives, top to bottom. ---
-    const leftCol = el('div', {
-      display: 'flex',
-      flexDirection: 'column',
-      gap: 'var(--bmf-gap)',
-      alignItems: 'flex-start',
-    });
+    // --- Top band — a CSS grid frame [strip | comms | radar] (hud/styles.ts `.hud-top`). The comms
+    // column is bounded BETWEEN the strip and radar, so the advisory bar can never overlap a corner; a
+    // portrait/narrow @media restacks comms onto its own row. The strip + DISPATCH panel stack in the LEFT
+    // column. (This retired the three absolutely-positioned anchors AND the positionMessages measure-nudge.)
+    const top = el('div', {});
+    top.className = 'hud-top';
+    const leftCol = el('div', {});
+    leftCol.className = 'hud-left';
+    const commsCol = el('div', {});
+    commsCol.className = 'hud-comms';
+    this.hudRight = el('div', {});
+    this.hudRight.className = 'hud-right';
 
-    // --- Instrument strip: ONE slim frosted pill of compact icon + NUMBER cells —
-    // "all the info in the top band, function = icon + number, no bars". A small ☰ menu
-    // (campaign) tucks in at the head, then water → health → fuel → fires → threat →
-    // compass → wind, each split by a hairline. Cells are transparent; only the pill
-    // blurs (one GPU layer). It hugs its content on wide screens (one row) and wraps to a
-    // second row on a narrow phone, kept clear of the radar by a per-breakpoint max-width. ---
-    this.spine = frosted({
-      display: 'flex',
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      alignItems: 'stretch',
-      padding: '0',
-      borderRadius: R.md,
-    });
+    // --- Instrument strip: ONE frosted pill of bezelled CHAMBERS (AIRCRAFT / FIRE / WIND), each a cluster
+    // of icon+number pods. The frosted look + the wrap/clamp sizing are CSS (`.strip` / `.pod` + the --pod
+    // clamp in hud/styles.ts); this just assembles the DOM. It hugs its content and stays one row on phones
+    // ≥360px (clamp shrinks the cells); the WIND chamber drops on the narrowest screens so nothing orphans. ---
+    this.spine = el('div', {});
+    this.spine.className = 'strip';
     if (end) {
       this.menuCell = makeMenuCell(end.onMenu);
       this.spine.appendChild(this.menuCell);
@@ -224,31 +209,19 @@ export class HUD {
     // cells (fires / compass / wind) stay number-only.
     this.airframePod = makePod(HEALTH_SVG, true); // airframe %
     this.fuelPod = makePod(FUEL_SVG, true); // tank %
-    this.firesPod = makePod(FIRES_SVG); // fires remaining (count) — the mission HERO number
+    this.firesPod = makePod(FIRES_SVG, false, 'fire'); // fires remaining (count) — the mission HERO (CSS .pod.fire steps it up)
     this.threatPod = makePod(THREAT_SVG, true); // most-endangered structure %
     this.crewPod = makePod(CREW_SVG, true); // crew aboard (0/1) — bar reads as a filled/empty seat
     this.compassPod = makePod(COMPASS_SVG); // heading ° (parked hidden — redundant with the heading-up radar)
     this.windPod = makePod(WIND_SVG); // wind kt (icon rotates to the heading-relative gust)
-    this.pods = [
-      this.airframePod,
-      this.fuelPod,
-      this.firesPod,
-      this.threatPod,
-      this.crewPod,
-      this.compassPod,
-      this.windPod,
-    ];
-    // Fires is the mission HERO — heaviest weight so "how many are left" reads first in the FIRE chamber.
-    this.firesPod.num.style.fontWeight = FW.heavy;
-    // Bezelled instrument CHAMBERS: the old flat pod row becomes grouped clusters inside the single
-    // frosted pill — AIRCRAFT (the systems that can down you: airframe / fuel) and FIRE (the fight:
-    // fires / threat / crew), plus a small WIND chamber. Each chamber is one recessed well; the
-    // (hidden) compass is parked after so its heading readout stays live without showing. Water moved
-    // into the DROP bucket, so the strip is leaner and stops crowding the radar.
+    // Bezelled instrument CHAMBERS: the flat pod row is grouped into clusters inside the single frosted
+    // pill — AIRCRAFT (the systems that can down you: airframe / fuel) and FIRE (the fight: fires / threat /
+    // crew), plus a small WIND chamber. Each chamber is one recessed well; the (hidden) compass is parked
+    // after so its heading readout stays live without showing. (The FIRE-hero weight is now CSS .pod.fire.)
     this.spine.append(
       makeGroup([this.airframePod, this.fuelPod]),
       makeGroup([this.firesPod, this.threatPod, this.crewPod]),
-      makeGroup([this.windPod]),
+      makeGroup([this.windPod], 'wind'), // tagged so the narrowest phones can drop it (CSS) and keep one row
     );
     this.spine.append(this.compassPod.cell);
     setPodHidden(this.fuelPod, true); // hidden until a mission supplies fuel
@@ -257,14 +230,17 @@ export class HUD {
     setPodHidden(this.compassPod, true); // #10 density: numeric heading is redundant with the heading-up radar — parked hidden (flip to false to restore)
     leftCol.appendChild(this.spine);
 
-    // Objective checklist (campaign — populated each frame from the mission tracker).
-    this.objPanel = frosted({ padding: '7px 11px 8px', borderRadius: R.md, display: 'none', minWidth: '170px' });
+    // Objective checklist / Living-Province DISPATCH readout (same panel; populated each frame). Frosted +
+    // bounded to the left column by CSS (`.dispatch`); shown via the `show` class (no inline display flip).
+    this.objPanel = el('div', {});
+    this.objPanel.className = 'dispatch';
     leftCol.appendChild(this.objPanel);
 
     // Crew board/disembark bar (delivery/evac missions): a labelled progress fill that appears while
     // the heli is set down on a zone and the crew climb in / step off. It sits under the objective
     // list, grouped with the rest of the mission readouts; hidden until a zone is being worked.
-    this.crewBar = frosted({ padding: '7px 11px 9px', borderRadius: R.md, display: 'none', minWidth: '170px' });
+    this.crewBar = el('div', {});
+    this.crewBar.className = 'crew-bar';
     this.crewBarLabel = el('div', {
       fontSize: FS.label,
       fontWeight: FW.bold,
@@ -292,51 +268,34 @@ export class HUD {
     this.crewBar.append(this.crewBarLabel, crewTrack);
     leftCol.appendChild(this.crewBar);
 
-    this.topLeft = anchor('top-left');
-    this.topLeft.appendChild(leftCol);
-    this.root.appendChild(this.topLeft);
+    // (leftCol is placed into the grid below, once the comms + radar columns are built.)
 
-    // --- Fighter-jet scrolling tapes flanking the heli: airspeed LEFT, altitude
-    // RIGHT (real HUD convention). Transparent canvases — thin glowing ladders that
-    // float over the world, with numbers scrolling past a boxed live readout. ---
-    // Left/right placement + scale come from applyLayout; transform-origin pins each
-    // tape's INNER edge (toward the heli) so shrinking on small screens keeps the
-    // center gap honest.
-    const spd = makeCanvas(TAPE_W, TAPE_H, {
-      position: 'absolute',
-      top: '52%',
-      transformOrigin: 'right center',
-      transform: 'translateY(-50%)',
-    });
+    // --- Fighter-jet scrolling tapes flanking the heli: airspeed LEFT, altitude RIGHT. Transparent
+    // canvases — thin glowing ladders over the world. Their left/right placement + scale are CSS now
+    // (`.tape.spd` / `.tape.alt` + the --tape-* vars); the canvases keep their crisp DPR backing store. ---
+    const spd = makeCanvas(TAPE_W, TAPE_H, {});
+    spd.canvas.className = 'tape spd';
     this.spdCtx = spd.ctx;
-    this.spdCanvas = spd.canvas;
     this.root.appendChild(spd.canvas);
 
-    const alt = makeCanvas(TAPE_W, TAPE_H, {
-      position: 'absolute',
-      top: '52%',
-      transformOrigin: 'left center',
-      transform: 'translateY(-50%)',
-    });
+    const alt = makeCanvas(TAPE_W, TAPE_H, {});
+    alt.canvas.className = 'tape alt';
     this.altCtx = alt.ctx;
-    this.altCanvas = alt.canvas;
     this.root.appendChild(alt.canvas);
 
-    // --- Message bar (top-center anchor): the ONE glass advisory pill — dispatch/comms, contextual
-    // hints, and idle flying tips all flow through it (see hud/MessageBar.ts). Heading lives in the
-    // strip's compass cell, so the old scrolling heading tape is retired. positionMessages() drops it
-    // below the strip band on a phone so it never overlaps the corners. ---
+    // --- Comms / advisory pill (hud/MessageBar.ts) into the grid's CENTRE column. Heading lives in the
+    // strip's compass cell, so the old scrolling heading tape is retired. ---
     this.messages = new MessageBar();
-    this.topCenter = anchor('top-center');
-    this.topCenter.appendChild(this.messages.root);
-    this.root.appendChild(this.topCenter);
+    commsCol.appendChild(this.messages.root);
 
-    // --- Radar (top-right anchor) — its own module owns the canvas + interaction. The help "?" tucks
-    // in directly under the map (mountUnderRadar), reflowing down when the radar expands. ---
+    // --- Radar into the grid's RIGHT column — its own module owns the canvas + interaction. The help "?"
+    // tucks directly under the map (mountUnderRadar → hudRight), reflowing down when the radar expands. ---
     this.radar = new Radar(minimap, labels ?? { communities: [], lakes: [] });
-    this.topRight = anchor('top-right');
-    this.topRight.appendChild(this.radar.canvas);
-    this.root.appendChild(this.topRight);
+    this.hudRight.appendChild(this.radar.canvas);
+
+    // Assemble the top-band grid (grid-template-areas place the columns; source order is irrelevant).
+    top.append(leftCol, commsCol, this.hudRight);
+    this.root.appendChild(top);
 
     // Mission end screen + cold-start dial — fire-once sub-systems mounted into the root on demand.
     this.endScreen = new EndScreen(this.root, end, this.pilotName);
@@ -350,83 +309,13 @@ export class HUD {
     this.unsubLayout = onLayout((s) => this.applyLayout(s));
   }
 
-  /** Size the responsive instruments for the active breakpoint. Anchors own
-   *  position + safe-area in CSS; this sets only the exact pixel sizes (instrument
-   *  cells, tape scale, radar) that have to be computed. */
+  /** The radar's canvas backing store is the ONE HUD element that still needs JS pixels (a canvas can't
+   *  size from CSS, and the radar's pinch/zoom math reads its size). Everything else — strip cells, tapes,
+   *  the comms/dispatch placement — is the `.bmf-hud` stylesheet's job now, reflowing on resize for free.
+   *  So this just re-sizes the radar for the active breakpoint on each resize / orientation change. */
   private applyLayout(s: LayoutState): void {
-    const k = s.compact ? 0.92 : 1;
-    const set = s.set;
-
-    // Instrument strip: size each icon + number cell from podSize. Tuned tight — a slim
-    // modern cluster, not chunky chips.
-    const pod = Math.round(set.podSize * k);
-    const ic = Math.round(pod * 0.44); // icon glyph
-    const padV = Math.round(pod * 0.21); // cell vertical padding (sets the pill height)
-    const padH = Math.round(pod * 0.28); // cell horizontal padding (sets inter-cell spacing)
-    const gap = Math.round(pod * 0.16); // icon ↔ number gap
-    const numFs = Math.round(pod * 0.5); // number font
-    for (const p of this.pods) {
-      p.cell.style.padding = `${padV}px ${padH}px`;
-      p.cell.style.gap = `${gap}px`;
-      p.svg.setAttribute('width', `${ic}`);
-      p.svg.setAttribute('height', `${ic}`);
-      p.num.style.fontSize = `${numFs}px`;
-      p.num.style.minWidth = `${Math.round(pod * 0.5)}px`; // stable as a digit count changes (e.g. fires 9 → 10)
-    }
-    // FIRE hero: the fires count + icon read a step larger than the other gauges, so the eye lands on
-    // "how many are left" first (set after the uniform loop so it overrides just this pod).
-    const fic = Math.round(ic * 1.18);
-    this.firesPod.svg.setAttribute('width', `${fic}`);
-    this.firesPod.svg.setAttribute('height', `${fic}`);
-    this.firesPod.num.style.fontSize = `${Math.round(numFs * 1.28)}px`;
-    if (this.menuCell) {
-      this.menuCell.style.padding = `${padV}px ${Math.round(padH * 1.05)}px`;
-      this.menuCell.style.fontSize = `${Math.round(pod * 0.5)}px`;
-    }
-
-    // Cap the strip's width so it WRAPS to a second row instead of running into the
-    // top-right radar on narrow phones; on wide screens this is far bigger than the content
-    // so it stays a single row. Span up to the radar's left edge less a small gutter.
-    const radarW = Math.round(set.radarBase * k);
-    const stripMax = Math.max(150, s.w - radarW - set.edge * 2 - 16);
-    this.spine.style.maxWidth = `${stripMax}px`;
-
-    // The status hint is centered; on a phone the strip spans toward center, so drop it BELOW
-    // the band. On a wide screen the center-top is clear so it rides at the very top.
-    this.portraitMessages = s.orientation === 'portrait' || s.w < 760;
-    this.bandClear = this.portraitMessages ? radarW + Math.round(set.gap) + 10 : 0;
-
-    // Flight tapes — center gap + scale (backing stores stay crisp; only display moves).
-    this.tapeGap = Math.round(set.tapeGap * k);
-    const tf = `translateY(-50%) scale(${set.tapeScale})`;
-    this.spdCanvas.style.left = `calc(50% - ${this.tapeGap + TAPE_W}px)`;
-    this.spdCanvas.style.transform = tf;
-    this.altCanvas.style.left = `calc(50% + ${this.tapeGap}px)`;
-    this.altCanvas.style.transform = tf;
-
-    // Radar — collapsed base per set; expanded capped to the short viewport side. The radar
-    // module owns the canvas + backing store; we just hand it the two computed sizes.
-    const radarBase = radarW;
-    const radarMax = Math.max(radarBase + 40, Math.round(Math.min(set.radarMaxFrac * Math.min(s.w, s.h), 320)));
-    this.radar.setLayout(radarBase, radarMax);
-
-    this.positionMessages(); // seat the message bar below the now-sized instrument band
-  }
-
-  /** Drop the top-center message bar just below the real left instrument band (strip +
-   *  objectives) so it never overlaps the strip on a phone; on a wide screen it rides at the
-   *  very top. Measures the live left-column height (cheap; only on layout change + when the
-   *  objective list changes). */
-  private positionMessages(): void {
-    if (!this.portraitMessages) {
-      this.topCenter.style.paddingTop = '0px';
-      return;
-    }
-    let band = this.bandClear;
-    const top = this.topCenter.getBoundingClientRect().top;
-    const leftBottom = this.topLeft.getBoundingClientRect().bottom - top;
-    if (leftBottom > band) band = leftBottom;
-    this.topCenter.style.paddingTop = `${Math.round(band + 8)}px`;
+    const { base, max } = radarSize(s);
+    this.radar.setLayout(base, max);
   }
 
   /** C5: set the blinding-smoke veil opacity (0 clear → 1 fully socked in). */
@@ -437,7 +326,7 @@ export class HUD {
   /** Mount an extra control (the help "?" button) into the radar column, directly under the
    *  minimap — so it shares the top-right corner and reflows down when the radar expands. */
   mountUnderRadar(node: HTMLElement): void {
-    this.topRight.appendChild(node);
+    this.hudRight.appendChild(node);
   }
 
   update(s: HudState): void {
@@ -538,9 +427,8 @@ export class HUD {
   private renderObjectives(items?: readonly TrackerItem[]): void {
     if (!items || items.length === 0) {
       if (this.objSig !== '') {
-        this.objPanel.style.display = 'none';
+        this.objPanel.classList.remove('show');
         this.objSig = '';
-        this.positionMessages(); // left column shrank — re-seat the hint
       }
       return;
     }
@@ -551,7 +439,7 @@ export class HUD {
     this.objSig = sig;
     this.shiftSig = ''; // symmetric to renderShift: keep the shared panel's two renderers from leaking stale rows
 
-    this.objPanel.style.display = '';
+    this.objPanel.classList.add('show');
     this.objPanel.replaceChildren(label('OBJECTIVES'));
     const next = new Map<string, { current: number; done: boolean }>();
     for (const t of items) {
@@ -591,7 +479,6 @@ export class HUD {
       }
     }
     this.objPrev = next;
-    this.positionMessages(); // left column grew/changed — re-seat the hint below it
   }
 
   /** Living Province SHIFT readout — reuses the objective panel's container + footprint: a province-health
@@ -605,7 +492,7 @@ export class HUD {
     this.shiftSig = sig;
     this.objSig = ''; // keep the shared panel's two renderers from fighting if the mode ever flips
 
-    this.objPanel.style.display = '';
+    this.objPanel.classList.add('show');
     this.objPanel.replaceChildren(label('DISPATCH'));
 
     // Province-health bar — the stood-down meter, made glanceable.
@@ -628,22 +515,18 @@ export class HUD {
     statRow('Reputation', shift.reputation.toLocaleString('en-US'), UI.accent);
     statRow('Towns', `${shift.townsStanding}/${shift.townsTotal}`, shift.townsStanding < shift.townsTotal ? UI.warn : UI.text);
     if (shift.activeCalls > 0) statRow('Active calls', String(shift.activeCalls), UI.warn);
-
-    this.positionMessages();
   }
 
   /**
    * Drive the crew board/disembark bar: show it only while a zone is being worked, set the label
    * (CREW BOARDING climbing in / CREW DISEMBARKING stepping off) + colour, and scale the fill to the
-   * dwell. Toggling its visibility changes the left column height, so re-seat the hint then (cheap —
-   * only on the show/hide edge, not every frame the bar fills).
+   * dwell. Visibility is the `show` class; the grid reflows the comms bar below it for free.
    */
   private renderCrewBar(crew?: HudState['crew']): void {
     const working = !!crew && crew.mode !== null;
     if (working !== this.crewBarShown) {
       this.crewBarShown = working;
-      this.crewBar.style.display = working ? '' : 'none';
-      this.positionMessages();
+      this.crewBar.classList.toggle('show', working);
     }
     if (!working || !crew) return;
     const boarding = crew.mode === 'boarding';
@@ -966,81 +849,42 @@ interface Pod {
   barFill?: HTMLDivElement; // optional fill bar (resource gauges only) — scaleX 0..1, animated
 }
 
-/** Build one strip cell: a stroked icon + a bold numeric readout, with a hairline divider on
- *  its left so the readouts read as one cluster (the pill supplies the glass; the cell is
- *  transparent). `withBar` adds a thin animated fill track across the cell's base for the 0..1
- *  resource gauges (water/airframe/fuel/threat) — function = icon + number, plus a glanceable bar. */
-function makePod(iconSvg: string, withBar = false): Pod {
-  const cell = el('div', {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-    padding: '0 9px',
-    lineHeight: '1',
-    position: 'relative', // anchor the optional fill bar
-    boxShadow: `inset 1px 0 0 ${UI.stroke}`, // hairline divider on the left edge (free, layout-neutral)
-  });
-  const box = el('div', { flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center' });
+/** Build one strip cell: a stroked icon + a bold numeric readout (the `.pod` class supplies the size /
+ *  padding / left-hairline — all from the --pod clamp in hud/styles.ts). `withBar` adds the thin animated
+ *  base fill bar for a 0..1 resource gauge (airframe / fuel / threat / crew). `extraClass` tags a pod for
+ *  CSS (e.g. `'fire'` → the mission-HERO step-up). */
+function makePod(iconSvg: string, withBar = false, extraClass?: string): Pod {
+  const cell = el('div', {});
+  cell.className = extraClass ? `pod ${extraClass}` : 'pod';
+  const box = el('div', {});
+  box.className = 'icon';
   box.innerHTML = iconSvg;
   const svg = box.querySelector('svg') as SVGElement;
-  const num = el('div', {
-    fontWeight: FW.semibold,
-    color: UI.text,
-    lineHeight: '1',
-    textAlign: 'left',
-  });
-  num.style.setProperty('font-variant-numeric', 'tabular-nums');
+  const num = el('div', {});
+  num.className = 'num';
   cell.append(box, num);
 
   let barFill: HTMLDivElement | undefined;
   if (withBar) {
-    // A hairline progress track pinned across the cell's base. Absolutely placed so it never
-    // disturbs the icon+number flex row; the fill scales on the X axis (GPU transform, no layout)
-    // with a short transition so a change in level reads as smooth motion, not a jump.
-    const track = el('div', {
-      position: 'absolute',
-      left: '8px',
-      right: '8px',
-      bottom: '2px',
-      height: '2.5px',
-      borderRadius: R.xs,
-      background: UI.track,
-      overflow: 'hidden',
-    });
-    barFill = el('div', {
-      width: '100%',
-      height: '100%',
-      borderRadius: R.xs,
-      background: UI.accent,
-      transformOrigin: 'left center',
-      transform: 'scaleX(1)',
-      transition: 'transform 0.18s ease, background-color 0.2s ease, box-shadow 0.2s ease',
-    });
+    // The thin progress track pinned across the cell's base (CSS `.bar`); the `.fill` scales on the X axis
+    // (GPU transform, no layout). Driven by setPodBar.
+    const track = el('div', {});
+    track.className = 'bar';
+    barFill = el('div', {});
+    barFill.className = 'fill';
     track.appendChild(barFill);
     cell.appendChild(track);
   }
   return { cell, svg, num, barFill };
 }
 
-/** Wrap a run of pods into one bezelled instrument CHAMBER — a recessed well inside the frosted strip
- *  that visually groups the gauges (AIRCRAFT / FIRE / WIND). The first pod loses its left hairline so
- *  the chamber edge does the separating; inner pods keep theirs as cell dividers. One backdrop-blur
- *  layer stays on the pill; the chamber is just a tinted fill, so this adds no extra blur. */
-function makeGroup(pods: Pod[]): HTMLDivElement {
-  const group = el('div', {
-    display: 'flex',
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    background: UI.bezel,
-    border: `1px solid ${UI.hair}`,
-    borderRadius: R.sm,
-    margin: '3px',
-    overflow: 'hidden', // clip the inner cell corners to the chamber radius
-  });
-  pods.forEach((p, i) => {
-    if (i === 0) p.cell.style.boxShadow = 'none'; // the chamber edge separates the first cell
-    group.appendChild(p.cell);
-  });
+/** Wrap a run of pods into one bezelled instrument CHAMBER (`.chamber` — a recessed well grouping the
+ *  gauges AIRCRAFT / FIRE / WIND). The leading pod's left hairline is dropped by CSS (`.chamber > .pod:
+ *  first-child`); `extraClass` tags a chamber (e.g. `'wind'` → droppable on the narrowest phones). */
+function makeGroup(pods: Pod[], extraClass?: string): HTMLDivElement {
+  const group = el('div', {});
+  group.className = extraClass ? `chamber ${extraClass}` : 'chamber';
+  for (const p of pods) group.appendChild(p.cell);
   return group;
 }
 
@@ -1057,20 +901,9 @@ function setPodBar(p: Pod, frac: number, color: string, glow = false): void {
 /** The ☰ menu control, styled as the first cell of the strip (no left divider — it heads
  *  the row). Reloads back to the mission-select, same path as the end-banner MENU. */
 function makeMenuCell(onMenu: () => void): HTMLDivElement {
-  const cell = el('div', {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: '0 10px',
-    color: UI.dim,
-    lineHeight: '1',
-    cursor: 'pointer',
-    pointerEvents: 'auto',
-    transition: 'color 0.15s ease',
-  });
+  const cell = el('div', {});
+  cell.className = 'menu-cell'; // size + hover are CSS (.menu-cell)
   cell.textContent = '☰';
-  cell.addEventListener('pointerenter', () => (cell.style.color = UI.accent));
-  cell.addEventListener('pointerleave', () => (cell.style.color = UI.dim));
   cell.addEventListener('pointerdown', (e) => {
     e.stopPropagation();
     onMenu();
@@ -1085,7 +918,19 @@ function setNumWarn(p: Pod, low: boolean): void {
   p.cell.style.opacity = low ? `${0.6 + 0.4 * Math.abs(Math.sin(Date.now() / 200))}` : '1';
 }
 
-/** Collapse a cell entirely (hides FUEL / THREAT when a mission doesn't use them). */
+/** Collapse a cell entirely (hides FUEL / THREAT / CREW / COMPASS when a mission doesn't use them). Uses
+ *  the `hidden` attribute — CSS `.pod[hidden]{display:none}` wins, and showing falls back to the class's
+ *  `display:flex` instead of being pinned by an inline value. */
 function setPodHidden(p: Pod, hidden: boolean): void {
-  p.cell.style.display = hidden ? 'none' : 'flex';
+  p.cell.hidden = hidden;
+}
+
+/** Collapsed + expanded radar sizes for the active breakpoint — the radar canvas is the ONE HUD element
+ *  still sized in JS (a canvas needs real backing-store pixels and the pinch/zoom math reads them; see
+ *  HUD.applyLayout / Radar.setLayout). Mirrors the old layout-set radarBase / radarMaxFrac values. */
+function radarSize(s: LayoutState): { base: number; max: number } {
+  const base = s.breakpoint === 'desktop' ? 140 : s.breakpoint === 'tablet' ? 128 : 112;
+  const frac = s.breakpoint === 'desktop' ? 0.5 : s.breakpoint === 'tablet' ? 0.66 : 0.82;
+  const max = Math.max(base + 40, Math.round(Math.min(frac * Math.min(s.w, s.h), 320)));
+  return { base, max };
 }

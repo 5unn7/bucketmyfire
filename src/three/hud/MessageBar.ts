@@ -15,7 +15,7 @@
  * Self-contained + event-driven — it owns its own timers, so there's no per-frame cost beyond the
  * deduped setHint() write. Cockpit register throughout (cyan), so the tips never warm the instrument.
  */
-import { UI, FS, FW, R, el, frosted, prefersReducedMotion } from '../ui/theme';
+import { UI, el } from '../ui/theme';
 import type { CommsSpeaker, CommsUrgency } from '../missions/types';
 import { FLIGHT_TIPS } from './tips';
 
@@ -57,32 +57,14 @@ export class MessageBar {
   private hideT = 0; // display:none after a fade-out completes
 
   constructor() {
-    this.root = frosted({
-      display: 'none',
-      alignItems: 'baseline',
-      gap: '8px',
-      maxWidth: 'min(560px, 92vw)',
-      padding: '6px 14px',
-      borderRadius: R.pill,
-      borderLeft: `2px solid ${UI.accent}`,
-      textAlign: 'left',
-      opacity: '0',
-      transition: prefersReducedMotion() ? 'none' : 'opacity 0.35s ease',
-      pointerEvents: 'none',
-    });
-    this.tagEl = el('span', {
-      flex: '0 0 auto',
-      fontSize: FS.micro,
-      fontWeight: FW.bold,
-      letterSpacing: '1.4px',
-      color: UI.accent,
-    });
-    this.textEl = el('span', {
-      fontSize: FS.sm,
-      fontWeight: FW.medium,
-      lineHeight: '1.3',
-      color: UI.instrument,
-    });
+    // Size / glass / placement are CSS now (`.bmf-hud .comms` in hud/styles.ts); only the per-message STATE
+    // (tag + border colour, alert glow, fade opacity, show/hide) is written from JS in paint() / fade().
+    this.root = el('div', {});
+    this.root.className = 'comms';
+    this.tagEl = el('span', {});
+    this.tagEl.className = 'tag';
+    this.textEl = el('span', {});
+    this.textEl.className = 'body';
     this.root.append(this.tagEl, this.textEl);
     this.scheduleTip(TIP_FIRST_MS); // idle tips start once the player has settled in
   }

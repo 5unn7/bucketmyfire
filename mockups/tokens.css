@@ -9,8 +9,11 @@
   --card-glass:rgba(16,24,32,0.60);--card-soft:rgba(16,24,32,0.42);--warm-glass:rgba(44,17,13,0.46);
   --track:rgba(255,255,255,0.10);--recess:rgba(5,9,13,0.55);--field:rgba(8,13,18,0.60);--rowmine:rgba(103,232,255,0.14);
   --stroke:rgba(255,255,255,0.12);--stroke-strong:rgba(255,255,255,0.18);--warm-stroke:rgba(255,138,110,0.85);--hair:rgba(255,255,255,0.07);
-  --shadow-card:0 8px 30px rgba(0,0,0,0.45);--ember-glow:0 0 16px rgba(255,106,44,0.5);--blur:blur(12px) saturate(120%);
+  --shadow-card:0 8px 30px rgba(0,0,0,0.45);--shadow-card-rich:0 10px 36px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.13), inset 1px 0 0 rgba(255,255,255,0.05), inset 0 -1px 0 rgba(0,0,0,0.22);--bevel-top:rgba(255,255,255,0.14);--ember-glow:0 0 16px rgba(255,106,44,0.5);--blur:blur(12px) saturate(120%);
+  --card-gradient:linear-gradient(158deg, rgba(22,32,44,0.72) 0%, rgba(12,18,26,0.68) 52%, rgba(8,12,18,0.64) 100%);--card-gradient-fight:linear-gradient(158deg, rgba(32,22,14,0.74) 0%, rgba(16,10,6,0.70) 52%, rgba(10,6,4,0.66) 100%);
   --accent:#67e8ff;--accent-hi:#9af1ff;--accent-soft:rgba(103,232,255,0.55);--accent-fill:rgba(103,232,255,0.10);--glow:0 0 10px rgba(103,232,255,0.45);
+  --instrument:#eaf6ff;--comms-amber:#ffb24a;--panel:rgba(14,20,27,0.50);--glass:rgba(12,18,25,0.52);--bezel:rgba(0,0,0,0.18);
+  --shadow:0 6px 28px rgba(0,0,0,0.32);--shadow-btn:0 6px 22px rgba(0,0,0,0.40);
   --ember-05:rgba(255,106,44,0.05);--ember-10:rgba(255,106,44,0.10);--ember-12:rgba(255,106,44,0.12);--ember-14:rgba(255,106,44,0.14);--ember-18:rgba(255,106,44,0.18);--ember-20:rgba(255,106,44,0.20);--ember-22:rgba(255,106,44,0.22);--ember-30:rgba(255,106,44,0.30);--ember-32:rgba(255,106,44,0.32);--ember-35:rgba(255,106,44,0.35);--ember-40:rgba(255,106,44,0.40);--ember-42:rgba(255,106,44,0.42);--ember-50:rgba(255,106,44,0.50);
   --fire-06:rgba(255,122,69,0.06);--fire-12:rgba(255,122,69,0.12);--fire-16:rgba(255,122,69,0.16);--fire-28:rgba(255,122,69,0.28);--fire-55:rgba(255,122,69,0.55);
   --glow-50:rgba(255,140,50,0.5);--glow-60:rgba(255,140,50,0.6);--glow-80:rgba(255,140,50,0.8);--glow-90:rgba(255,140,50,0.9);--warm-26:rgba(255,140,60,0.26);--warm-38:rgba(255,140,60,0.38);
@@ -21,6 +24,6 @@
   --font:"Saira Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;--mono:"JetBrains Mono Variable", ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
   --fs-micro:8px;--fs-tag:9px;--fs-label:10px;--fs-meta:11px;--fs-sm:12px;--fs-body:13px;--fs-md:14px;--fs-lg:15px;--fs-xl:16px;--fs-title:18px;--fs-hero:20px;--fs-display:24px;--fs-banner:32px;--fs-mega:42px;
   --fw-medium:500;--fw-semibold:600;--fw-bold:700;--fw-heavy:800;--fw-black:900;
-  --r-sm:8px;--r-md:12px;--r-lg:10px;--r-xl:18px;--r-pill:99px;--r-round:50%;
+  --r-xs:2px;--r-sm:8px;--r-md:12px;--r-lg:10px;--r-xl:18px;--r-pill:99px;--r-round:50%;
   --ar-poster:3 / 4;
 }

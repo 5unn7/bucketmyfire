@@ -20,16 +20,15 @@
  * Scooping is NOT a button — you descend over a lake until the slung bucket
  * dips into the water and fills (handled in Game from the bucket's height).
  *
- * Layout: every cluster is mounted on a responsive, safe-area-aware `anchor()`
- * (see `ui/theme.ts`) and sized per breakpoint from `onLayout` (see `ui/layout.ts`)
- * — so the pad clears notches and reflows between portrait/landscape/desktop with
- * no per-orientation special-casing here.
+ * Layout: every cluster is mounted on a responsive, safe-area-aware `anchor()` (see `ui/theme.ts`) and
+ * SIZED by the injected `.bmf-hud` stylesheet (hud/styles.ts) — fluid `clamp()` vars (--stick / --drop /
+ * --detach / --help) that reflow between portrait/landscape/desktop with no per-orientation JS here.
  */
 import { CAMERA } from './config';
 import type { LookOffset } from './ChaseCamera';
 import { UI, FW, FS, R, div, button, setBlur, anchor, prefersReducedMotion } from './ui/theme';
 import { makeIconSvg } from './ui/svgIcons';
-import { onLayout, type LayoutState } from './ui/layout';
+import { injectHudStyles } from './hud/styles';
 import { HelpModal, hasSeenHelp, markHelpSeen } from './ui/HelpModal';
 import type { HighlightId } from './ui/coach/CoachDirector';
 
@@ -87,18 +86,14 @@ export class Input {
   private lookYawAccum = 0; // horizontal orbit drag (rad) banked since the last `look` read
   private lookPitchAccum = 0; // vertical orbit drag (rad) banked since the last `look` read
 
-  // Live joystick base radii (max thumb travel) — recomputed per breakpoint so the pointer math
-  // tracks each on-screen size. Two equal 2-axis sticks: LEFT (cyclic) + RIGHT (pedals/collective).
-  private leftR = 65;
-  private rightR = 65;
+  // The joystick "radius" (max thumb travel) is read LIVE from each dish's measured size in makeJoystick.
+  // The dishes are CSS-sized now (the --stick clamp var in hud/styles.ts), so there's no per-breakpoint
+  // pixel state to keep here — the pointer math tracks the on-screen size for free.
 
-  // Element refs resized by applyLayout().
+  // Element refs (the controls themselves are CSS-sized via the `.bmf-hud` clamp vars). Only the stick
+  // BASES are kept — the coach spotlights them; the knobs + ticks live under each base and need no ref.
   private leftBase!: HTMLDivElement;
-  private leftThumb!: HTMLDivElement;
-  private leftTicks: HTMLDivElement[] = [];
   private rightBase!: HTMLDivElement;
-  private rightThumb!: HTMLDivElement;
-  private rightTicks: HTMLDivElement[] = [];
   private dropBtn!: HTMLDivElement;
   // The DROP hero IS the bucket: a cool water layer rises inside it as you scoop and drains as you
   // drop (carry + spend fused into one element). These three refs drive that fill + its % readout.
@@ -122,7 +117,6 @@ export class Input {
   private readonly onKeyDown: (e: KeyboardEvent) => void;
   private readonly onKeyUp: (e: KeyboardEvent) => void;
   private readonly onBlur: () => void;
-  private readonly unsubLayout: () => void;
 
   constructor(parent: HTMLElement) {
     this.onKeyDown = (e: KeyboardEvent): void => {
@@ -136,7 +130,7 @@ export class Input {
     window.addEventListener('blur', this.onBlur);
 
     this.buildTouchUI(parent);
-    this.unsubLayout = onLayout((s) => this.applyLayout(s)); // size + reflow now and on every resize/orientation change
+    // No layout subscription: the controls are CSS-sized (clamp vars) and reflow on resize for free.
   }
 
   /** Teardown for an in-place mission switch: detach the window listeners + layout subscription,
@@ -147,7 +141,6 @@ export class Input {
     window.removeEventListener('keyup', this.onKeyUp);
     window.removeEventListener('blur', this.onBlur);
     window.clearTimeout(this.flashBucketTimer);
-    this.unsubLayout();
     this.help?.dispose();
     this.setHighlight(null); // drop any coach spotlight class before the elements go
     this.root?.remove();
@@ -322,46 +315,13 @@ export class Input {
     return this.helpBtn;
   }
 
-  // --- Responsive sizing ----------------------------------------------------
-
-  /** Size + reflow the controls for the active breakpoint. Anchors handle
-   *  position + safe-area in CSS; this only sets the per-element pixel sizes that
-   *  must be exact (and keeps `stickR` in sync with the pointer math). */
-  private applyLayout(s: LayoutState): void {
-    const k = s.compact ? 0.92 : 1;
-    const set = s.set;
-
-    // Twin 2-axis sticks, equal size (real-helicopter layout): LEFT = cyclic, RIGHT = pedals/collective.
-    const sr = Math.round(set.stickRadius * k);
-    this.leftR = sr;
-    this.rightR = sr;
-    for (const [base, thumb, ticks] of [
-      [this.leftBase, this.leftThumb, this.leftTicks],
-      [this.rightBase, this.rightThumb, this.rightTicks],
-    ] as const) {
-      sizeStick(base, thumb, sr);
-      for (const t of ticks) t.style.transformOrigin = `1px ${sr - 6}px`;
-    }
-
-    // DROP (round water gauge) + the small RELEASE-BUCKET button clustered above it.
-    const drop = Math.round(set.dropSize * k);
-    Object.assign(this.dropBtn.style, { width: `${drop}px`, height: `${drop}px` });
-    this.dropLabel.style.fontSize = `${Math.round(drop * 0.18)}px`; // the action word
-    this.dropPct.style.fontSize = `${Math.round(drop * 0.15)}px`; // the water % readout (a touch smaller)
-    const det = Math.round(set.clusterBtn * 0.66 * k); // RELEASE BUCKET — clearly smaller than DROP
-    Object.assign(this.detachBtn.style, { width: `${det}px`, height: `${det}px` });
-
-    // (Free-look is now a full-screen drag layer — no sized element to lay out here.)
-
-    // Help. Floor at the 44px touch minimum — the per-breakpoint helpSize (40–44) times the compact
-    // 0.92 scale can dip to ~37px, under the accessible target size for a real tap.
-    const help = Math.max(44, Math.round(set.helpSize * k));
-    Object.assign(this.helpBtn.style, { width: `${help}px`, height: `${help}px`, fontSize: `${Math.round(help * 0.5)}px` });
-  }
-
   // --- Touch UI -------------------------------------------------------------
+  // Sizing is CSS now (the --stick / --drop / --detach / --help clamp vars on `.bmf-hud`, hud/styles.ts):
+  // the sticks, DROP hero, RELEASE button and "?" help scale fluidly with the viewport and reflow on resize
+  // for free — no per-breakpoint JS. The pointer math reads each dish's live measured radius in makeJoystick.
 
   private buildTouchUI(parent: HTMLElement): void {
+    injectHudStyles(); // the `.bmf-hud` stylesheet (idempotent) — sizes these controls via --stick / --drop / …
     const root = div({
       position: 'fixed',
       inset: '0',
@@ -369,6 +329,7 @@ export class Input {
       touchAction: 'none',
       zIndex: '10',
     });
+    root.className = 'bmf-hud'; // carry the token + sizing vars onto this overlay root too
 
     this.buildLookLayer(root); // first → sits BENEATH the controls; drags on empty space orbit the camera
     this.buildLeftStick(root);
@@ -411,7 +372,6 @@ export class Input {
    *  normalised knob offset to its axes via `apply(nx, ny)` (ny is UP-positive). `clear()` fires on release
    *  — the knob springs back to centre, so the axes return to 0 (heading + altitude hold). */
   private makeJoystick(opts: {
-    radius: () => number;
     apply: (nx: number, ny: number) => void;
     clear: () => void;
   }): { base: HTMLDivElement; thumb: HTMLDivElement; ticks: HTMLDivElement[] } {
@@ -424,13 +384,15 @@ export class Input {
       pointerEvents: 'auto',
       touchAction: 'none',
     });
+    base.className = 'stick'; // diameter from CSS (--stick); the pointer math reads the live measured size
     setBlur(base);
     // Inner guide ring.
     base.appendChild(
       div({ position: 'absolute', inset: '20px', borderRadius: R.round, border: '1px solid rgba(255,255,255,0.08)' }),
     );
 
-    // Four faint axis ticks (N/E/S/W) → "this stick moves in every direction". Origin set in applyLayout().
+    // Four faint axis ticks (N/E/S/W) → "this stick moves in every direction". The CSS `.stick-tick` sets
+    // the transform-origin (the stick centre) off the --stick var; the per-tick rotate stays inline.
     const ticks: HTMLDivElement[] = [];
     for (let i = 0; i < 4; i++) {
       const tick = div({
@@ -444,6 +406,7 @@ export class Input {
         background: 'rgba(103,232,255,0.35)',
         transform: `rotate(${i * 90}deg)`,
       });
+      tick.className = 'stick-tick';
       ticks.push(tick);
       base.appendChild(tick);
     }
@@ -459,6 +422,7 @@ export class Input {
       transition: 'box-shadow 0.12s ease, border-color 0.12s ease',
       pointerEvents: 'none',
     });
+    thumb.className = 'stick-thumb'; // knob size + centring offset from CSS (--stick)
     base.appendChild(thumb);
 
     const setKnobActive = (on: boolean) => {
@@ -470,8 +434,8 @@ export class Input {
 
     let pid = -1;
     const onMove = (e: PointerEvent) => {
-      const rad = opts.radius();
       const rect = base.getBoundingClientRect();
+      const rad = Math.min(rect.width, rect.height) / 2; // live radius from the CSS-sized dish (no stored px)
       const cx = rect.left + rect.width / 2;
       const cy = rect.top + rect.height / 2;
       const dx = e.clientX - cx;
@@ -506,8 +470,7 @@ export class Input {
 
   /** LEFT cyclic stick (bottom-left): X = lateral strafe, Y = throttle (forward / back). */
   private buildLeftStick(root: HTMLElement): void {
-    const { base, thumb, ticks } = this.makeJoystick({
-      radius: () => this.leftR,
+    const { base } = this.makeJoystick({
       apply: (nx, ny) => {
         this.leftX = nx; // push right → strafe right
         this.leftY = ny; // push up → forward
@@ -520,8 +483,6 @@ export class Input {
       },
     });
     this.leftBase = base;
-    this.leftThumb = thumb;
-    this.leftTicks = ticks;
 
     const a = anchor('bottom-left');
     a.appendChild(base);
@@ -533,8 +494,7 @@ export class Input {
    *  held flight control sits in the corner; the actions are inboard, so a quick drop never fights the
    *  stick and DROP isn't the fat-finger target the corner is. */
   private buildRightControls(root: HTMLElement): void {
-    const { base, thumb, ticks } = this.makeJoystick({
-      radius: () => this.rightR,
+    const { base } = this.makeJoystick({
       apply: (nx, ny) => {
         this.rightX = nx; // push right → yaw right
         this.rightY = ny; // push up → climb
@@ -547,8 +507,6 @@ export class Input {
       },
     });
     this.rightBase = base;
-    this.rightThumb = thumb;
-    this.rightTicks = ticks;
 
     const cluster = this.buildDropCluster();
 
@@ -582,6 +540,7 @@ export class Input {
       letterSpacing: '1.5px',
       boxShadow: `${UI.emberGlow}, ${UI.shadowBtn}`,
     });
+    drop.className = 'drop'; // diameter from CSS (--drop)
     const water = div({
       position: 'absolute',
       left: '0',
@@ -617,7 +576,9 @@ export class Input {
       pointerEvents: 'none',
     });
     const lbl = div({}, 'DROP');
+    lbl.className = 'drop-label'; // font-size from CSS (--drop)
     const pct = div({ marginTop: '3px', fontWeight: FW.semibold, color: UI.water, textShadow: PCT_SHADOW }, '');
+    pct.className = 'drop-pct';
     pct.style.setProperty('font-variant-numeric', 'tabular-nums');
     content.append(lbl, pct);
     drop.append(water, content);
@@ -637,6 +598,7 @@ export class Input {
       color: UI.warmText,
       boxShadow: `${UI.emberGlow}, ${UI.shadowBtn}`,
     });
+    detach.className = 'detach-btn'; // size from CSS (--detach)
     detach.appendChild(makeIconSvg('bucket-release', 20));
     this.detachBtn = detach;
     holdButton(detach, (on) => (this.btnDetach = on), UI.warm);
@@ -709,7 +671,10 @@ export class Input {
   private buildHelpUI(_root: HTMLElement): void {
     this.help = new HelpModal();
 
-    const icon = button('?', { position: 'relative', color: UI.dim, fontWeight: FW.semibold });
+    // Size from CSS (--help, floored at 44px); the "?" glyph font-size is set inline because theme.button()
+    // pins its own fontSize that a class rule can't beat. The inline calc still resolves off the --help var.
+    const icon = button('?', { position: 'relative', color: UI.dim, fontWeight: FW.semibold, fontSize: 'calc(var(--help) * 0.5)' });
+    icon.className = 'help-btn';
     this.helpBtn = icon;
     icon.addEventListener('pointerdown', (e) => {
       e.stopPropagation();
@@ -762,15 +727,6 @@ function injectWaveStyles(): void {
   const tag = document.createElement('style');
   tag.textContent = '@keyframes bmf-water-wave { from { transform: translateX(0); } to { transform: translateX(-28px); } }';
   document.head.appendChild(tag);
-}
-
-/** Size a joystick dish (`base`) + its centred knob (`thumb`) to base radius `R` (px). Shared by the
- *  flight + collective sticks so both stay in sync with the pointer math (which reads the live radius). */
-function sizeStick(base: HTMLElement, thumb: HTMLElement, R: number): void {
-  const d = R * 2;
-  Object.assign(base.style, { width: `${d}px`, height: `${d}px` });
-  const t = Math.round(R * 0.92);
-  Object.assign(thumb.style, { width: `${t}px`, height: `${t}px`, marginLeft: `${-t / 2}px`, marginTop: `${-t / 2}px` });
 }
 
 /** Drop tiny stick jitter, rescale [DEADZONE..1] → [0..1], then apply expo shaping
