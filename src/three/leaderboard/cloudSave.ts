@@ -17,7 +17,7 @@
  * Supabase isn't configured (`isConfigured()` false) the calls no-op and the UI degrades gracefully.
  */
 
-import { isConfigured, restBase, restHeaders, withTimeout } from './client';
+import { isConfigured, restBase, restHeaders, withTimeout, getClientId } from './client';
 import { exportProgress, importProgress, type Progress } from '../missions/progress';
 import { HELIS, MAPS, findItem, firstAvailable, loadProfile, saveProfile, type Profile } from '../ui/profile';
 import { cleanCallsign } from '../ui/callsign';
@@ -206,7 +206,8 @@ export async function cloudAutoSave(): Promise<void> {
 
 // --- internals --------------------------------------------------------------
 
-/** Hash the email and POST the current blob to the upsert RPC. Returns ok. */
+/** Hash the email and POST the current blob to the upsert RPC. Returns ok. `p_client_id` lets the RPC
+ *  throttle NEW-save creation per device (a re-save of your own row is never throttled). */
 async function postSave(pilot: string, email: string): Promise<boolean> {
   const hash = await hashEmail(email);
   const t = withTimeout(8000);
@@ -214,7 +215,7 @@ async function postSave(pilot: string, email: string): Promise<boolean> {
     const res = await fetch(`${restBase()}/rest/v1/rpc/save_cloud_progress`, {
       method: 'POST',
       headers: restHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ p_email_hash: hash, p_pilot: pilot, p_save: buildBlob(pilot) }),
+      body: JSON.stringify({ p_email_hash: hash, p_pilot: pilot, p_save: buildBlob(pilot), p_client_id: getClientId() }),
       signal: t.signal,
     });
     return res.ok;

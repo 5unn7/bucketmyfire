@@ -11,9 +11,10 @@
 // Raw hotspots / FWI / smoke rasters are deliberately NOT ingested — they are "now"-only and the
 // client keeps fetching them directly (history of a raw thermal pixel is meaningless).
 //
-// Auth: deployed with verify_jwt = FALSE (a pg_cron / browser ping can't carry a Supabase JWT), but
-// if INGEST_SECRET is set in the function env, callers MUST send it as `x-ingest-secret` — so a random
-// public POST can't drive the ingest. Leave INGEST_SECRET unset only for a first manual smoke test.
+// Auth: deployed with verify_jwt = FALSE (a pg_cron / browser ping can't carry a Supabase JWT), so a
+// shared secret guards writes instead. FAIL CLOSED: callers MUST send INGEST_SECRET as `x-ingest-secret`,
+// and if INGEST_SECRET is unset the function refuses every request — a misconfigured deploy can never run
+// open to anonymous public POSTs. Set INGEST_SECRET in the function env before the first call.
 //
 // Deploy:  supabase functions deploy ingest-fires --no-verify-jwt --project-ref wnorrtfkfqrgipmggfwh
 
@@ -151,8 +152,10 @@ function changed(prev: { stage: string; size_ha: number | null } | undefined, ne
 
 Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: { 'Access-Control-Allow-Origin': '*' } });
-  // Shared-secret gate (skipped only when INGEST_SECRET is unset — for a first manual smoke test).
-  if (INGEST_SECRET && req.headers.get('x-ingest-secret') !== INGEST_SECRET) {
+  // Shared-secret gate — FAIL CLOSED: if INGEST_SECRET is unset the function refuses to run at all,
+  // so a misconfigured deploy can never be driven open by anonymous public POSTs. Set INGEST_SECRET
+  // in the function env BEFORE the first call (including a manual smoke test).
+  if (!INGEST_SECRET || req.headers.get('x-ingest-secret') !== INGEST_SECRET) {
     return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
   }
 

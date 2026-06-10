@@ -34,28 +34,29 @@ create table if not exists public.scores (
 
 -- Fast "top N for a mission" reads.
 create index if not exists scores_mission_score_idx on public.scores (mission_id, score desc);
+-- Supports submit_score()'s upsert lookup (this device's run of a mission) + its per-device throttle count.
+create index if not exists scores_upsert_idx        on public.scores (mission_id, pilot, client_id);
+create index if not exists scores_client_recent_idx on public.scores (client_id, created_at desc);
 
 -- ---------------------------------------------------------------------------
--- Row-level security: anon can read everything and insert bounded rows; nothing else.
+-- Row-level security: anon can READ everything; writes route through the submit_score RPC below.
 -- ---------------------------------------------------------------------------
+-- Direct anon INSERT was REMOVED (the legacy "anyone can insert" policy is dropped, not recreated):
+-- with the public anon key in the static bundle, an open insert grant lets anyone script an unbounded
+-- flood of rows (free-tier exhaustion / fake-board spam), and the live board pushes a running score
+-- every ~45s — so even an HONEST endless session piled up a row per tick. The SECURITY DEFINER
+-- submit_score() function (below) is now the only write door: it UPSERTS one row per (mission, pilot,
+-- device) keeping the player's MAX, throttles per device, and clamps the range.
 alter table public.scores enable row level security;
 
 drop policy if exists "scores: anyone can read"   on public.scores;
-drop policy if exists "scores: anyone can insert" on public.scores;
+drop policy if exists "scores: anyone can insert" on public.scores; -- migrate a live project off the open insert
 
 create policy "scores: anyone can read"
   on public.scores for select
   using (true);
 
-create policy "scores: anyone can insert"
-  on public.scores for insert
-  with check (
-    char_length(pilot) between 1 and 24
-    and char_length(mission_id) between 1 and 40
-    and score >= 0 and score <= 1000000
-  );
-
--- No UPDATE / DELETE policies → those are denied for the anon role by default.
+-- No INSERT / UPDATE / DELETE policies → all writes are denied for the anon role; the RPC is the door.
 
 -- ---------------------------------------------------------------------------
 -- Views — each pilot's best run per mission, and career totals.
@@ -89,9 +90,78 @@ create or replace view public.career_totals
 -- public (anon) role. RLS still applies to the table; the views inherit it.
 -- ---------------------------------------------------------------------------
 grant usage on schema public to anon;
-grant select, insert on public.scores to anon;
+grant select on public.scores to anon;          -- READ only; writes go through submit_score() below
+-- Explicitly revoke the legacy direct INSERT grant so re-applying fully migrates an already-live
+-- project off direct anon inserts (the dropped policy already denies them under RLS; this is belt + braces).
+revoke insert on public.scores from anon;
 grant select on public.mission_best to anon;
 grant select on public.career_totals to anon;
+
+-- ---------------------------------------------------------------------------
+-- Score submission — the ONLY write path into public.scores (direct anon INSERT was revoked above).
+-- ---------------------------------------------------------------------------
+-- SECURITY DEFINER (writes past RLS as the table owner), mirroring submit_lead. Three jobs:
+--   • UPSERT-keep-MAX per (mission_id, pilot, client_id): the live board pushes the running score
+--     every ~45s, so this updates ONE row in place instead of appending hundreds over a long session,
+--     and a lower late submit never overwrites a better earlier one (mission_best already takes the max).
+--   • THROTTLE new rows per device (30/hour) so a scripted client can't mint unbounded fake-pilot rows.
+--   • CLAMP the score to [0, 1e6] + time to [0, 86400] server-side.
+-- NOTE: this is light anti-griefing, NOT anti-cheat. The game is 100% client-side, so a determined
+-- client can still post a plausible-but-fake score under its own callsign — only server-authoritative
+-- play could prevent that, which this project deliberately does not do. Standard definer hardening:
+-- empty search_path + schema-qualified refs.
+create or replace function public.submit_score(
+  p_pilot text, p_mission_id text, p_score integer, p_time_s real, p_client_id text
+) returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_pilot   text    := left(coalesce(p_pilot, ''), 24);
+  v_mission text    := left(coalesce(p_mission_id, ''), 40);
+  v_score   integer := greatest(0, least(1000000, coalesce(p_score, 0)));
+  v_time    real    := case when p_time_s is null then null else greatest(0, least(86400, p_time_s)) end;
+  v_client  text    := left(coalesce(p_client_id, ''), 64);
+  v_recent  int;
+begin
+  if char_length(v_pilot) < 1 or char_length(v_mission) < 1 then
+    return false;
+  end if;
+
+  -- Upsert-keep-MAX for THIS device's run of this mission: update in place (no new row), so the 45s
+  -- board cadence can't grow the table and a lower late submit never replaces a better earlier one.
+  update public.scores
+     set score      = greatest(score, v_score),
+         time_s     = coalesce(v_time, time_s),
+         created_at = now()
+   where mission_id = v_mission and pilot = v_pilot and coalesce(client_id, '') = v_client;
+  if found then
+    return true;
+  end if;
+
+  -- A genuinely NEW (mission, pilot, device) row: throttle per device. An honest player creates a
+  -- handful; a scripted flood varying pilot/mission is capped. Accept-but-drop over the cap (no insert)
+  -- so a flooder can't probe the limit and an honest player never sees an error.
+  if v_client <> '' then
+    select count(*) into v_recent
+      from public.scores
+     where client_id = v_client
+       and created_at > now() - interval '1 hour';
+    if v_recent >= 30 then
+      return true;
+    end if;
+  end if;
+
+  insert into public.scores (pilot, mission_id, score, time_s, client_id)
+  values (v_pilot, v_mission, v_score, v_time, nullif(v_client, ''));
+  return true;
+end;
+$$;
+
+-- Only anon may call the narrow RPC; the table itself stays read-only to anon.
+revoke all on function public.submit_score(text, text, integer, real, text) from public;
+grant execute on function public.submit_score(text, text, integer, real, text) to anon;
 
 -- ===========================================================================
 -- Cloud saves — passwordless "name + email" progress sync (optional, no auth).
@@ -123,24 +193,39 @@ create table if not exists public.cloud_saves (
   constraint cloud_saves_save_size check (pg_column_size(save) <= 32768)   -- ~32KB cap (anti-abuse)
 );
 
+-- Anonymous per-device id (NOT PII — same opaque id leads/scores use), kept only to throttle NEW-save
+-- creation per device in save_cloud_progress(). Added idempotently so re-applying migrates a live table.
+alter table public.cloud_saves add column if not exists client_id text;
+
 -- One save per (email, pilot) — a shared family email can still hold several distinct pilots.
 create unique index if not exists cloud_saves_key
   on public.cloud_saves (email_hash, lower(pilot));
+-- Supports the per-device new-save throttle lookup in save_cloud_progress().
+create index if not exists cloud_saves_client_recent_idx on public.cloud_saves (client_id, updated_at desc);
 
 alter table public.cloud_saves enable row level security;
 -- No policies + revoke = anon/authenticated have NO direct table access. The RPCs are the only door.
 revoke all on public.cloud_saves from anon, authenticated;
 
 -- Upsert a save. SECURITY DEFINER writes past RLS; empty search_path + schema-qualified refs are
--- the standard hardening for definer functions.
-create or replace function public.save_cloud_progress(p_email_hash text, p_pilot text, p_save jsonb)
+-- the standard hardening for definer functions. `p_client_id` (anonymous per-device id) THROTTLES
+-- NEW-save creation per device so the public anon key can't be scripted to mint unbounded distinct
+-- saves (each ≤32KB) by varying the email_hash — your OWN re-save (an update of an existing row) is
+-- never throttled. It has a DEFAULT so an un-updated client (the old 3-arg call) still resolves.
+-- The signature changed (added p_client_id), so the prior 3-arg overload is dropped first.
+drop function if exists public.save_cloud_progress(text, text, jsonb);
+create or replace function public.save_cloud_progress(
+  p_email_hash text, p_pilot text, p_save jsonb, p_client_id text default ''
+)
 returns timestamptz
 language plpgsql
 security definer
 set search_path = ''
 as $$
 declare
-  v_ts timestamptz;
+  v_ts     timestamptz;
+  v_client text := left(coalesce(p_client_id, ''), 64);
+  v_recent int;
 begin
   if p_email_hash is null or char_length(p_email_hash) not between 16 and 128 then
     raise exception 'invalid email_hash';
@@ -152,10 +237,30 @@ begin
     raise exception 'invalid save';
   end if;
 
-  insert into public.cloud_saves (email_hash, pilot, save, updated_at)
-  values (p_email_hash, p_pilot, p_save, now())
-  on conflict (email_hash, lower(pilot))
-  do update set save = excluded.save, pilot = excluded.pilot, updated_at = now()
+  -- Update an existing save in place (your own re-save / auto-sync) — always allowed, never throttled.
+  update public.cloud_saves
+     set save = p_save, pilot = p_pilot, client_id = coalesce(nullif(v_client, ''), client_id), updated_at = now()
+   where email_hash = p_email_hash and lower(pilot) = lower(p_pilot)
+   returning updated_at into v_ts;
+  if found then
+    return v_ts;
+  end if;
+
+  -- A genuinely NEW (email_hash, pilot) save: throttle per device (10/hour) so a scripted client can't
+  -- flood distinct rows to exhaust the free-tier row budget. Far above any real use (a person saves one
+  -- or two pilots). Over the cap → raise, so the client surfaces "try again" rather than silently losing it.
+  if v_client <> '' then
+    select count(*) into v_recent
+      from public.cloud_saves
+     where client_id = v_client
+       and updated_at > now() - interval '1 hour';
+    if v_recent >= 10 then
+      raise exception 'rate limited';
+    end if;
+  end if;
+
+  insert into public.cloud_saves (email_hash, pilot, save, client_id, updated_at)
+  values (p_email_hash, p_pilot, p_save, nullif(v_client, ''), now())
   returning updated_at into v_ts;
 
   return v_ts;
@@ -177,10 +282,10 @@ as $$
 $$;
 
 -- Only anon may call the two narrow RPCs; nothing else is exposed.
-revoke all on function public.save_cloud_progress(text, text, jsonb) from public;
-revoke all on function public.load_cloud_progress(text, text)        from public;
-grant execute on function public.save_cloud_progress(text, text, jsonb) to anon;
-grant execute on function public.load_cloud_progress(text, text)        to anon;
+revoke all on function public.save_cloud_progress(text, text, jsonb, text) from public;
+revoke all on function public.load_cloud_progress(text, text)              from public;
+grant execute on function public.save_cloud_progress(text, text, jsonb, text) to anon;
+grant execute on function public.load_cloud_progress(text, text)              to anon;
 
 -- ===========================================================================
 -- Crash / error telemetry — locked table, written ONLY by the `report-error`
@@ -427,9 +532,10 @@ grant select on public.national_summary to anon;
 -- Scheduling — pg_cron pings the public `ingest-fires` Edge Function every 10 minutes.
 -- ---------------------------------------------------------------------------
 -- The function is deployed with verify_jwt = FALSE (like report-error) but gates writes behind a
--- shared secret it reads from its own env (INGEST_SECRET), so a random public POST can't drive it.
--- pg_net sends that secret as a header. Run this block ONCE, AFTER deploying the function and setting
--- its INGEST_SECRET. Replace <PROJECT_REF> and <INGEST_SECRET> with your values (the cron job stores
+-- shared secret it reads from its own env (INGEST_SECRET) and FAILS CLOSED when that secret is unset,
+-- so a random public POST can't drive it. pg_net sends that secret as a header. Run this block ONCE,
+-- AFTER deploying the function and setting its INGEST_SECRET (the function rejects every call until you
+-- do). Replace <PROJECT_REF> and <INGEST_SECRET> with your values (the cron job stores
 -- the secret in pg_cron's job table, readable only by the postgres role — acceptable for this use).
 --
 --   create extension if not exists pg_cron;

@@ -13,7 +13,8 @@
 // keyless against a live curl. ArcGIS Online "PublicView"/hosted services + a couple of self-hosted
 // ArcGIS Servers + one plain-JSON file (NWT).
 //
-// Auth: verify_jwt = FALSE; if INGEST_SECRET is set, callers must send it as x-ingest-secret.
+// Auth: verify_jwt = FALSE; FAIL CLOSED — callers MUST send INGEST_SECRET as x-ingest-secret, and an
+// unset INGEST_SECRET makes the function refuse every request (no anonymous open run). Set it first.
 // Deploy:  supabase functions deploy ingest-provincial --no-verify-jwt --project-ref wnorrtfkfqrgipmggfwh
 
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
@@ -285,7 +286,9 @@ async function upsertChunked(rows: ProvRow[]): Promise<void> {
 
 Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: { 'Access-Control-Allow-Origin': '*' } });
-  if (INGEST_SECRET && req.headers.get('x-ingest-secret') !== INGEST_SECRET) {
+  // Shared-secret gate — FAIL CLOSED: unset INGEST_SECRET ⇒ the function refuses to run, so a
+  // misconfigured deploy can't be driven open by anonymous public POSTs. Set it before the first call.
+  if (!INGEST_SECRET || req.headers.get('x-ingest-secret') !== INGEST_SECRET) {
     return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
   }
 
