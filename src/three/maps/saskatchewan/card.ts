@@ -10,5 +10,5 @@ export const card: MapCard = {
   accent: '#3f7d4a',
   glyph: '🌲',
   imageUrl: 'images/maps/Saskatchewan.webp',
-  stats: { area: '661,900 km²', lakes: '100,000+ lakes' },
+  stats: { area: '651,900 km²', lakes: '100,000+ lakes' },
 };

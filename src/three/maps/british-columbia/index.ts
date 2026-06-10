@@ -11,7 +11,7 @@ const card: MapCard = {
   accent: '#4f86a8',
   glyph: '🏔️',
   imageUrl: 'images/maps/BritishColumbia.webp',
-  stats: { area: '944,735 km²', lakes: '100,000+ lakes' },
+  stats: { area: '944,735 km²', lakes: '20,000+ lakes' },
 };
 
 /** British Columbia — future map (mountain terrain profile ready; names-only region stub; not yet available). */
