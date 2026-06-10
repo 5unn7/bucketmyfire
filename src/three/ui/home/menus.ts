@@ -85,10 +85,19 @@ export function openBoard(): void {
   openLeaderboard(menuCatalog);
 }
 
-/** Build a focused full-screen overlay WITH the persistent bottom rail (`key` = its active tab).
- *  Navigation is the rail's job (no back button); Esc / the rail's Home tab return to the hub.
- *  Returns the root + a close() helper. */
-function overlay(key: string, title: string, body: string, onClose?: () => void): { root: HTMLDivElement; close: () => void } {
+/** Build a focused full-screen overlay WITH the persistent bottom rail. `key` is the overlay's identity
+ *  (the active-overlay guard / no-op-on-same-tab check); `railActive` is which rail TAB lights up,
+ *  defaulting to `key`. Sub-screens that aren't themselves a rail destination (the live-fire tracker,
+ *  Settings) pass a real rail key — `home` — so the rail still shows an active tab like every sibling
+ *  overlay, instead of rendering with nothing lit. Navigation is the rail's job (no back button); Esc /
+ *  the rail's Home tab return to the hub. Returns the root + a close() helper. */
+function overlay(
+  key: string,
+  title: string,
+  body: string,
+  onClose?: () => void,
+  railActive: string = key,
+): { root: HTMLDivElement; close: () => void } {
   injectHomeStyles();
   const root = document.createElement('div');
   root.className = 'bmf-app';
@@ -97,7 +106,7 @@ function overlay(key: string, title: string, body: string, onClose?: () => void)
     DEFS +
     `<div class="scene"></div><div class="embers"></div>` +
     `<div class="pad"><div class="appbar"><div class="ttl">${title}</div></div>${body}</div>` +
-    railNav(key);
+    railNav(railActive);
   document.body.appendChild(root);
   const embers = root.querySelector<HTMLElement>('.embers');
   if (embers) spawnEmbers(embers, 10);
@@ -699,12 +708,12 @@ export function openLiveFires(): void {
   let closed = false;
   let smokeTimer: number | null = null; // the smoke-forecast playback interval (MUST be cleared on close)
   const { root } = overlay('fires', C.overlayTitle, body, () => {
-    closed = true;
+    closed = true; // (railActive 'home' below — the tracker is a Home sub-screen, so the rail still lights a tab)
     delete (window as unknown as { __fireQA?: unknown }).__fireQA; // release the QA hook + its retained DOM
     if (smokeTimer !== null) { clearInterval(smokeTimer); smokeTimer = null; } // no orphaned interval (leak guard)
     map?.dispose();
     map = null;
-  });
+  }, 'home');
 
   const headEl = root.querySelector<HTMLElement>('[data-lf-head]')!;
   const subEl = root.querySelector<HTMLElement>('[data-lf-sub]')!;
@@ -1208,7 +1217,6 @@ export function openSettings(): void {
       <button class="btn ghost sm" data-edit>${ic('edit')}Edit</button></div>
     <div class="srow"><div class="ic">${ic('cloud')}</div><div class="grow" style="min-width:0;"><div class="t">Cloud save</div><div class="s" id="cloudsub" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">…</div></div>
       <button class="btn ghost sm" data-cloud id="cloudbtn" style="display:none;"></button></div>
-    <div class="srow"><div class="ic">${ic('pin')}</div><div class="grow"><div class="t">Region</div><div class="s">Map</div></div><span class="badge">Saskatchewan</span></div>
     <div class="srow"><div class="ic">${ic('shield')}</div><div class="grow"><div class="t">Credits &amp; data</div><div class="s">Map, fire data &amp; licences</div></div>
       <button class="btn ghost sm" data-credits aria-label="Open credits">${ic('chevron-right')}</button></div>
   </div>
@@ -1217,7 +1225,17 @@ export function openSettings(): void {
       <button class="btn danger" data-reset>Reset…</button></div>
   </div>`;
 
-  const { root } = overlay('settings', 'Settings', body);
+  const { root, close } = overlay('settings', 'Settings', body, undefined, 'home');
+
+  // Settings is opened off the rail (from the Home profile card), so give it an explicit exit:
+  // a close button beside the title (Esc / the Home rail tab still work too).
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'iconbtn';
+  closeBtn.style.marginLeft = 'auto';
+  closeBtn.setAttribute('aria-label', 'Close settings');
+  closeBtn.innerHTML = ic('close');
+  closeBtn.addEventListener('click', close);
+  root.querySelector('.appbar')?.appendChild(closeBtn);
 
   // Cloud-save row: show the email this device is LINKED to (the lookup key the pilot saved under) and
   // open Cloud Save to manage it. Email goes in via textContent — never interpolated into innerHTML —
