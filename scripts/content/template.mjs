@@ -6,6 +6,7 @@
  */
 
 import { escapeHtml } from './markdown.mjs';
+import { scene } from './art.mjs';
 
 export const BASE_URL = 'https://bucketmyfire.com';
 export const BLOG_BASE = '/blog';
@@ -159,6 +160,9 @@ export function articlePage(a, css) {
           <a href="${BLOG_BASE}/">Field Notes</a> <span>/</span>
           <a href="${BLOG_BASE}/${a.pillar}/">${escapeHtml(pTitle)}</a>
         </nav>
+        <figure class="fn-hero">
+          <img src="${BLOG_BASE}/${a.slug}/hero.svg" alt="" width="1200" height="630" loading="eager" decoding="async" />
+        </figure>
         <p class="fn-eyebrow">${escapeHtml(pTitle)}</p>
         <h1 class="fn-title">${escapeHtml(a.title)}</h1>
         <p class="fn-dateline">
@@ -198,7 +202,7 @@ ${a.bodyHtml}
   });
 }
 
-/** The blog hub (index) — pillars + the article list. */
+/** The blog hub (index) — a warm hero over pillar sections, each rendered as a poster-card grid. */
 export function indexPage(articles, css) {
   const canonical = `${BASE_URL}${BLOG_BASE}/`;
   const byPillar = (id) => articles.filter((a) => a.pillar === id);
@@ -206,10 +210,10 @@ export function indexPage(articles, css) {
     .map(([id, p]) => {
       const items = byPillar(id);
       if (!items.length) return '';
-      return `      <section class="fn-pillar">
-        <div class="fn-sec"><a class="fn-sec-tag" href="${BLOG_BASE}/${id}/">${escapeHtml(p.title)}</a><i class="fn-sec-line"></i></div>
+      return `      <section class="fn-pillar" aria-labelledby="fn-sec-${id}">
+        <div class="fn-sec"><a class="fn-sec-tag" id="fn-sec-${id}" href="${BLOG_BASE}/${id}/">${escapeHtml(p.title)}</a><i class="fn-sec-line"></i><a class="fn-sec-more" href="${BLOG_BASE}/${id}/">All ${items.length}</a></div>
         <p class="fn-pillar-blurb">${escapeHtml(p.blurb)}</p>
-        <ul class="fn-list">${items.map(articleCard).join('')}</ul>
+        <div class="fn-grid">${items.map(articleCard).join('')}</div>
       </section>`;
     })
     .filter(Boolean)
@@ -218,7 +222,7 @@ export function indexPage(articles, css) {
   const body = `      <header class="fn-hub-head">
         <p class="fn-eyebrow">Field Notes</p>
         <h1 class="fn-title">Wildfire, explained straight.</h1>
-        <p class="fn-lede">Original, fact-checked notes on how wildfire works and how it is fought. Every fact cites an official source.</p>
+        <p class="fn-lede">Plain-spoken, fact-checked notes on how wildfire works and how it is fought. Every fact cites an official source.</p>
       </header>
 ${pillars || '      <p class="fn-lede">New notes are on the way.</p>'}`;
 
@@ -235,7 +239,7 @@ ${pillars || '      <p class="fn-lede">New notes are on the way.</p>'}`;
   });
 }
 
-/** A single pillar hub page. */
+/** A single pillar hub page — the same poster-card grid as the index. */
 export function pillarPage(id, articles, css) {
   const p = PILLARS[id];
   const canonical = `${BASE_URL}${BLOG_BASE}/${id}/`;
@@ -249,7 +253,7 @@ export function pillarPage(id, articles, css) {
         <h1 class="fn-title">${escapeHtml(p.title)}</h1>
         <p class="fn-lede">${escapeHtml(p.blurb)}</p>
       </header>
-      <ul class="fn-list">${items.map(articleCard).join('')}</ul>`;
+      <div class="fn-grid">${items.map(articleCard).join('')}</div>`;
 
   return pageShell({
     title: `${p.title} — ${SECTION_NAME} · ${SITE_NAME}`,
@@ -263,10 +267,25 @@ export function pillarPage(id, articles, css) {
   });
 }
 
+/**
+ * One article rendered as a warm poster card (mirrors the front-door `.fd-mcard`): its own procedural
+ * boreal-wildfire scene (the SAME deterministic art as the article hero, by slug), a dark scrim, the
+ * pillar as a mono eyebrow up top, then the big title, the description, and a "Read article"
+ * affordance at the base. The card is one real anchor with an aria-label so the whole tile is the tap
+ * target. The scene is the shared per-article `hero.svg`, so the card and the article never drift.
+ */
 function articleCard(a) {
-  return `<li class="fn-item"><a href="${BLOG_BASE}/${a.slug}/"><span class="fn-item-h">${escapeHtml(
-    a.title
-  )}</span><span class="fn-item-d">${escapeHtml(a.description)}</span></a></li>`;
+  const pTitle = pillarTitle(a.pillar);
+  return `<a class="fn-card" href="${BLOG_BASE}/${a.slug}/" aria-label="Read: ${escapeHtml(a.title)}">
+        <img class="fn-card-art" src="${BLOG_BASE}/${a.slug}/hero.svg" alt="" loading="lazy" decoding="async" width="1200" height="630" />
+        <span class="fn-card-scrim"></span>
+        <span class="fn-card-top"><span class="fn-card-pillar">${escapeHtml(pTitle)}</span></span>
+        <span class="fn-card-body">
+          <span class="fn-card-h">${escapeHtml(a.title)}</span>
+          <span class="fn-card-d">${escapeHtml(a.description)}</span>
+          <span class="fn-card-go">Read article →</span>
+        </span>
+      </a>`;
 }
 
 /* ── JSON-LD builders ─────────────────────────────────────────────────────────── */
@@ -367,8 +386,13 @@ function wrapWords(text, perLine, maxLines) {
   return lines.slice(0, maxLines);
 }
 
-/** A 1200×630 warm-register SVG share card. */
-export function ogCardSvg({ title, pillar }) {
+/**
+ * A 1200×630 warm-register SVG share card: the article's own procedural boreal-wildfire scene (same
+ * `seed`/`pillar` as its hero.svg, so the social card IS the page art), with a left+bottom scrim so
+ * the title reads, then the eyebrow / pillar / headline and the credibility line. Rasterized to PNG
+ * by the render module via `sharp`.
+ */
+export function ogCardSvg({ title, pillar, seed }) {
   const pTitle = (pillarTitle(pillar) || 'Field Notes').toUpperCase();
   const lines = wrapWords(title, 26, 4);
   const startY = 300 - (lines.length - 1) * 34;
@@ -376,19 +400,20 @@ export function ogCardSvg({ title, pillar }) {
     .map((ln, n) => `<tspan x="80" y="${startY + n * 72}">${escapeHtml(ln)}</tspan>`)
     .join('');
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  ${scene({ seed: seed || pillar || title, pillar })}
   <defs>
-    <radialGradient id="ember" cx="22%" cy="0%" r="120%">
-      <stop offset="0%" stop-color="#ff6a2c" stop-opacity="0.30"/>
-      <stop offset="45%" stop-color="#ff6a2c" stop-opacity="0.06"/>
-      <stop offset="100%" stop-color="#070a0b" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#0a0d10"/>
-      <stop offset="100%" stop-color="#07090b"/>
+    <linearGradient id="ogscrim" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#05080b" stop-opacity="0.94"/>
+      <stop offset="52%" stop-color="#05080b" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#05080b" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="ogfade" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0%" stop-color="#05080b" stop-opacity="0.82"/>
+      <stop offset="34%" stop-color="#05080b" stop-opacity="0"/>
     </linearGradient>
   </defs>
-  <rect width="1200" height="630" fill="url(#bg)"/>
-  <rect width="1200" height="630" fill="url(#ember)"/>
+  <rect width="1200" height="630" fill="url(#ogscrim)"/>
+  <rect width="1200" height="630" fill="url(#ogfade)"/>
   <rect x="0" y="0" width="1200" height="6" fill="#ff6a2c"/>
   <g font-family="Saira, 'Segoe UI', system-ui, sans-serif">
     <text x="80" y="120" fill="#ffc24a" font-size="26" font-weight="700" letter-spacing="6">FIELD NOTES · BUCKET MY FIRE</text>
@@ -397,6 +422,6 @@ export function ogCardSvg({ title, pillar }) {
     )}</text>
     <text fill="#ffffff" font-size="60" font-weight="800">${tspans}</text>
   </g>
-  <text x="80" y="560" fill="rgba(255,255,255,0.55)" font-family="'JetBrains Mono', monospace" font-size="22">Every fact cited to an official source.</text>
+  <text x="80" y="560" fill="rgba(255,255,255,0.62)" font-family="'JetBrains Mono', monospace" font-size="22">Every fact cited to an official source.</text>
 </svg>`;
 }

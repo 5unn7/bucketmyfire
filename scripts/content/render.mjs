@@ -14,6 +14,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseFrontmatter, renderMarkdown } from './markdown.mjs';
 import { articlePage, indexPage, pillarPage, ogCardSvg, PILLARS, pillarTitle } from './template.mjs';
+import { heroSvg } from './art.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..', '..');
@@ -97,7 +98,11 @@ function fontFace(root, outBlog) {
 
 async function writeOg(outArticleDir, article, log) {
   fs.mkdirSync(outArticleDir, { recursive: true });
-  const svg = ogCardSvg({ title: article.title, pillar: article.pillar });
+  // The per-article procedural scene (vector). It is the single source of this article's art: the
+  // in-page hero, every poster card that links here, and the OG card background all derive from the
+  // same seed (the slug), so they can never drift. Tiny, cacheable, infinitely scalable, no binary.
+  fs.writeFileSync(path.join(outArticleDir, 'hero.svg'), heroSvg({ seed: article.slug, pillar: article.pillar }));
+  const svg = ogCardSvg({ title: article.title, pillar: article.pillar, seed: article.slug });
   fs.writeFileSync(path.join(outArticleDir, 'og.svg'), svg);
   // Honor a custom raster the author supplied (e.g. real bmf-art render); only generate the fallback.
   if (article.ogImage && !article.ogImage.endsWith('/og.png')) return;
@@ -234,6 +239,9 @@ h1,h2,h3,h4{font-weight:800;letter-spacing:-0.01em;line-height:1.15;color:#fff}
 .fn-eyebrow{font-family:var(--mono);font-size:var(--fs-label);letter-spacing:0.24em;text-transform:uppercase;color:var(--menu);font-weight:700;margin:0 0 12px}
 .fn-title{font-size:clamp(28px,5vw,44px);margin:0 0 14px;text-wrap:balance}
 .fn-dateline{font-family:var(--mono);font-size:var(--fs-sm);color:var(--dim);margin:0 0 26px}
+.fn-hero{margin:0 0 22px;border-radius:var(--r-lg);overflow:hidden;border:1px solid var(--stroke);
+  border-top-color:var(--stroke-strong);box-shadow:var(--shadow-card);aspect-ratio:1200/630;background:var(--card-bg)}
+.fn-hero img{display:block;width:100%;height:100%;object-fit:cover}
 .fn-lede{font-size:var(--fs-xl);color:var(--text-subtle);max-width:60ch;line-height:1.55}
 .fn-takeaways{background:var(--card-soft);border:1px solid var(--stroke);border-left:3px solid var(--ember);
   border-radius:var(--r-md);padding:16px 20px;margin:0 0 30px}
@@ -272,15 +280,36 @@ h1,h2,h3,h4{font-weight:800;letter-spacing:-0.01em;line-height:1.15;color:#fff}
 .fn-related li{margin:8px 0}
 .fn-related a{color:var(--ember-hi);font-weight:600}
 .fn-hub-head{margin:0 0 28px}
-.fn-sec{display:flex;align-items:center;gap:12px;margin:34px 0 6px}
+.fn-sec{display:flex;align-items:center;gap:12px;margin:38px 0 6px}
 .fn-sec-tag{font-family:var(--mono);font-size:var(--fs-meta);letter-spacing:0.16em;text-transform:uppercase;color:var(--menu);font-weight:700;white-space:nowrap}
-.fn-sec-line{flex:1;height:1px;background:var(--hair)}
-.fn-pillar-blurb{color:var(--dim);font-size:var(--fs-md);margin:0 0 14px}
-.fn-list{list-style:none;margin:0;padding:0;display:grid;gap:10px}
-.fn-item a{display:block;background:var(--card-soft);border:1px solid var(--stroke);border-radius:var(--r-md);padding:16px 18px;transition:border-color .12s,background .12s}
-.fn-item a:hover{border-color:var(--warm-stroke);background:var(--card-glass)}
-.fn-item-h{display:block;font-weight:700;font-size:var(--fs-title);color:#fff;margin-bottom:5px}
-.fn-item-d{display:block;color:var(--dim);font-size:var(--fs-md);line-height:1.5}
+.fn-sec-tag:hover{color:var(--ember-hi)}
+.fn-sec-line{flex:1;height:1px;background:linear-gradient(90deg,var(--gold-32),transparent)}
+.fn-sec-more{font-family:var(--mono);font-size:var(--fs-meta);letter-spacing:0.06em;color:var(--dim);white-space:nowrap;padding:8px 2px;min-height:44px;display:inline-flex;align-items:center}
+.fn-sec-more:hover{color:var(--ember-hi)}
+.fn-pillar-blurb{color:var(--dim);font-size:var(--fs-md);margin:0 0 16px;max-width:60ch}
+
+/* ── Poster cards (mirrors the front-door .fd-mcard; warm "fight" register) ───────────── */
+.fn-grid{display:grid;gap:12px;grid-template-columns:1fr}
+@media (min-width:560px){.fn-grid{grid-template-columns:repeat(2,1fr)}}
+@media (min-width:980px){.fn-grid{grid-template-columns:repeat(3,1fr)}}
+.fn-card{position:relative;display:flex;flex-direction:column;justify-content:flex-end;min-height:230px;overflow:hidden;
+  border:1px solid var(--stroke);border-top-color:var(--stroke-strong);border-radius:var(--r-md);
+  clip-path:polygon(18px 0,100% 0,100% 100%,0 100%,0 18px);
+  box-shadow:var(--shadow-card),inset 0 1px 0 rgba(255,255,255,0.05);color:var(--text);text-decoration:none}
+.fn-card:hover{border-color:var(--warm-stroke)}
+.fn-card-art{position:absolute;inset:0;z-index:0;width:100%;height:100%;object-fit:cover;
+  background:var(--card-bg);transition:transform .3s ease}
+.fn-card:hover .fn-card-art{transform:scale(1.03)}
+.fn-card-scrim{position:absolute;inset:0;z-index:1;
+  background:linear-gradient(180deg,rgba(6,9,11,0.05) 0%,rgba(6,9,11,0.55) 52%,rgba(6,9,11,0.92) 100%)}
+.fn-card-top{position:absolute;top:12px;left:14px;right:14px;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.fn-card-pillar{font-family:var(--mono);font-size:var(--fs-micro);letter-spacing:0.16em;text-transform:uppercase;color:var(--menu)}
+.fn-card-body{position:relative;z-index:2;padding:14px 15px 15px;display:flex;flex-direction:column}
+.fn-card-h{font-size:var(--fs-title);font-weight:var(--fw-black);color:#fff;line-height:1.1;letter-spacing:-0.01em;text-wrap:balance}
+.fn-card-d{margin-top:6px;font-size:var(--fs-sm);line-height:1.45;color:var(--text-subtle);
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.fn-card-go{margin-top:11px;font-family:var(--mono);font-size:var(--fs-micro);letter-spacing:0.06em;text-transform:uppercase;color:var(--ember-hi)}
+.fn-card:hover .fn-card-go{color:var(--ember)}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:9px;cursor:pointer;font-family:var(--font);
   font-weight:800;letter-spacing:0.06em;text-transform:uppercase;line-height:1;border:1px solid transparent;
   border-radius:var(--r-lg);padding:14px 24px;min-height:50px;font-size:var(--fs-md)}
@@ -292,5 +321,8 @@ h1,h2,h3,h4{font-weight:800;letter-spacing:-0.01em;line-height:1.15;color:#fff}
 .fn-foot-links{display:flex;flex-wrap:wrap;gap:8px 18px}
 .fn-foot-links a{font-family:var(--mono);font-size:var(--fs-meta);letter-spacing:0.1em;text-transform:uppercase;color:var(--dim)}
 .fn-foot-links a:hover{color:var(--ember-hi)}
-@media (prefers-reduced-motion:reduce){*{transition-duration:0.001ms!important}}
+@media (prefers-reduced-motion:reduce){
+  *{transition-duration:0.001ms!important}
+  .fn-card:hover .fn-card-art{transform:none}
+}
 `;
