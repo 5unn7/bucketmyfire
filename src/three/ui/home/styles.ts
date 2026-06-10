@@ -195,6 +195,11 @@ const CSS = `
 .bmf-app .credits a{ color:var(--menu); }
 .bmf-app.home .sec{ margin:0 2px 8px; }
 .bmf-app.home .z-cont .artcard{ min-height:200px; }
+/* Province dispatch card — shift the backdrop right to frame the helicopter in the photo
+   (the line-art illustration sits left-of-centre; the real airframe is right of that).
+   Fill the gradient heavier so the mid-card reads dramatic and the illustration washes. */
+.bmf-app.home .z-cont .artcard .img{ object-position:72% 36%; }
+.bmf-app.home .z-cont .artcard .scrim{ background:linear-gradient(180deg, rgba(8,6,4,0.25) 0%, rgba(8,6,4,0.45) 34%, rgba(6,4,3,0.86) 68%, rgba(4,3,2,0.97) 100%), linear-gradient(90deg, rgba(4,3,2,0.75) 0%, rgba(4,3,2,0.38) 44%, transparent 70%); }
 
 .bmf-app .rise{ opacity:0; transform:translateY(14px); animation:bmf-rise .5s cubic-bezier(.16,.84,.3,1) forwards; }
 .bmf-app .d1{animation-delay:.04s} .bmf-app .d2{animation-delay:.11s} .bmf-app .d3{animation-delay:.18s} .bmf-app .d4{animation-delay:.26s}
