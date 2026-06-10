@@ -5,7 +5,7 @@
   --menu:#ffc24a;--menu-soft:rgba(255,194,74,0.55);--menu-fill:rgba(255,194,74,0.12);
   --cta:linear-gradient(180deg, #ffd45e 0%, #efaa2b 100%);--cta-hi:linear-gradient(180deg, #ffdd76 0%, #f4b441 100%);--cta-ink:#3a2406;--cta-glow:rgba(239,170,43,0.42);
   --warn:#ff5d4d;--ok:#63d68a;--caution:#ffc861;--gold:#ffd66b;--silver:#cfe0ee;--bronze:#e6a268;
-  --text:rgba(255,255,255,0.94);--text-subtle:rgba(255,255,255,0.82);--ink:#0c1410;--dim:rgba(255,255,255,0.45);--faint:rgba(255,255,255,0.34);
+  --text:rgba(255,255,255,0.94);--text-subtle:rgba(255,255,255,0.82);--ink:#0c1410;--dim:rgba(255,255,255,0.60);--faint:rgba(255,255,255,0.48);
   --card-glass:rgba(16,24,32,0.60);--card-soft:rgba(16,24,32,0.42);--warm-glass:rgba(44,17,13,0.46);
   --track:rgba(255,255,255,0.10);--recess:rgba(5,9,13,0.55);--field:rgba(8,13,18,0.60);--rowmine:rgba(103,232,255,0.14);
   --stroke:rgba(255,255,255,0.12);--stroke-strong:rgba(255,255,255,0.18);--warm-stroke:rgba(255,138,110,0.85);--hair:rgba(255,255,255,0.07);

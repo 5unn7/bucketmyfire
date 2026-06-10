@@ -76,11 +76,14 @@ export const UI = {
   textCool: 'rgba(198,224,236,0.82)', // body text that wants a COOL cast without claiming "interactive" —
   // the correct home for the cyan-tinted prose that was wrongly using the `accent` (cyan = actionable only).
   ink: '#0c1410', // near-black text for drawing ON a bright fill (a gold medal chip, an accent pill).
-  dim: 'rgba(255,255,255,0.45)',
-  faint: 'rgba(255,255,255,0.34)', // smallest labels, captions, separators
+  dim: 'rgba(255,255,255,0.60)', // secondary labels/units — lifted from 0.45 so a caption still clears AA
+  // (≥3:1) over the HUD glass in direct sun, where the old value washed out to ~2:1 (verify:contrast).
+  faint: 'rgba(255,255,255,0.48)', // smallest labels, captions, separators — lifted from 0.34 for the same
+  // sun-legibility floor; as a hairline divider it reads only a touch firmer, which also helps outdoors.
   // Surfaces
-  panel: 'rgba(14,20,27,0.38)', // HUD frosted chip fill
-  glass: 'rgba(12,18,25,0.42)', // touch-button fill (a touch more opaque, holds up over bright terrain)
+  panel: 'rgba(14,20,27,0.50)', // HUD frosted chip fill — raised from 0.38 so white readouts hold ≥4.5:1
+  // over BRIGHT sunlit terrain (verify:contrast). Still 50% translucent + blurred, so the world reads through.
+  glass: 'rgba(12,18,25,0.52)', // touch-button fill — a touch more opaque than `panel`, holds up over bright terrain
   warmGlass: 'rgba(44,17,13,0.46)', // DROP hero fill
   cardGlass: 'rgba(16,24,32,0.60)', // overlay card fill (menus / leaderboard / cloud-save)
   cardSoft: 'rgba(16,24,32,0.42)', // a quieter card — leaderboard list rows

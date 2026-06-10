@@ -50,6 +50,24 @@ const BAN_COLOR: Record<BanType, string> = { Ban: UI.warn, Restriction: UI.cauti
 const CARTO_DARK = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
 
 /**
+ * A non-interactive dark backing disc drawn UNDER a marker so it separates from ANY background — the
+ * sun-readability fix. On the dark basemap a bright dot already reads; outdoors in glare the whole screen
+ * washes toward grey and a thin light-stroked dot vanishes into it. A near-black casing (UI.ink) one ring
+ * wider than the dot gives a hard dark edge that survives the washout, so the marker stays a marker in the
+ * sun. Cheap (one extra canvas circle) so it's reserved for the FEW important markers (reported + alerts),
+ * not the thousand+ hotspots (those get a dark STROKE instead — same effect, no extra draw).
+ */
+function darkCasing(lat: number, lon: number, radius: number): L.CircleMarker {
+  return L.circleMarker([lat, lon], {
+    radius,
+    stroke: false,
+    fillColor: UI.ink,
+    fillOpacity: 0.62,
+    interactive: false,
+  });
+}
+
+/**
  * A flicker-free animated WMS forecast layer — the smoke trail's smoothness.
  *
  * The naive approach (one WMS layer whose TIME param is reset per frame) STROBES: Leaflet drops the old
@@ -247,12 +265,12 @@ export class FireMap {
     for (const h of ordered) {
       const st = SEV_STYLE[h.severity];
       const m = L.circleMarker([h.lat, h.lon], {
-        radius: st.radius,
-        color: st.color,
-        weight: 1,
-        opacity: 0.85,
+        radius: st.radius + 0.5, // a touch larger so the smallest cool dots survive sun-glare washout
+        color: UI.ink, // a DARK casing stroke (was the fill colour → no separation): one marker, hard edge on any backdrop
+        weight: 1.4,
+        opacity: 1,
         fillColor: st.color,
-        fillOpacity: st.fill,
+        fillOpacity: Math.min(1, st.fill + 0.12), // fuller saturation so the hue holds when luminance washes out
       });
       m.on('click', () => {
         this.highlight(m);
@@ -283,13 +301,15 @@ export class FireMap {
         }).addTo(this.reportedLayer);
       }
       // The centre dot: always visible + the hit target (a 0.1 ha fire's disc is sub-pixel zoomed out).
+      // A dark casing under it + a bold light pin-stroke over it = a marker that reads in direct sun.
+      darkCasing(f.lat, f.lon, 7.5).addTo(this.reportedLayer);
       const dot = L.circleMarker([f.lat, f.lon], {
-        radius: 4.5,
+        radius: 5.5,
         color: UI.text,
-        weight: 1.5,
-        opacity: 0.9,
+        weight: 2,
+        opacity: 1,
         fillColor: color,
-        fillOpacity: 0.95,
+        fillOpacity: 1,
       });
       dot.on('click', () => {
         this.highlight(dot);
@@ -306,12 +326,12 @@ export class FireMap {
     this.clearSelection();
     for (const f of fires) {
       const dot = L.circleMarker([f.lat, f.lon], {
-        radius: 2.5,
-        color: UI.faint,
+        radius: 3,
+        color: UI.ink, // dark casing stroke so an extinguished dot still has an edge in sun…
         weight: 1,
-        opacity: 0.5,
-        fillColor: UI.faint,
-        fillOpacity: 0.4,
+        opacity: 0.7,
+        fillColor: UI.dim, // …while staying neutral + clearly subordinate to the active (coloured) fires
+        fillOpacity: 0.55,
       });
       dot.on('click', () => {
         this.highlight(dot);
@@ -343,13 +363,14 @@ export class FireMap {
     this.clearSelection();
     for (const a of alerts) {
       const color = ALERT_COLOR[a.level];
+      darkCasing(a.lat, a.lon, 10).addTo(this.alertsLayer); // dark halo so the bold pin reads against sun-glare
       const m = L.circleMarker([a.lat, a.lon], {
-        radius: 7,
+        radius: 8,
         color: UI.text,
-        weight: 2,
-        opacity: 0.95,
+        weight: 2.5,
+        opacity: 1,
         fillColor: color,
-        fillOpacity: 0.9,
+        fillOpacity: 1,
       });
       m.on('click', () => {
         this.highlight(m);
