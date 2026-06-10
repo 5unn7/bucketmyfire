@@ -93,6 +93,13 @@ function main() {
     if (data.slug && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(data.slug)) err(f, `slug not URL-safe: "${data.slug}"`);
 
     const isCause = data.pillar === 'the-cause';
+    // Advisory "what to do" pieces (evacuation, go-bag, smoke safety) are pure actionable guidance with
+    // no citable statistics, so they opt out of the mandatory-source rule with `advisory: true`. The
+    // moat is unchanged for anything that states a number or a specific fact: drop the flag and the
+    // official-source requirement returns. Any link an advisory article DOES include is still
+    // allowlist-checked below, so a stray off-site link can never sneak through.
+    const isAdvisory = data.advisory === true || String(data.advisory).toLowerCase() === 'true';
+    const exemptSources = isCause || isAdvisory;
 
     // SEO field bounds
     if (data.title && data.title.length > TITLE_MAX) err(f, `title ${data.title.length} chars > ${TITLE_MAX}`);
@@ -118,15 +125,18 @@ function main() {
     // AEO / GEO requirements
     const takeaways = Array.isArray(data.takeaways) ? data.takeaways : [];
     const faq = Array.isArray(data.faq) ? data.faq : [];
+    if (!exemptSources) {
+      if (sources.length < 1) err(f, 'no official sources cited (need >=1 allowlisted source) — the whole point of Field Notes (set advisory:true for pure how-to pieces)');
+    }
     if (!isCause) {
-      if (sources.length < 1) err(f, 'no official sources cited (need >=1 allowlisted source) — the whole point of Field Notes');
       if (takeaways.length < TAKEAWAYS_MIN) warn(f, `${takeaways.length} key takeaways (<${TAKEAWAYS_MIN}); AEO wants 3-5`);
       if (faq.length < 1) warn(f, 'no FAQ entries (AEO: an explainer should answer >=1 question)');
       if (internal.length < 1) warn(f, 'no internalLinks (SEO: link the pillar hub or a sibling)');
     }
-    // a citation must actually exist somewhere (body or sources), allowlisted
+    // a citation must actually exist somewhere (body or sources), allowlisted — unless this is a
+    // citation-free piece (the-cause manifesto or an advisory how-to).
     const cited = links.some(isExternal) || sources.length > 0;
-    if (!isCause && !cited) err(f, 'no inline citations at all (GEO: state facts, cite an official source)');
+    if (!exemptSources && !cited) err(f, 'no inline citations at all (GEO: state facts, cite an official source)');
 
     // brand-voice mechanical rules
     const scanText = [data.title, data.description, body, ...takeaways, ...faq.flatMap((q) => [q.q, q.a])]

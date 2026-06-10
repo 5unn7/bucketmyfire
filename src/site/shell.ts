@@ -367,7 +367,8 @@ const SHELL_CSS = `
 @media (min-width: 620px) { .fd-mgrid { grid-template-columns: repeat(2, 1fr); } }
 @media (min-width: 980px) { .fd-mgrid { grid-template-columns: repeat(4, 1fr); } }
 .fd-mcard { position: relative; display: flex; flex-direction: column; justify-content: flex-end; min-height: 230px; overflow: hidden;
-  text-decoration: none; color: var(--text); padding: 0; }
+  text-decoration: none; color: var(--text); padding: 0;
+  clip-path: polygon(18px 0, 100% 0, 100% 100%, 0 100%, 0 18px); }
 .fd-mcard .fd-m-art { position: absolute; inset: 0; z-index: 0; }
 .fd-mcard .fd-m-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .fd-mcard .fd-m-art.proc { background: radial-gradient(120% 90% at var(--px, 70%) var(--py, 18%), var(--ember-22), transparent 60%), var(--metal); }
@@ -385,24 +386,14 @@ const SHELL_CSS = `
 .fd-mcard.locked { pointer-events: none; }
 .fd-mcard.locked .fd-m-art, .fd-mcard.locked .fd-m-body { filter: grayscale(.7); opacity: .72; }
 
-/* ── Interactive readiness checklist (the /prepare 15-min list — collapsible). ─── */
-.fd-check-head { display: flex; align-items: center; gap: 14px; width: 100%; margin: 0 0 14px; padding: 0;
-  background: none; border: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; -webkit-tap-highlight-color: transparent; }
-.fd-check-cap { flex: 1; min-width: 0; }
-.fd-check-head .chev { margin-left: auto; flex: 0 0 auto; display: inline-grid; place-items: center; width: 24px; height: 24px;
-  color: var(--dim); transition: transform .22s ease, color .2s ease; }
-.fd-check-head .chev svg { width: 16px; height: 16px; }
-.fd-check-head:hover .chev { color: var(--ember-hi); }
-.fd-check.collapsed .fd-check-head { margin-bottom: 0; }
-.fd-check.collapsed .fd-check-body { display: none; }
-.fd-check.collapsed .chev { transform: rotate(-90deg); }
-.fd-ring { --p: 0; position: relative; width: 58px; height: 58px; flex: 0 0 auto; border-radius: 50%;
+/* ── Interactive readiness checklist — the /prepare TOP card. Its collapsible header reuses the in-game
+   .daily card verbatim (injectHomeStyles: .daily-head/.daily-body/.chev/.collapsed); the rules here are
+   only the list's OWN widgets — the progress ring + the check rows. ─── */
+.fd-ring { --p: 0; position: relative; width: 54px; height: 54px; flex: 0 0 auto; border-radius: 50%;
   background: conic-gradient(var(--ember-hi) calc(var(--p) * 1%), var(--recess) 0); display: grid; place-items: center; }
 .fd-ring::after { content: ""; position: absolute; inset: 6px; border-radius: 50%; background: var(--card-bg); border: 1px solid var(--hair); }
 .fd-ring b { position: relative; z-index: 1; font-family: var(--mono); font-size: var(--fs-sm); font-weight: var(--fw-bold); color: var(--text); }
-.fd-check-head .fd-check-cap h2 { font-size: var(--fs-hero); color: #fff; }
-.fd-check-head .fd-check-cap p { margin-top: 4px; font-size: var(--fs-sm); color: var(--dim); }
-.fd-check-list { display: flex; flex-direction: column; gap: 8px; }
+.fd-check-list { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
 .fd-item { display: flex; align-items: flex-start; gap: 12px; padding: 13px 14px; border-radius: var(--r-md);
   background: var(--bezel); border: 1px solid var(--hair); cursor: pointer; transition: border-color .14s, background .14s; }
 .fd-item:hover { border-color: var(--warm-stroke); }

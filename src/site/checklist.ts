@@ -73,18 +73,19 @@ function saveDone(done: Set<string>): void {
   }
 }
 
+/** Collapsed by DEFAULT (auto-collapsed): a first visit shows the compact card with the progress ring,
+ *  and only an explicit choice ('0' = the pilot opened it) keeps it open. */
 function loadCollapsed(): boolean {
   try {
-    return localStorage.getItem(COLLAPSE_KEY) === '1';
+    return localStorage.getItem(COLLAPSE_KEY) !== '0';
   } catch {
-    return false;
+    return true;
   }
 }
 
 function saveCollapsed(collapsed: boolean): void {
   try {
-    if (collapsed) localStorage.setItem(COLLAPSE_KEY, '1');
-    else localStorage.removeItem(COLLAPSE_KEY);
+    localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0');
   } catch {
     /* storage blocked — the toggle still works for the session */
   }
@@ -94,27 +95,30 @@ function esc(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
 }
 
-/** Build the checklist (collapsible header ring + items) into `host`, restoring saved progress + the
- *  open/closed state. The header row is a toggle button; the progress ring stays visible when closed. */
+/** Build the checklist into `host` (the TOP `.card warm cut` on Prepare), restoring saved progress + the
+ *  open/closed state. The collapsible header REUSES the in-game `.daily` card (`.daily-head`/`.daily-body`/
+ *  `.chev`/`.collapsed`); the progress ring stays visible when closed. */
 export function mountChecklist(host: HTMLElement): void {
   const done = loadDone();
   let collapsed = loadCollapsed();
-  host.classList.add('fd-check');
+  host.classList.add('daily');
   host.classList.toggle('collapsed', collapsed);
 
   const head = document.createElement('button');
   head.type = 'button';
-  head.className = 'fd-check-head';
+  head.className = 'daily-head';
   head.setAttribute('aria-expanded', String(!collapsed));
   head.setAttribute('aria-controls', 'fd-check-body');
   head.innerHTML =
     `<div class="fd-ring" id="fd-ring"><b id="fd-ring-n">0%</b></div>` +
-    `<div class="fd-check-cap"><h2>15 minutes to ready</h2>` +
-    `<p>Six quick actions that lower your wildfire risk.</p></div>` +
+    `<div class="dhead-id">` +
+    `<span class="h-screen" style="font-size:var(--fs-title)">15 minutes to ready</span>` +
+    `<span class="mono" style="font-size:var(--fs-meta);color:var(--dim)">Get wildfire ready before fire season.</span>` +
+    `</div>` +
     `<span class="chev" aria-hidden="true">${ic('chevron-down')}</span>`;
 
   const body = document.createElement('div');
-  body.className = 'fd-check-body';
+  body.className = 'daily-body';
   body.id = 'fd-check-body';
   const list = document.createElement('div');
   list.className = 'fd-check-list';

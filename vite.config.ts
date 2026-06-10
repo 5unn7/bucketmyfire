@@ -191,6 +191,72 @@ function renderContent(): Plugin {
   };
 }
 
+/**
+ * Dev mirror of renderContent(): the blog is only emitted at BUILD (closeBundle), so under `vite` dev
+ * `/blog/index.json` (the Field Notes manifest the home + Prepare carousels fetch) and `/blog/<slug>/`
+ * (the articles) don't exist — the rail shows its empty-feed fallback. This renders the blog into a
+ * cache dir on server start and serves `/blog/*` (+ the regenerated `/sitemap.xml`) from it, rebuilding
+ * when a `content/` article changes. So Field Notes look the same in dev as in prod (a template/CSS edit
+ * needs a dev restart — it's a module reload, not a data change). Build is untouched.
+ */
+function serveBlogInDev(): Plugin {
+  const CT: Record<string, string> = {
+    '.html': 'text/html; charset=utf-8', '.json': 'application/json; charset=utf-8', '.xml': 'application/xml; charset=utf-8',
+    '.png': 'image/png', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.css': 'text/css; charset=utf-8',
+  };
+  return {
+    name: 'bmf-content-dev',
+    apply: 'serve',
+    async configureServer(server) {
+      const outDir = path.resolve(ROOT, 'node_modules/.cache/bmf-blog-dev');
+      const mod = await import(pathToFileURL(path.resolve(ROOT, 'scripts/content/render.mjs')).href);
+      let building: Promise<unknown> | null = null;
+      const build = (): Promise<unknown> => {
+        building = mod.buildContent({ root: ROOT, outDir, log: () => {} }).catch((e: unknown) => {
+          server.config.logger.error('[bmf-content-dev] ' + (e instanceof Error ? e.message : String(e)));
+        });
+        return building;
+      };
+      await build();
+      const onChange = (f: string): void => {
+        const n = f.replace(/\\/g, '/');
+        if (n.includes('/content/') && n.endsWith('.md')) void build();
+      };
+      server.watcher.add(path.resolve(ROOT, 'content'));
+      server.watcher.on('change', onChange);
+      server.watcher.on('add', onChange);
+
+      server.middlewares.use((req, res, next) => {
+        const url = (req.url || '').split('?')[0];
+        if (url !== '/blog' && !url.startsWith('/blog/') && url !== '/sitemap.xml') return next();
+        void (async () => {
+          if (building) await building;
+          // /sitemap.xml is at outDir root; everything else is the literal /blog/... path under outDir.
+          let fp = path.join(outDir, decodeURIComponent(url));
+          try {
+            let st = fs.statSync(fp);
+            if (st.isDirectory()) {
+              fp = path.join(fp, 'index.html');
+              st = fs.statSync(fp);
+            }
+          } catch {
+            try {
+              const alt = path.join(outDir, decodeURIComponent(url), 'index.html');
+              fs.statSync(alt);
+              fp = alt;
+            } catch {
+              return next();
+            }
+          }
+          res.setHeader('Content-Type', CT[path.extname(fp).toLowerCase()] ?? 'application/octet-stream');
+          res.setHeader('Cache-Control', 'no-cache');
+          fs.createReadStream(fp).pipe(res);
+        })();
+      });
+    },
+  };
+}
+
 // The cold-start ember splash is no longer injected statically into index.html. The front door
 // (index.html → src/hub.ts) is content-first and must paint its editorial hero INSTANTLY, with no
 // full-screen loader over it. The splash now belongs to the game transition: `src/hub.ts` shows it
@@ -202,7 +268,7 @@ function renderContent(): Plugin {
 // lazy module the front door imports on demand (so the heavy bundle never blocks first paint).
 export default defineConfig({
   base: './',
-  plugins: [cacheModelsInDev(), injectStructuredData(), renderContent()],
+  plugins: [cacheModelsInDev(), injectStructuredData(), renderContent(), serveBlogInDev()],
   server: {
     host: true, // expose on LAN so you can test on a real phone
     port: 5173,
