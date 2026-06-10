@@ -19,7 +19,9 @@ import { spawnEmbers } from '../three/ui/home/styles';
 import { openBoard, openSettings } from '../three/ui/home/menus';
 import { appbarHtml, injectNavStyles } from './siteNav.mjs';
 
-export type FrontPage = 'home' | 'campaign' | 'prepare';
+// 'open-skies' is a real front-door PAGE but NOT a top-level nav item, so passing it marks no nav tab
+// active (no NAV key matches) — exactly right for a page that lives off the Home flow, not in the bar.
+export type FrontPage = 'home' | 'campaign' | 'prepare' | 'open-skies';
 
 /** The ambient backdrop + ember field (positioned `fixed` by injectFrontShell). Spawn the motes with
  *  `spawnFrontEmbers` after the markup is in the DOM. */

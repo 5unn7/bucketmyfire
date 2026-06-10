@@ -278,13 +278,15 @@ export default defineConfig({
     sourcemap: false, // don't ship 3.9 MB of source maps (or full source) to prod
     chunkSizeWarningLimit: 1500,
     rollupOptions: {
-      // Multi-page front door (clean URLs): the home (index.html → src/hub.ts), the Campaign showcase
+      // Multi-page front door (clean URLs): the home (index.html → src/hub.ts), Open Skies — the shared
+      // live shift (open-skies/index.html → src/openskies/main.ts), the Campaign/Solo picker
       // (campaign/index.html → src/campaign/main.ts), and Prepare (prepare/index.html → src/prepare/main.ts).
       // Each is a light, crawlable static page that lazy-loads the ~1 MB game only on a play link. The
       // merch store is a standalone site at shop.bucketmyfire.com; the dev-only heli/icons previews are not
       // root-discovered, so they stay out of dist/.
       input: {
         main: path.resolve(ROOT, 'index.html'),
+        'open-skies': path.resolve(ROOT, 'open-skies/index.html'),
         campaign: path.resolve(ROOT, 'campaign/index.html'),
         prepare: path.resolve(ROOT, 'prepare/index.html'),
       },
