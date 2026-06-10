@@ -18,7 +18,7 @@ import { navigateRail, openLiveFires, setMenuCatalog } from './three/ui/home/men
 import { DEFS, FLAME, HELMET, ic } from './three/ui/home/icons';
 import { loadProfile } from './three/ui/profile';
 import { careerScore, rankFor, nextRankProgress } from './three/missions/rank';
-import { injectShellStyles, tabbarMarkup, buildFooter } from './site/shell';
+import { injectShellStyles, tabbarMarkup } from './site/shell';
 import { injectFrontShell, frontScene, frontAppbar, spawnFrontEmbers, wireFrontAppbar } from './site/frontShell';
 import { mountBlogCarousel } from './site/blogCarousel';
 import { SPLASH_CSS, SPINNER_MARKUP, SPLASH_ATTRS } from './three/ui/spinner';
@@ -94,7 +94,7 @@ function buildFrontDoor(): void {
   injectFonts();
   injectKitStyles();
   injectHomeStyles(); // the REAL component vocabulary (.card/.cut/.helmet/.sheen/.shopbanner/.badge/.btn)
-  injectShellStyles(); // shared chrome the home borrows: .fd-foot footer, .fd-tabbar, the corner-cut .fd-mcard notes cards
+  injectShellStyles(); // shared chrome the home borrows: .fd-tabbar mobile tab bar, the corner-cut .fd-mcard notes cards
   injectFrontShell(); // the SHARED front-door chrome (.bmf-app.front scroll shell + .fhome-bar appbar + scene/embers) — the same module Campaign + Prepare use, so the three front pages can't drift
   injectHomeBentoStyles(); // the home-ONLY bento grid + hero/play/ticker/map/merch/prep LAYOUT, scoped .bmf-app.front
   setMenuCatalog([]); // the Board reads this (campaign retired → empty; the board keys off live ids)
@@ -216,8 +216,6 @@ ${frontAppbar('home')}
       <div class="fd-rail" id="fd-notes-rail"></div>
     </section>
   </div>
-
-  ${buildFooter()}
 </div>
 ${tabbarMarkup('home')}`;
 }
@@ -317,8 +315,12 @@ function injectHomeBentoStyles(): void {
 .bmf-app.front .fhome-dossier .fhome-dmeta b { color: var(--menu); font-weight: var(--fw-bold); }
 .bmf-app.front .fhome-dossier .fhome-dadv { margin-top: 14px; }
 
-/* Bento grid. */
+/* Bento grid. Grid items default to min-width:auto, so a nowrap child (the ticker line) or a
+   horizontal scroller (the notes rail) would force the single 1fr column wider than the phone
+   viewport and overflow the page. min-width:0 lets every card shrink to the column, and the
+   inner overflow-x:auto scrollers keep their own scroll. (Inert on the desktop 2-col grid.) */
 .bmf-app.front .fhome-grid { display: grid; gap: 12px; grid-template-columns: 1fr; }
+.bmf-app.front .fhome-grid > * { min-width: 0; }
 @media (min-width: 880px) {
   .bmf-app.front .fhome-grid { grid-template-columns: 1.05fr 1fr; grid-template-areas: "hero play" "ticker ticker" "map merch" "prep notes"; align-items: stretch; }
   .bmf-app.front .fhome-hero { grid-area: hero; }
@@ -352,7 +354,7 @@ function injectHomeBentoStyles(): void {
 .bmf-app.front .fhome-play-sub { margin-top: 11px; font-size: 14px; line-height: 1.45; color: var(--text-subtle); max-width: 24ch; text-shadow: 0 1px 8px rgba(0,0,0,0.7); }
 .bmf-app.front .fhome-play-go { margin-top: 18px; pointer-events: none; }
 
-/* National-data TICKER — slim live strip, horizontal scroll on a phone. */
+/* National-data TICKER — DESKTOP is a slim single-line strip; phones get the cluster below. */
 .bmf-app.front .fhome-ticker { display: flex; align-items: center; gap: 0; padding: 0 6px; min-height: 48px; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
 .bmf-app.front .fhome-ticker::-webkit-scrollbar { display: none; }
 .bmf-app.front .fhome-ticker .badge { flex: 0 0 auto; margin: 0 10px; }
@@ -362,6 +364,20 @@ function injectHomeBentoStyles(): void {
 .bmf-app.front .fhome-tk.hot b { color: var(--warn); }
 .bmf-app.front .fhome-tk.dim { color: var(--faint); }
 .bmf-app.front .fhome-tk a { color: var(--ember-hi); text-decoration: none; }
+/* PHONE / narrow (below the bento's 2-col breakpoint): a single-line strip pushes half its numbers
+   off the right edge and demands a sideways scroll. Re-lay it as a compact instrument cluster — one
+   header row (Live badge left, "updated · source" right) over a 2×2 grid of the four stats (every
+   value visible, no scroll), hairline-divided. Freshness shares the header rather than taking its own
+   footer row, and the padding is tight, so the cluster stays short. The higher-specificity
+   .fhome-ticker .fhome-tk selectors override the base strip; the desktop strip is left exactly as-is. */
+@media (max-width: 879.98px) {
+  .bmf-app.front .fhome-ticker { display: grid; grid-template-columns: 1fr 1fr; gap: 0; padding: 0; min-height: 0; overflow: visible; white-space: normal; }
+  .bmf-app.front .fhome-ticker .badge { grid-column: 1; grid-row: 1; justify-self: start; align-self: center; margin: 6px 0 6px 14px; }
+  .bmf-app.front .fhome-ticker #fd-fresh { grid-column: 2; grid-row: 1; justify-self: end; align-self: center; flex-direction: row; align-items: center; gap: 6px; text-align: right; padding: 6px 14px 6px 0; font-size: var(--fs-micro); border-top: 0; }
+  .bmf-app.front .fhome-ticker .fhome-tk { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 7px 14px; font-size: var(--fs-micro); border-top: 1px solid var(--hair); border-left: 0; }
+  .bmf-app.front .fhome-ticker .fhome-tk:nth-child(odd) { border-left: 1px solid var(--hair); }
+  .bmf-app.front .fhome-ticker .fhome-tk b { font-size: var(--fs-md); line-height: 1.1; }
+}
 
 /* Map entry. */
 .bmf-app.front .fhome-map { display: flex; align-items: center; gap: 13px; cursor: pointer; text-align: left; width: 100%; padding: 16px 17px; }
@@ -387,8 +403,6 @@ function injectHomeBentoStyles(): void {
 .bmf-app.front .fhome-notes .fd-mcard { scroll-snap-align: start; flex: 0 0 78%; max-width: 320px; }
 @media (min-width: 760px) { .bmf-app.front .fhome-notes .fd-mcard { flex-basis: 46%; } }
 
-/* The footer reads on the dark page (shell's .fd-foot, just ensure spacing in this column). */
-.bmf-app.front .fd-foot { margin-top: 6px; }
 `;
   document.head.appendChild(s);
 }
