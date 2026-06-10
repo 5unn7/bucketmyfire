@@ -43,15 +43,17 @@ export const NAV_DEFS = `<svg width="0" height="0" style="position:absolute" ari
 
 // Mobile tab-bar glyphs — Lucide (MIT) stroke icons, so the bar speaks the SAME icon language as the
 // appbar actions + the in-game HUD/menus (src/three/ui/home/icons.ts). Rendered stroked (not filled)
-// by `.fd-tab svg` in navCss. home/map/shop reuse the exact paths from icons.ts (no drift).
+// by `.fd-tab svg` in navCss. home/shop reuse the exact paths from icons.ts (no drift); map is the
+// brand flame (FLAME_ONLY), filled.
 const TAB = {
   home: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg>`,
   // Campaign = the mission ladder → a planted-objective flag (Lucide `flag`).
   campaign: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22V4"/></svg>`,
   // Prepare = the wildfire-readiness checklist (Lucide `clipboard-check`).
   prepare: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg>`,
-  // Map = the folded field map (Lucide `map`).
-  map: `<svg viewBox="0 0 24 24" aria-hidden="true"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21 3 6"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg>`,
+  // Map = the brand flame, chevron dropped (mirrors icons.ts FLAME_ONLY). Filled (not stroked)
+  // via `.fd-tab .flame` in navCss; viewBox cropped to frame the flames in the 22px tab box.
+  map: `<svg class="flame" viewBox="-0.3 -7.7 144 144" aria-hidden="true"><path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/><path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/></svg>`,
   // Shop = the storefront bag (Lucide `shopping-bag`).
   shop: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>`,
 };
@@ -207,6 +209,17 @@ export const navCss = `
 .fd-tab { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 9px 4px 8px;
   text-decoration: none; color: var(--dim); min-height: 56px; }
 .fd-tab svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+/* The Map glyph is the brand flame (a fill shape, not a Lucide stroke icon) — fill it instead of stroking. */
+.fd-tab .flame { fill: currentColor; stroke: none; transform-box: fill-box; transform-origin: 50% 100%;
+  animation: fd-flame-flicker 1.7s ease-in-out infinite; will-change: transform, opacity; }
+/* A live flame: flicker from the base — gentle squash/lean/glow, transform+opacity only (no layout). */
+@keyframes fd-flame-flicker {
+  0%, 100% { transform: scale(1) skewX(0deg); opacity: 1; }
+  20%      { transform: scale(1.05, 1.1) skewX(-2deg); opacity: 0.9; }
+  45%      { transform: scale(0.97, 1.04) skewX(1.5deg); opacity: 1; }
+  70%      { transform: scale(1.04, 1.07) skewX(-1deg); opacity: 0.94; }
+}
+@media (prefers-reduced-motion: reduce) { .fd-tab .flame { animation: none; } }
 .fd-tab span { font-family: var(--mono); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }
 .fd-tab[aria-current="page"] { color: var(--ember-hi); }
 /* Clear the fixed tab bar on static pages (blog/legal use body.fn). The front door pads its own column. */
