@@ -1,11 +1,13 @@
 ---
-title: What to Do When a Wildfire Nears Your Home
+title: When a Wildfire Nears Your Home, Leave Early
 slug: what-to-do-wildfire-near-home
 description: A calm, step-by-step plan for the hours before a wildfire reaches your street: harden the house, load the car, and know your trigger to leave.
 pillar: wildfire-preparedness
 date: 2026-06-09
 updated: 2026-06-09
 keyword: what to do when a wildfire is near your home
+image_series: A
+image_slot: "a thick smoke column rising fast on the near horizon, embers drifting in the air toward a remote cabin half-visible in the smoky boreal treeline"
 advisory: true
 takeaways: ["Leave early. The biggest mistake is waiting to see how bad it gets.","Decide your trigger to go before the day comes, then do not negotiate with it.","Spend your last minutes hardening the house, not packing keepsakes.","If the road out is full of smoke or flame, do not drive into it. Shelter and call for help."]
 faq: [{"q":"Should I stay and defend my house?","a":"For most people, no. Leaving early is the safest choice. Defending a home is dangerous, exhausting work that needs training, gear, water, and a plan for when it goes wrong. If there is any doubt, leave while the roads are clear."},{"q":"When is it too late to drive out?","a":"When the road is choked with smoke you cannot see through, or flame is crossing it. Driving blind into smoke is how people get trapped. If you have missed your window, shelter in a cleared space or a building, signal your location, and call emergency services."},{"q":"What should I do first when I smell smoke or get a warning?","a":"Get the facts from your local emergency source, then get your household and pets ready to move. Put the go-bag in the car, back the car in, and dress everyone in long sleeves and sturdy shoes. Prepare to leave before you are told to."}]

@@ -148,7 +148,7 @@ export function articlePage(a, css, allArticles = []) {
           { label: pTitle, href: `${BLOG_BASE}/${a.pillar}/` },
         ])}
         <figure class="fn-hero">
-          <img src="${BLOG_BASE}/${a.slug}/hero.svg" alt="" width="1200" height="630" loading="eager" decoding="async" />
+          <img src="${a.heroImage || `${BLOG_BASE}/${a.slug}/hero.svg`}" alt="" width="${a.heroImage ? 1536 : 1200}" height="${a.heroImage ? 1024 : 630}" loading="eager" decoding="async" />
         </figure>
         <header class="fd-hero"><div class="fd-hero-main">
           <p class="fd-hero-eyebrow">${escapeHtml(pTitle)}</p>
@@ -267,13 +267,11 @@ export function pillarPage(id, articles, css) {
 function articleCard(a) {
   const pTitle = pillarTitle(a.pillar);
   return `<a class="fn-card" href="${BLOG_BASE}/${a.slug}/" aria-label="Read: ${escapeHtml(a.title)}">
-        <img class="fn-card-art" src="${BLOG_BASE}/${a.slug}/hero.svg" alt="" loading="lazy" decoding="async" width="1200" height="630" />
+        <img class="fn-card-art" src="${a.heroImage || `${BLOG_BASE}/${a.slug}/hero.svg`}" alt="" loading="lazy" decoding="async" width="${a.heroImage ? 1536 : 1200}" height="${a.heroImage ? 1024 : 630}" />
         <span class="fn-card-scrim"></span>
-        <span class="fn-card-top"><span class="fn-card-pillar">${escapeHtml(pTitle)}</span></span>
         <span class="fn-card-body">
+          <span class="fn-card-pillar">${escapeHtml(pTitle)}</span>
           <span class="fn-card-h">${escapeHtml(a.title)}</span>
-          <span class="fn-card-d">${escapeHtml(a.description)}</span>
-          <span class="fn-card-go">Read article →</span>
         </span>
       </a>`;
 }
@@ -291,10 +289,9 @@ function relatedCard(link, allArticles) {
   const eyebrow = (link.href || '').startsWith('/blog/') ? 'Field Notes' : 'Prepare';
   return `<a class="fn-card fn-card-proc" href="${escapeHtml(link.href)}" aria-label="${escapeHtml(link.label)}">
         <span class="fn-card-scrim"></span>
-        <span class="fn-card-top"><span class="fn-card-pillar">${escapeHtml(eyebrow)}</span></span>
         <span class="fn-card-body">
+          <span class="fn-card-pillar">${escapeHtml(eyebrow)}</span>
           <span class="fn-card-h">${escapeHtml(link.label)}</span>
-          <span class="fn-card-go">Read →</span>
         </span>
       </a>`;
 }

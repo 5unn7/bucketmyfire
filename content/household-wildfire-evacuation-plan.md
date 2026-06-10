@@ -1,11 +1,13 @@
 ---
-title: Make a Household Wildfire Evacuation Plan
+title: Make a One-Page Wildfire Evacuation Plan
 slug: household-wildfire-evacuation-plan
 description: Build a one-page household wildfire evacuation plan: two ways out, a meeting place, an out-of-area contact, and a plan for pets and livestock.
 pillar: wildfire-preparedness
 date: 2026-06-09
 updated: 2026-06-09
 keyword: wildfire evacuation plan
+image_series: A
+image_slot: "a dirt road leading away from a remote cabin into smoky boreal forest, headlights of a departing vehicle faint in the haze ahead, fire-glow on the horizon behind"
 advisory: true
 takeaways: ["Write the plan on one page and put it on the fridge. A plan in your head is not a plan.","Pick two ways out of your neighbourhood, in case fire blocks the first.","Name one out-of-area contact everyone calls, so you can find each other if you scatter.","Decide in advance who grabs the pets, the kids, and the go-bags. Practice it once."]
 faq: [{"q":"Why do I need two ways out?","a":"Because a wildfire can block your main route with flame, smoke, or stopped traffic. A second exit in a different direction means one closed road does not trap you. Drive both routes once so they are familiar in the dark and the smoke."},{"q":"Why an out-of-area contact?","a":"Local phone lines and towers get overloaded or damaged during a large evacuation, and a household often gets separated. One person who lives well outside the fire zone becomes the hub everyone checks in with, so you can confirm each other is safe without reaching each other directly."},{"q":"How often should we practice?","a":"Once a year is enough to keep it real, ideally before fire season. Walk through who does what, where you meet, and which way you drive. A five-minute run-through turns a panicked scramble into muscle memory."}]

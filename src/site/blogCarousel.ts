@@ -34,12 +34,9 @@ function card(a: FeedArticle, i: number): string {
     `<a class="fd-mcard fd-card" href="/blog/${esc(a.slug)}/" aria-label="Read ${esc(a.title)}">` +
     `<div class="fd-m-art proc" style="--px:${px}%;--py:${py}%"></div>` +
     `<span class="fd-m-scrim"></span>` +
-    `<div class="fd-m-top"><span class="fd-m-no">${esc(a.pillarTitle)}</span>` +
-    `<span class="badge neutral">${esc(a.dateLabel)}</span></div>` +
     `<div class="fd-m-body">` +
+    `<span class="fd-m-no">${esc(a.pillarTitle)}</span>` +
     `<div class="fd-m-name">${esc(a.title)}</div>` +
-    `<div class="fd-m-tag">${esc(a.description)}</div>` +
-    `<div class="fd-m-go">Read article →</div>` +
     `</div>` +
     `</a>`
   );
@@ -50,11 +47,9 @@ function fallbackCard(): string {
     `<a class="fd-mcard fd-card" href="/blog/" aria-label="Read Field Notes">` +
     `<div class="fd-m-art proc" style="--px:70%;--py:18%"></div>` +
     `<span class="fd-m-scrim"></span>` +
-    `<div class="fd-m-top"><span class="fd-m-no">Field Notes</span></div>` +
     `<div class="fd-m-body">` +
+    `<span class="fd-m-no">Field Notes</span>` +
     `<div class="fd-m-name">Plain answers to real wildfire questions</div>` +
-    `<div class="fd-m-tag">How fires are fought, how to get ready, and what the data means.</div>` +
-    `<div class="fd-m-go">Read Field Notes →</div>` +
     `</div>` +
     `</a>`
   );

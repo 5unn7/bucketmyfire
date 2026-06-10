@@ -358,6 +358,8 @@ const SHELL_CSS = `
 .fd-mcard .fd-m-top { position: absolute; top: 12px; left: 12px; right: 12px; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .fd-mcard .fd-m-no { font-family: var(--mono); font-size: var(--fs-micro); letter-spacing: .16em; text-transform: uppercase; color: var(--menu); }
 .fd-mcard .fd-m-body { position: relative; z-index: 2; padding: 14px 14px 15px; }
+/* Field Notes cards stack the chip above the title in the body (missions keep theirs in .fd-m-top). */
+.fd-mcard .fd-m-body .fd-m-no { display: block; margin-bottom: 6px; }
 .fd-mcard .fd-m-name { font-size: var(--fs-title); font-weight: var(--fw-black); color: #fff; line-height: 1.08; }
 .fd-mcard .fd-m-tag { margin-top: 5px; font-size: var(--fs-sm); line-height: 1.4; color: var(--text-subtle); }
 .fd-mcard .fd-m-diff { display: inline-flex; gap: 3px; margin-top: 9px; }
@@ -434,10 +436,15 @@ const SHELL_CSS = `
   min-height: 44px; appearance: none; background: none; border: 0; padding: 0; cursor: pointer; font-family: var(--font); }
 .fd-link:hover { color: var(--ember); }
 
-/* ── Footer (shared): safety disclaimer + policy links. ───────────────────────── */
-.fd-foot { color: var(--dim); padding-top: 8px; margin-top: 6px; }
-.fd-foot .fd-disclaimer { margin: 0 0 11px; font-size: var(--fs-sm); max-width: 60ch; }
-.fd-foot-links { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; }
+/* ── Footer (shared): a wrapping flex row. The disclaimer takes a full-width line of its own (flex
+   basis 100%); the policy links and the brand lockup share the next line (links left, lockup pushed
+   right with margin-left:auto). The links carry a 44px tap target, so the row is centre-aligned to keep
+   the link text and the wordmark on one line; the links shrink/wrap so the lockup never drops a row. ─ */
+.fd-foot { color: var(--dim); padding-top: 8px; margin-top: 6px;
+  display: flex; flex-wrap: wrap; align-items: center; column-gap: 20px; row-gap: 8px; }
+.fd-foot .fd-disclaimer { order: 1; flex: 1 1 100%; margin: 0; font-size: var(--fs-sm); max-width: 60ch; }
+.fd-foot-links { order: 2; flex: 0 1 auto; min-width: 0; display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; }
+.fd-foot .site-foot-brand { align-self: center; }
 .fd-foot-links a { text-decoration: none; color: var(--dim); font-size: var(--fs-sm); font-weight: var(--fw-semibold); min-height: 44px; display: inline-flex; align-items: center; }
 .fd-foot-links a:hover { color: var(--text); }
 

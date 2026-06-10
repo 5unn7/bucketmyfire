@@ -1,11 +1,13 @@
 ---
-title: How to Pack a Wildfire Go-Bag
+title: Pack a Wildfire Go-Bag
 slug: how-to-pack-a-wildfire-go-bag
 description: What goes in a 72-hour wildfire go-bag, room by room, so your household can be out the door in minutes when the order to leave comes.
 pillar: wildfire-preparedness
 date: 2026-06-09
 updated: 2026-06-09
 keyword: wildfire go bag checklist
+image_series: B
+image_slot: "hands methodically packing a sturdy backpack on a cabin porch, a headlamp, water bottle, and first aid kit visible beside it, amber light from inside the cabin spilling through the doorway"
 advisory: true
 takeaways: ["Pack for 72 hours away from home, one bag per person, kept by the door.","Documents, medications, and chargers are the things you cannot replace at a store. Pack those first.","Do not forget pets: food, a leash, a carrier, and a photo of you together.","Check the bag twice a year. Swap old water, expired food, and dead batteries."]
 faq: [{"q":"How long should a go-bag last?","a":"Pack for at least 72 hours. That is the rough window before help and supplies reach most people after a large evacuation. If anyone in the house has medication or medical needs, pack more, not less."},{"q":"Where should I keep it?","a":"By the door you would actually run out of, or in the car. A perfect kit in the back of a closet does you no good when you have two minutes to leave. One bag per person, light enough to carry."},{"q":"What is the single most important item?","a":"Anything you cannot replace: prescription medication, identity and insurance documents, and a way to charge your phone. Water and food matter, but you can buy those on the road. You cannot buy your prescriptions or your passport at a gas station."}]

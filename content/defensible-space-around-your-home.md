@@ -1,11 +1,13 @@
 ---
-title: Clear the Space Around Your Home for Fire Season
+title: Clear the Space Around Your Home
 slug: defensible-space-around-your-home
 description: Clear the first metres around your home before fire season so wind-blown embers have nothing to catch. A weekend of work that lowers your risk.
 pillar: wildfire-preparedness
 date: 2026-06-09
 updated: 2026-06-09
 keyword: defensible space around your home
+image_series: A
+image_slot: "a cleared 10-metre debris-free zone visible around the cabin perimeter, fire and smoke advancing on the near horizon behind the treeline"
 advisory: true
 takeaways: ["Embers, not the wall of flame, start most home losses. Give them nothing to catch.","The first 1.5 metres around the house matters most. Keep it clear of anything that burns.","Clean the roof and gutters. Dry needles in a gutter are a perfect ember trap.","Work outward in zones, doing the closest, cheapest, highest-value jobs first."]
 faq: [{"q":"What is defensible space?","a":"It is the cleared, managed area around your home that gives a wildfire less fuel to reach the building, and gives crews a safer place to work if they are there. It does not mean a bare moonscape. It means removing the easy fuel closest to the walls and thinning what is further out."},{"q":"Where do I start?","a":"Right against the house. The strip within about 1.5 metres of the walls is the highest-value work you can do. Move firewood, mulch, planters, and furniture away from the siding, then clean the roof and gutters. Then work outward."},{"q":"Do I have to cut down my trees?","a":"Usually not. The goal is to break up continuous fuel, not clear-cut your lot. Prune low branches, pull trees back from the roof and chimney, and leave space between crowns so fire cannot run tree to tree. A healthy, spaced-out yard is the goal."}]

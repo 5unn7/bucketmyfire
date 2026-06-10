@@ -58,6 +58,9 @@ export function loadArticles(root = ROOT) {
       dateLabel: formatDate(data.date),
       updatedLabel: formatDate(data.updated || data.date),
       ogImage: data.ogImage || `/blog/${data.slug}/og.png`,
+      heroImage: fs.existsSync(path.join(root, 'public', 'blog', data.slug, 'hero.webp'))
+        ? `/blog/${data.slug}/hero.webp`
+        : null,
       takeaways: data.takeaways || [],
       faq: data.faq || [],
       sources: data.sources || [],
@@ -101,6 +104,11 @@ function fontFace(root, outBlog) {
 
 async function writeOg(outArticleDir, article, log) {
   fs.mkdirSync(outArticleDir, { recursive: true });
+  // Copy AI-generated hero.webp if the author has run gen-blog-images.mjs for this article.
+  const srcWebp = path.join(ROOT, 'public', 'blog', article.slug, 'hero.webp');
+  if (fs.existsSync(srcWebp)) {
+    fs.copyFileSync(srcWebp, path.join(outArticleDir, 'hero.webp'));
+  }
   // The per-article procedural scene (vector). It is the single source of this article's art: the
   // in-page hero, every poster card that links here, and the OG card background all derive from the
   // same seed (the slug), so they can never drift. Tiny, cacheable, infinitely scalable, no binary.
@@ -289,17 +297,12 @@ h1,h2,h3,h4{font-weight:800;letter-spacing:-0.01em;line-height:1.15;color:#fff}
 .fn-card:hover .fn-card-art{transform:scale(1.03)}
 .fn-card-scrim{position:absolute;inset:0;z-index:1;
   background:linear-gradient(180deg,rgba(6,9,11,0.05) 0%,rgba(6,9,11,0.55) 52%,rgba(6,9,11,0.92) 100%)}
-.fn-card-top{position:absolute;top:12px;left:14px;right:14px;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:8px}
-.fn-card-pillar{font-family:var(--mono);font-size:var(--fs-micro);letter-spacing:0.16em;text-transform:uppercase;color:var(--menu)}
+.fn-card-pillar{font-family:var(--mono);font-size:var(--fs-micro);letter-spacing:0.16em;text-transform:uppercase;color:var(--menu);margin-bottom:6px}
 .fn-card-body{position:relative;z-index:2;padding:14px 15px 15px;display:flex;flex-direction:column}
 .fn-card-h{font-size:var(--fs-title);font-weight:var(--fw-black);color:#fff;line-height:1.1;letter-spacing:-0.01em;text-wrap:balance}
-.fn-card-d{margin-top:6px;font-size:var(--fs-sm);line-height:1.45;color:var(--text-subtle);
-  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
-.fn-card-go{margin-top:11px;font-family:var(--mono);font-size:var(--fs-micro);letter-spacing:0.06em;text-transform:uppercase;color:var(--ember-hi)}
-.fn-card:hover .fn-card-go{color:var(--ember)}
-.fn-foot{max-width:760px;margin:0 auto;padding:30px max(16px,env(safe-area-inset-left)) calc(40px + env(safe-area-inset-bottom));border-top:1px solid var(--hair)}
-.fn-disclaimer{color:var(--dim);font-size:var(--fs-sm);max-width:60ch;line-height:1.55;margin:0 0 12px}
-.fn-foot-links{display:flex;flex-wrap:wrap;gap:8px 18px}
+.fn-foot{max-width:760px;margin:0 auto;padding:30px max(16px,env(safe-area-inset-left)) calc(40px + env(safe-area-inset-bottom));border-top:1px solid var(--hair);display:flex;flex-wrap:wrap;align-items:flex-end;column-gap:24px;row-gap:10px}
+.fn-disclaimer{order:1;flex:1 1 100%;color:var(--dim);font-size:var(--fs-sm);max-width:60ch;line-height:1.55;margin:0}
+.fn-foot-links{order:2;flex:0 1 auto;min-width:0;display:flex;flex-wrap:wrap;gap:8px 18px}
 .fn-foot-links a{font-family:var(--mono);font-size:var(--fs-meta);letter-spacing:0.1em;text-transform:uppercase;color:var(--dim)}
 .fn-foot-links a:hover{color:var(--ember-hi)}
 @media (prefers-reduced-motion:reduce){

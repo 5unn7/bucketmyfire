@@ -1,11 +1,13 @@
 ---
-title: Wildfire Smoke: Protect the Air Inside Your Home
+title: Keep Wildfire Smoke Out of Your House
 slug: wildfire-smoke-protect-indoor-air
 description: Keep wildfire smoke out of your house: seal the gaps, build a clean-air room, and run a box-fan filter when the air outside turns brown.
 pillar: wildfire-preparedness
 date: 2026-06-09
 updated: 2026-06-09
 keyword: protect indoor air from wildfire smoke
+image_series: B
+image_slot: "hands pressing weatherstripping tape firmly around a window frame, a hazy amber-orange smoke glow faintly visible through the glass outside, calm focused work"
 advisory: true
 takeaways: ["Smoke can reach you from fires hundreds of kilometres away. You do not need a fire next door to need a plan.","Stay indoors, close up the house, and avoid adding more smoke or dust inside.","Build one clean-air room with a filter, and keep the door shut.","A box fan and a furnace filter make a cheap, effective clean-air machine when you have nothing else."]
 faq: [{"q":"Is wildfire smoke really that harmful?","a":"Yes. The fine particles in smoke get deep into the lungs and can affect the heart too. Most healthy people recover once the air clears, but smoke is hardest on children, older adults, pregnant people, and anyone with heart or lung conditions. Take it seriously even when there is no flame in sight."},{"q":"Should I open windows to air the house out?","a":"Not while the air outside is smoky. Opening up just lets more smoke in. Keep the house closed until the outdoor air improves, then open windows to flush it out during a clear spell."},{"q":"What if I do not have an air purifier?","a":"You can build one. Tape a furnace filter to the back of a box fan so the fan pulls air through it, set it in your clean-air room, and run it. It is a cheap, well-known way to cut the smoke particles in one room when a proper purifier is not on hand."}]
