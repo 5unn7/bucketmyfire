@@ -114,6 +114,26 @@ export const SMOKE_WMS_SLD =
   '<ColorMapEntry color="#ffffff" quantity="250" opacity="0.95"/>' + // thickest core: bright white
   '</ColorMap></RasterSymbolizer></Rule></FeatureTypeStyle></UserStyle></NamedLayer></StyledLayerDescriptor>';
 
+// FWI danger ramp rendered SERVER-SIDE via SLD (CWFIS GeoServer honors `SLD_BODY`). The DEFAULT
+// `public:fwi` style is a 16-COLOUR (4-bit-palette) classified PNG with SEMI-TRANSPARENT fills — the
+// 16-colour palette can't hold smooth alpha, so GeoServer ordered-DITHERS it, and that pixel dither
+// magnifies into huge black octagons when draped on the close globe. A continuous `type="ramp"` forces
+// a 256-colour palette where every entry carries its OWN alpha (no dither) AND lets us brand the
+// colours: a warm DANGER heat-field on the "fight" register — calm green (low) → ember → red (extreme),
+// each stop's opacity rising with danger so low FWI is a faint wash and extreme reads hot. The globe
+// (per-stop alpha + a gentle global dimmer) and the flat map (a low-opacity tint) share this one SLD.
+export const FWI_WMS_SLD =
+  '<StyledLayerDescriptor version="1.0.0" xmlns="http://www.opengis.net/sld">' +
+  '<NamedLayer><Name>public:fwi</Name><UserStyle><FeatureTypeStyle><Rule>' +
+  '<RasterSymbolizer><Opacity>1</Opacity><ColorMap type="ramp">' +
+  '<ColorMapEntry color="#63d68a" quantity="0" opacity="0"/>' + // no/low danger → clear (lets the map read)
+  '<ColorMapEntry color="#7fcf86" quantity="2" opacity="0.16"/>' + // low: a faint calm-green wash
+  '<ColorMapEntry color="#ffc861" quantity="9" opacity="0.34"/>' + // moderate: caution amber
+  '<ColorMapEntry color="#ff7a45" quantity="18" opacity="0.52"/>' + // high: fire orange
+  '<ColorMapEntry color="#ff5d4d" quantity="30" opacity="0.68"/>' + // very high: warn red
+  '<ColorMapEntry color="#e23a2a" quantity="45" opacity="0.84"/>' + // extreme: deep red, hottest + most opaque
+  '</ColorMap></RasterSymbolizer></Rule></FeatureTypeStyle></UserStyle></NamedLayer></StyledLayerDescriptor>';
+
 /** Source attribution shown in the tracker UI. */
 export const LIVEFIRE_CREDIT = 'Sources: CWFIS (NRCan) · CIFFC · ECCC';
 

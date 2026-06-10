@@ -12,40 +12,30 @@
  * The ONLY Three-free map layer. Colours come from the `theme.ts` brand tokens (no hard-coded hex).
  * `preferCanvas` keeps a thousand-plus markers smooth on mobile. Tiles degrade gracefully — if CARTO
  * is unreachable the dark background + dots still read.
+ *
+ * No longer the default view: the tracker opens the 3D `FireGlobe` (same `LiveMapView` contract in
+ * `view.ts`); this flat map stays reachable via `?flat=1` and as the no-WebGL fallback.
  */
 import * as L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { UI } from '../ui/theme';
 import { LIVEFIRE } from '../config';
 import { radiusMetersForHa } from './normalize';
-import { FWI_WMS_URL, FWI_WMS_LAYER, fwiForecastTime, GEOMET_WMS_URL, SMOKE_WMS_LAYER, SMOKE_WMS_SLD, isLiveFireEnabled } from './client';
-import type { Hotspot, FireSeverity, FireStage, ReportedFire, BurnPolygon, AlertItem, AlertLevel, BanArea, BanType } from './types';
+import { FWI_WMS_URL, FWI_WMS_LAYER, FWI_WMS_SLD, fwiForecastTime, GEOMET_WMS_URL, SMOKE_WMS_LAYER, SMOKE_WMS_SLD, isLiveFireEnabled } from './client';
+import type { Hotspot, FireSeverity, ReportedFire, BurnPolygon, AlertItem, BanArea } from './types';
+import { STAGE_COLOR, SEV_COLOR, ALERT_COLOR, BAN_COLOR } from './view';
+import type { FireLayer, FireMapHandlers, LiveMapView } from './view';
 
-/** The toggleable data layers. */
-export type FireLayer = 'reported' | 'out' | 'perimeters' | 'hotspots' | 'fwi' | 'smoke' | 'alerts' | 'bans';
+export type { FireLayer, FireMapHandlers } from './view';
 
-// Warm severity ramp for the raw HOTSPOTS, straight from the brand tokens (cool gold → amber-red hot).
-const SEV_STYLE: Record<FireSeverity, { color: string; radius: number; fill: number }> = {
-  low: { color: UI.emberHi, radius: 2.5, fill: 0.7 },
-  moderate: { color: UI.ember, radius: 3, fill: 0.82 },
-  high: { color: UI.warn, radius: 4, fill: 0.9 },
-  extreme: { color: UI.warn, radius: 5.5, fill: 1 },
+// Hotspot dot geometry per intensity band; the COLOURS come from the SHARED semantic maps in
+// `view.ts` (STAGE_COLOR / SEV_COLOR / ALERT_COLOR / BAN_COLOR) so both views paint identical meanings.
+const SEV_STYLE: Record<FireSeverity, { radius: number; fill: number }> = {
+  low: { radius: 2.5, fill: 0.7 },
+  moderate: { radius: 3, fill: 0.82 },
+  high: { radius: 4, fill: 0.9 },
+  extreme: { radius: 5.5, fill: 1 },
 };
-
-// Stage-of-control colour for the AUTHORITATIVE fires — danger→safe over existing tokens (no new hex):
-// Out of control = warn (red), Being held = caution (amber), Under control = ok (green).
-const STAGE_COLOR: Record<FireStage, string> = {
-  OC: UI.warn,
-  BH: UI.caution,
-  UC: UI.ok,
-  OUT: UI.caution,
-  UNK: UI.caution,
-};
-
-// SaskAlert level → pin colour (critical=red, advisory=amber, info=neutral) over the same brand tokens.
-const ALERT_COLOR: Record<AlertLevel, string> = { critical: UI.warn, advisory: UI.caution, info: UI.text, unknown: UI.caution };
-// Fire-ban type → area tint (Ban=red, Restriction=amber, else neutral).
-const BAN_COLOR: Record<BanType, string> = { Ban: UI.warn, Restriction: UI.caution, Advisory: UI.text, Other: UI.caution };
 
 const CARTO_DARK = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
 
@@ -179,18 +169,7 @@ class SmokeForecastLayer {
   }
 }
 
-export interface FireMapHandlers {
-  onSelectHotspot: (h: Hotspot) => void;
-  onSelectReported: (f: ReportedFire) => void;
-  // Optional so a simpler consumer (e.g. a front-door map) need not wire the alert/ban layers.
-  onSelectAlert?: (a: AlertItem) => void;
-  onSelectBan?: (b: BanArea) => void;
-  // Optional: fired true/false as a smoke forecast frame's tiles load/settle (drives the scrubber's
-  // buffering hint). A consumer that doesn't animate smoke can omit it.
-  onSmokeLoad?: (loading: boolean) => void;
-}
-
-export class FireMap {
+export class FireMap implements LiveMapView {
   private map: L.Map;
   private hotspotLayer: L.LayerGroup;
   private reportedLayer: L.LayerGroup;
@@ -225,6 +204,8 @@ export class FireMap {
     // station-interpolated analysis. (See fwiForecastTime; honestly labeled a forecast in the UI.)
     this.fwiLayer = L.tileLayer.wms(FWI_WMS_URL, {
       layers: FWI_WMS_LAYER,
+      styles: '', // empty — the brand SLD below supplies the warm danger ramp (not the default classed blue→red)
+      sld_body: FWI_WMS_SLD, // same continuous ramp the globe uses → 24-bit output (no 4-bit dither), on-brand colours
       format: 'image/png',
       transparent: true,
       opacity: LIVEFIRE.fwiOpacity, // low tint, not a paint — keep the map legible underneath (config.ts)
@@ -244,8 +225,9 @@ export class FireMap {
     );
     if (handlers.onSmokeLoad) this.smoke.setOnState(handlers.onSmokeLoad);
 
-    // Vector layers, drawn back-to-front: footprints → ban areas → extinguished → active fires → hotspots
-    // → alert pins (the highest-priority overlay sits on top). Each added per its toggle.
+    // Vector layers, drawn back-to-front: footprints → ban areas → extinguished → hotspots → active
+    // fires → alert pins (authoritative above raw detections — see applyVisibility — and the
+    // highest-priority overlay on top). Each added per its toggle.
     this.perimLayer = L.layerGroup();
     this.bansLayer = L.layerGroup();
     this.outLayer = L.layerGroup();
@@ -269,7 +251,7 @@ export class FireMap {
         color: UI.ink, // a DARK casing stroke (was the fill colour → no separation): one marker, hard edge on any backdrop
         weight: 1.4,
         opacity: 1,
-        fillColor: st.color,
+        fillColor: SEV_COLOR[h.severity],
         fillOpacity: Math.min(1, st.fill + 0.12), // fuller saturation so the hue holds when luminance washes out
       });
       m.on('click', () => {
@@ -438,8 +420,11 @@ export class FireMap {
     sync(this.perimLayer, this.visible.perimeters);
     sync(this.bansLayer, this.visible.bans);
     sync(this.outLayer, this.visible.out);
-    sync(this.reportedLayer, this.visible.reported);
+    // Hotspots UNDER the reported dots: where the two stack (an active fire usually has hotspots on
+    // it), the topmost-wins canvas tap must open the AUTHORITATIVE fire — the shared tap-priority
+    // rule in view.ts, and what the globe's picker does.
     sync(this.hotspotLayer, this.visible.hotspots);
+    sync(this.reportedLayer, this.visible.reported);
     sync(this.alertsLayer, this.visible.alerts);
   }
 
@@ -457,13 +442,15 @@ export class FireMap {
     this.selectedBase = null;
   }
 
-  /** Ring the tapped dot so the selection is obvious against its neighbours. Restores the PREVIOUS dot's
-   *  exact pre-selection style (hotspots and reported dots have different base weights/colours). */
+  /** Ring the tapped dot so the selection is obvious against its neighbours. The ring is the cyan
+   *  ACCENT — selection is the one "interactive/live" state, and the globe view rings the same way
+   *  (the two views must read identically). Restores the PREVIOUS dot's exact pre-selection style
+   *  (hotspots and reported dots have different base weights/colours). */
   private highlight(m: L.CircleMarker): void {
     if (this.selected && this.selectedBase) this.selected.setStyle(this.selectedBase);
     this.selectedBase = { weight: (m.options.weight as number) ?? 1, color: (m.options.color as string) ?? UI.text };
     this.selected = m;
-    m.setStyle({ weight: 3, color: UI.text });
+    m.setStyle({ weight: 3, color: UI.accent });
     m.bringToFront();
   }
 

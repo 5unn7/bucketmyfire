@@ -79,13 +79,24 @@ const CSS = `
    the header rows above it. */
 .bmf-app .firemapwrap{ position:relative; flex:1 1 auto; min-height:0; display:flex; }
 .bmf-app .firemap{ flex:1 1 auto; min-height:0; width:100%; }
+/* 3D globe view (FireGlobe, the default) — the canvas fills the map slot; a soft cool radial behind
+   the sphere gives it depth without a starfield. Drag-to-rotate cursors; touch-action off so the
+   globe owns the gesture (the page never scrolls anyway). */
+.bmf-app .firemap.fglobe{ position:relative; overflow:hidden;
+  background:radial-gradient(85% 85% at 50% 46%, var(--card-glass) 0%, transparent 62%); }
+.bmf-app .fglobe-canvas{ position:absolute; inset:0; width:100%; height:100%; display:block;
+  touch-action:none; cursor:grab; }
+.bmf-app .fglobe-canvas.grabbing{ cursor:grabbing; }
 
 /* Floating map controls — Layers + Sources as icon buttons pinned to the map's top-right corner
    (Leaflet's zoom owns top-left). A stronger fill + card shadow lifts them off the dark tiles; the
    Layers button carries a live count badge of how many layers are drawn. Never pills. */
 .bmf-app .firefloat{ position:absolute; top:10px; right:10px; z-index:600; display:flex; flex-direction:column; gap:8px; }
-.bmf-app .fmbtn{ position:relative; width:42px; height:42px; flex:0 0 auto; display:grid; place-items:center; border-radius:var(--r-md); border:1px solid var(--stroke); background:var(--card-bg); color:var(--text); cursor:pointer; box-shadow:var(--shadow-card); transition:border-color .14s ease, color .14s ease, transform .14s ease; }
-.bmf-app .fmbtn:hover{ border-color:var(--ember); color:var(--ember-hi); transform:translateY(-1px); }
+/* Frosted glass-cockpit icon button: a translucent glass fill that BLURS the map behind it + a lit
+   top-edge rim (the brand sheen) over the card shadow — reads as a panel cut from the cockpit glass,
+   not a flat web button. Square (no pills). */
+.bmf-app .fmbtn{ position:relative; width:42px; height:42px; flex:0 0 auto; display:grid; place-items:center; border-radius:var(--r-md); border:1px solid var(--stroke); background:var(--card-glass); backdrop-filter:var(--blur); -webkit-backdrop-filter:var(--blur); color:var(--text); cursor:pointer; box-shadow:var(--shadow-card), inset 0 1px 0 var(--bevel-top); transition:border-color .14s ease, color .14s ease, transform .14s ease, background .14s ease; }
+.bmf-app .fmbtn:hover{ border-color:var(--ember); color:var(--ember-hi); transform:translateY(-1px); background:var(--card-glass); }
 .bmf-app .fmbtn svg{ width:19px; height:19px; }
 .bmf-app .fmn{ position:absolute; top:-6px; right:-6px; min-width:17px; height:17px; padding:0 4px; display:grid; place-items:center; border-radius:var(--r-pill); background:var(--ember); color:var(--ink); font-family:var(--mono); font-size:var(--fs-micro); font-weight:var(--fw-bold); line-height:1; }
 .bmf-app .fmn:empty{ display:none; }
@@ -258,7 +269,7 @@ const CSS = `
 .bmf-app .sec .stamp.link{ cursor:pointer; color:var(--menu); border-color:var(--menu-soft); }
 
 .bmf-app .appbar{ display:flex; align-items:center; gap:12px; min-height:44px; margin-bottom:6px; }
-.bmf-app .iconbtn{ width:44px; height:44px; flex:0 0 auto; border-radius:var(--r-sm); border:1px solid var(--stroke); background:var(--card-soft); color:var(--dim); display:grid; place-items:center; cursor:pointer; transition:border-color .14s, color .14s, transform .14s; }
+.bmf-app .iconbtn{ width:44px; height:44px; flex:0 0 auto; border-radius:var(--r-sm); border:1px solid var(--stroke); background:var(--card-glass); backdrop-filter:var(--blur); -webkit-backdrop-filter:var(--blur); box-shadow:inset 0 1px 0 var(--bevel-top); color:var(--dim); display:grid; place-items:center; cursor:pointer; transition:border-color .14s, color .14s, transform .14s; }
 .bmf-app .iconbtn:hover{ color:var(--ember-hi); border-color:var(--warm-stroke); transform:translateY(-1px); }
 .bmf-app .iconbtn svg{ width:17px; height:17px; }
 .bmf-app .appbar .ttl{ font-size:var(--fs-title); font-weight:var(--fw-heavy); letter-spacing:.04em; text-transform:uppercase; }

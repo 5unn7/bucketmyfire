@@ -37,7 +37,7 @@ import { FIELD_GROUPS, REPORTED_FIELD_GROUPS, type FieldGroup } from '../../live
 import { countFires, filterCountry, filterReportedCountry, countryLabel, COUNTRIES, smokeForecastFrames, forecastLeadLabel, safeUrl } from '../../livefire/normalize';
 import { LIVEFIRE } from '../../config';
 import type { Hotspot, ReportedFire, ReportedFeed, FireHistoryPoint, NationalSummary, BurnFeed, AlertFeed, AlertItem, BanFeed, BanArea, FeedMeta, LiveFireFeed, CountryFilter } from '../../livefire/types';
-import type { FireMap, FireLayer } from '../../livefire/FireMap';
+import type { LiveMapView, FireLayer } from '../../livefire/view';
 import { esc } from '../../../site/siteNav.mjs';
 
 const MUTE_KEY = 'bmf.audio.muted.v1';
@@ -727,10 +727,10 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
       <div class="firesheet" data-lf-sheet hidden></div>
     </div>
   </div>`;
-  // The Leaflet map lives in a lazy chunk, so it's built asynchronously below. `closed` guards every
+  // The map view lives in a lazy chunk, so it's built asynchronously below. `closed` guards every
   // async continuation: if the overlay is dismissed (Esc / rail / another panel) before the chunk
   // resolves, the onClose hook flips it and we never build/operate a map on a detached container.
-  let map: FireMap | null = null;
+  let map: LiveMapView | null = null;
   let closed = false;
   let smokeTimer: number | null = null; // the smoke-forecast playback interval (MUST be cleared on close)
   const { root } = overlay('fires', C.overlayTitle, body, () => {
@@ -1102,9 +1102,12 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
       subEl.textContent = C.subStats(hs.length, publishedWhen(freshMs));
     }
 
-    map?.setReportedFires(reported);
+    // Hotspots BEFORE reported: on the flat map, canvas tap-dispatch is topmost-wins by marker add
+    // order — the authoritative reported dots must repaint LAST so a stacked tap opens the official
+    // fire (the shared tap-priority rule in view.ts; the globe's picker enforces the same order).
     map?.setOutFires(out);
     map?.setHotspots(hs);
+    map?.setReportedFires(reported);
     map?.setAlerts(alerts);
     map?.setBans(bans);
     // The M3 burn perimeters are Canada-only (CWFIS), so drop them when the map is scoped to US/Mexico —
@@ -1184,22 +1187,31 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
     applyForecastFrame();
   });
 
-  // Build the map once the overlay is painted + sized; Leaflet is a lazy chunk (loads on open only). If
-  // the overlay was already dismissed before the chunk resolved, bail — never build on a detached node.
+  // Build the map view once the overlay is painted + sized; both views are lazy chunks (load on open
+  // only). The DEFAULT is the 3D globe (the brand view); `?flat=1` opts into the Leaflet slippy map,
+  // and a globe that can't construct (no WebGL / blocked context) falls back to Leaflet rather than
+  // dying. If the overlay was dismissed before a chunk resolved, bail — never operate a detached map.
   requestAnimationFrame(() => {
     if (closed) return;
-    import('../../livefire/FireMap')
-      .then((m) => {
-        if (closed) return;
-        map = new m.FireMap(mapEl, {
-          onSelectHotspot: showHotspot,
-          onSelectReported: showReported,
-          onSelectAlert: showAlert,
-          onSelectBan: showBan,
-          // While a forecast frame's tiles are in flight, mark the scrubber buffering (a soft pulse) so a
-          // slow step reads as loading, not stuck.
-          onSmokeLoad: (loading) => scrubTrackEl.classList.toggle('buffering', loading),
-        });
+    const handlers = {
+      onSelectHotspot: showHotspot,
+      onSelectReported: showReported,
+      onSelectAlert: showAlert,
+      onSelectBan: showBan,
+      // While a forecast frame is in flight, mark the scrubber buffering (a soft pulse) so a slow
+      // step reads as loading, not stuck.
+      onSmokeLoad: (loading: boolean) => scrubTrackEl.classList.toggle('buffering', loading),
+    };
+    const buildFlat = (): Promise<LiveMapView> => import('../../livefire/FireMap').then((m) => new m.FireMap(mapEl, handlers));
+    const buildGlobe = (): Promise<LiveMapView> => import('../../livefire/FireGlobe').then((m) => new m.FireGlobe(mapEl, handlers));
+    const wantFlat = new URLSearchParams(location.search).has('flat');
+    (wantFlat ? buildFlat() : buildGlobe().catch(buildFlat))
+      .then((view) => {
+        if (closed) {
+          view.dispose(); // resolved after dismissal — tear straight back down
+          return;
+        }
+        map = view;
         map.invalidate();
         load(false);
       })
@@ -1221,9 +1233,10 @@ function openCredits(host: HTMLElement): void {
     glyph: ic('shield'),
     body:
       `<div class="credits">` +
-      `<p class="mtext"><b>Active fire data</b><br>CWFIS — <a href="https://cwfis.cfs.nrcan.gc.ca" target="_blank" rel="noopener">Canadian Wildland Fire Information System</a>, Natural Resources Canada</p>` +
-      `<p class="mtext"><b>Basemap</b><br>© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors · © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a></p>` +
-      `<p class="mtext"><b>Map engine</b><br><a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a></p>` +
+      `<p class="mtext"><b>Active fire data</b><br><a href="https://ciffc.net" target="_blank" rel="noopener">CIFFC</a> — Canadian Interagency Forest Fire Centre · CWFIS — <a href="https://cwfis.cfs.nrcan.gc.ca" target="_blank" rel="noopener">Canadian Wildland Fire Information System</a>, Natural Resources Canada</p>` +
+      `<p class="mtext"><b>Globe outlines</b><br><a href="https://www.naturalearthdata.com" target="_blank" rel="noopener">Natural Earth</a> (public domain) — drawn procedurally, no basemap imagery</p>` +
+      `<p class="mtext"><b>Map engines</b><br><a href="https://threejs.org" target="_blank" rel="noopener">Three.js</a> (globe) · <a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a> (flat view)</p>` +
+      `<p class="mtext"><b>Basemap tiles</b> (globe close-up &amp; flat view)<br>© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors · © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a></p>` +
       `<p class="mtext"><b>Icons</b><br>Lucide (MIT)</p>` +
       `</div>` +
       `<div class="modal-actions"><button class="btn primary" data-credits-ok>${ic('check')}Got it</button></div>`,

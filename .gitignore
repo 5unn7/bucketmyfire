@@ -17,6 +17,7 @@ scripts/.gen-*.mjs
 scripts/.probe*.mjs
 scripts/.scan*.mjs
 scripts/.shot*.mjs
+scripts/.globe-*.mjs
 
 .vite/
 *.log

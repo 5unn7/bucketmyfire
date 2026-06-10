@@ -1832,6 +1832,31 @@ export const LIVEFIRE = {
   // this SHORT — a long fade shows BOTH adjacent frames at once (a ghosty double-plume); 140ms reads as a
   // clean dissolve between fully-loaded frames.
   smokeFadeMs: 140,
+  // ── The 3D globe view (FireGlobe — the tracker's DEFAULT; `?flat=1` keeps the Leaflet map) ──────
+  globe: {
+    fov: 38, // long-lens perspective — a calmer sphere, less fisheye distortion at the limb
+    minDist: 1.0025, // closest camera (earth radii): ~16 km up, town scale — raster tiles carry the
+    // real geography down here (the procedural earth is the far view; see tileStartDist below)
+    maxDist: 3.1, // farthest — the whole earth in frame with a little margin
+    tileStartDist: 1.75, // raster basemap tiles (CARTO dark — the flat map's tiles) start fading in here…
+    tileFullDist: 1.5, // …and are fully opaque by here; the procedural coast/border lines fade out in lockstep
+    tileMaxZ: 17, // deepest slippy zoom level fetched (street scale; CARTO serves to 20)
+    tileLift: 1.5, // brightness lift on the CARTO dark tiles — raw they read murky against the
+    // instrument globe; lifted (+ a slight cool cast in the tile shader) they sit in the ink world
+    // while lakes/roads/labels stay readable
+    idleSpinDegSec: 1.2, // attract drift while loading, until the first touch OR the first data framing
+    // (fitTo) lands — a framed view must HOLD its frame. Suppressed under prefers-reduced-motion.
+    dotPx: 16, // reported-fire marker diameter (px) — the tap target (casing+ring+fill, like the flat map)
+    alertPx: 22, // alert pin diameter (px) — the boldest mark on the globe
+    outPx: 7, // extinguished-fire dot diameter (px) — small, dim, subordinate
+    rasterW: 2048, // forecast-drape GetMap width (px); height follows the bbox aspect. 1024 read ~10 km/px
+    // (mushy FWI class edges at province zoom vs the flat map's tiles); 2048 halves that and stays one
+    // PNG within GeoServer's default GetMap cap.
+    fwiOpacity: 0.85, // global dimmer ON TOP of the FWI SLD's own per-stop opacity (calm→hot 0.16→0.84,
+    // see FWI_WMS_SLD) — so the danger ramp reads roughly as authored; its OWN token, never a hidden multiplier
+    inertiaDamp: 3.2, // drag-release spin decay (1/s) — higher stops sooner
+    fitLerp: 4.5, // framing-animation approach rate (1/s) — higher snaps harder
+  },
 } as const;
 
 // --- Live tuning registry (dev tooling) -------------------------------------
