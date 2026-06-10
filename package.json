@@ -22,6 +22,7 @@
     "verify:content": "node scripts/verify-content.mjs",
     "verify:render": "node scripts/verify-render.mjs",
     "build:content": "node scripts/build-content.mjs",
+    "build:legal": "node scripts/build-legal.mjs",
     "gen:tokens": "esbuild scripts/gen-tokens.ts --bundle --platform=node --format=esm --outfile=scripts/.gen-tokens.mjs --log-level=warning && node scripts/.gen-tokens.mjs",
     "verify:tokens": "esbuild scripts/gen-tokens.ts --bundle --platform=node --format=esm --outfile=scripts/.gen-tokens.mjs --log-level=warning && node scripts/.gen-tokens.mjs --check",
     "verify": "npm run verify:campaign && npm run verify:crash && npm run verify:voice && npm run verify:feel && npm run verify:world && npm run verify:coach && npm run verify:province && npm run verify:livefire && npm run verify:ui && npm run verify:contrast && npm run verify:content && npm run verify:tokens",

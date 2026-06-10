@@ -7,6 +7,7 @@
 
 import { escapeHtml } from './markdown.mjs';
 import { scene } from './art.mjs';
+import { appbarHtml, tabbarHtml, breadcrumbHtml, NAV_DEFS } from '../../src/site/siteNav.mjs';
 
 export const BASE_URL = 'https://bucketmyfire.com';
 export const BLOG_BASE = '/blog';
@@ -71,19 +72,12 @@ function pageShell({ title, description, canonical, ogImage, ogType = 'article',
   </head>
   <body class="fn">
     <a class="fn-skip" href="#fn-main">Skip to content</a>
-    <header class="fn-bar">
-      <a class="fn-brand" href="/" aria-label="Bucket My Fire — home">
-        <span class="fn-glyph"><img src="/brand/icon_white.svg" alt="" width="17" height="17" /></span>
-        <b>Bucket My Fire</b>
-      </a>
-      <span class="fn-spacer"></span>
-      <a class="fn-navlink" href="${BLOG_BASE}/">Field Notes</a>
-      <a class="fn-navlink" href="/#prepare">Prepare</a>
-      <a class="fn-navlink" href="/">Fight the fire</a>
-    </header>
+    ${NAV_DEFS}
+    ${appbarHtml({ active: 'prepare', actions: 'play' })}
     <main id="fn-main" class="fn-wrap">
 ${body}
     </main>
+    ${tabbarHtml('prepare')}
     <footer class="fn-foot">
       <p class="fn-disclaimer">
         General information, not an emergency tool. In an emergency, follow official sources and local
@@ -147,16 +141,19 @@ export function articlePage(a, css) {
     : '';
 
   const body = `      <article class="fn-article">
-        <nav class="fn-crumbs" aria-label="Breadcrumb">
-          <a href="/">Home</a> <span>/</span>
-          <a href="${BLOG_BASE}/">Field Notes</a> <span>/</span>
-          <a href="${BLOG_BASE}/${a.pillar}/">${escapeHtml(pTitle)}</a>
-        </nav>
+        ${breadcrumbHtml([
+          { label: 'Home', href: '/' },
+          { label: 'Prepare', href: '/prepare/' },
+          { label: SECTION_NAME, href: `${BLOG_BASE}/` },
+          { label: pTitle, href: `${BLOG_BASE}/${a.pillar}/` },
+        ])}
         <figure class="fn-hero">
           <img src="${BLOG_BASE}/${a.slug}/hero.svg" alt="" width="1200" height="630" loading="eager" decoding="async" />
         </figure>
-        <p class="fn-eyebrow">${escapeHtml(pTitle)}</p>
-        <h1 class="fn-title">${escapeHtml(a.title)}</h1>
+        <header class="fd-hero"><div class="fd-hero-main">
+          <p class="fd-hero-eyebrow">${escapeHtml(pTitle)}</p>
+          <h1 class="fd-hero-head">${escapeHtml(a.title)}</h1>
+        </div></header>
         <p class="fn-dateline">
           <time datetime="${escapeHtml(a.date)}">Published ${escapeHtml(a.dateLabel)}</time>${
             a.updated && a.updated !== a.date
@@ -211,11 +208,15 @@ export function indexPage(articles, css) {
     .filter(Boolean)
     .join('\n');
 
-  const body = `      <header class="fn-hub-head">
-        <p class="fn-eyebrow">Field Notes</p>
-        <h1 class="fn-title">Wildfire, explained straight.</h1>
-        <p class="fn-lede">Plain-spoken, fact-checked notes on how wildfire works and how it is fought. Every fact cites an official source.</p>
-      </header>
+  const body = `      ${breadcrumbHtml([
+        { label: 'Home', href: '/' },
+        { label: 'Prepare', href: '/prepare/' },
+      ])}
+      <header class="fn-hub-head fd-hero"><div class="fd-hero-main">
+        <p class="fd-hero-eyebrow">Field Notes</p>
+        <h1 class="fd-hero-head">Wildfire, explained straight.</h1>
+        <p class="fd-hero-sub">Plain-spoken, fact-checked notes on how wildfire works and how it is fought. Every fact cites an official source.</p>
+      </div></header>
 ${pillars || '      <p class="fn-lede">New notes are on the way.</p>'}`;
 
   return pageShell({
@@ -236,15 +237,16 @@ export function pillarPage(id, articles, css) {
   const p = PILLARS[id];
   const canonical = `${BASE_URL}${BLOG_BASE}/${id}/`;
   const items = articles.filter((a) => a.pillar === id);
-  const body = `      <nav class="fn-crumbs" aria-label="Breadcrumb">
-        <a href="/">Home</a> <span>/</span>
-        <a href="${BLOG_BASE}/">Field Notes</a>
-      </nav>
-      <header class="fn-hub-head">
-        <p class="fn-eyebrow">Field Notes</p>
-        <h1 class="fn-title">${escapeHtml(p.title)}</h1>
-        <p class="fn-lede">${escapeHtml(p.blurb)}</p>
-      </header>
+  const body = `      ${breadcrumbHtml([
+        { label: 'Home', href: '/' },
+        { label: 'Prepare', href: '/prepare/' },
+        { label: SECTION_NAME, href: `${BLOG_BASE}/` },
+      ])}
+      <header class="fn-hub-head fd-hero"><div class="fd-hero-main">
+        <p class="fd-hero-eyebrow">Field Notes</p>
+        <h1 class="fd-hero-head">${escapeHtml(p.title)}</h1>
+        <p class="fd-hero-sub">${escapeHtml(p.blurb)}</p>
+      </div></header>
       <div class="fn-grid">${items.map(articleCard).join('')}</div>`;
 
   return pageShell({
@@ -310,9 +312,10 @@ function breadcrumbLd(a, canonical, pTitle) {
     '@type': 'BreadcrumbList',
     itemListElement: [
       { '@type': 'ListItem', position: 1, name: 'Home', item: `${BASE_URL}/` },
-      { '@type': 'ListItem', position: 2, name: SECTION_NAME, item: `${BASE_URL}${BLOG_BASE}/` },
-      { '@type': 'ListItem', position: 3, name: pTitle, item: `${BASE_URL}${BLOG_BASE}/${a.pillar}/` },
-      { '@type': 'ListItem', position: 4, name: a.title, item: canonical },
+      { '@type': 'ListItem', position: 2, name: 'Prepare', item: `${BASE_URL}/prepare/` },
+      { '@type': 'ListItem', position: 3, name: SECTION_NAME, item: `${BASE_URL}${BLOG_BASE}/` },
+      { '@type': 'ListItem', position: 4, name: pTitle, item: `${BASE_URL}${BLOG_BASE}/${a.pillar}/` },
+      { '@type': 'ListItem', position: 5, name: a.title, item: canonical },
     ],
   };
 }

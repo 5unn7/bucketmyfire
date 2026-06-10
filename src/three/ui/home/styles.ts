@@ -68,37 +68,38 @@ const CSS = `
 .bmf-app .pad:has(> .firewrap){ padding:0 0 calc(var(--rail-h) + env(safe-area-inset-bottom)) 0; margin:0; max-width:none; display:flex; flex-direction:column; overflow:hidden; }
 .bmf-app .pad:has(> .firewrap) .appbar{ display:none; }
 .bmf-app .firewrap{ position:relative; flex:1 1 auto; min-height:0; display:flex; flex-direction:column; }
-.bmf-app .firebar{ flex:0 0 auto; z-index:2; display:flex; align-items:center; gap:10px; padding:calc(env(safe-area-inset-top) + 10px) 14px 10px; background:var(--card-bg); border-bottom:1px solid var(--stroke); }
-.bmf-app .firebar .t{ font-size:var(--fs-md); font-weight:var(--fw-bold); color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.bmf-app .firebar .s{ font-size:var(--fs-tag); color:var(--dim); }
-.bmf-app .firesel{ flex:0 0 auto; max-width:42%; min-height:38px; background:var(--field); color:var(--text); border:1px solid var(--stroke); border-radius:var(--r-md); padding:7px 9px; font-family:var(--font); font-size:var(--fs-meta); cursor:pointer; }
+/* Control bar — TWO slim header rows now (was three): the region filter + refresh + the Layers/Sources
+   sheet buttons sit here; the status block below carries the live count. The map keeps the rest. */
+.bmf-app .firebar{ flex:0 0 auto; z-index:2; display:flex; align-items:center; gap:8px; padding:calc(env(safe-area-inset-top) + 9px) 12px 9px; background:var(--card-bg); border-bottom:1px solid var(--stroke); }
+.bmf-app .firesel{ flex:0 0 auto; max-width:46%; min-height:38px; background:var(--field); color:var(--text); border:1px solid var(--stroke); border-radius:var(--r-md); padding:7px 9px; font-family:var(--font); font-size:var(--fs-meta); cursor:pointer; }
 .bmf-app .firesel:focus{ outline:none; border-color:var(--ember); }
 .bmf-app .firemap{ flex:1 1 auto; min-height:0; width:100%; }
 
-/* National summary stat strip (CIFFC) — THREE headline numbers ("how bad, right now") + a demoted season
-   subline. Stable height across states: US/MX & a down feed render a same-height note, never a silent
-   collapse that jumps the header. */
-.bmf-app .firestats{ flex:0 0 auto; z-index:2; display:flex; flex-direction:column; gap:2px; padding:8px 10px; background:var(--card-bg); border-bottom:1px solid var(--stroke); }
-.bmf-app .firestats[hidden]{ display:none; }
-.bmf-app .fstat-row{ display:flex; align-items:stretch; }
-.bmf-app .fstat-row[hidden]{ display:none; }
-.bmf-app .fstat{ flex:1 1 0; min-width:0; display:flex; flex-direction:column; align-items:center; gap:1px; padding:0 8px; border-right:1px solid var(--hair); text-align:center; }
-.bmf-app .fstat:last-child{ border-right:0; }
-.bmf-app .fstat b{ font-family:var(--mono); font-size:var(--fs-lg); font-weight:var(--fw-bold); color:var(--text); line-height:1.05; white-space:nowrap; }
-.bmf-app .fstat span{ font-size:var(--fs-micro); letter-spacing:.02em; color:var(--dim); line-height:1.15; }
-.bmf-app .fstat-season{ font-family:var(--mono); font-size:var(--fs-micro); color:var(--text-subtle); text-align:center; letter-spacing:.02em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.bmf-app .fstat-season[hidden]{ display:none; }
-.bmf-app .fstat-note{ font-size:var(--fs-meta); color:var(--dim); text-align:center; padding:5px 0 4px; }
-.bmf-app .fstat-note[hidden]{ display:none; }
-
-/* Map controls — a short row: the summoned Layers + Sources sheets only. The eight layer toggles and the
-   full per-mark legend live INSIDE the Layers sheet, so this row stays short and the map keeps its height
-   (no more eight-chip horizontal scroller). Buttons are rounded-rect on the field register — never pills. */
-.bmf-app .firetools{ flex:0 0 auto; z-index:2; display:flex; align-items:center; gap:8px; padding:7px 12px; background:var(--card-bg); border-bottom:1px solid var(--stroke); }
-.bmf-app .ftbtn{ flex:0 0 auto; display:inline-flex; align-items:center; gap:7px; min-height:38px; padding:7px 13px; border-radius:var(--r-md); border:1px solid var(--stroke); background:var(--field); color:var(--text); font-family:var(--font); font-size:var(--fs-meta); cursor:pointer; white-space:nowrap; transition:background .15s ease, border-color .15s ease; }
+/* Map-sheet buttons (Layers / Sources) — compact, field register, living in the control bar. The label
+   collapses to icon-only on narrow phones so the bar never crowds the region selector. Never pills. */
+.bmf-app .ftbtn{ flex:0 0 auto; display:inline-flex; align-items:center; gap:6px; min-height:38px; padding:7px 11px; border-radius:var(--r-md); border:1px solid var(--stroke); background:var(--field); color:var(--text); font-family:var(--font); font-size:var(--fs-meta); cursor:pointer; white-space:nowrap; transition:background .15s ease, border-color .15s ease; }
 .bmf-app .ftbtn:hover{ border-color:var(--ember); }
 .bmf-app .ftbtn svg{ width:16px; height:16px; flex:0 0 auto; }
 .bmf-app .ftbtn .ftn{ font-family:var(--mono); font-size:var(--fs-micro); font-weight:var(--fw-bold); color:var(--ember-hi); }
+.bmf-app .ftbtn .ftn:empty{ display:none; }
+@media (max-width:389px){ .bmf-app .firebar .ftbtn .lbl{ display:none; } }
+
+/* Compact status block (CIFFC) — a bold lead (live count + region, data-lf-head) with the two supporting
+   season numbers folded in as inline mini-stats, then a tiny freshness sub + the demoted season subline.
+   A same-height note swaps in for US/MX / a down feed, so the honest empty≠down≠off states never collapse
+   the header. Far slimmer than the old three big hero cells (which ate a whole row). */
+.bmf-app .firestats{ flex:0 0 auto; z-index:2; display:flex; flex-direction:column; gap:2px; padding:7px 12px 8px; background:var(--card-bg); border-bottom:1px solid var(--stroke); }
+.bmf-app .firestats[hidden]{ display:none; }
+.bmf-app .fstat-head{ display:flex; align-items:baseline; justify-content:space-between; gap:6px 16px; flex-wrap:wrap; }
+.bmf-app .firestats .t{ min-width:0; font-size:var(--fs-md); font-weight:var(--fw-bold); color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.bmf-app .fstat-mini{ flex:0 0 auto; display:flex; align-items:baseline; gap:14px; font-size:var(--fs-tag); color:var(--dim); white-space:nowrap; }
+.bmf-app .fstat-mini[hidden]{ display:none; }
+.bmf-app .fstat-mini b{ font-family:var(--mono); font-weight:var(--fw-bold); color:var(--text); margin-right:5px; }
+.bmf-app .firestats .s{ font-size:var(--fs-micro); color:var(--dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.bmf-app .fstat-season{ font-family:var(--mono); font-size:var(--fs-micro); color:var(--text-subtle); letter-spacing:.02em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.bmf-app .fstat-season[hidden]{ display:none; }
+.bmf-app .fstat-note{ font-size:var(--fs-meta); color:var(--dim); padding:3px 0 2px; }
+.bmf-app .fstat-note[hidden]{ display:none; }
 
 /* Layers sheet — tiered toggles (reuse .srow/.toggle) + the full legend. A layer row's icon slot carries a
    legend swatch; a country-gated tier shows a reason badge instead of a toggle. */
@@ -128,9 +129,12 @@ const CSS = `
 .bmf-app .leaflet-control-attribution{ background:var(--card-soft); color:var(--dim); }
 .bmf-app .leaflet-control-attribution a{ color:var(--menu); }
 
-/* Slide-up detail sheet — the full CWFIS record (bounded inner scroll is allowed for a long field list). */
-.bmf-app .firesheet{ position:absolute; left:0; right:0; bottom:0; z-index:402; max-height:64%; overflow-y:auto; -webkit-overflow-scrolling:touch;
-  background:var(--card-bg); border-top:1px solid var(--warm-stroke); border-radius:var(--r-xl) var(--r-xl) 0 0; box-shadow:var(--shadow-card); padding:10px 16px 16px; }
+/* Slide-up bottom sheet — the Layers panel + the full CWFIS detail record (bounded inner scroll is
+   allowed for a long field list). z-index clears Leaflet's control layer (its zoom +/- container sits at
+   1000) so the map controls can't poke OVER an open sheet; the warm-stroke lip + grab handle read it as a
+   draggable sheet, not a flat panel pasted on the map. */
+.bmf-app .firesheet{ position:absolute; left:0; right:0; bottom:0; z-index:1200; max-height:66%; overflow-y:auto; -webkit-overflow-scrolling:touch;
+  background:var(--card-bg); border-top:1px solid var(--warm-stroke); border-radius:var(--r-xl) var(--r-xl) 0 0; box-shadow:var(--shadow-card); padding:0 16px 16px; }
 .bmf-app .firesheet[hidden]{ display:none; }
 /* Branded scrollbar — warm ember thumb (the "fight" register), floating on a clear track, pill-capped. */
 .bmf-app .firesheet{ scrollbar-width:thin; scrollbar-color:var(--ember-50) transparent; }
@@ -138,7 +142,12 @@ const CSS = `
 .bmf-app .firesheet::-webkit-scrollbar-track{ background:transparent; }
 .bmf-app .firesheet::-webkit-scrollbar-thumb{ background:var(--ember-50); border-radius:var(--r-pill); border:2px solid transparent; background-clip:padding-box; }
 .bmf-app .firesheet::-webkit-scrollbar-thumb:hover{ background:var(--ember); background-clip:padding-box; }
-.bmf-app .fsheet-head{ position:sticky; top:0; display:flex; align-items:flex-start; gap:10px; padding:4px 0 9px; background:var(--card-bg); }
+/* Sticky header: z-index lifts it ABOVE the scrolling rows below it (it's first in DOM, so without a
+   stacking boost later rows paint over it and the title looks like content is bleeding through it); the
+   opaque fill + hairline then let rows tuck cleanly underneath. The ::before is the bottom-sheet grab
+   handle — the affordance that reads the panel as a draggable sheet rather than a flat overlay. */
+.bmf-app .fsheet-head{ position:sticky; top:0; z-index:2; display:flex; align-items:flex-start; gap:10px; padding:16px 0 10px; background:var(--card-bg); border-bottom:1px solid var(--hair); }
+.bmf-app .fsheet-head::before{ content:""; position:absolute; top:6px; left:50%; transform:translateX(-50%); width:38px; height:4px; border-radius:var(--r-pill); background:var(--stroke-strong); }
 .bmf-app .fsheet-ttl{ font-family:var(--mono); font-size:var(--fs-md); font-weight:var(--fw-bold); color:var(--text); }
 .bmf-app .fgroup{ margin-top:12px; }
 .bmf-app .fgh{ font-family:var(--mono); font-size:var(--fs-micro); letter-spacing:.12em; text-transform:uppercase; color:var(--ember-hi); margin-bottom:4px; }
@@ -504,6 +513,11 @@ const CSS = `
   font-size:var(--fs-meta); font-weight:var(--fw-semibold); letter-spacing:.04em; color:var(--dim); white-space:nowrap; }
 .bmf-app .pts-bal svg{ width:14px; height:14px; color:var(--ember-hi); flex:none; }
 .bmf-app .pts-bal b{ color:var(--menu); font-weight:var(--fw-bold); }
+/* Inline spendable-points chip — the bare ◇ spark wallet (no pill) shown in the dossier meta row, so the
+   spendable balance reads alongside the Career total. Same colour language as .pts-bal. */
+.bmf-app .pts-ic{ display:inline-flex; align-items:center; gap:5px; }
+.bmf-app .pts-ic svg{ width:13px; height:13px; color:var(--ember-hi); flex:none; }
+.bmf-app .pts-ic b{ color:var(--menu); font-weight:var(--fw-bold); }
 .bmf-app .heli-foot{ display:flex; flex-direction:column; gap:8px; }
 
 /* ===== Open Skies — aircraft picker as a 3-up grid of selectable card-buttons (warm "fight" register).
@@ -773,6 +787,10 @@ const CSS = `
   /* Menu overlays (Settings · Open Skies): a wide centred column. */
   .bmf-app:not(.home):not(.newpilot) .pad{ max-width:760px;
     padding-top:calc(env(safe-area-inset-top) + 30px); padding-bottom:120px; }
+  /* The live-fire MAP is the exception — a map wants the whole desktop, not a 760px phone column. Full
+     bleed (no max-width, no top padding: the firebar IS the top chrome), so it fills the screen. */
+  .bmf-app:not(.home):not(.newpilot) .pad:has(> .firewrap){ max-width:none; padding-top:0; padding-bottom:calc(var(--rail-h) + env(safe-area-inset-bottom)); }
+  .bmf-app.front-nav:not(.home):not(.newpilot) .pad:has(> .firewrap){ padding-bottom:calc(58px + env(safe-area-inset-bottom)); }
   /* Carousels (Campaign region picker · Hangar) become a GRID on desktop — every card visible at
      once, no chevrons, no per-view paging. Maps (4) and aircraft (3) each fit one balanced row that
      fills the wider column, so a desktop stops reading like a stretched phone. The carousel JS still

@@ -85,28 +85,34 @@ export function openBoard(): void {
   openLeaderboard(menuCatalog);
 }
 
-/** Build a focused full-screen overlay WITH the persistent bottom rail. `key` is the overlay's identity
+/** Build a focused full-screen overlay WITH a persistent bottom nav. `key` is the overlay's identity
  *  (the active-overlay guard / no-op-on-same-tab check); `railActive` is which rail TAB lights up,
  *  defaulting to `key`. Sub-screens that aren't themselves a rail destination (the live-fire tracker,
  *  Settings) pass a real rail key — `home` — so the rail still shows an active tab like every sibling
- *  overlay, instead of rendering with nothing lit. Navigation is the rail's job (no back button); Esc /
- *  the rail's Home tab return to the hub. Returns the root + a close() helper. */
+ *  overlay, instead of rendering with nothing lit.
+ *
+ *  `navMarkup` swaps the WHOLE bottom nav: a surface reached from the FRONT DOOR (e.g. the live-fire
+ *  tracker opened off the home bento) passes the front-door tabbar so it wears the SAME nav as the rest
+ *  of the front-door site (Home / Campaign / Prepare / Shop), not the in-game mode rail. The root then
+ *  gets `.front-nav` so the tabbar styling adapts (visible on desktop too, since the overlay has no top
+ *  appbar). Navigation is the nav's job (no back button); Esc / the Home tab return to the hub. */
 function overlay(
   key: string,
   title: string,
   body: string,
   onClose?: () => void,
   railActive: string = key,
+  navMarkup?: string,
 ): { root: HTMLDivElement; close: () => void } {
   injectHomeStyles();
   const root = document.createElement('div');
-  root.className = 'bmf-app';
+  root.className = navMarkup ? 'bmf-app front-nav' : 'bmf-app';
   root.style.zIndex = '60';
   root.innerHTML =
     DEFS +
     `<div class="scene"></div><div class="embers"></div>` +
     `<div class="pad"><div class="appbar"><div class="ttl">${title}</div></div>${body}</div>` +
-    railNav(railActive);
+    (navMarkup ?? railNav(railActive));
   document.body.appendChild(root);
   const embers = root.querySelector<HTMLElement>('.embers');
   if (embers) spawnEmbers(embers, 10);
@@ -353,7 +359,7 @@ export function openCoop(): void {
       </div>
     </div>
     <div class="osky-pick">
-      <div class="sec"><span class="tag">Your aircraft</span><span class="line"></span></div>
+      <div class="sec"><span class="tag">Your aircraft</span><span class="line"></span><span class="pts-bal">${ic('spark')}<b>${availablePoints().toLocaleString()}</b><span>pts</span></span></div>
       <div class="heligrid">${HELIS.map(heliCard).join('')}</div>
       <div class="osky-cta">
         <button class="btn ember block" data-fly>${ic('play')}${PROVINCE_COPY.cta}</button>
@@ -640,7 +646,10 @@ function banDetailHtml(b: BanArea): string {
  * dynamically imported so it only loads when the map is opened (keeps the home bundle lean). Opened from
  * the Home banner (like Board/Settings — not a rail tab); the map owns its own pan/zoom (page never scrolls).
  */
-export function openLiveFires(): void {
+/** The live wildfire tracker. `navMarkup` (optional) overrides the bottom nav: the FRONT DOOR passes its
+ *  own tabbar (`tabbarMarkup`) so the tracker reads as a front-door page; called bare (from the in-game
+ *  home) it falls back to the mode rail with Home lit. */
+export function openLiveFires(navMarkup?: string): void {
   activeOverlay?.close(); // opened directly (not via the rail) — clear any panel that was up
   const options = COUNTRIES.map((c) => `<option value="${c.id}">${c.label}</option>`).join('');
   const C = LIVEFIRE_COPY;
@@ -648,15 +657,22 @@ export function openLiveFires(): void {
   // ledger names it for ("Forecast · Jun 10"). Computed once so the tile layer + the label always agree.
   const fwiDayLabel = new Date(`${fwiForecastTime()}T00:00:00Z`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
 
-  // National summary stat strip (CIFFC) — three HEADLINE numbers ("how bad, right now") + a demoted season
-  // subline. The strip holds a STABLE height across states: paintStats swaps in a same-height note for the
-  // US/MX filter or a down feed, so the header never jumps. Hero values settle in via paintStats.
-  const statCell = (key: string, label: string): string =>
-    `<div class="fstat"><b data-lf-stat="${key}">—</b><span>${label}</span></div>`;
+  // Compact status block (CIFFC) — ONE bold lead line that carries the live active-fire count + region
+  // (data-lf-head, painted by `paint`), with the two supporting season numbers folded in as inline
+  // mini-stats (today / this year) so the old three big hero cells no longer eat a whole row. A tiny
+  // freshness sub + the demoted season subline sit under it, and a same-height note swaps in for the
+  // US/MX filter or a down feed — the honest empty≠down≠off states are preserved (paintStats just hides
+  // the mini-stats + season and shows the note). `set('active', …)` in paintStats now no-ops (the cell is
+  // gone — the count lives in the lead), which is why paint/paintStats need no change.
   const statStrip =
-    `<div class="fstat-row" data-lf-stat-row>` +
-    statCell('active', C.strip.active) + statCell('today', C.strip.today) + statCell('area', C.strip.area) +
+    `<div class="fstat-head">` +
+    `<b class="t" data-lf-head>${C.bannerLoading}</b>` +
+    `<div class="fstat-mini" data-lf-stat-row>` +
+    `<span><b data-lf-stat="today">—</b>${C.strip.today}</span>` +
+    `<span><b data-lf-stat="area">—</b>${C.strip.area}</span>` +
     `</div>` +
+    `</div>` +
+    `<div class="s" data-lf-sub>${C.hint}</div>` +
     `<div class="fstat-season" data-lf-season hidden></div>` +
     `<div class="fstat-note" data-lf-note hidden></div>`;
 
@@ -679,17 +695,17 @@ export function openLiveFires(): void {
   // Visible-layer mirror (matches FireMap's own default `visible`); mutated as toggles flip in the sheet.
   const layerOn: Record<FireLayer, boolean> = { reported: true, out: false, hotspots: true, perimeters: true, fwi: false, smoke: false, alerts: false, bans: false };
 
+  // The header is now TWO slim rows, not three: a control bar (region filter + refresh + the Layers /
+  // Sources sheet buttons) and the compact status block above — so the map keeps far more height.
   const body = `<div class="firewrap">
     <div class="firebar">
-      <div class="grow" style="min-width:0;"><div class="t" data-lf-head>${C.bannerLoading}</div><div class="s" data-lf-sub>${C.hint}</div></div>
       <select class="firesel" data-lf-country aria-label="Country filter">${options}</select>
-      <button class="iconbtn" data-lf-refresh aria-label="Refresh">${ic('motion')}</button>
+      <span class="grow"></span>
+      <button class="iconbtn" data-lf-refresh aria-label="Refresh">${ic('refresh')}</button>
+      <button class="ftbtn" data-lf-layers aria-label="Map layers">${ic('map')}<span class="lbl">${C.layersBtn}</span><span class="ftn" data-lf-layern></span></button>
+      <button class="ftbtn" data-lf-sources aria-label="Data sources &amp; freshness">${ic('shield')}<span class="lbl">${C.sourcesBtn}</span></button>
     </div>
     <div class="firestats" data-lf-stats>${statStrip}</div>
-    <div class="firetools">
-      <button class="ftbtn" data-lf-layers aria-label="Map layers">${ic('map')}${C.layersBtn}<span class="ftn" data-lf-layern></span></button>
-      <button class="ftbtn" data-lf-sources aria-label="Data sources & freshness">${ic('shield')}${C.sourcesBtn}</button>
-    </div>
     <div class="firemap" data-lf-map></div>
     <div class="firescrub" data-lf-scrub hidden>
       <button class="iconbtn" data-lf-play aria-label="Play forecast">${ic('play')}</button>
@@ -713,7 +729,7 @@ export function openLiveFires(): void {
     if (smokeTimer !== null) { clearInterval(smokeTimer); smokeTimer = null; } // no orphaned interval (leak guard)
     map?.dispose();
     map = null;
-  }, 'home');
+  }, 'home', navMarkup);
 
   const headEl = root.querySelector<HTMLElement>('[data-lf-head]')!;
   const subEl = root.querySelector<HTMLElement>('[data-lf-sub]')!;
@@ -1209,7 +1225,7 @@ export function openSettings(): void {
   const body = `<div class="card" style="margin-top:8px;">
     <div class="srow"><div class="ic">${ic('volume')}</div><div class="grow"><div class="t">Sound</div><div class="s">Rotor loop &amp; SFX</div></div>
       <div class="toggle ${muted ? '' : 'on'}" data-sound role="switch" tabindex="0"><span class="knob"></span></div></div>
-    <div class="srow"><div class="ic">${ic('motion')}</div><div class="grow"><div class="t">Reduced motion</div><div class="s">Calm the menus</div></div>
+    <div class="srow"><div class="ic">${ic('accessibility')}</div><div class="grow"><div class="t">Reduced motion</div><div class="s">Calm the menus</div></div>
       <div class="toggle" data-rm role="switch" tabindex="0"><span class="knob"></span></div></div>
   </div>
   <div class="card" style="margin-top:12px;">

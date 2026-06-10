@@ -9,7 +9,7 @@
  * is its own screen; Board + Settings live on the dossier card. main.ts stays the routing authority.
  */
 import type { MissionDef } from '../../missions/types';
-import { loadProfile, MAPS } from '../profile';
+import { loadProfile, availablePoints, MAPS } from '../profile';
 import { PROVINCE_COPY } from '../../province/strings';
 import { careerScore, rankFor, nextRankProgress } from '../../missions/rank';
 import { isConfigured, fetchCareerStanding } from '../../leaderboard/client';
@@ -53,6 +53,7 @@ export class HomeScreen {
     const name = (profile?.name || 'Pilot').toUpperCase();
 
     const pts = careerScore();
+    const wallet = availablePoints(); // the spendable points balance (career minus what's been spent on aircraft)
     const rank = rankFor(pts);
     const np = nextRankProgress(pts);
     const xpLine = np.next ? `${np.next.name} in ${np.remaining.toLocaleString('en-US')}` : 'Top rank';
@@ -84,7 +85,7 @@ export class HomeScreen {
       <div class="helmet"><div class="clip">${HELMET}<span class="sheen"></span></div></div>
       <div class="grow">
         <div class="row wrap" style="gap:9px;"><span class="h-screen">${name}</span><span class="rank" style="--rk:${rank.color}"><i></i>${rank.name}</span></div>
-        <div class="row mono" style="gap:8px;margin-top:7px;font-size:var(--fs-meta);color:var(--dim);"><span><b style="color:var(--menu);font-weight:var(--fw-bold)">${pts.toLocaleString('en-US')}</b> pts</span><span>·</span><span>Career</span></div>
+        <div class="row mono" style="gap:8px;margin-top:7px;font-size:var(--fs-meta);color:var(--dim);"><span class="pts-ic">${ic('spark')}<b>${wallet.toLocaleString('en-US')}</b> pts</span><span>·</span><span>${pts.toLocaleString('en-US')} Career</span></div>
       </div>
     </div>
     <div style="margin-top:14px;">

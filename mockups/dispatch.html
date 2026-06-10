@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>bucketmyfire — Dispatch (in-game menu, prototype)</title>
+<!--
+  PROTOTYPE — the DEMOTED in-game "Dispatch" menu (what the old HomeScreen becomes once the unified
+  dashboard front door is the only landing). Reference only, NOT the source of truth.
+  This IS an in-game surface, so it uses the full kit (no-scroll, single-viewport, bottom rail).
+  Deliberately NO live-fire banner and NO shop promo card here — those live ONCE on the dashboard /
+  rail, not duplicated. Keeps: pilot dossier + Board/Settings, and a CLEAR Open Skies vs Solo picker.
+  data-rail="false" suppresses the kit's default rail so we can show the proposed 5-tab rail.
+-->
+<link rel="stylesheet" href="kit.css">
+<style>
+  /* page-local helpers (mockup-only) */
+  .iconbtn{ width:38px; height:38px; flex:0 0 auto; border-radius:var(--r-sm); border:1px solid var(--stroke);
+    background:var(--card-soft); color:var(--menu-soft); display:grid; place-items:center; cursor:pointer;
+    transition:border-color .14s, transform .14s; }
+  .iconbtn:hover{ border-color:var(--warm-stroke); transform:translateY(-1px); color:var(--ember-hi); }
+  .iconbtn svg{ width:17px; height:17px; fill:none; stroke:currentColor; stroke-width:1.9; stroke-linecap:round; stroke-linejoin:round; }
+  .mode{ display:flex; flex-direction:column; gap:0; }
+  .mode .ttl{ font-size:var(--fs-hero); font-weight:var(--fw-black); letter-spacing:.02em; color:#fff; }
+  .mode p{ margin-top:7px; font-size:var(--fs-body); line-height:1.44; color:var(--text-subtle); max-width:40ch; }
+  .axis{ font-family:var(--mono); font-size:var(--fs-micro); letter-spacing:.16em; text-transform:uppercase; color:var(--faint); font-weight:var(--fw-bold); }
+  .axis b{ color:var(--ember-hi); font-weight:var(--fw-bold); }
+  /* proposed 5-tab rail (overrides the kit's default tab set, suppressed via data-rail=false) */
+</style>
+</head>
+<body data-screen="dispatch" data-rail="false">
+<main class="app">
+  <div class="app__pad">
+
+    <!-- ============ PILOT DOSSIER (kept) ============ -->
+    <header class="card card--warm card--cut rise d1">
+      <div class="row between">
+        <div class="brand__mark" aria-label="bucketmyfire">
+          <svg class="flame" viewBox="0 0 149.7 184.72"><polygon points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/><path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/><path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/></svg>
+        </div>
+        <div class="row gap8">
+          <div class="grank"><span class="grank__num">#214</span><span class="grank__lbl">Global</span></div>
+          <button class="iconbtn" data-nav="board" aria-label="Leaderboard"><svg viewBox="0 0 24 24"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg></button>
+          <button class="iconbtn" data-nav="settings" aria-label="Settings"><svg viewBox="0 0 24 24"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg></button>
+        </div>
+      </div>
+
+      <div class="row gap12 mt12">
+        <div class="helmet-bezel">
+          <div class="helmet-clip" aria-label="Pilot">
+            <svg viewBox="0 0 358.46 358.48"><path d="M141.4,339.24l-.64,12.79-34.37-.23c-21.47-.14-38.75-16.55-43.86-36.87l-5.44-21.64,13.48,1.23,3.65,14.66c3.94,15.83,15.85,29.69,33.05,29.81l34.13.25Z"/><path d="M26.44,255.79c-7.22.5-13.98-4.37-15.4-11.49L.27,190.23c-1.69-8.48,4.81-16.16,12.76-17.11,1.22,28.16,5.52,54.92,13.42,82.68Z"/><path d="M347.52,243.93c-1.51,7.61-8.12,12.15-15.54,12.04,7.74-27.11,12.19-54.35,13.44-82.84,7.96.94,14.45,8.63,12.77,17.11l-10.67,53.69Z"/><path d="M196.83,358.23l-35.73.25c-1.89.01-5.39-1.13-6.17-2.55-3.1-5.61-1.42-16.47,3.49-16.5l36.84-.22c5.16-.03,9.05,4.09,9.52,8.77.39,3.84-2.42,10.21-7.95,10.25Z"/><path d="M281.15,128.09l-204.85.05c-13.4,0-24.81,10.83-24.83,24.05l-.07,44.03c-.02,12.26,4.98,23.32,11.37,33.39,3.01,17.59,6.97,34.21,11.58,51.38-12.88,2.58-27.2-3.41-31.59-16.32-12.48-36.65-18.27-74.87-16.82-113.61C29.1,66.68,93.24,0,179.24,0c54.49,0,104.24,27.41,131.46,74.92,13.32,23.24,20.85,48.94,21.83,76.27,1.39,38.93-4.36,77.43-17.15,114.14-4.4,12.64-18.85,18.08-31.11,15.67,4.48-17.29,8.37-33.85,11.44-51.4,6.36-10.09,11.38-21.11,11.36-33.4l-.07-43.92c-.02-14.16-11.98-24.19-25.85-24.19Z"/><path d="M200.65,217.41c-4.65-8.21-12.63-12.29-20.97-12.41-8.19-.11-16.9,3.65-21.21,11.47-11.05,20.02-33.56,30.86-56.05,25.4-20.82-5.05-38.16-23.92-38.17-46.63l-.02-43.23c0-4.48,4.87-10.89,10.16-10.89h209.71c5.32,0,10.18,6.41,10.18,10.89l-.03,43.22c-.01,22.44-16.93,41.16-37.39,46.44-22.05,5.68-44.85-4.26-56.19-24.26ZM88.27,176.82l13.27-13.53c1.73-1.76.46-6.47-1.13-7.86-1.43-1.26-6.36-2.34-7.77-.94l-14.16,14c-2.46,2.43-1.66,7.1.69,9.11s6.37,1.99,9.09-.79ZM95.13,208.43l44.11-44.16c2.45-2.45,1.48-7.11-.58-9.09-1.62-1.56-6.5-2.03-8.51-.03l-44.94,44.94c-2.78,2.78-2.09,7.26.2,9.33,2.83,2.55,6.55,2.17,9.71-1Z"/></svg>
+            <span class="sheen"></span>
+          </div>
+        </div>
+        <div class="grow">
+          <div class="row gap8 wrap"><span class="h-screen">WATER-1</span><span class="rank tier-hotshot"><span class="pip"></span>Hotshot</span></div>
+          <div class="row gap8 mt8 mono" style="font-size:var(--fs-meta);color:var(--dim);"><span><b style="color:var(--menu);font-weight:var(--fw-bold)">4,210</b> pts</span><span class="dot"></span><span>Career</span></div>
+        </div>
+      </div>
+
+      <div class="mt16">
+        <div class="bar-row"><span class="l">Rank advance</span><span class="r">Veteran in 5,790</span></div>
+        <div class="bar cap"><i style="width:42%"></i></div>
+      </div>
+    </header>
+
+    <!-- ============ MODE PICKER — the ONE place you choose how to fly ============ -->
+    <div class="sec rise d2"><span class="tag">Dispatch</span><span class="line"></span><span class="stamp">Choose your shift</span></div>
+
+    <!-- OPEN SKIES — the live shared shift -->
+    <section class="card card--warm card--cut crt rise d2" style="margin-bottom:12px;">
+      <span class="crt-streak"></span>
+      <div class="row between gap8">
+        <div class="mode grow">
+          <div class="row gap8 wrap" style="margin-bottom:9px;">
+            <span class="chip--status ok" style="display:inline-flex;align-items:center;gap:6px;"><span class="led blink"></span>24 live</span>
+            <span class="axis">shared&nbsp;·&nbsp;<b>ranked</b></span>
+          </div>
+          <span class="ttl">Open Skies</span>
+          <p>Everyone flies today's province. Dispatch calls as fires break out, ghost pilots on your wing, one shared daily board.</p>
+        </div>
+      </div>
+      <button class="btn primary block mt16" data-nav="coop"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>Fly the shift</button>
+    </section>
+
+    <!-- SOLO — your own pace -->
+    <section class="card card--cut rise d3">
+      <div class="mode">
+        <div class="row gap8 wrap" style="margin-bottom:9px;">
+          <span class="axis">private&nbsp;·&nbsp;<b>your map</b></span>
+        </div>
+        <span class="ttl">Solo</span>
+        <p>Pick a map. Same fires, no ghosts — off the board, at your own pace.</p>
+      </div>
+      <button class="btn ember block mt16" data-nav="maps"><svg viewBox="0 0 24 24"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21 3 6"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg>Pick a map &amp; fly solo</button>
+    </section>
+
+  </div>
+</main>
+
+<!-- ============ PROPOSED 5-TAB RAIL (Home · Open Skies · Solo · Hangar · Shop) ============ -->
+<nav class="rail" aria-label="Primary">
+  <div class="keys">
+    <button class="key active" aria-current="page"><span class="tick"></span>
+      <svg class="line" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg>
+      <span class="lbl">Dispatch</span></button>
+    <button class="key" data-nav="coop">
+      <svg class="line" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5Z"/></svg>
+      <span class="lbl">Open Skies</span></button>
+    <button class="key" data-nav="maps">
+      <svg class="line" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      <span class="lbl">Solo</span></button>
+    <button class="key" data-nav="hangar">
+      <svg class="line" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="7" x2="14" y2="7"/><line x1="8.5" y1="7" x2="8.5" y2="4.5"/><path d="M4 13.5c0-2 1.6-3.5 3.5-3.5H11l5 2.5"/><path d="M4 13.5h8a2.5 2.5 0 0 0 2.5-2.5"/><line x1="16" y1="12.5" x2="21" y2="11"/><line x1="20" y1="9" x2="20" y2="14"/><path d="M7 16l-1.5 3"/></svg>
+      <span class="lbl">Hangar</span></button>
+    <button class="key" data-nav="shop">
+      <svg class="line" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+      <span class="lbl">Shop</span></button>
+  </div>
+</nav>
+
+<script src="kit.js"></script>
+</body>
+</html>

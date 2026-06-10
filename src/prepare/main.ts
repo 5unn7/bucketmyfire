@@ -52,8 +52,9 @@ ${frontAppbar('prepare')}
 
   <section class="card cut">
     <div class="sec"><span class="tag">Field Notes</span><span class="line"></span></div>
-    <div class="mono" style="font-size:var(--fs-meta);color:var(--dim);margin:0 2px 13px">Our own research, written plainly.</div>
+    <div class="mono" style="font-size:var(--fs-meta);color:var(--dim);margin:0 2px 13px">Our own research, written plainly — the home of Field Notes.</div>
     <div class="fd-mgrid" id="fd-prep-rail"></div>
+    <a class="btn ghost sm" href="/blog/" style="margin-top:14px">Browse all Field Notes →</a>
   </section>
 
   ${buildFooter()}

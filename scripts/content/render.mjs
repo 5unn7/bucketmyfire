@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { parseFrontmatter, renderMarkdown } from './markdown.mjs';
 import { articlePage, indexPage, pillarPage, ogCardSvg, PILLARS, pillarTitle } from './template.mjs';
 import { heroSvg } from './art.mjs';
+import { navCss } from '../../src/site/siteNav.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..', '..');
@@ -73,7 +74,9 @@ export function loadArticles(root = ROOT) {
 
 function loadCss(root) {
   const tokens = fs.readFileSync(path.join(root, 'mockups', 'tokens.css'), 'utf8');
-  return `${tokens}\n${BLOG_CSS}`;
+  // navCss = the SHARED appbar + mobile tab bar + breadcrumb (siteNav.mjs), the same chrome the front
+  // door injects, so the blog wears the identical nav. BLOG_CSS is the article-body styling only.
+  return `${tokens}\n${navCss}\n${BLOG_CSS}`;
 }
 
 /** Best-effort self-host the two variable fonts so the blog matches the app; non-fatal if absent. */
@@ -217,28 +220,12 @@ a:hover{color:var(--ember)}
 .fn-skip{position:absolute;left:-9999px;top:0;background:var(--menu);color:#3a2406;padding:8px 12px;border-radius:8px}
 .fn-skip:focus{left:8px;top:8px;z-index:50}
 h1,h2,h3,h4{font-weight:800;letter-spacing:-0.01em;line-height:1.15;color:#fff}
-.fn-bar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:12px;min-height:56px;
-  padding:10px max(14px,env(safe-area-inset-left));
-  background:linear-gradient(180deg,rgba(7,10,13,0.92),rgba(7,10,13,0.55));
-  backdrop-filter:blur(10px) saturate(120%);-webkit-backdrop-filter:blur(10px) saturate(120%);
-  border-bottom:1px solid var(--hair)}
-.fn-brand{display:inline-flex;align-items:center;gap:10px;color:var(--text)}
-.fn-glyph{width:34px;height:34px;display:grid;place-items:center;border-radius:var(--r-md);
-  border:1px solid var(--warm-stroke);background:radial-gradient(circle at 40% 30%,var(--warm-38),rgba(10,12,14,0.9));
-  box-shadow:inset 0 0 10px var(--ember-35),0 0 14px var(--ember-12)}
-.fn-glyph img{width:17px;height:17px;display:block}
-.fn-brand b{font-family:var(--mono);font-weight:800;font-size:13px;letter-spacing:0.16em;text-transform:uppercase}
-.fn-spacer{flex:1}
-.fn-navlink{font-family:var(--mono);font-size:11px;letter-spacing:0.12em;text-transform:uppercase;
-  font-weight:700;color:var(--dim);padding:10px 11px;min-height:44px;display:inline-flex;align-items:center}
-.fn-navlink:hover{color:var(--ember-hi)}
-@media (max-width:520px){.fn-brand b{display:none}.fn-navlink{padding:10px 8px}}
+/* The appbar (.fhome-bar), mobile tab bar (.fd-tabbar) and breadcrumb (.site-crumbs) come from the
+   SHARED siteNav.mjs navCss (inlined by loadCss) — one source with the front door. Only the article
+   body + content-column styling lives here. */
 .fn-wrap{max-width:760px;margin:0 auto;padding:26px max(16px,env(safe-area-inset-left)) 64px}
-.fn-crumbs{font-family:var(--mono);font-size:var(--fs-meta);letter-spacing:0.06em;color:var(--dim);margin-bottom:18px}
-.fn-crumbs a{color:var(--dim)}.fn-crumbs a:hover{color:var(--ember-hi)}.fn-crumbs span{opacity:0.5;margin:0 4px}
-.fn-eyebrow{font-family:var(--mono);font-size:var(--fs-label);letter-spacing:0.24em;text-transform:uppercase;color:var(--menu);font-weight:700;margin:0 0 12px}
-.fn-title{font-size:clamp(28px,5vw,44px);margin:0 0 14px;text-wrap:balance}
-.fn-dateline{font-family:var(--mono);font-size:var(--fs-sm);color:var(--dim);margin:0 0 26px}
+/* Page titles (eyebrow + headline + lede) use the SHARED .fd-hero standard from siteNav navCss. */
+.fn-dateline{font-family:var(--mono);font-size:var(--fs-sm);color:var(--dim);margin:10px 0 26px}
 .fn-hero{margin:0 0 22px;border-radius:var(--r-lg);overflow:hidden;border:1px solid var(--stroke);
   border-top-color:var(--stroke-strong);box-shadow:var(--shadow-card);aspect-ratio:1200/630;background:var(--card-bg)}
 .fn-hero img{display:block;width:100%;height:100%;object-fit:cover}

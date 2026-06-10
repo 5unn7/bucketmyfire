@@ -16,7 +16,7 @@ import { injectKitStyles } from './three/ui/components/base';
 import { injectHomeStyles } from './three/ui/home/styles';
 import { navigateRail, openLiveFires, setMenuCatalog } from './three/ui/home/menus';
 import { DEFS, FLAME, HELMET, ic } from './three/ui/home/icons';
-import { loadProfile } from './three/ui/profile';
+import { loadProfile, availablePoints } from './three/ui/profile';
 import { careerScore, rankFor, nextRankProgress } from './three/missions/rank';
 import { injectShellStyles, tabbarMarkup, buildFooter } from './site/shell';
 import { injectFrontShell, frontScene, frontAppbar, spawnFrontEmbers, wireFrontAppbar } from './site/frontShell';
@@ -122,26 +122,32 @@ function dossierMarkup(): string {
   if (!profile?.name) {
     return (
       `<header class="card warm cut fhome-dossier">` +
-      `<div class="row fhome-dnew">` +
-      `<div class="brand">${FLAME}</div>` +
-      `<div class="grow"><div class="h-screen fhome-dnew-h">New pilot</div>` +
-      `<div class="mono fhome-dnew-sub">Fly once and you'll get a callsign, a rank, and a place on the board.</div></div>` +
-      `</div></header>`
+      `<div class="fd-hero">` +
+      `<div class="fd-hero-lead"><div class="brand">${FLAME}</div></div>` +
+      `<div class="fd-hero-main">` +
+      `<p class="fd-hero-eyebrow">Welcome</p>` +
+      `<div class="fd-hero-head">New pilot</div>` +
+      `<p class="fd-hero-sub">Fly once and you'll get a callsign, a rank, and a place on the board.</p>` +
+      `</div></div></header>`
     );
   }
   const name = profile.name.toUpperCase();
   const pts = careerScore();
+  const wallet = availablePoints(); // the spendable points balance (career minus what's been spent on aircraft)
   const rank = rankFor(pts);
   const np = nextRankProgress(pts);
   const xpLine = np.next ? `${np.next.name} in ${np.remaining.toLocaleString('en-US')}` : 'Top rank';
   return (
     `<header class="card warm cut fhome-dossier">` +
-    `<div class="row rise fhome-drow">` +
-    `<div class="helmet"><div class="clip">${HELMET}<span class="sheen"></span></div></div>` +
-    `<div class="grow">` +
-    `<div class="row wrap fhome-did"><span class="h-screen">${name}</span><span class="rank" style="--rk:${rank.color}"><i></i>${rank.name}</span></div>` +
-    `<div class="row mono fhome-dmeta"><span><b>${pts.toLocaleString('en-US')}</b> pts</span><span>·</span><span>Career</span></div>` +
-    `</div></div>` +
+    `<div class="fd-hero rise">` +
+    `<div class="fd-hero-lead"><div class="helmet"><div class="clip">${HELMET}<span class="sheen"></span></div></div></div>` +
+    `<div class="fd-hero-main">` +
+    `<p class="fd-hero-eyebrow">Pilot</p>` +
+    `<div class="fd-hero-head">${name}</div>` +
+    `<p class="fd-hero-sub"><span class="pts-ic">${ic('spark')}<b>${wallet.toLocaleString('en-US')}</b> pts</span> · ${pts.toLocaleString('en-US')} Career</p>` +
+    `</div>` +
+    `<div class="fd-hero-trail"><span class="rank" style="--rk:${rank.color}"><i></i>${rank.name}</span></div>` +
+    `</div>` +
     `<div class="fhome-dadv"><div class="barrow"><span class="l">Rank advance</span><span class="r">${xpLine}</span></div>` +
     `<div class="bar"><i style="width:${Math.round(np.frac * 100)}%"></i></div></div>` +
     `</header>`
@@ -309,14 +315,7 @@ function injectHomeBentoStyles(): void {
   s.id = 'fd-bento-css';
   s.textContent = `
 .bmf-app.front .fhome-dossier { margin: 0; }
-/* Dossier text (de-inlined from the markup so the page carries no inline style attrs). */
-.bmf-app.front .fhome-dossier .fhome-dnew { gap: 13px; }
-.bmf-app.front .fhome-dossier .fhome-dnew-h { font-size: var(--fs-title); }
-.bmf-app.front .fhome-dossier .fhome-dnew-sub { margin-top: 4px; font-size: var(--fs-meta); color: var(--dim); }
-.bmf-app.front .fhome-dossier .fhome-drow { gap: 13px; }
-.bmf-app.front .fhome-dossier .fhome-did { gap: 9px; }
-.bmf-app.front .fhome-dossier .fhome-dmeta { gap: 8px; margin-top: 7px; font-size: var(--fs-meta); color: var(--dim); }
-.bmf-app.front .fhome-dossier .fhome-dmeta b { color: var(--menu); font-weight: var(--fw-bold); }
+/* The dossier now leads with the shared .fd-hero standard (frontShell); only its advance bar is local. */
 .bmf-app.front .fhome-dossier .fhome-dadv { margin-top: 14px; }
 
 /* Bento grid. Grid items default to min-width:auto, so a nowrap child (the ticker line) or a

@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>bucketmyfire — Dashboard landing (prototype)</title>
+<!--
+  PROTOTYPE — the UNIFIED front-door dashboard (Editorial-magazine direction).
+  Reference only, NOT the source of truth (see mockups/README.md). This is the scrolling CONTENT
+  front door, so it does NOT use kit.css's no-scroll app shell — it links the generated tokens.css
+  directly (so every colour/type/radius is on-brand + drift-guarded) and styles the editorial page
+  itself. Warm "fight" register dominant; cool JetBrains-Mono "instrument" reserved for the live
+  data strip + map chrome. Flip the ANON / RETURNING preview pill (top-right) to see both states.
+  "Fight the fire" links to dispatch.html (the demoted in-game menu) to show the land -> fly journey.
+-->
+<link rel="stylesheet" href="tokens.css">
+<style>
+  *{ box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
+  :root{
+    --bg:#0e160f;            /* warm-dark page (mirrors index.html front door) */
+    --ink:#f4ead9;           /* warm off-white body */
+    --ink-dim:rgba(244,234,217,0.62);
+    --ink-faint:rgba(244,234,217,0.55);
+    --instrument:#eaf6ff;    /* cool live-data text */
+    --maxw:1120px;
+  }
+  html,body{ background:var(--bg); color:var(--ink); font-family:var(--font);
+    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility; }
+  body{ overflow-x:clip; }
+  a{ color:inherit; text-decoration:none; }
+  h1,h2,h3{ font-weight:var(--fw-heavy); letter-spacing:-0.01em; line-height:1.05; }
+  .flame path,.flame polygon{ fill:url(#flameGrad); }
+
+  /* ── preview state pill (mockup affordance, not part of the design) ───────── */
+  .preview{ position:fixed; top:12px; right:12px; z-index:90; display:flex; align-items:center; gap:8px;
+    font-family:var(--mono); font-size:var(--fs-micro); letter-spacing:.16em; text-transform:uppercase;
+    background:rgba(8,12,16,0.8); border:1px solid var(--stroke); border-radius:var(--r-pill);
+    padding:5px 6px 5px 12px; backdrop-filter:var(--blur); color:var(--faint); }
+  .preview b{ color:var(--menu); font-weight:var(--fw-bold); }
+  .preview button{ cursor:pointer; border:0; border-radius:var(--r-pill); padding:6px 12px;
+    font-family:var(--mono); font-size:var(--fs-micro); letter-spacing:.14em; text-transform:uppercase;
+    font-weight:var(--fw-bold); background:transparent; color:var(--dim); }
+  .preview button.on{ background:var(--cta); color:var(--cta-ink); box-shadow:0 2px 8px var(--cta-glow); }
+
+  /* ── brand bar ────────────────────────────────────────────────────────────── */
+  .bar{ position:sticky; top:0; z-index:20; display:flex; align-items:center; justify-content:space-between;
+    gap:12px; padding:13px max(16px,env(safe-area-inset-left)); border-bottom:1px solid var(--hair);
+    background:linear-gradient(180deg, rgba(14,22,15,0.94), rgba(14,22,15,0.55)); backdrop-filter:blur(10px) saturate(120%); }
+  .brand{ display:inline-flex; align-items:center; gap:9px; font-weight:var(--fw-heavy); letter-spacing:.09em; font-size:var(--fs-body); }
+  .brand .mk{ width:26px; height:26px; display:grid; place-items:center; border-radius:var(--r-sm);
+    background:radial-gradient(circle at 40% 30%, var(--warm-26), rgba(10,12,14,0.6)); border:1px solid var(--warm-stroke);
+    box-shadow:inset 0 0 12px var(--ember-30), 0 0 14px var(--ember-18); }
+  .brand .mk svg{ width:14px; height:18px; filter:drop-shadow(0 0 4px var(--glow-60)); }
+  .nav{ display:flex; align-items:center; gap:2px; }
+  .nav a{ color:var(--ink-dim); font-size:var(--fs-body); font-weight:var(--fw-semibold); padding:8px 12px; border-radius:var(--r-sm); min-height:44px; display:inline-flex; align-items:center; }
+  .nav a:hover{ color:var(--ink); background:rgba(255,255,255,0.05); }
+  .nav a.shop{ color:var(--ember-hi); }
+
+  .wrap{ max-width:var(--maxw); margin:0 auto; padding:0 max(18px,env(safe-area-inset-left)); }
+
+  /* ── hero row (action zone + live map, side-by-side on desktop) ───────────── */
+  .hero{ display:grid; gap:26px; padding:clamp(30px,6vh,64px) 0 clamp(26px,4vh,40px); grid-template-columns:1fr; align-items:stretch; }
+  @media (min-width:920px){ .hero{ grid-template-columns:minmax(0,1.05fr) minmax(0,1fr); gap:34px; align-items:center; } }
+
+  .act{ position:relative; }
+  .eyebrow{ font-family:var(--mono); font-size:var(--fs-meta); letter-spacing:.2em; text-transform:uppercase; color:var(--ember-hi); }
+  .kicker{ display:none; font-family:var(--mono); font-size:var(--fs-meta); letter-spacing:.16em; text-transform:uppercase; color:var(--menu); font-weight:var(--fw-bold); margin-bottom:10px; }
+  .head{ margin-top:14px; font-size:clamp(32px,5.4vw,58px); line-height:1.03; max-width:16ch; text-wrap:balance; color:#fff; font-weight:var(--fw-black); }
+  .head .num{ color:var(--ember); font-weight:var(--fw-black); }
+  .sub{ margin-top:18px; font-size:clamp(15px,1.5vw,18px); line-height:1.5; color:var(--ink-dim); max-width:42ch; }
+
+  /* returning dossier strip (folds into the action zone) */
+  .dossier{ display:none; margin-top:18px; align-items:center; gap:10px 14px; flex-wrap:wrap;
+    font-family:var(--mono); font-size:var(--fs-sm); color:var(--instrument);
+    padding:11px 14px; background:var(--warm-glass); border:1px solid var(--warm-stroke); border-radius:var(--r-lg); }
+  .dossier .cs{ font-weight:var(--fw-bold); letter-spacing:.04em; color:#fff; }
+  .dossier .rk{ color:var(--ember-hi); font-weight:var(--fw-bold); }
+  .dossier .sep{ opacity:.35; }
+  .dossier .g{ margin-left:auto; color:var(--menu); font-weight:var(--fw-bold); }
+
+  .actions{ margin-top:24px; display:flex; flex-wrap:wrap; align-items:center; gap:14px 18px; }
+  .cta{ appearance:none; border:0; cursor:pointer; font-family:var(--font); font-weight:var(--fw-heavy);
+    font-size:var(--fs-xl); letter-spacing:.02em; text-transform:uppercase; color:var(--cta-ink);
+    background:var(--cta); padding:15px 28px; border-radius:var(--r-lg); min-height:54px; display:inline-flex; align-items:center; gap:10px;
+    box-shadow:0 1px 0 rgba(255,255,255,0.5) inset, 0 8px 24px var(--cta-glow); transition:transform .12s, box-shadow .12s; }
+  .cta:hover{ transform:translateY(-2px); box-shadow:0 12px 30px var(--cta-glow); }
+  .cta svg{ width:18px; height:18px; fill:var(--cta-ink); }
+  .cta .col{ display:flex; flex-direction:column; align-items:flex-start; line-height:1.04; }
+  .cta .k{ display:none; font-family:var(--mono); font-size:var(--fs-micro); letter-spacing:.22em; opacity:.7; }
+  .ghost{ color:var(--ink); font-weight:var(--fw-semibold); font-size:var(--fs-lg); opacity:.85; min-height:44px; display:inline-flex; align-items:center; }
+  .ghost:hover{ opacity:1; color:var(--ember-hi); }
+
+  /* live data strip (cool instrument caption) */
+  .strip{ margin-top:26px; display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px;
+    font-family:var(--mono); font-size:var(--fs-sm); color:var(--instrument);
+    padding:11px 14px; background:rgba(8,16,22,0.5); border:1px solid var(--accent-soft); border-radius:var(--r-lg); }
+  .strip .main{ font-weight:var(--fw-bold); letter-spacing:.02em; }
+  .strip .k{ color:rgba(234,246,255,0.5); }
+  .strip .src{ color:rgba(234,246,255,0.5); margin-left:auto; }
+  .strip .live{ display:inline-flex; align-items:center; gap:6px; color:var(--ok); font-weight:var(--fw-bold); }
+  .strip .live::before{ content:""; width:7px; height:7px; border-radius:50%; background:var(--ok); box-shadow:0 0 7px var(--ok); animation:pulse 2.4s ease-in-out infinite; }
+  @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:.45;} }
+
+  /* ── live map panel (Leaflet stand-in) ────────────────────────────────────── */
+  .mappanel{ display:flex; flex-direction:column; }
+  .map{ position:relative; flex:1; min-height:clamp(300px,46vh,440px); border-radius:var(--r-xl); overflow:hidden;
+    border:1px solid var(--stroke); background:
+      radial-gradient(120% 90% at 70% 18%, rgba(40,70,90,0.30), transparent 60%),
+      linear-gradient(180deg,#0a141c,#070d12); box-shadow:var(--shadow-card); }
+  .map .grat{ position:absolute; inset:0; opacity:.5; pointer-events:none;
+    background-image:repeating-linear-gradient(0deg, rgba(120,180,220,0.05) 0 1px, transparent 1px 38px),
+      repeating-linear-gradient(90deg, rgba(120,180,220,0.05) 0 1px, transparent 1px 38px); }
+  .map .prov{ position:absolute; inset:14% 22% 16% 24%; border:1px dashed rgba(150,190,220,0.22); border-radius:30% 22% 26% 30%; }
+  .map .lbl{ position:absolute; left:16px; top:14px; font-family:var(--mono); font-size:var(--fs-micro); letter-spacing:.18em; text-transform:uppercase; color:rgba(234,246,255,0.5); }
+  .blip{ position:absolute; border-radius:50%; transform:translate(-50%,-50%); }
+  .blip i{ position:absolute; inset:0; border-radius:50%; }
+  .blip.oc{ width:54px; height:54px; background:rgba(255,93,77,0.16); } .blip.oc i{ background:var(--warn); box-shadow:0 0 10px var(--warn); inset:42%; }
+  .blip.bh{ width:38px; height:38px; background:rgba(255,200,97,0.15); } .blip.bh i{ background:var(--caution); box-shadow:0 0 8px var(--caution); inset:40%; }
+  .blip.uc{ width:26px; height:26px; background:rgba(99,214,138,0.15); } .blip.uc i{ background:var(--ok); box-shadow:0 0 7px var(--ok); inset:38%; }
+  .mapfoot{ margin-top:13px; display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; }
+  .legend{ display:flex; flex-wrap:wrap; gap:14px; font-family:var(--mono); font-size:var(--fs-meta); color:var(--ink-dim); }
+  .legend span{ display:inline-flex; align-items:center; gap:6px; }
+  .legend i{ width:9px; height:9px; border-radius:50%; display:inline-block; }
+  .inline-cta{ color:var(--ember-hi); font-weight:var(--fw-bold); font-size:var(--fs-md); min-height:44px; display:inline-flex; align-items:center; cursor:pointer; }
+  .inline-cta:hover{ color:var(--ember); }
+
+  /* ── sections ─────────────────────────────────────────────────────────────── */
+  .section{ padding:clamp(30px,5vh,54px) 0; border-top:1px solid var(--hair); }
+  .sechead h2{ font-size:clamp(21px,3vw,30px); color:#fff; }
+  .sechead p{ margin-top:9px; color:var(--ink-dim); font-size:var(--fs-md); max-width:54ch; }
+
+  .cards{ margin-top:24px; display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); }
+  .card{ background:rgba(20,14,10,0.55); border:1px solid var(--hair); border-radius:var(--r-xl); padding:22px;
+    display:flex; flex-direction:column; gap:9px; transition:border-color .14s, transform .14s, background .14s; }
+  .card:hover{ border-color:var(--ember-50); background:rgba(34,20,12,0.7); transform:translateY(-2px); }
+  .card h3{ font-size:var(--fs-title); color:#fff; }
+  .card p{ font-size:var(--fs-body); line-height:1.5; color:var(--ink-dim); flex:1; }
+  .card .src{ font-family:var(--mono); font-size:var(--fs-meta); letter-spacing:.02em; color:var(--ember-hi); margin-top:4px; }
+
+  /* ── footer ───────────────────────────────────────────────────────────────── */
+  .foot{ padding:clamp(28px,5vh,46px) 0 calc(40px + env(safe-area-inset-bottom)); border-top:1px solid var(--hair); color:var(--ink-dim); }
+  .foot .cause{ font-size:var(--fs-lg); color:var(--ink); max-width:60ch; }
+  .foot .disc{ margin-top:11px; font-size:var(--fs-body); max-width:60ch; }
+  .foot .srcs{ margin-top:11px; font-family:var(--mono); font-size:var(--fs-meta); color:var(--ink-faint); }
+  .foot .links{ margin-top:18px; display:flex; flex-wrap:wrap; gap:8px 18px; }
+  .foot .links a{ color:var(--ink-dim); font-size:var(--fs-body); font-weight:var(--fw-semibold); min-height:44px; display:inline-flex; align-items:center; }
+  .foot .links a:first-child{ color:var(--ember-hi); }
+  .foot .links a:hover{ color:var(--ink); }
+
+  /* ── state visibility ─────────────────────────────────────────────────────── */
+  body[data-state="anon"] .when-returning{ display:none !important; }
+  body[data-state="returning"] .when-anon{ display:none !important; }
+  body[data-state="returning"] .dossier{ display:flex; }
+  body[data-state="returning"] .kicker{ display:block; }
+  body[data-state="returning"] .cta .k{ display:block; }
+
+  @media (prefers-reduced-motion: reduce){ *{ animation-duration:.001ms !important; transition-duration:.001ms !important; } }
+</style>
+</head>
+<body data-state="anon">
+
+<!-- shared flame gradient (kit.js isn't loaded here, so define it locally) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <linearGradient id="flameGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffc24a"/><stop offset="1" stop-color="#ff6a2c"/></linearGradient>
+</defs></svg>
+
+<div class="preview" role="group" aria-label="Preview state">
+  <span>Preview&nbsp;<b>state</b></span>
+  <button id="st-anon" class="on" type="button">Anonymous</button>
+  <button id="st-ret" type="button">Returning</button>
+</div>
+
+<header class="bar">
+  <a class="brand" href="dashboard.html" aria-label="Bucket My Fire — home">
+    <span class="mk"><svg class="flame" viewBox="0 0 149.7 184.72"><path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/><path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/></svg></span>
+    <span>BUCKET MY FIRE</span>
+  </a>
+  <nav class="nav">
+    <a href="#livefire">Live</a>
+    <a href="#prepare">Prepare</a>
+    <a class="shop" href="store.html">Shop</a>
+  </nav>
+</header>
+
+<main class="wrap">
+
+  <!-- ============ HERO: action zone + live map ============ -->
+  <section class="hero">
+    <div class="act">
+      <p class="kicker">Welcome back, Water-1</p>
+      <p class="eyebrow">Live wildfire tracker · Saskatchewan &amp; Canada</p>
+      <h1 class="head"><span class="num">3</span> fires are burning in Saskatchewan right now.</h1>
+      <p class="sub when-anon">95 active across Canada. Experience how helicopters fight them — free, in your browser.</p>
+      <p class="sub when-returning">95 active across Canada. Your shift is waiting — pick up where you left off.</p>
+
+      <div class="dossier" aria-label="Pilot dossier">
+        <span class="cs">WATER-1</span><span class="sep">·</span>
+        <span class="rk">HOTSHOT</span><span class="sep">·</span>
+        <span>4,210 pts</span>
+        <span class="g">#214 GLOBAL</span>
+      </div>
+
+      <div class="actions">
+        <a class="cta" href="dispatch.html">
+          <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+          <span class="col"><span class="k">Continue</span><span>Fight the fire</span></span>
+        </a>
+        <a class="ghost" href="#livefire">See live fires ↓</a>
+      </div>
+
+      <div class="strip" aria-live="polite">
+        <span class="main">95 <span class="k">active</span> · 148k ha <span class="k">burned this yr</span> · prep <span class="k">L</span>3</span>
+        <span class="live">live</span>
+        <span class="src">updated 12m ago · CIFFC + CWFIS</span>
+      </div>
+    </div>
+
+    <div class="mappanel">
+      <div class="map" aria-label="Live wildfire map (preview)">
+        <div class="grat"></div>
+        <div class="prov"></div>
+        <span class="lbl">Canada · agency-reported</span>
+        <span class="blip oc" style="left:46%; top:40%;"><i></i></span>
+        <span class="blip oc" style="left:58%; top:55%;"><i></i></span>
+        <span class="blip bh" style="left:39%; top:60%;"><i></i></span>
+        <span class="blip uc" style="left:64%; top:33%;"><i></i></span>
+        <span class="blip bh" style="left:51%; top:28%;"><i></i></span>
+        <span class="blip uc" style="left:35%; top:44%;"><i></i></span>
+      </div>
+      <div class="mapfoot">
+        <div class="legend">
+          <span><i style="background:var(--warn)"></i> Out of control</span>
+          <span><i style="background:var(--caution)"></i> Being held</span>
+          <span><i style="background:var(--ok)"></i> Under control</span>
+        </div>
+        <a class="inline-cta" href="dispatch.html">See it from the air → Fight the fire</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ LIVE MAP (full section anchor) ============ -->
+  <section class="section" id="livefire">
+    <div class="sechead">
+      <h2>Live wildfire map</h2>
+      <p>Agency-reported wildfires across Canada, sized by area and coloured by stage of control. Tap a fire for the full agency record.</p>
+    </div>
+  </section>
+
+  <!-- ============ PREPARE (education / real official sources) ============ -->
+  <section class="section" id="prepare">
+    <div class="sechead">
+      <h2>Prepare</h2>
+      <p>Wildfire is part of life in fire country. These are the real, official places to start.</p>
+    </div>
+    <div class="cards">
+      <a class="card" href="https://firesmartcanada.ca/" target="_blank" rel="noopener">
+        <h3>Know your risk</h3>
+        <p>How wildfire reaches a home, and what actually lowers the odds around yours.</p>
+        <span class="src">FireSmart Canada →</span>
+      </a>
+      <a class="card" href="https://www.getprepared.gc.ca/cnt/rsrcs/prprdnss-en.aspx" target="_blank" rel="noopener">
+        <h3>Make a plan &amp; a go-bag</h3>
+        <p>Build an emergency plan and a 72-hour kit before you ever need to leave.</p>
+        <span class="src">Get Prepared (Canada) →</span>
+      </a>
+      <a class="card" href="https://www.saskalert.ca/" target="_blank" rel="noopener">
+        <h3>Get the alerts</h3>
+        <p>Provincial wildfire alerts and evacuation orders, straight from the source.</p>
+        <span class="src">SaskAlert →</span>
+      </a>
+    </div>
+  </section>
+
+  <!-- ============ FOOTER ============ -->
+  <footer class="foot">
+    <p class="cause">Bucket My Fire is a helicopter wildfire flight sim — and a window onto the real fire season it's set in. The game is the hook; the data is real.</p>
+    <p class="disc">A window onto real data — not an emergency tool. Always follow official sources and local authorities.</p>
+    <p class="srcs">Sources: CWFIS (NRCan) · CIFFC · ECCC</p>
+    <div class="links">
+      <a href="store.html">Wear the fight</a>
+      <a href="#">Privacy</a>
+      <a href="#">Terms</a>
+    </div>
+  </footer>
+
+</main>
+
+<script>
+  // mockup-only: flip the anon/returning preview state
+  (function () {
+    var body = document.body, a = document.getElementById('st-anon'), r = document.getElementById('st-ret');
+    function set(state) {
+      body.setAttribute('data-state', state);
+      a.classList.toggle('on', state === 'anon');
+      r.classList.toggle('on', state === 'returning');
+    }
+    a.addEventListener('click', function () { set('anon'); });
+    r.addEventListener('click', function () { set('returning'); });
+  })();
+</script>
+</body>
+</html>

@@ -22,6 +22,7 @@
   /* ---- screen routing map ---- */
   var NAV = {
     index: 'index.html', title: 'title.html', onboarding: 'onboarding.html',
+    dashboard: 'dashboard.html', dispatch: 'dispatch.html',
     home: 'home.html', daily: 'daily.html', campaign: 'campaign.html',
     briefing: 'briefing.html', debrief: 'debrief.html', maps: 'maps.html',
     hangar: 'hangar.html', coop: 'coop.html', board: 'leaderboard.html',

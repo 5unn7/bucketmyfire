@@ -1,0 +1,195 @@
+/**
+ * THE single source of the site-wide navigation chrome — the one place the appbar, the mobile tab bar,
+ * and the breadcrumb trail are defined, so every public page wears the SAME nav and it can't drift.
+ *
+ * It is plain ESM with ZERO imports (no Three, no TS, no DOM at module scope) so BOTH worlds can use it:
+ *   - the Vite-bundled TypeScript front door (`src/site/frontShell.ts`, `src/site/shell.ts`, `hub.ts`)
+ *     imports `./siteNav.mjs` (types via the sibling `siteNav.d.mts`); and
+ *   - the Node-run blog/legal renderer (`scripts/content/*.mjs`) imports `../../src/site/siteNav.mjs`
+ *     at build time and inlines `navCss`.
+ *
+ * Markup is token-driven (`var(--*)` from theme.ts → mockups/tokens.css), warm "fight" register
+ * (DESIGN.md). The brand flame mark renders via `url(#flameGrad)`, so a page that is NOT the in-game
+ * front door (which already injects the home `DEFS`) must include `NAV_DEFS` once in its body.
+ */
+
+/** The four-item top-level sitemap (real anchors — crawlable, middle-clickable). Field Notes is a
+ *  sub-section of Prepare, not a top-level item, so it is reachable from the Prepare page, not the bar. */
+export const NAV = [
+  { key: 'home', label: 'Home', href: '/' },
+  { key: 'campaign', label: 'Campaign', href: '/campaign/' },
+  { key: 'prepare', label: 'Prepare', href: '/prepare/' },
+  // Live wildfire map — a real anchor so it's reachable from EVERY page (the front door reads `?map` and
+  // opens the tracker overlay; from a static sub-page it just loads home + opens it). Instant access.
+  { key: 'map', label: 'Map', href: '/?map' },
+  {
+    key: 'shop',
+    label: 'Shop',
+    href: 'https://shop.bucketmyfire.com/?utm_source=bucketmyfire&utm_medium=frontdoor&utm_campaign=nav',
+    external: true,
+  },
+];
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+}
+
+/** Brand flame mark (fills via url(#flameGrad)) — mirrors src/three/ui/home/icons.ts FLAME. */
+export const FLAME = `<svg class="flame" viewBox="0 0 149.7 184.72"><polygon points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/><path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/><path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/></svg>`;
+
+/** The flame gradient <defs> — include ONCE in the body of a static page (blog/legal) so the appbar's
+ *  FLAME resolves its `url(#flameGrad)` fill. The in-game front door already injects the home DEFS. */
+export const NAV_DEFS = `<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><linearGradient id="flameGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffc24a"/><stop offset="1" stop-color="#ff6a2c"/></linearGradient></defs></svg>`;
+
+// Mobile tab-bar glyphs (filled, 24px) — mirror shell.ts TAB_ICON.
+const TAB = {
+  home: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>`,
+  campaign: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>`,
+  prepare: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>`,
+  // Map = a filled location pin (the tab glyphs are filled; the folded-map outline reads as a blob filled).
+  map: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>`,
+  shop: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7V6a6 6 0 0 1 12 0v1h3v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7zm2 0h8V6a4 4 0 0 0-8 0z"/></svg>`,
+};
+
+// Appbar action glyphs (stroke, 24px) — mirror the home icons.ts `ic('trophy'|'settings')`.
+const ic = (paths) =>
+  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+const TROPHY = ic('<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>');
+const SETTINGS = ic('<path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/>');
+
+/**
+ * The sticky top appbar — brand mark + sitemap nav + a right-hand action slot. `active` marks the
+ * current top-level item (Field Notes pages pass `'prepare'`). `actions`:
+ *   - 'app'  → the front door's leaderboard + settings icon buttons (wired by wireFrontAppbar; needs the
+ *              game's home styles for `.iconbtn`). Use ONLY where the game bundle is present.
+ *   - 'play' → a single "Fight the fire" CTA. Use on static pages (blog, legal) with no game bundle.
+ */
+/** Just the brand mark + sitemap nav (no `<header>` wrapper, no right-hand actions) — the reusable left
+ *  half of the appbar. The live-fire map's merged top bar drops this in front of its own map controls so
+ *  it wears the SAME logo+wordmark+nav as every page (`.fhome-nav` is desktop-only; mobile uses the tab
+ *  bar). Needs the flame `<defs>` in scope (NAV_DEFS on a static page; the front door injects it). */
+export function brandNavHtml(active = '') {
+  const nav = NAV.map((n) => {
+    const cur = n.key === active ? ' aria-current="page"' : '';
+    const shop = n.key === 'shop' ? ' shop' : '';
+    return `<a class="fhome-nav-a${shop}" href="${n.href}"${cur}>${n.label}</a>`;
+  }).join('');
+  return (
+    `<a class="fhome-brand" href="/" aria-label="Bucket My Fire — home"><span class="bmk">${FLAME}</span><b>Bucket My Fire</b></a>` +
+    `<nav class="fhome-nav" aria-label="Primary">${nav}</nav>`
+  );
+}
+
+export function appbarHtml({ active = '', actions = 'app' } = {}) {
+  const right =
+    actions === 'app'
+      ? `<button class="iconbtn" data-front="board" type="button" aria-label="Leaderboard">${TROPHY}</button>` +
+        `<button class="iconbtn" data-front="settings" type="button" aria-label="Settings">${SETTINGS}</button>`
+      : `<a class="fhome-cta" href="/?province=1">Fight the fire</a>`;
+  return `<header class="fhome-bar">` + brandNavHtml(active) + `<span class="fhome-grow"></span>` + right + `</header>`;
+}
+
+/** The mobile bottom tab bar (same four top-level destinations, icon + label, active marked). */
+export function tabbarHtml(active = '') {
+  const shop = NAV.find((n) => n.key === 'shop');
+  const items = [
+    { key: 'home', label: 'Home', href: '/', icon: TAB.home },
+    { key: 'campaign', label: 'Campaign', href: '/campaign/', icon: TAB.campaign },
+    { key: 'prepare', label: 'Prepare', href: '/prepare/', icon: TAB.prepare },
+    { key: 'map', label: 'Map', href: '/?map', icon: TAB.map },
+    { key: 'shop', label: 'Shop', href: shop ? shop.href : '/', icon: TAB.shop },
+  ];
+  return (
+    `<nav class="fd-tabbar" aria-label="Primary">` +
+    items
+      .map((it) => {
+        const cur = it.key === active ? ' aria-current="page"' : '';
+        return `<a class="fd-tab" href="${it.href}"${cur}>${it.icon}<span>${it.label}</span></a>`;
+      })
+      .join('') +
+    `</nav>`
+  );
+}
+
+/** A breadcrumb trail. Each crumb is `{label, href?}`; a crumb with no `href` is the current page. */
+export function breadcrumbHtml(trail) {
+  const parts = trail
+    .map((c) => (c.href ? `<a href="${c.href}">${esc(c.label)}</a>` : `<span aria-current="page">${esc(c.label)}</span>`))
+    .join('<span class="site-crumb-sep" aria-hidden="true">/</span>');
+  return `<nav class="site-crumbs" aria-label="Breadcrumb">${parts}</nav>`;
+}
+
+/** Inject the shared nav stylesheet ONCE (client only; idempotent). Call after the kit/token vars are
+ *  in scope. The blog/legal renderers inline `navCss` directly instead of calling this. */
+export function injectNavStyles() {
+  if (typeof document === 'undefined') return;
+  if (document.getElementById('site-nav-css')) return;
+  const s = document.createElement('style');
+  s.id = 'site-nav-css';
+  s.textContent = navCss;
+  document.head.appendChild(s);
+}
+
+/** The appbar + mobile tab bar + breadcrumb CSS (token-driven, de-scoped so it works on the front-door
+ *  app shell AND the static blog/legal pages). The front door injects it (injectNavStyles); the blog +
+ *  legal renderers inline it. One definition → no drift. */
+export const navCss = `
+/* ── Sticky top appbar ───────────────────────────────────────────────────────── */
+.fhome-bar { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 10px; min-height: 56px;
+  max-width: 1080px; margin: 0 auto; padding: 10px max(14px, env(safe-area-inset-left));
+  background: linear-gradient(180deg, rgba(7,10,13,0.92), rgba(7,10,13,0.4)); backdrop-filter: blur(10px) saturate(120%);
+  -webkit-backdrop-filter: blur(10px) saturate(120%); border-bottom: 1px solid var(--hair); }
+.fhome-brand { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); }
+.fhome-brand .bmk { width: 30px; height: 30px; flex: 0 0 auto; display: grid; place-items: center; border-radius: var(--r-md);
+  border: 1px solid var(--warm-stroke); background: radial-gradient(circle at 40% 30%, var(--warm-38), rgba(10,12,14,0.9));
+  box-shadow: inset 0 0 10px var(--ember-35), 0 0 14px var(--ember-12); }
+.fhome-brand .bmk .flame { width: 15px; height: 15px; fill: url(#flameGrad); filter: drop-shadow(0 0 4px var(--glow-80)); }
+.fhome-brand b { font-family: var(--mono); font-weight: var(--fw-heavy); font-size: 13px; letter-spacing: .16em; text-transform: uppercase; white-space: nowrap; }
+@media (max-width: 560px) { .fhome-brand b { display: none; } }
+.fhome-grow { flex: 1; }
+.fhome-nav { display: none; align-items: center; gap: 2px; }
+@media (min-width: 760px) { .fhome-nav { display: inline-flex; } }
+.fhome-nav-a { text-decoration: none; color: var(--dim); font-family: var(--mono); font-size: 11px; letter-spacing: .12em;
+  text-transform: uppercase; font-weight: var(--fw-bold); padding: 10px 11px; min-height: 44px; display: inline-flex; align-items: center; }
+.fhome-nav-a:hover { color: var(--ember-hi); }
+.fhome-nav-a[aria-current="page"] { color: var(--text); }
+.fhome-nav-a.shop { color: var(--ember-hi); }
+/* "Fight the fire" CTA (static pages with no game bundle). */
+.fhome-cta { display: inline-flex; align-items: center; min-height: 40px; padding: 0 16px; border-radius: var(--r-lg);
+  text-decoration: none; font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+  font-weight: var(--fw-heavy); color: var(--cta-ink); background: var(--cta); box-shadow: 0 1px 0 rgba(255,255,255,0.4) inset, 0 8px 20px var(--cta-glow); }
+.fhome-cta:hover { color: var(--cta-ink); filter: brightness(1.05); }
+
+/* ── Breadcrumb trail (below the appbar on pages with a hierarchy) ─────────────── */
+.site-crumbs { font-family: var(--mono); font-size: var(--fs-meta); letter-spacing: .06em; color: var(--dim); margin: 0 0 18px; }
+.site-crumbs a { color: var(--dim); text-decoration: none; }
+.site-crumbs a:hover { color: var(--ember-hi); }
+.site-crumbs span[aria-current="page"] { color: var(--text-subtle); }
+.site-crumb-sep { opacity: .5; margin: 0 6px; }
+
+/* ── Mobile bottom tab bar ────────────────────────────────────────────────────── */
+.fd-tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; display: grid; grid-template-columns: repeat(5, 1fr);
+  background: linear-gradient(180deg, rgba(7,10,13,0.86), rgba(7,10,13,0.98)); backdrop-filter: blur(12px) saturate(120%);
+  -webkit-backdrop-filter: blur(12px) saturate(120%); border-top: 1px solid var(--hair); padding-bottom: env(safe-area-inset-bottom); }
+@media (min-width: 760px) { .fd-tabbar { display: none; } }
+.fd-tab { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 9px 4px 8px;
+  text-decoration: none; color: var(--dim); min-height: 56px; }
+.fd-tab svg { width: 21px; height: 21px; fill: currentColor; }
+.fd-tab span { font-family: var(--mono); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }
+.fd-tab[aria-current="page"] { color: var(--ember-hi); }
+/* Clear the fixed tab bar on static pages (blog/legal use body.fn). The front door pads its own column. */
+@media (max-width: 759px) { body.fn { padding-bottom: calc(72px + env(safe-area-inset-bottom)); } }
+
+/* ── Page title card "hero" — the ONE first-card / page-title standard, shared by the front-door first
+   cards (Home dossier, Campaign intro, Prepare checklist head) AND the blog + legal page titles. Every
+   one leads with the same anatomy: an eyebrow, a headline, and a sub, with an optional lead slot
+   (brand glyph / helmet / progress ring) and an optional trailing slot (rank pill / chevron). ─── */
+.fd-hero { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; }
+.fd-hero-lead { flex: 0 0 auto; display: grid; place-items: center; }
+.fd-hero-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.fd-hero-eyebrow { margin: 0; font-family: var(--mono); font-size: var(--fs-label); letter-spacing: .28em; text-transform: uppercase; color: var(--menu); font-weight: var(--fw-bold); }
+.fd-hero-head { margin: 0; font-size: clamp(24px, 3.6vw, 36px); font-weight: var(--fw-black); line-height: 1.08; letter-spacing: .01em; color: #fff; text-wrap: balance; }
+.fd-hero-sub { margin: 0; font-size: clamp(13.5px, 1.5vw, 15.5px); line-height: 1.5; color: var(--text-subtle); max-width: 56ch; text-wrap: pretty; }
+.fd-hero-sub b { color: var(--menu); font-weight: var(--fw-bold); }
+.fd-hero-trail { flex: 0 0 auto; margin-left: auto; align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; }
+`;

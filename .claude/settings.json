@@ -1,11 +1,26 @@
 {
   "permissions": {
     "allow": [
-      "WebSearch"
+      "WebSearch",
+      "Bash(curl -s --max-time 40 \"https://cwfis.cfs.nrcan.gc.ca/geoserver/ows?service=WFS&version=2.0.0&request=GetCapabilities\" -o /tmp/cwfis_caps.xml -w \"HTTP %{http_code}  size=%{size_download}\\\\n\")",
+      "Read(//tmp/**)",
+      "Bash(echo \"==== all public: layer names ====\"; grep -ioE \"<Name>public:[^<]*</Name>\" /tmp/cwfis_caps.xml | sed -E 's/<\\\\/?Name>//g' | sort -u; echo; echo \"==== does 'activefire' appear anywhere? ====\"; grep -ioE \"[a-z_]*activefire[a-z_0-9]*\" /tmp/cwfis_caps.xml | sort -u | head)",
+      "WebFetch(domain:www.canada.ca)",
+      "WebFetch(domain:www2.gov.bc.ca)",
+      "WebFetch(domain:www.alberta.ca)",
+      "WebFetch(domain:parks.canada.ca)",
+      "WebFetch(domain:www.ontario.ca)",
+      "WebFetch(domain:tc.canada.ca)",
+      "WebFetch(domain:blog.gov.bc.ca)",
+      "WebFetch(domain:blog.wildfire.alberta.ca)",
+      "WebFetch(domain:novascotia.ca)",
+      "WebFetch(domain:www.saskatchewan.ca)",
+      "WebFetch(domain:natural-resources.canada.ca)",
+      "WebFetch(domain:saskatchewan.ca)",
+      "WebFetch(domain:www.publicsafety.gc.ca)",
+      "Bash(curl -sL -A \"Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36 \\(KHTML, like Gecko\\) Chrome/120.0 Safari/537.36\" \"https://www.saskatchewan.ca/residents/environment-public-health-and-safety/wildfire-in-saskatchewan/wildfire-operations\")",
+      "Read(//c/Users/Sunny/AppData/Local/Temp/**)"
     ]
-  },
-  "enabledPlugins": {
-    "frontend-design@claude-plugins-official": true
   },
   "hooks": {
     "PostToolUse": [
@@ -15,11 +30,14 @@
           {
             "type": "command",
             "command": "node .claude/hooks/gen-tokens.mjs",
-            "statusMessage": "Syncing mockups/tokens.css from theme.ts…",
-            "timeout": 60
+            "timeout": 60,
+            "statusMessage": "Syncing mockups/tokens.css from theme.ts…"
           }
         ]
       }
     ]
+  },
+  "enabledPlugins": {
+    "frontend-design@claude-plugins-official": true
   }
 }

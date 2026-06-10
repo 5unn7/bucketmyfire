@@ -20,6 +20,7 @@
 import { cleanCallsign } from '../three/ui/callsign';
 import { careerScore, rankFor, nextRankProgress } from '../three/missions/rank';
 import { fmtInt } from '../three/livefire/strings';
+import { tabbarHtml } from './siteNav.mjs';
 
 export type ShellPage = 'home' | 'campaign' | 'prepare';
 
@@ -51,24 +52,10 @@ export function navMarkup(active: ShellPage): string {
   }).join('');
 }
 
-/** The mobile bottom tab bar (same four destinations, icon + label, active marked). */
+/** The mobile bottom tab bar — the shared tab bar (siteNav). Kept as a thin re-export so the front-door
+ *  controllers + the live-fire overlay call one name; the markup + `.fd-tabbar` CSS live in siteNav. */
 export function tabbarMarkup(active: ShellPage): string {
-  const items = [
-    { key: 'home', label: 'Home', href: '/', icon: TAB_ICON.home },
-    { key: 'campaign', label: 'Campaign', href: '/campaign/', icon: TAB_ICON.campaign },
-    { key: 'prepare', label: 'Prepare', href: '/prepare/', icon: TAB_ICON.prepare },
-    { key: 'shop', label: 'Shop', href: NAV[3].href, icon: TAB_ICON.shop },
-  ];
-  return (
-    `<nav class="fd-tabbar" aria-label="Primary">` +
-    items
-      .map((it) => {
-        const cur = it.key === active ? ' aria-current="page"' : '';
-        return `<a class="fd-tab" href="${it.href}"${cur}>${it.icon}<span>${it.label}</span></a>`;
-      })
-      .join('') +
-    `</nav>`
-  );
+  return tabbarHtml(active);
 }
 
 /** The full appbar `<header>` for a page (used by the Campaign/Prepare controllers; the Home keeps an
@@ -99,13 +86,6 @@ export function buildFooter(): string {
     `</div></footer>`
   );
 }
-
-const TAB_ICON = {
-  home: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>`,
-  campaign: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>`,
-  prepare: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>`,
-  shop: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7V6a6 6 0 0 1 12 0v1h3v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7zm2 0h8V6a4 4 0 0 0-8 0z"/></svg>`,
-};
 
 const GEAR_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm9.4 4-2 .9.3 2.2-1.6 1.6-2.2-.3-.9 2-2.3.5-1-2-2.2-.5-1 2-2.3-.5-.9-2-2.2.3L2.7 15l.3-2.2-2-.9L1 9.6l2-.9-.3-2.2L4.3 5l2.2.3.9-2 2.3-.5 1 2 2.2.5 1-2 2.3.5.9 2 2.2-.3L23.3 9l-.3 2.2 2 .9z"/></svg>`;
 
@@ -461,16 +441,15 @@ const SHELL_CSS = `
 .fd-foot-links a:hover { color: var(--text); }
 
 /* ── Mobile bottom tab bar. ───────────────────────────────────────────────────── */
-.fd-tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; display: grid; grid-template-columns: repeat(4, 1fr);
-  background: linear-gradient(180deg, rgba(7,10,13,0.86), rgba(7,10,13,0.98)); backdrop-filter: blur(12px) saturate(120%);
-  -webkit-backdrop-filter: blur(12px) saturate(120%); border-top: 1px solid var(--hair);
-  padding-bottom: env(safe-area-inset-bottom); }
-@media (min-width: 760px) { .fd-tabbar { display: none; } }
-.fd-tab { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 9px 4px 8px;
-  text-decoration: none; color: var(--dim); min-height: 56px; }
-.fd-tab svg { width: 21px; height: 21px; fill: currentColor; }
-.fd-tab span { font-family: var(--mono); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }
-.fd-tab[aria-current="page"] { color: var(--ember-hi); }
+/* The base .fd-tabbar / .fd-tab rules now live in siteNav.mjs (navCss) — ONE source shared with the
+   blog + legal pages. Injected by injectFrontShell() → injectNavStyles(). The override below is the
+   front-door-only special case. */
+/* The live-fire tracker is a front-door surface rendered inside a full-screen .bmf-app overlay
+   (openLiveFires, when reached from the front door, tags the root .front-nav + renders this tabbar). That
+   overlay has no top appbar, so keep the tabbar visible at EVERY width here — overriding the desktop hide
+   above — and tighten the map's bottom reservation so it sits flush on the bar instead of leaving a seam. */
+.bmf-app.front-nav .fd-tabbar { display: grid; }
+.bmf-app.front-nav .pad:has(> .firewrap) { padding-bottom: calc(58px + env(safe-area-inset-bottom)); }
 /* Make room above the fixed tab bar on phones so nothing hides behind it. */
 @media (max-width: 759px) { .fd-app { padding-bottom: calc(78px + env(safe-area-inset-bottom)) !important; } }
 

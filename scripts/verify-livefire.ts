@@ -15,6 +15,7 @@ import {
   parseReportedFires, normalizeReported, normalizeSummary, parseBurnPolygons, normalizeBurn,
   stageOf, isActiveStage, radiusMetersForHa, filterReportedCountry, parseFwiIssueDate, parseMs, smokeForecastFrames,
   parseAlerts, normalizeAlerts, alertLevel, isWildfireAlert, parseBans, normalizeBans, parseYmd, banType, safeUrl,
+  forecastLeadLabel,
 } from '../src/three/livefire/normalize';
 
 let pass = 0;
@@ -174,6 +175,12 @@ ok('smokeForecastFrames spans hours+1 frames', frames.length === 49, `${frames.l
 ok('smokeForecastFrames floors to the hour, ISO-Z, no millis', frames[0] === '2026-06-09T18:00:00Z');
 ok('smokeForecastFrames steps exactly 1h forward', frames[1] === '2026-06-09T19:00:00Z' && frames[48] === '2026-06-11T18:00:00Z');
 ok('smokeForecastFrames defensive (0 / NaN hours → single frame)', smokeForecastFrames(NOW, 0).length === 1 && smokeForecastFrames(NOW, NaN).length === 1);
+
+// forecastLeadLabel: the scrubber's hourly lead chip ("Now" / "+6 h" / "+1 d 2 h"), pure on the frame index.
+ok('forecastLeadLabel: frame 0 is "Now"', forecastLeadLabel(0) === 'Now' && forecastLeadLabel(-3) === 'Now');
+ok('forecastLeadLabel: hours within a day', forecastLeadLabel(1) === '+1 h' && forecastLeadLabel(6) === '+6 h' && forecastLeadLabel(23) === '+23 h');
+ok('forecastLeadLabel: rolls past a day', forecastLeadLabel(24) === '+1 d' && forecastLeadLabel(26) === '+1 d 2 h' && forecastLeadLabel(48) === '+2 d');
+ok('forecastLeadLabel: junk → "Now" (never NaN)', forecastLeadLabel(NaN) === 'Now' && forecastLeadLabel(Infinity) === 'Now');
 
 // ════════════ Public alerts (SaskAlert) — surface verbatim, filter to wildfire, never re-classify ════════════
 const saFx = fx('livefire-saskalert.json');

@@ -111,9 +111,10 @@ export function mountChecklist(host: HTMLElement): void {
   head.setAttribute('aria-controls', 'fd-check-body');
   head.innerHTML =
     `<div class="fd-ring" id="fd-ring"><b id="fd-ring-n">0%</b></div>` +
-    `<div class="dhead-id">` +
-    `<span class="h-screen" style="font-size:var(--fs-title)">15 minutes to ready</span>` +
-    `<span class="mono" style="font-size:var(--fs-meta);color:var(--dim)">Get wildfire ready before fire season.</span>` +
+    `<div class="dhead-id fd-hero-main">` +
+    `<p class="fd-hero-eyebrow">Prepare</p>` +
+    `<span class="fd-hero-head">15 minutes to ready</span>` +
+    `<span class="fd-hero-sub">Get wildfire ready before fire season.</span>` +
     `</div>` +
     `<span class="chev" aria-hidden="true">${ic('chevron-down')}</span>`;
 

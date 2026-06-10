@@ -54,9 +54,13 @@ ${frontScene()}
 ${frontAppbar('campaign')}
 <div class="pad fhome">
   <section class="card warm cut fcamp-hero rise">
-    <p class="fhome-eyebrow">Campaign · Solo</p>
-    <h1 class="fcamp-head">Fly solo.</h1>
-    <p class="fcamp-sub">Pick your ground and your aircraft, then fly a private round — just you, the fire, and the towns to hold.</p>
+    <div class="fd-hero">
+      <div class="fd-hero-main">
+        <p class="fd-hero-eyebrow">Campaign · Solo</p>
+        <h1 class="fd-hero-head">Fly solo.</h1>
+        <p class="fd-hero-sub">Pick your ground and your aircraft, then fly a private round — just you, the fire, and the towns to hold.</p>
+      </div>
+    </div>
   </section>
 
   <section class="fcamp-wizard" id="fd-wizard"></section>
@@ -109,7 +113,8 @@ function renderMaps(app: HTMLElement): void {
   ).join('');
   wizard.innerHTML =
     `<div class="fcamp-whead"><h2>Choose your ground</h2><span class="fcamp-step">Step 1 of 2</span></div>` +
-    `<div class="fd-mgrid">${cards}</div>`;
+    `<div class="fcamp-cards">${cards}</div>` +
+    `<div class="fcamp-dots" aria-hidden="true"></div>`;
   wizard.querySelectorAll<HTMLButtonElement>('[data-map]').forEach((b) =>
     b.addEventListener('click', () => {
       mapId = b.dataset.map || mapId;
@@ -117,6 +122,7 @@ function renderMaps(app: HTMLElement): void {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }),
   );
+  wirePicker(wizard);
 }
 
 function renderHelis(app: HTMLElement): void {
@@ -134,12 +140,55 @@ function renderHelis(app: HTMLElement): void {
   wizard.innerHTML =
     `<div class="fcamp-whead"><button class="fcamp-back" id="fd-back">← Maps</button>` +
     `<h2>Choose your aircraft</h2><span class="fcamp-step">${esc(mapName)} · Step 2 of 2</span></div>` +
-    `<div class="fd-mgrid">${cards}</div>` +
+    `<div class="fcamp-cards">${cards}</div>` +
+    `<div class="fcamp-dots" aria-hidden="true"></div>` +
     `<p class="fcamp-note">Locked aircraft unlock with career points earned in Open Skies and solo flights.</p>`;
   wizard.querySelector('#fd-back')?.addEventListener('click', () => {
     renderMaps(app);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   });
+  wirePicker(wizard);
+}
+
+/** Wire the mobile picker carousel: build position dots, sync the active dot as the strip scrolls, and
+ *  let a dot tap centre its card. No-op past the ≥600px breakpoint (the strip relaxes into a grid + the
+ *  dots hide) and a no-op with a lone card. Re-run after each wizard render — the old element + its
+ *  listeners are dropped with `wizard.innerHTML`, so nothing leaks across step changes. */
+function wirePicker(wizard: HTMLElement): void {
+  const track = wizard.querySelector<HTMLElement>('.fcamp-cards');
+  const dotsHost = wizard.querySelector<HTMLElement>('.fcamp-dots');
+  if (!track || !dotsHost) return;
+  const cards = Array.from(track.querySelectorAll<HTMLElement>('.fd-mcard'));
+  if (cards.length < 2) return; // a single pick needs no carousel chrome
+  dotsHost.innerHTML = cards.map((_, i) => `<i${i === 0 ? ' class="on"' : ''}></i>`).join('');
+  const dots = Array.from(dotsHost.children) as HTMLElement[];
+  const setActive = (i: number): void => dots.forEach((d, k) => d.classList.toggle('on', k === i));
+  // Active = the card whose centre is nearest the strip's centre (works for the start-snapped layout).
+  const nearest = (): number => {
+    const mid = track.scrollLeft + track.clientWidth / 2;
+    let best = 0;
+    let bd = Infinity;
+    cards.forEach((c, k) => {
+      const d = Math.abs(c.offsetLeft + c.clientWidth / 2 - mid);
+      if (d < bd) { bd = d; best = k; }
+    });
+    return best;
+  };
+  let raf = 0;
+  track.addEventListener(
+    'scroll',
+    () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => { raf = 0; setActive(nearest()); });
+    },
+    { passive: true },
+  );
+  dots.forEach((d, i) =>
+    d.addEventListener('click', () => {
+      const c = cards[i];
+      track.scrollTo({ left: c.offsetLeft - (track.clientWidth - c.clientWidth) / 2, behavior: 'smooth' });
+    }),
+  );
 }
 
 /** This page's content layout only (the components + chrome come from the injected stylesheets above). */
@@ -148,9 +197,7 @@ function injectCampaignStyles(): void {
   const s = document.createElement('style');
   s.id = 'fd-camp-css';
   s.textContent = `
-.bmf-app.front .fcamp-hero { display: flex; flex-direction: column; padding: 22px 22px 24px; }
-.bmf-app.front .fcamp-head { font-size: clamp(28px, 4.6vw, 46px); line-height: 1.02; color: #fff; max-width: 14ch; text-wrap: balance; }
-.bmf-app.front .fcamp-sub { margin-top: 11px; font-size: clamp(14px, 1.6vw, 16.5px); line-height: 1.5; color: var(--text-subtle); max-width: 58ch; text-wrap: pretty; }
+.bmf-app.front .fcamp-hero { padding: 22px 22px 24px; }
 .bmf-app.front .fcamp-wizard { display: flex; flex-direction: column; gap: 16px; }
 .bmf-app.front .fcamp-whead { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .bmf-app.front .fcamp-whead h2 { font-size: clamp(20px, 2.4vw, 25px); color: #fff; }
@@ -160,12 +207,23 @@ function injectCampaignStyles(): void {
 .bmf-app.front .fcamp-back:hover { color: var(--menu); }
 .bmf-app.front .fcamp-note { margin-top: 4px; font-size: var(--fs-sm); line-height: 1.5; color: var(--faint); }
 
-/* Bigger, image-forward picker posters. Scoped override of the shared 4-up .fd-mgrid (the Prepare +
-   blog cards keep it): fewer, TALLER cards so the art reads and the copy can breathe — 1-up on a phone,
-   2-up on a tablet, 3-up on a desktop (the three aircraft sit one clean row across). */
-.bmf-app.front .fcamp-wizard .fd-mgrid { grid-template-columns: 1fr; gap: 14px; }
-@media (min-width: 600px) { .bmf-app.front .fcamp-wizard .fd-mgrid { grid-template-columns: repeat(2, 1fr); } }
-@media (min-width: 1000px) { .bmf-app.front .fcamp-wizard .fd-mgrid { grid-template-columns: repeat(3, 1fr); } }
+/* Bigger, image-forward picker posters in a swipeable carousel — ONE horizontal row at every width, no
+   wrap. On a PHONE one tall poster sits in view with a peek of the next (swipe to advance). On a wider
+   screen the posters fix to a comfortable width so several ride the same line and the row scrolls past
+   the edge when they don't all fit (4 maps stay one strip instead of breaking to a 3+1 grid). Position
+   dots track the strip the whole way. */
+.bmf-app.front .fcamp-cards { display: flex; gap: 14px; overflow-x: auto; scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 2px; }
+.bmf-app.front .fcamp-cards::-webkit-scrollbar { display: none; }
+.bmf-app.front .fcamp-cards > .fd-mcard { flex: 0 0 86%; max-width: 400px; scroll-snap-align: start; }
+.bmf-app.front .fcamp-dots { display: flex; justify-content: center; gap: 6px; margin-top: 14px; }
+.bmf-app.front .fcamp-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--track);
+  transition: width .2s, background .2s; cursor: pointer; }
+.bmf-app.front .fcamp-dots i.on { width: 18px; border-radius: var(--r-pill); background: var(--ember-hi); }
+/* Tablet+ : fixed-width posters so the strip stays ONE line and overflows horizontally rather than wrapping. */
+@media (min-width: 600px) {
+  .bmf-app.front .fcamp-cards > .fd-mcard { flex: 0 0 300px; max-width: none; }
+}
 .bmf-app.front .fcamp-wizard .fd-mcard { min-height: 300px; }
 @media (min-width: 600px) { .bmf-app.front .fcamp-wizard .fd-mcard { min-height: 326px; } }
 /* The available map pick is a <button>; null its UA chrome so the copy left/bottom-aligns in the app
