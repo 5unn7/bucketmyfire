@@ -20,7 +20,7 @@
 import { cleanCallsign } from '../three/ui/callsign';
 import { careerScore, rankFor, nextRankProgress } from '../three/missions/rank';
 import { fmtInt } from '../three/livefire/strings';
-import { tabbarHtml, footerBrandHtml } from './siteNav.mjs';
+import { tabbarHtml, footerBrandHtml, footerNavHtml } from './siteNav.mjs';
 
 export type ShellPage = 'home' | 'campaign' | 'prepare';
 
@@ -30,17 +30,20 @@ export function tabbarMarkup(active: ShellPage): string {
   return tabbarHtml(active);
 }
 
-/** The shared footer — slimmed to the two things every page must carry: the safety disclaimer and the
- *  policy links (Privacy + Terms). */
+/** The shared footer. It now LEADS with a ghost site-category row (the same NAV destinations as the
+ *  appbar, built from the one source) sitting full-width above a hairline; below it, the safety
+ *  disclaimer and the policy links (Privacy + Terms) share the base line with the brand lockup. */
 export function buildFooter(): string {
   return (
     `<footer class="fd-foot">` +
-    footerBrandHtml() +
+    footerNavHtml() +
     `<p class="fd-disclaimer">A window onto real data, not an emergency tool. Always follow official sources and local authorities.</p>` +
     `<div class="fd-foot-links">` +
     `<a href="/privacy.html">Privacy</a>` +
     `<a href="/terms.html">Terms</a>` +
-    `</div></footer>`
+    `</div>` +
+    footerBrandHtml() +
+    `</footer>`
   );
 }
 
@@ -353,6 +356,10 @@ const SHELL_CSS = `
 .fd-item-h { display: block; font-size: var(--fs-md); font-weight: var(--fw-bold); color: var(--text); line-height: 1.25; letter-spacing: .005em; }
 .fd-item.done .fd-item-h { text-decoration: line-through; text-decoration-color: var(--ok-50); color: var(--text-subtle); }
 .fd-item-b { display: block; font-size: var(--fs-sm); line-height: 1.5; color: var(--dim); text-align: justify; text-justify: inter-word; hyphens: auto; }
+/* Checked → the line collapses to its TITLE only: the body prose hides and the row tightens, so a
+   completed checklist reads as a clean stack of struck-through headings. */
+.fd-item.done .fd-item-b { display: none; }
+.fd-item.done { padding-top: 10px; padding-bottom: 10px; }
 
 /* ── Live-map overlay + fire-detail sheet (the Map button surface). ───────────── */
 .fd-map-over { position: fixed; inset: 0; z-index: 80; display: flex; flex-direction: column; background: rgba(5,8,11,0.96);
@@ -404,6 +411,9 @@ const SHELL_CSS = `
    the link text and the wordmark on one line; the links shrink/wrap so the lockup never drops a row. ─ */
 .fd-foot { color: var(--dim); padding-top: 8px; margin-top: 6px;
   display: flex; flex-wrap: wrap; align-items: center; column-gap: 20px; row-gap: 8px; }
+/* Ghost site-category row leads the footer: a full-width line above a hairline, then the disclaimer +
+   policy links + brand share the base line below it. */
+.fd-foot .site-foot-nav { order: 0; flex: 1 1 100%; padding-bottom: 13px; margin-bottom: 5px; border-bottom: 1px solid var(--hair); }
 .fd-foot .fd-disclaimer { order: 1; flex: 1 1 100%; margin: 0; font-size: var(--fs-sm); max-width: 60ch; }
 .fd-foot-links { order: 2; flex: 0 1 auto; min-width: 0; display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; }
 .fd-foot .site-foot-brand { align-self: center; }

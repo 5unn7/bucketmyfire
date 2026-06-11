@@ -22,5 +22,6 @@ export function brandNavHtml(active?: string): string;
 export function appbarHtml(opts?: { active?: string; actions?: 'app' | 'play' | 'none' }): string;
 export function tabbarHtml(active?: string): string;
 export function footerBrandHtml(): string;
+export function footerNavHtml(): string;
 export function breadcrumbHtml(trail: Crumb[]): string;
 export function injectNavStyles(): void;

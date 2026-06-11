@@ -262,19 +262,30 @@ ${frontAppbar('home')}
       <span class="fhome-map-go">${ic('chevron-right')}</span>
     </button>
 
-    <!-- Wear the fight — the shopbanner (specular swipe). -->
-    <button class="shopbanner card warm cut fhome-merch" data-act="shop" aria-label="Open the BMF Gear store">
-      <span class="sb-ic">${ic('shop')}</span>
-      <span class="sb-copy"><span class="sb-title">Wear the fight.</span><span class="sb-sub">Tees &amp; hoodies, printed on demand.</span></span>
-      <span class="sb-go">${ic('chevron-right')}</span>
+    <!-- Wear the fight — the BIG shop feature card. The real merch poster (Wearthefight.png) is the art,
+         cropped to the heli + firefighter so the poster's own baked "WEAR THE FIGHT" type sits below the
+         frame and never clashes with our overlaid copy + Shop CTA. -->
+    <button class="card warm cut fhome-merch" data-act="shop" aria-label="Open the BMF Gear store">
+      <div class="fhome-merch-art"><img src="/images/shop/helidesigns/Wearthefight.png" alt="Wear the fight — a wildland firefighter and a Bell helicopter slinging a Bambi bucket over a forest fire" /></div>
+      <div class="fhome-merch-fade"></div>
+      <div class="fhome-tx fhome-merch-tx">
+        <span class="fhome-merch-ey">${ic('shop')}BMF Gear</span>
+        <span class="h-big fhome-merch-h">Wear the fight.</span>
+        <span class="fhome-merch-sub">Tees &amp; hoodies, printed on demand.</span>
+        <span class="btn primary fhome-merch-go">Shop the collection</span>
+      </div>
     </button>
 
-    <!-- Prepare row — the 15-min checklist promo + the Field Notes rail. -->
+    <!-- Prepare — a compact secondary call-out, NOT the full checklist (that interactive card lives on
+         /prepare/). A one-line promo + a ghost button hand off to it, so the home stays the marketing
+         surface and the readiness tool has one home. -->
     <a class="card green cut fhome-prep" href="/prepare/#checklist">
-      <p class="fhome-eyebrow">Prepare</p>
-      <span class="h-big fhome-prep-h">15 mins to fire ready</span>
-      <span class="fhome-prep-b">An interactive wildfire-readiness checklist. Six concrete actions that lower your wildfire risk.</span>
-      <span class="fhome-prep-go">Start the checklist →</span>
+      <div class="fhome-prep-tx">
+        <p class="fhome-eyebrow">Prepare</p>
+        <span class="fhome-prep-h">15 mins to fire ready</span>
+        <span class="fhome-prep-sub">A quick wildfire-readiness checklist — six concrete actions.</span>
+      </div>
+      <span class="btn ghost fhome-prep-go">Open checklist →</span>
     </a>
     <section class="card fhome-notes">
       <div class="sec"><span class="tag">Field Notes</span><span class="line"></span></div>
@@ -403,21 +414,18 @@ function injectHomeBentoStyles(): void {
   /* STRETCHED to a balanced two-column bento (was 2fr/1fr): the data hero keeps a hair more room than
      the play tile, the map/merch + prep/notes rows read as even halves. This is the whole "stretch the
      layout" pass — same cards, same tokens, just spread to fill the band like the reference. */
-  .bmf-app.front .fhome-grid { grid-template-columns: 1.04fr 1fr; grid-template-areas: "hero play" "map merch" "prep notes"; align-items: stretch; }
+  /* Row 1 = hero | gameplay (kept ABOVE THE FOLD). Row 2 = map | checklist. Row 3 = the BIG shop
+     feature card | Field Notes. (Checklist + shop SWAPPED: shop drops into the large bottom-left slot.) */
+  .bmf-app.front .fhome-grid { grid-template-columns: 1.04fr 1fr; grid-template-areas: "hero play" "map prep" "merch notes"; align-items: stretch; }
   .bmf-app.front .fhome-hero { grid-area: hero; }
   .bmf-app.front .fhome-play { grid-area: play; }
   .bmf-app.front .fhome-map { grid-area: map; }
   .bmf-app.front .fhome-merch { grid-area: merch; }
   .bmf-app.front .fhome-prep { grid-area: prep; }
   .bmf-app.front .fhome-notes { grid-area: notes; }
-  /* Row 1 reads as one cinematic band: a taller hero, and the play tile DROPS its portrait aspect to
-     stretch to the hero's height as a wide landscape card (heli on the right, copy bottom-left). */
-  .bmf-app.front .fhome-hero { min-height: 432px; padding: 30px 26px 12px; }
-  .bmf-app.front .fhome-play { aspect-ratio: auto; padding: 30px 30px; }
-  .bmf-app.front .fhome-play-h { font-size: clamp(38px, 4.4vw, 60px); max-width: 9ch; line-height: .96; }
-  .bmf-app.front .fhome-play-sub { max-width: 36ch; }
-  /* The 4 supporting stats now spread into ONE row across the wider hero (they wrap 2×2 on a phone). */
-  .bmf-app.front .fhome-hero .fhome-stat { min-width: 0; }
+  /* NOTE: the desktop VISUAL overrides (play aspect, hero height, headline size, one-row stats) live in a
+     media block at the END of this stylesheet — they must come AFTER the base .fhome-play/.fhome-hero
+     rules below or those (later, equal-specificity) would clobber them. */
 }
 
 /* The ThreeTown aerial key-art fills the WHOLE front door as a fixed cinematic background. Home ONLY — Campaign/Prepare
@@ -473,7 +481,9 @@ function injectHomeBentoStyles(): void {
 
 /* OPEN SKIES play tile — key-art backdrop + the same fade. The top overlay banner (profile + live
    presence) and the base copy split top/bottom via space-between, both above the art/fade. */
-.bmf-app.front .fhome-play { position: relative; overflow: hidden; display: flex; flex-direction: column; justify-content: space-between; cursor: pointer; aspect-ratio: 4 / 5; padding: 24px 17px; text-align: left; }
+/* Mobile: a SHORT landscape card (was a tall 4/5 portrait) so the hero + this gameplay card both clear
+   the first viewport — the fold. Desktop overrides aspect-ratio:auto in the 880px band above. */
+.bmf-app.front .fhome-play { position: relative; overflow: hidden; display: flex; flex-direction: column; justify-content: space-between; cursor: pointer; aspect-ratio: 16 / 10; padding: 20px 17px; text-align: left; }
 .bmf-app.front .fhome-play:hover { transform: translateY(-2px); }
 /* Top overlay banner: profile cluster (left) + live presence chip (right). */
 .bmf-app.front .fhome-play-banner { position: relative; z-index: 2; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
@@ -523,18 +533,41 @@ function injectHomeBentoStyles(): void {
 .bmf-app.front .fhome-map-go { margin-left: auto; color: var(--accent); }
 .bmf-app.front .fhome-map-go svg { width: 18px; height: 18px; }
 
-/* Prepare promo + notes rail. */
-.bmf-app.front .fhome-merch { margin-top: 0; padding: 14px 17px; }
-.bmf-app.front .fhome-prep { display: flex; flex-direction: column; text-decoration: none; color: var(--text); padding: 18px 17px; }
-.bmf-app.front .fhome-prep .fhome-prep-h { font-size: var(--fs-hero); }
-.bmf-app.front .fhome-prep-b { margin-top: 9px; font-size: 13px; line-height: 1.5; color: var(--text-subtle); flex: 1; }
-.bmf-app.front .fhome-prep-go { margin-top: 14px; color: var(--ember-hi); font-weight: var(--fw-bold); font-size: 13.5px; }
-.bmf-app.front .fhome-prep:hover .fhome-prep-go { color: var(--menu); }
+/* BIG shop feature card — the merch poster as the art, our copy + Shop CTA bottom-left over a fade
+   (modelled on the play tile, warm register). A floor min-height on mobile; on desktop it stretches to
+   the bottom row beside the Field Notes. The fades are art literals (same rgba(7,10,13) base as the
+   other key-art fades in this file). */
+.bmf-app.front .fhome-merch { position: relative; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end;
+  cursor: pointer; min-height: 280px; padding: 24px 22px; text-align: left; margin-top: 0; }
+.bmf-app.front .fhome-merch:hover { transform: translateY(-2px); }
+.bmf-app.front .fhome-merch-art { position: absolute; inset: 0; z-index: 0; }
+.bmf-app.front .fhome-merch-art img { width: 100%; height: 100%; object-fit: cover; object-position: 64% 16%; display: block; }
+.bmf-app.front .fhome-merch-fade { position: absolute; inset: 0; z-index: 1; background:
+  linear-gradient(90deg, rgba(7,10,13,0.94) 0%, rgba(7,10,13,0.74) 32%, rgba(7,10,13,0.18) 66%, transparent 100%),
+  linear-gradient(0deg, rgba(7,10,13,0.9) 0%, rgba(7,10,13,0.34) 38%, transparent 68%); }
+.bmf-app.front .fhome-merch-tx { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: flex-start; }
+.bmf-app.front .fhome-merch-ey { display: inline-flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: 10.5px;
+  letter-spacing: .26em; text-transform: uppercase; color: var(--menu); font-weight: var(--fw-bold); }
+.bmf-app.front .fhome-merch-ey svg { width: 14px; height: 14px; }
+.bmf-app.front .fhome-merch-h { margin-top: 9px; font-size: clamp(26px, 3vw, 40px); text-shadow: 0 2px 14px rgba(0,0,0,0.6); }
+.bmf-app.front .fhome-merch-sub { margin-top: 9px; font-size: 14px; line-height: 1.45; color: var(--text-subtle); max-width: 34ch; text-shadow: 0 1px 8px rgba(0,0,0,0.7); }
+.bmf-app.front .fhome-merch-go { margin-top: 16px; pointer-events: none; }
+/* Prep tile — a compact secondary call-out (one-line promo + ghost button) that links to the full
+   readiness checklist on /prepare/. The interactive card is NOT duplicated here; this is just the
+   sharp hand-off, so the home stays marketing and Prepare owns the tool. */
+.bmf-app.front .fhome-prep { display: flex; flex-direction: column; justify-content: center; gap: 13px; text-decoration: none; color: var(--text); padding: 18px 17px; }
+.bmf-app.front .fhome-prep:hover { transform: translateY(-2px); border-color: var(--warm-stroke); }
+.bmf-app.front .fhome-prep-tx { display: flex; flex-direction: column; gap: 5px; }
+.bmf-app.front .fhome-prep-h { font-size: var(--fs-lg); font-weight: var(--fw-bold); color: #fff; line-height: 1.12; }
+.bmf-app.front .fhome-prep-sub { font-size: 13px; line-height: 1.45; color: var(--text-subtle); max-width: 40ch; }
+.bmf-app.front .fhome-prep-go { align-self: flex-start; pointer-events: none; }
 .bmf-app.front .fhome-notes { display: flex; flex-direction: column; padding: 14px 17px; }
 .bmf-app.front .fhome-notes .fd-rail { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; padding-bottom: 4px; scrollbar-width: none; }
 .bmf-app.front .fhome-notes .fd-rail::-webkit-scrollbar { display: none; }
 .bmf-app.front .fhome-notes .fd-mcard { scroll-snap-align: start; flex: 0 0 78%; max-width: 320px; }
-@media (min-width: 760px) { .bmf-app.front .fhome-notes .fd-mcard { flex-basis: 46%; } }
+/* Three across the (now half-width) notes column — matching the reference's 3-up Field Notes row.
+   Beyond three, the rail still scroll-snaps (harmless). */
+@media (min-width: 760px) { .bmf-app.front .fhome-notes .fd-mcard { flex: 0 0 31%; max-width: none; } }
 
 /* Home hero (mobile + desktop): more breathing room above it, and the live data pulled DOWN so it sits close to the
    next card (the play tile) instead of floating high over the art with empty space below. */
@@ -542,6 +575,17 @@ function injectHomeBentoStyles(): void {
 .bmf-app.front .fhome-hero .fhome-tx { justify-content: flex-end; }
 .bmf-app.front .fhome-hero { padding-bottom: 12px; }
 
+/* ── Desktop VISUAL overrides — placed AFTER the base .fhome-play / .fhome-hero rules above so they win
+   on source order (media queries add no specificity). Row 1 (hero + gameplay) is one trim band that
+   clears the fold: the play tile drops its portrait 4/5 aspect to a LANDSCAPE card sized to the hero. ── */
+@media (min-width: 880px) {
+  .bmf-app.front .fhome-play { aspect-ratio: auto; padding: 28px 30px; }
+  .bmf-app.front .fhome-play-h { font-size: clamp(38px, 4.2vw, 56px); max-width: 9ch; line-height: .96; }
+  .bmf-app.front .fhome-play-sub { max-width: 36ch; }
+  .bmf-app.front .fhome-hero { min-height: 360px; padding: 24px 26px 14px; }
+  /* The 4 supporting stats spread into ONE row across the wider hero (they still wrap 2×2 on a phone). */
+  .bmf-app.front .fhome-hero .fhome-stat { min-width: 0; }
+}
 `;
   document.head.appendChild(s);
 }

@@ -72,10 +72,15 @@ const FRONT_CSS = `
 .bmf-app.front .scene { position: fixed; }
 .bmf-app.front .embers { position: fixed; }
 
-/* The pad becomes a normal centred content column (not the 452px mobile hub). */
-.bmf-app.front .pad.fhome { position: relative; z-index: 2; flex: none; width: 100%; max-width: 1080px; margin: 0 auto; overflow: visible;
+/* The pad becomes a normal centred content column (not the 452px mobile hub). Widened to 1280px so the
+   front door uses more horizontal space on large/laptop screens (the bento, nav bar, and footer all
+   stretch wider) while staying centred + readable; it fluidly fills narrower viewports below the cap. */
+.bmf-app.front .pad.fhome { position: relative; z-index: 2; flex: none; width: 100%; max-width: 1280px; margin: 0 auto; overflow: visible;
   display: flex; flex-direction: column; gap: 12px; padding: 14px max(14px, env(safe-area-inset-left)) calc(96px + env(safe-area-inset-bottom)); }
 @media (min-width: 760px) { .bmf-app.front .pad.fhome { padding-bottom: 40px; } }
+/* Keep the sticky appbar's content edge aligned with the widened column (siteNav defaults it to 1080;
+   the front door stretches to match the bento). */
+.bmf-app.front .fhome-bar { max-width: 1280px; }
 .bmf-app.front .fhome-eyebrow { margin: 0 0 11px; font-family: var(--mono); font-size: 10.5px; letter-spacing: .26em; text-transform: uppercase; color: var(--menu); font-weight: var(--fw-bold); }
 .bmf-app.front .fhome-eyebrow.cool { color: var(--accent); }
 /* The shared first-card "hero" standard (.fd-hero*) now lives in siteNav.mjs navCss (de-scoped), so the
