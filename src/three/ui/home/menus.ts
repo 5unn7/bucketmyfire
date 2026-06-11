@@ -326,17 +326,33 @@ export function openCoop(): void {
   const unlocked = (h: CatalogItem): boolean => isHeliUnlocked(h, cleared);
   let picked = currentProfile().heliId || HELIS[0].id;
   if (!unlocked(HELIS.find((h) => h.id === picked) ?? HELIS[0])) picked = (HELIS.find(unlocked) ?? HELIS[0]).id;
-  // Each airframe is a compact card-button in a 3-up horizontal grid. Locked ones render dimmed with
-  // their unlock requirement + a lock corner, carry data-locked, and the click handler skips them.
+  // Each airframe is a compact card in a 3-up horizontal grid. An AFFORDABLE locked ship carries a real
+  // ember "Unlock" buy button (spend points right here, no trip to the Hangar); an unaffordable one
+  // renders dimmed with its price + a lock corner. Both carry data-locked so the SELECT handler skips
+  // them — only the inner Unlock button acts.
   const heliCard = (h: (typeof HELIS)[number]): string => {
     const ok = unlocked(h);
     const sel = ok && h.id === picked;
-    const sub = ok ? h.tagline : `${heliCost(h).toLocaleString()} pts`;
-    const flag = sel ? `<span class="hc-flag">${ic('check')}</span>` : ok ? '' : `<span class="hc-flag">${ic('lock')}</span>`;
+    const cost = heliCost(h);
+    const afford = !ok && cost > 0 && availablePoints() >= cost;
     // Key-art render fills the tile when present; else the procedural ring + heli mark.
     const art = h.imageUrl
       ? `<img class="img" src="${h.imageUrl}" alt="">`
       : `<span class="hc-ring"></span><span class="hc-mark">${ic('heli')}</span>`;
+    // Locked-but-affordable: a div (a buy <button> can't nest in a card-button), inert for SELECTION
+    // (data-locked) so only the Unlock button acts. The price stays as the caption; the button is the
+    // action. Bought → repaint flips it to the selected card.
+    if (afford) {
+      return `<div class="helicard buyable" style="--accent:${h.accent};" data-heli="${h.id}" data-locked>
+        <span class="hc-art">${art}</span>
+        <span class="hc-name">${h.name}</span>
+        <span class="hc-sub">${cost.toLocaleString()} pts</span>
+        <button class="btn ember sm block hc-buy" data-buy="${h.id}">${ic('spark')}Unlock</button>
+      </div>`;
+    }
+    // Selectable, or locked + unaffordable: the card-button. Locked shows its price + a lock corner.
+    const sub = ok ? h.tagline : `${cost.toLocaleString()} pts`;
+    const flag = sel ? `<span class="hc-flag">${ic('check')}</span>` : ok ? '' : `<span class="hc-flag">${ic('lock')}</span>`;
     return `<button class="helicard${sel ? ' sel' : ''}${ok ? '' : ' locked'}" style="--accent:${h.accent};" data-heli="${h.id}"${ok ? '' : ' data-locked'}>
       <span class="hc-art">${art}</span>
       <span class="hc-name">${h.name}</span>
@@ -372,11 +388,30 @@ export function openCoop(): void {
   // Aircraft selection: one delegated handler repaints the grid so the chosen card lights up and the
   // rest reset. Locked airframes are inert — you can't fly what you haven't earned, so they're skipped.
   const grid = root.querySelector<HTMLElement>('.heligrid')!;
+  const bal = root.querySelector<HTMLElement>('.pts-bal');
+  const repaint = (): void => {
+    if (bal) bal.innerHTML = `${ic('spark')}<b>${availablePoints().toLocaleString()}</b><span>pts</span>`;
+    grid.innerHTML = HELIS.map(heliCard).join('');
+  };
   grid.addEventListener('click', (e) => {
-    const card = (e.target as HTMLElement).closest<HTMLElement>('.helicard');
+    const target = e.target as HTMLElement;
+    // Spend points to unlock the ship right here in the lobby (buyHeli enforces affordability — a
+    // blocked buy is a no-op). Bought → equip it, drain the wallet chip, and repaint so the card flips
+    // to selected. Checked BEFORE the select branch because the Unlock button lives inside an inert
+    // (data-locked) card.
+    const buy = target.closest<HTMLElement>('[data-buy]');
+    if (buy) {
+      const h = HELIS.find((x) => x.id === buy.dataset.buy);
+      if (h && buyHeli(h).ok) {
+        picked = h.id;
+        repaint();
+      }
+      return;
+    }
+    const card = target.closest<HTMLElement>('.helicard');
     if (!card || card.hasAttribute('data-locked')) return;
     picked = card.dataset.heli || picked;
-    grid.innerHTML = HELIS.map(heliCard).join('');
+    repaint();
   });
   root.querySelector('[data-fly]')?.addEventListener('click', () => {
     const url = new URL(location.href);
@@ -858,6 +893,7 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
   };
   let detailToken = 0; // bumped per open, so a slow history fetch can't paint into a newer selection
   const showReported = (f: ReportedFire): void => {
+    sheetEl.classList.add('bottom'); // a fire detail opens from the BOTTOM (full width for the name + chips)
     sheetEl.innerHTML = reportedDetailHtml(f);
     sheetEl.hidden = false;
     sheetEl.scrollTop = 0;
@@ -875,6 +911,7 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
     }
   };
   const showHotspot = (h: Hotspot): void => {
+    sheetEl.classList.add('bottom'); // detail = bottom sheet (the Layers / Sources sheets stay on the right)
     sheetEl.innerHTML = fireDetailHtml(h);
     sheetEl.hidden = false;
     sheetEl.scrollTop = 0;

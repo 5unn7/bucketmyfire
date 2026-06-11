@@ -185,7 +185,21 @@ const CSS = `
   animation:bmf-sheet-right .2s cubic-bezier(.2,.7,.3,1); }
 .bmf-app .firesheet[hidden]{ display:none; }
 @keyframes bmf-sheet-right{ from{ transform:translateX(101%); } to{ transform:translateX(0); } }
-@media (prefers-reduced-motion:reduce){ .bmf-app .firesheet{ animation:none; } }
+/* FIRE-DETAIL variant — a BOTTOM sheet, not the right drawer. A tapped fire's big name + stage chip + the
+   fact chips need full width to lay out on one clean row; cramped into the 380px right column they wrap and
+   misalign. So the detail opens from the bottom (full map width) while the Layers / Sources sheets KEEP the
+   right drawer. Toggled by the `bottom` class in menus.ts (showReported/showHotspot add it; the layers +
+   ledger views remove it). Anchored bottom: top:auto + bottom:0 + a capped height with the base inner scroll. */
+.bmf-app .firesheet.bottom{ top:auto; left:0; right:0; bottom:0; width:auto; max-height:64%;
+  border-left:0; border-top:1px solid var(--warm-stroke); border-radius:var(--r-xl) var(--r-xl) 0 0;
+  padding:0 16px calc(16px + env(safe-area-inset-bottom)); animation:bmf-sheet-up .22s cubic-bezier(.2,.7,.3,1); }
+/* Standard "drag from bottom" grab pill (the right drawer has none — its close button is the dismiss). Purely
+   an affordance; dismiss is still the close button / tap-empty-map, matching the drawer. Scrolls under the
+   sticky header on a long record. */
+.bmf-app .firesheet.bottom::before{ content:''; display:block; width:38px; height:4px; margin:9px auto 1px;
+  border-radius:var(--r-pill); background:var(--hair); }
+@keyframes bmf-sheet-up{ from{ transform:translateY(101%); } to{ transform:translateY(0); } }
+@media (prefers-reduced-motion:reduce){ .bmf-app .firesheet, .bmf-app .firesheet.bottom{ animation:none; } }
 /* Branded scrollbar — warm ember thumb (the "fight" register), floating on a clear track, pill-capped. */
 .bmf-app .firesheet{ scrollbar-width:thin; scrollbar-color:var(--ember-50) transparent; }
 .bmf-app .firesheet::-webkit-scrollbar{ width:8px; }
@@ -690,6 +704,17 @@ const CSS = `
 .bmf-app .helicard .hc-flag{ position:absolute; top:7px; right:7px; width:19px; height:19px; border-radius:50%; display:grid; place-items:center; color:var(--faint); }
 .bmf-app .helicard .hc-flag svg{ width:12px; height:12px; }
 .bmf-app .helicard.sel .hc-flag{ background:var(--menu); color:var(--cta-ink); box-shadow:0 0 10px var(--ember-35); }
+/* A LOCKED airframe the pilot can AFFORD: not selectable, but it carries a real ember "Unlock" buy
+   button so points are spent right here in the lobby (matches the Hangar). Kept INVITING — a warm
+   stroke, an ember price, and ONLY the art tile dimmed (not the whole card, unlike .locked) so the
+   Unlock button stays bright and clearly tappable. */
+.bmf-app .helicard.buyable{ cursor:default; border-color:var(--warm-stroke); }
+.bmf-app .helicard.buyable:hover{ transform:none; border-color:var(--warm-stroke); }
+.bmf-app .helicard.buyable .hc-art{ filter:grayscale(.3) brightness(.82); }
+.bmf-app .helicard.buyable .hc-sub{ color:var(--ember-hi); }
+/* The inline Unlock button — tightened off the kit .btn.sm so "◇ Unlock" fits a narrow 3-up card. */
+.bmf-app .helicard .hc-buy{ min-height:40px; padding:9px 8px; gap:6px; letter-spacing:.04em; }
+.bmf-app .helicard .hc-buy svg{ width:13px; height:13px; }
 
 /* Open Skies — single-viewport, NO PAGE SCROLL (CLAUDE.md hard rule). The body owns the title +
    subtitle hero, so the overlay appbar is hidden for this screen. The pad is a flex column locked to
