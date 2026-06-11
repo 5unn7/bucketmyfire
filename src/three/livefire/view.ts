@@ -49,6 +49,9 @@ export interface FireMapHandlers {
   // Optional: fired true/false as a smoke forecast frame's tiles load/settle (drives the scrubber's
   // buffering hint). A consumer that doesn't animate smoke can omit it.
   onSmokeLoad?: (loading: boolean) => void;
+  // Optional: fired when a tap lands on EMPTY map while a fire is selected — the view has already
+  // cleared its own selection ring; the consumer should dismiss the open detail sheet.
+  onDeselect?: () => void;
 }
 
 /** What a map view must do. Each `setX` repaints ONE layer from data; visibility is independent

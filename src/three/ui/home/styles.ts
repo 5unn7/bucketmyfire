@@ -97,6 +97,15 @@ const CSS = `
    not a flat web button. Square (no pills). */
 .bmf-app .fmbtn{ position:relative; width:42px; height:42px; flex:0 0 auto; display:grid; place-items:center; border-radius:var(--r-md); border:1px solid var(--stroke); background:var(--card-glass); backdrop-filter:var(--blur); -webkit-backdrop-filter:var(--blur); color:var(--text); cursor:pointer; box-shadow:var(--shadow-card), inset 0 1px 0 var(--bevel-top); transition:border-color .14s ease, color .14s ease, transform .14s ease, background .14s ease; }
 .bmf-app .fmbtn:hover{ border-color:var(--ember); color:var(--ember-hi); transform:translateY(-1px); background:var(--card-glass); }
+/* Pressed / active (toggled-ON) state — a warm ember FILL with an inner glow (the same "fight" register
+   the .toggle uses): the floating Fire-weather button wears this whenever its raster is drawn, so on/off
+   reads at a glance on the map. */
+/* Icon stays WHITE (--text) on the warm fill — an ember-on-ember glyph drops to ~3.6:1 (fails AA + washes
+   out in sun); white reads ~6.5:1, and the warm FILL already claims the "fight" register. */
+.bmf-app .fmbtn.on{ background:linear-gradient(180deg, var(--fire-55), var(--ember-35)); border-color:var(--warm-stroke); color:var(--text); box-shadow:var(--shadow-card), inset 0 0 10px var(--ember-40), inset 0 1px 0 var(--bevel-top); }
+.bmf-app .fmbtn.on:hover{ color:var(--text); transform:translateY(-1px); }
+/* Greyed out where its data doesn't reach (Fire weather off-Canada / kill-switched) — un-tappable. */
+.bmf-app .fmbtn.disabled{ opacity:.4; pointer-events:none; }
 .bmf-app .fmbtn svg{ width:19px; height:19px; }
 .bmf-app .fmn{ position:absolute; top:-6px; right:-6px; min-width:17px; height:17px; padding:0 4px; display:grid; place-items:center; border-radius:var(--r-pill); background:var(--ember); color:var(--ink); font-family:var(--mono); font-size:var(--fs-micro); font-weight:var(--fw-bold); line-height:1; }
 .bmf-app .fmn:empty{ display:none; }
@@ -110,9 +119,13 @@ const CSS = `
 .bmf-app .firestats[hidden]{ display:none; }
 .bmf-app .fstat-ticker{ min-width:0; }
 .bmf-app .fstat-load{ font-size:var(--fs-meta); color:var(--dim); }
-.bmf-app .fstat-row{ display:flex; align-items:center; gap:8px 13px; min-width:0; white-space:nowrap; overflow:hidden; }
+/* The row WRAPS (was a single clipped nowrap line that hid the right-hand chips on a phone): the lead +
+   stage pips hold line 1, the supporting chips (today · burned · prep · freshness) flow to line 2 when
+   they don't fit — so "reported today" and "burned this year" stay visible on mobile. On a wide window it
+   all still sits on one line (wrap only triggers when it must). */
+.bmf-app .fstat-row{ display:flex; flex-wrap:wrap; align-items:center; gap:5px 13px; min-width:0; }
 .bmf-app .fstat-ic{ width:15px; height:15px; flex:0 0 auto; vertical-align:-3px; }
-.bmf-app .fstat-lead{ display:inline-flex; align-items:center; gap:5px; flex:0 0 auto; }
+.bmf-app .fstat-lead{ display:inline-flex; align-items:center; gap:5px; flex:0 1 auto; min-width:0; }
 .bmf-app .fstat-lead .fstat-ic{ color:var(--ember); }
 .bmf-app .fstat-loc{ font-size:var(--fs-md); font-weight:var(--fw-bold); color:var(--text); max-width:34vw; overflow:hidden; text-overflow:ellipsis; }
 .bmf-app .fstat-sep{ color:var(--faint); }
@@ -122,13 +135,13 @@ const CSS = `
 .bmf-app .fstat-pip{ display:inline-flex; align-items:center; gap:4px; font-family:var(--mono); font-size:var(--fs-tag); color:var(--text); }
 .bmf-app .fstat-pip i{ width:8px; height:8px; flex:0 0 auto; border-radius:var(--r-round); background:var(--faint); }
 .bmf-app .fstat-pip.oc i{ background:var(--warn); } .bmf-app .fstat-pip.bh i{ background:var(--caution); } .bmf-app .fstat-pip.uc i{ background:var(--ok); }
-.bmf-app .fstat-rest{ display:flex; align-items:center; gap:6px 13px; min-width:0; flex:1 1 auto; overflow:hidden; }
+.bmf-app .fstat-rest{ display:flex; flex-wrap:wrap; align-items:center; gap:5px 13px; min-width:0; flex:1 1 auto; }
 .bmf-app .fstat-chip{ display:inline-flex; align-items:center; gap:5px; flex:0 0 auto; font-size:var(--fs-tag); color:var(--dim); }
 .bmf-app .fstat-chip .fstat-ic{ color:var(--dim); }
 .bmf-app .fstat-chip b{ font-family:var(--mono); font-weight:var(--fw-bold); color:var(--text); }
 .bmf-app .fstat-chip.na, .bmf-app .fstat-chip.na .fstat-ic{ color:var(--faint); }
 .bmf-app .fstat-na{ color:var(--faint); font-style:italic; }
-.bmf-app .fstat-fresh{ font-size:var(--fs-micro); color:var(--faint); margin-left:auto; padding-left:6px; }
+.bmf-app .fstat-fresh{ font-size:var(--fs-micro); color:var(--faint); flex:0 0 auto; }
 
 /* Layers sheet — tiered toggles (reuse .srow/.toggle) + the full legend. A layer row's icon slot carries a
    legend swatch; a country-gated tier shows a reason badge instead of a toggle. */
@@ -144,11 +157,13 @@ const CSS = `
 .bmf-app .lgsw.scar{ border-radius:var(--r-sm); background:var(--ember-12); border:1px solid var(--ember-50); }
 .bmf-app .lgsw.ban{ border-radius:var(--r-sm); background:transparent; border:1.5px dashed var(--warn); }
 .bmf-app .lgsw.smoke{ width:32px; border-radius:var(--r-sm); background:linear-gradient(90deg, var(--ember-10), var(--ember-40)); }
-.bmf-app .lgrow{ display:flex; align-items:center; gap:11px; padding:6px 2px; border-bottom:1px solid var(--hair); }
-.bmf-app .lgrow:last-child{ border-bottom:0; }
-.bmf-app .lgrow .lgtx{ display:flex; flex-direction:column; gap:1px; min-width:0; }
-.bmf-app .lgrow .lgname{ font-size:var(--fs-meta); color:var(--text); }
-.bmf-app .lgrow .lgdef{ font-size:var(--fs-micro); color:var(--dim); }
+/* Layers-sheet footer link → the source ledger (honest-window provenance, kept reachable from the map
+   now that the floating Sources button became Fire weather). A quiet full-width row, not a pill. */
+.bmf-app .fsheet-link{ display:flex; align-items:center; gap:11px; width:100%; min-height:44px; margin-top:14px; padding:13px 2px; background:transparent; border:0; border-top:1px solid var(--hair); color:var(--menu); font-family:var(--font); font-size:var(--fs-meta); cursor:pointer; text-align:left; transition:color .14s ease; }
+.bmf-app .fsheet-link:hover{ color:var(--ember-hi); }
+.bmf-app .fsheet-link svg{ width:16px; height:16px; flex:0 0 auto; }
+.bmf-app .fsheet-link .grow{ font-weight:var(--fw-semibold); color:var(--text); }
+.bmf-app .fsheet-link:hover .grow{ color:var(--ember-hi); }
 
 /* Leaflet, themed dark to match the cockpit (tokens only). */
 .bmf-app .leaflet-container{ background:var(--card-bg); font-family:var(--font); }
@@ -163,7 +178,10 @@ const CSS = `
    the right. z-index clears Leaflet's control layer (its zoom +/- container sits at 1000) so the map
    controls can't poke OVER an open drawer; the warm-stroke lip reads it as a panel lifted off the map. */
 .bmf-app .firesheet{ position:absolute; top:0; right:0; bottom:0; z-index:1200; width:min(380px, 86%); overflow-y:auto; -webkit-overflow-scrolling:touch;
-  background:var(--card-bg); border-left:1px solid var(--warm-stroke); border-radius:var(--r-xl) 0 0 var(--r-xl); box-shadow:var(--shadow-card); padding:0 16px 16px;
+  /* Frosted glass to match the shared kit modal (card-glass + the --blur token setBlur uses) — the drawer
+     reads as one design language with the Contact / Privacy / Terms modals; the blur keeps rows legible. */
+  background:var(--card-glass); backdrop-filter:var(--blur); -webkit-backdrop-filter:var(--blur);
+  border-left:1px solid var(--warm-stroke); border-radius:var(--r-xl) 0 0 var(--r-xl); box-shadow:var(--shadow-card); padding:0 16px 16px;
   animation:bmf-sheet-right .2s cubic-bezier(.2,.7,.3,1); }
 .bmf-app .firesheet[hidden]{ display:none; }
 @keyframes bmf-sheet-right{ from{ transform:translateX(101%); } to{ transform:translateX(0); } }

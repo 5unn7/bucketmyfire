@@ -247,6 +247,17 @@ export class FireMap implements LiveMapView {
     this.reportedLayer = L.layerGroup();
     this.hotspotLayer = L.layerGroup();
     this.applyVisibility();
+
+    // Tap EMPTY map → dismiss any active selection. Leaflet routes a click on an interactive marker to
+    // that marker (never here), so this only fires on the bare basemap: restore the ringed dot's style
+    // and ask the host to close the detail sheet.
+    this.map.on('click', () => {
+      if (!this.selected) return;
+      if (this.selectedBase) this.selected.setStyle(this.selectedBase);
+      this.selected = null;
+      this.selectedBase = null;
+      this.handlers.onDeselect?.();
+    });
   }
 
   // ── Layer data setters (each clears + repaints its own group; visibility is independent) ──

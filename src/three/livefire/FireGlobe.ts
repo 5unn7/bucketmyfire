@@ -220,16 +220,34 @@ void main() {
 const POINT_VERT = /* glsl */ `
 attribute float aSize;
 attribute vec3 aColor;
+attribute float aPulse;     // 1 = an out-of-control fire (it breathes), 0 = steady
 uniform float uPx;
+uniform float uTime;        // seconds; only advanced while reported fires pulse (else frozen)
+uniform float uPulseW;      // breath angular speed (2π / period)
+uniform float uSwell;       // peak size/alpha swell for an OC fire
+uniform float uPulseOn;     // 0 under reduced-motion → the breath flatlines to a steady glow
+uniform float uWorldScale;  // 0 = constant SCREEN px (beads/dots); 1 = constant WORLD size (ground light)
+uniform float uBloomK;      // world-size factor for the ground light
+uniform vec2  uBloomClamp;  // (min, max) px clamp on the world-sized ground light
 varying vec3 vColor;
 varying float vFade;
+varying float vWave;        // this point's breath phase, 0..1 (0 when not pulsing)
 void main() {
   vColor = aColor;
   vec4 wp = modelMatrix * vec4(position, 1.0);
+  vec4 mv = viewMatrix * wp;
   vec3 n = normalize(mat3(modelMatrix) * position);
   vFade = smoothstep(0.0, 0.14, dot(n, normalize(cameraPosition - wp.xyz)));
-  gl_PointSize = aSize * uPx;
-  gl_Position = projectionMatrix * viewMatrix * wp;
+  // Per-fire phase from its position so a field of OC fires breathes out of sync (not one mechanical
+  // throb). uPulseOn gates the whole thing off for reduced-motion (steady).
+  float seed = position.x * 9.17 + position.y * 4.31 + position.z * 6.53;
+  vWave = aPulse * uPulseOn * (0.5 + 0.5 * sin(uTime * uPulseW + seed));
+  float swell = 1.0 + uSwell * vWave;
+  // Beads stay a constant SCREEN size (always legible). The ground light is constant WORLD size — it
+  // perspective-shrinks as you pull back (de-clutter) and spreads as you push in (light on the ground).
+  float worldPx = clamp(aSize * uBloomK / max(0.0015, -mv.z), uBloomClamp.x, uBloomClamp.y);
+  gl_PointSize = mix(aSize * uPx, worldPx, uWorldScale) * swell;
+  gl_Position = projectionMatrix * mv;
 }`;
 
 const POINT_FRAG = /* glsl */ `
@@ -238,6 +256,7 @@ uniform vec3 uPin;
 uniform float uStyle;
 varying vec3 vColor;
 varying float vFade;
+varying float vWave; // breath phase 0..1 for this point (0 when steady / reduced-motion)
 void main() {
   vec2 p = gl_PointCoord * 2.0 - 1.0;
   float d = length(p);
@@ -253,19 +272,23 @@ void main() {
     col += sheen * 0.22 * (1.0 - smoothstep(0.5, 0.74, d)); // subtle gloss on the tiny bead
     col = mix(col, uInk, smoothstep(0.6 - aa, 0.74, d));
     a = (1.0 - smoothstep(0.9 - aa, 1.0, d)) * 0.95;
-  } else if (uStyle < 1.5) { // marker — casing + pin ring + fill, the flat map's mark in GL
-    col += sheen * 0.34 * (1.0 - smoothstep(0.46 - aa, 0.5, d)); // gloss on the colour fill core only
-    col = mix(col, uPin, smoothstep(0.5 - aa, 0.5, d));
-    col = mix(col, uInk, smoothstep(0.72 - aa, 0.72, d));
-    a = mix(1.0, 0.62, smoothstep(0.72 - aa, 0.72, d));
-    a *= 1.0 - smoothstep(1.0 - aa, 1.0, d);
+  } else if (uStyle < 1.5) { // marker — a small CRISP ember bead: the always-visible mark + tap target
+    float hot = 1.0 - smoothstep(0.0, 0.30, d);             // hot center
+    float disc = 1.0 - smoothstep(0.50, 0.62, d);           // tight body, soft AA edge (no big halo)
+    col = mix(vColor, vec3(1.0), hot * 0.55);               // center whitens toward white-hot
+    a = disc;                                               // (the soft glow is the ground-light layer below)
   } else if (uStyle < 2.5) { // soft — extinguished: dim, subordinate
     col = mix(vColor, uInk, smoothstep(0.45, 0.72, d));
     a = (1.0 - smoothstep(0.78, 1.0, d)) * 0.62;
-  } else { // selection ring — hollow, over the picked mark
+  } else if (uStyle < 3.5) { // selection ring — hollow, over the picked mark
     float ring = smoothstep(0.62 - aa, 0.62, d) * (1.0 - smoothstep(0.86, 0.86 + aa, d));
     col = vColor;
     a = ring;
+  } else { // ground light — a soft ADDITIVE warm pool rising from the fire's base (OC breathes brighter)
+    float g = pow(clamp(1.0 - d, 0.0, 1.0), 2.4);           // smooth radial falloff to nothing at the rim
+    float breath = 1.0 + 0.65 * vWave;                      // the light swells + brightens on the breath
+    col = vColor * breath;                                  // additive → reads as LIGHT, not an object
+    a = g * 0.6 * breath;
   }
   gl_FragColor = vec4(col, a * vFade);
 }`;
@@ -292,24 +315,28 @@ function linesGeometry(lines: [number, number][][], alt: number): THREE.BufferGe
   return g;
 }
 
-interface PointSpec { lat: number; lon: number; color: THREE.Color; px: number }
+interface PointSpec { lat: number; lon: number; color: THREE.Color; px: number; pulse?: number }
 
-/** (Re)build a Points geometry from marker specs (positions on the dot shell + per-point colour/size). */
+/** (Re)build a Points geometry from marker specs (positions on the dot shell + per-point colour/size/
+ *  breath flag — pulse=1 marks an out-of-control fire that the marker shader breathes). */
 function pointsGeometry(specs: PointSpec[]): THREE.BufferGeometry {
   const pos = new Float32Array(specs.length * 3);
   const col = new Float32Array(specs.length * 3);
   const size = new Float32Array(specs.length);
+  const pul = new Float32Array(specs.length);
   const v = new THREE.Vector3();
   specs.forEach((s, i) => {
     llToV3(s.lat, s.lon, ALT.dots, v);
     pos.set([v.x, v.y, v.z], i * 3);
     col.set([s.color.r, s.color.g, s.color.b], i * 3);
     size[i] = s.px;
+    pul[i] = s.pulse ?? 0;
   });
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   g.setAttribute('aColor', new THREE.BufferAttribute(col, 3));
   g.setAttribute('aSize', new THREE.BufferAttribute(size, 1));
+  g.setAttribute('aPulse', new THREE.BufferAttribute(pul, 1));
   return g;
 }
 
@@ -330,7 +357,7 @@ export class FireGlobe implements LiveMapView {
   private earth = new THREE.Group();
   private earthMat: THREE.ShaderMaterial;
   private drapeMat: THREE.ShaderMaterial; // the forecast shell (FWI/smoke/bans) above the tiles
-  private pointMat: { hotspot: THREE.ShaderMaterial; marker: THREE.ShaderMaterial; soft: THREE.ShaderMaterial; sel: THREE.ShaderMaterial };
+  private pointMat: { hotspot: THREE.ShaderMaterial; marker: THREE.ShaderMaterial; soft: THREE.ShaderMaterial; sel: THREE.ShaderMaterial; bloom: THREE.ShaderMaterial };
   // Zoom-in detail tiles + the vector geography that yields to them (double coastlines otherwise).
   private tiles: GlobeTiles;
   private tileFade = -1; // last applied fade (−1 forces the first apply)
@@ -340,6 +367,7 @@ export class FireGlobe implements LiveMapView {
   // Layer scene objects (each rebuilt by its data setter; visibility independent).
   private hotspotPts: THREE.Points;
   private reportedGrp = new THREE.Group(); // area discs + rim rings + marker dots
+  private bloomPts: THREE.Points; // the additive "ground light" pool under each reported fire
   private reportedDots: THREE.Points;
   private outPts: THREE.Points;
   private perimLines: THREE.LineSegments;
@@ -366,6 +394,7 @@ export class FireGlobe implements LiveMapView {
   private coarsePointer = false; // last pointerdown was touch/pen → fatter tap targets (mobile leniency)
   private framed = false; // a fitTo landed — the attract spin must not drift a framed view away
   private reduced = false;
+  private hasPulse = false; // any out-of-control fire on screen → keep the loop live for the breath
   private dirty = true; // render-on-demand: a static scene skips the draw (battery — P1 review find)
   private raf = 0;
   private lastT = 0;
@@ -513,17 +542,28 @@ export class FireGlobe implements LiveMapView {
     // ── data layers ──
     const ink = tok(UI.ink).c;
     const pin = tok(UI.text).c;
-    const mkPointMat = (style: number): THREE.ShaderMaterial =>
+    const mkPointMat = (style: number, additive = false, worldScale = 0): THREE.ShaderMaterial =>
       new THREE.ShaderMaterial({
         vertexShader: POINT_VERT,
         fragmentShader: POINT_FRAG,
-        uniforms: { uPx: { value: Math.min(window.devicePixelRatio || 1, 2) }, uInk: { value: ink }, uPin: { value: pin }, uStyle: { value: style } },
+        uniforms: {
+          uPx: { value: Math.min(window.devicePixelRatio || 1, 2) }, uInk: { value: ink }, uPin: { value: pin }, uStyle: { value: style },
+          // Breath uniforms (only the marker + ground-light styles read them via aPulse; the rest carry aPulse=0).
+          uTime: { value: 0 }, uPulseW: { value: (Math.PI * 2) / G.pulsePeriodS },
+          uSwell: { value: G.pulseSwell }, uPulseOn: { value: this.reduced ? 0 : 1 },
+          uWorldScale: { value: worldScale }, uBloomK: { value: G.bloomK },
+          uBloomClamp: { value: new THREE.Vector2(G.bloomMinPx, G.bloomMaxPx) },
+        },
+        blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
         transparent: true,
         depthWrite: false,
       });
-    this.pointMat = { hotspot: mkPointMat(0), marker: mkPointMat(1), soft: mkPointMat(2), sel: mkPointMat(3) };
+    // The ground light is ADDITIVE + WORLD-sized (it reads as light pooling on the surface); the rest are
+    // normal-blended, constant-screen-px marks.
+    this.pointMat = { hotspot: mkPointMat(0), marker: mkPointMat(1), soft: mkPointMat(2), sel: mkPointMat(3), bloom: mkPointMat(4, true, 1) };
 
     this.hotspotPts = new THREE.Points(pointsGeometry([]), this.pointMat.hotspot);
+    this.bloomPts = new THREE.Points(pointsGeometry([]), this.pointMat.bloom);
     this.reportedDots = new THREE.Points(pointsGeometry([]), this.pointMat.marker);
     this.outPts = new THREE.Points(pointsGeometry([]), this.pointMat.soft);
     this.perimLines = new THREE.LineSegments(new THREE.BufferGeometry(), lineMat(UI.ember));
@@ -531,14 +571,16 @@ export class FireGlobe implements LiveMapView {
     this.selPts = new THREE.Points(pointsGeometry([]), this.pointMat.sel);
     this.selPts.visible = false;
 
-    // Draw order mirrors the flat map's panes: footprints → out → discs → hotspots.
+    // Draw order: footprints → ground light → out → discs/beads → hotspots. The additive ground light
+    // sits UNDER the marks so the crisp beads always read on top of their own glow.
     this.perimLines.renderOrder = 1;
-    this.reportedGrp.renderOrder = 2;
+    this.bloomPts.renderOrder = 2;
+    this.reportedGrp.renderOrder = 3;
     this.outPts.renderOrder = 3;
     this.reportedDots.renderOrder = 4;
     this.hotspotPts.renderOrder = 5;
     this.selPts.renderOrder = 7;
-    this.earth.add(this.perimLines, this.reportedGrp, this.outPts, this.reportedDots, this.hotspotPts, this.selPts);
+    this.earth.add(this.perimLines, this.bloomPts, this.reportedGrp, this.outPts, this.reportedDots, this.hotspotPts, this.selPts);
     this.scene.add(this.earth);
 
     this.applyVisibility();
@@ -667,9 +709,16 @@ export class FireGlobe implements LiveMapView {
       this.reportedGrp.add(new THREE.Mesh(discG, this.discMat), new THREE.LineSegments(ringG, this.ringMat));
     }
 
-    this.swapPoints(this.reportedDots, ordered.map((f) => ({
-      lat: f.lat, lon: f.lon, color: tok(STAGE_COLOR[f.stage]).c, px: LIVEFIRE.globe.dotPx,
-    })));
+    // Out-of-control fires breathe (pulse=1); the rest hold a steady light. `hasPulse` keeps the
+    // render-on-demand loop alive only while there's actually something pulsing on screen.
+    this.hasPulse = ordered.some((f) => f.stage === 'OC');
+    const specs = ordered.map((f) => ({
+      lat: f.lat, lon: f.lon, color: tok(STAGE_COLOR[f.stage]).c, pulse: f.stage === 'OC' ? 1 : 0,
+    }));
+    // Two layers: the additive WORLD-sized ground light (aSize=1 → uBloomK owns its size) UNDER a small,
+    // crisp constant-px bead (the always-visible mark + tap target).
+    this.swapPoints(this.bloomPts, specs.map((s) => ({ ...s, px: 1 })));
+    this.swapPoints(this.reportedDots, specs.map((s) => ({ ...s, px: LIVEFIRE.globe.dotPx })));
   }
 
   setOutFires(fires: ReportedFire[]): void {
@@ -704,7 +753,7 @@ export class FireGlobe implements LiveMapView {
 
   private applyVisibility(): void {
     const v = this.visible;
-    this.reportedGrp.visible = this.reportedDots.visible = v.reported;
+    this.reportedGrp.visible = this.reportedDots.visible = this.bloomPts.visible = v.reported;
     this.outPts.visible = v.out;
     this.hotspotPts.visible = v.hotspots;
     this.perimLines.visible = v.perimeters;
@@ -1064,6 +1113,11 @@ export class FireGlobe implements LiveMapView {
         return;
       }
     }
+    // Tapped empty map with a fire selected → dismiss it: drop the ring + close the detail sheet.
+    if (this.selLayer) {
+      this.clearSelection();
+      this.handlers.onDeselect?.();
+    }
   }
 
   // ── frame loop (O(1): view math + uniform nudges + one draw) ──
@@ -1082,8 +1136,16 @@ export class FireGlobe implements LiveMapView {
     const spinning = !this.everTouched && !this.framed && !this.reduced; // attract drift only until a touch OR a framing
     const inertia = Math.abs(this.velLon) + Math.abs(this.velLat) > 0.01;
     const mixing = (this.drapeMat.uniforms.uSmokeMix.value as number) !== this.smokeMixTarget;
-    if (!(spinning || inertia || this.animating || mixing || this.dirty)) return;
+    // The ember breath is its own motion source — out-of-control glows pulse, so the loop must stay live
+    // while any are on screen (reduced-motion flatlines the breath, so it never keeps the loop awake).
+    const pulsing = this.visible.reported && this.hasPulse && !this.reduced;
+    if (!(spinning || inertia || this.animating || mixing || pulsing || this.dirty)) return;
     this.dirty = false;
+    if (pulsing) {
+      const t = now / 1000; // advance the breath on both the bead + its ground light
+      this.pointMat.marker.uniforms.uTime.value = t;
+      this.pointMat.bloom.uniforms.uTime.value = t;
+    }
 
     if (spinning && !this.animating) this.vLon += G.idleSpinDegSec * dt;
 

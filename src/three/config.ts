@@ -1907,7 +1907,14 @@ export const LIVEFIRE = {
     // while lakes/roads/labels stay readable
     idleSpinDegSec: 1.2, // attract drift while loading, until the first touch OR the first data framing
     // (fitTo) lands — a framed view must HOLD its frame. Suppressed under prefers-reduced-motion.
-    dotPx: 16, // reported-fire marker diameter (px) — the tap target (casing+ring+fill, like the flat map)
+    dotPx: 15, // reported-fire BEAD diameter (px) — a small, crisp, always-visible mark + tap target
+    bloomK: 12, // "ground light" world-size factor: each fire's additive glow is sized in WORLD space
+    // (÷ view depth), so it SHRINKS when you zoom out (a continent of fires stops blobbing) and SPREADS
+    // when you zoom in — light pooling on the ground, the way the game's fire point-lights read.
+    bloomMinPx: 5, // floor (px) so a far-zoom ground light never shrinks away to nothing
+    bloomMaxPx: 100, // ceil (px) so a close-zoom ground light can't swallow the screen
+    pulsePeriodS: 0.42, // out-of-control "breath" period (s) — a slow live-coal swell
+    pulseSwell: 0.50, // how much an out-of-control ground light swells (size) + brightens at the breath peak
     alertPx: 22, // alert pin diameter (px) — the boldest mark on the globe
     outPx: 7, // extinguished-fire dot diameter (px) — small, dim, subordinate
     rasterW: 2048, // forecast-drape GetMap width (px); height follows the bbox aspect. 1024 read ~10 km/px

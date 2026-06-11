@@ -763,7 +763,7 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
       <div class="firemap" data-lf-map></div>
       <div class="firefloat">
         <button class="fmbtn" data-lf-layers aria-label="${esc(C.layersBtn)}" title="${esc(C.layersBtn)}">${ic('layers')}<span class="fmn" data-lf-layern></span></button>
-        <button class="fmbtn" data-lf-sources aria-label="${esc(C.sourcesBtn)}" title="${esc(C.sourcesBtn)}">${ic('shield')}</button>
+        <button class="fmbtn" data-lf-firewx aria-pressed="false" aria-label="${esc(C.fireWxBtn)}" title="${esc(C.fireWxBtn)}">${ic('fire')}</button>
       </div>
       <div class="firescrub" data-lf-scrub hidden>
         <button class="iconbtn" data-lf-play aria-label="Play forecast">${ic('play')}</button>
@@ -795,7 +795,7 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
   const sheetEl = root.querySelector<HTMLElement>('[data-lf-sheet]')!;
   const refreshBtn = root.querySelector<HTMLButtonElement>('[data-lf-refresh]')!;
   const layersBtn = root.querySelector<HTMLButtonElement>('[data-lf-layers]')!;
-  const sourcesBtn = root.querySelector<HTMLButtonElement>('[data-lf-sources]')!;
+  const fireWxBtn = root.querySelector<HTMLButtonElement>('[data-lf-firewx]')!;
   const layerCountEl = root.querySelector<HTMLElement>('[data-lf-layern]')!;
   const regionEl = root.querySelector<HTMLSelectElement>('[data-lf-region]')!;
   const scrubEl = root.querySelector<HTMLElement>('[data-lf-scrub]')!;
@@ -992,6 +992,20 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
   };
   updateLayerCount();
 
+  // The floating Fire-weather button is a one-tap toggle for the FWI raster; it reads its pressed/filled
+  // state straight from `layerOn.fwi` so it agrees with the Layers-sheet toggle (one funnel, two surfaces).
+  const syncFireWx = (): void => {
+    fireWxBtn.classList.toggle('on', layerOn.fwi);
+    fireWxBtn.setAttribute('aria-pressed', String(layerOn.fwi));
+  };
+  // Fire weather is a CWFIS/GWIS forecast, gated to Canada coverage (mirrors the sheet's Weather tier) and
+  // dropped entirely by the live-data kill-switch — grey the button out (un-tappable) where it has no data.
+  const syncFireWxAvail = (): void => {
+    const avail = region.country !== 'US' && region.country !== 'MX' && isLiveFireEnabled();
+    fireWxBtn.classList.toggle('disabled', !avail);
+    fireWxBtn.setAttribute('aria-disabled', String(!avail));
+  };
+
   // Flip one layer on/off: mirror state → drive the map → keep the count fresh → (forecast rasters) hand
   // off the shared scrubber. The single funnel used by both the sheet toggles and country-gating.
   const setLayerState = (id: FireLayer, on: boolean): void => {
@@ -1003,6 +1017,7 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
       if (on) setForecastMode(id);
       else if (forecastMode === id) setForecastMode(layerOn[id === 'smoke' ? 'fwi' : 'smoke'] ? (id === 'smoke' ? 'fwi' : 'smoke') : 'none');
     }
+    if (id === 'fwi') syncFireWx();
     updateLayerCount();
   };
 
@@ -1010,23 +1025,6 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
   // when the filter leaves Canada. Fires is continent-wide.
   const tierAvailable = (tier: LayerRow['tier']): boolean =>
     tier === 'fires' ? true : region.country !== 'US' && region.country !== 'MX';
-
-  // The legend keys exactly what the map is CURRENTLY drawing (it tracks the live toggles), so it never
-  // explains a mark that isn't on screen. The stage breakdown rides the reported/out layers.
-  const legendHtml = (): string => {
-    const lg = (sw: string, name: string, def = ''): string =>
-      `<div class="lgrow"><i class="lgsw ${sw}"></i><div class="lgtx"><span class="lgname">${esc(name)}</span>${def ? `<span class="lgdef">${esc(def)}</span>` : ''}</div></div>`;
-    let rows = '';
-    if (layerOn.reported || layerOn.out) {
-      rows += lg('oc', stageLabel('OC')) + lg('bh', stageLabel('BH'), C.stageGloss) + lg('uc', stageLabel('UC')) + lg('neutral', 'Out / unknown');
-    }
-    if (layerOn.hotspots) rows += lg('ramp', C.layers.hotspots, 'Low → extreme heat');
-    if (layerOn.perimeters) rows += lg('scar', C.layers.perimeters, 'Satellite-mapped footprint');
-    if (layerOn.fwi && isLiveFireEnabled()) rows += lg('fwiramp', C.layers.fwi, 'Low → extreme danger');
-    if (layerOn.smoke && isLiveFireEnabled()) rows += lg('smoke', C.layers.smoke, 'Light → heavy · forecast');
-    if (!rows) return '';
-    return `<div class="fgroup"><div class="fgh">${esc(C.legendTitle)}</div>${rows}</div>`;
-  };
 
   const layersHtml = (): string => {
     const tierBlock = (tier: LayerRow['tier']): string => {
@@ -1051,16 +1049,18 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
         <button class="iconbtn" data-lf-close aria-label="Close">${ic('close')}</button>
       </div>
       ${tierBlock('fires')}${tierBlock('weather')}
-      <div data-lf-legend>${legendHtml()}</div>`;
+      <button class="fsheet-link" data-lf-sources type="button" aria-label="${esc(C.sourcesBtn)}">${ic('shield')}<span class="grow">${esc(C.sourcesBtn)}</span>${ic('chevron-right')}</button>`;
   };
 
-  // Open the layers sheet + wire its toggles. Re-rendered each open so it reflects live availability; a
-  // toggle drives setLayerState and re-keys ONLY the legend block in place (toggle state + scroll kept).
+  // Open the layers sheet + wire its toggles. Re-rendered each open so it reflects live availability. Each
+  // layer row already carries its own swatch + label + hint, so the toggles ARE the legend — no separate
+  // legend block. The footer link drops into the source ledger (the honest-window provenance, kept reachable).
   const showLayers = (): void => {
     sheetEl.innerHTML = layersHtml();
     sheetEl.hidden = false;
     sheetEl.scrollTop = 0;
     wireClose();
+    sheetEl.querySelector('[data-lf-sources]')?.addEventListener('click', () => showLedger());
     sheetEl.querySelectorAll<HTMLElement>('[data-lf-layer]').forEach((tog) => {
       const flip = (): void => {
         const id = tog.dataset.lfLayer as FireLayer;
@@ -1068,8 +1068,6 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
         tog.classList.toggle('on', on);
         tog.setAttribute('aria-checked', String(on));
         setLayerState(id, on);
-        const lh = sheetEl.querySelector<HTMLElement>('[data-lf-legend]');
-        if (lh) lh.innerHTML = legendHtml();
       };
       tog.addEventListener('click', flip);
       tog.addEventListener('keydown', (e) => {
@@ -1153,8 +1151,14 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
       });
   };
   refreshBtn.addEventListener('click', () => load(true));
-  sourcesBtn.addEventListener('click', () => showLedger());
+  // The floating Fire-weather button: a one-tap toggle for the FWI raster (it hands itself the forecast
+  // scrubber via setLayerState). No-op while greyed out (off-Canada / kill-switched).
+  fireWxBtn.addEventListener('click', () => {
+    if (fireWxBtn.classList.contains('disabled')) return;
+    setLayerState('fwi', !layerOn.fwi);
+  });
   layersBtn.addEventListener('click', () => showLayers());
+  syncFireWxAvail(); // initial enabled/greyed state for the default region (Canada)
   regionEl.addEventListener('change', () => {
     region = parseRegion(regionEl.value);
     setRegionPref(region);
@@ -1164,6 +1168,7 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
     if (region.country === 'US' || region.country === 'MX') {
       (['fwi', 'smoke'] as FireLayer[]).forEach((id) => { if (layerOn[id]) setLayerState(id, false); });
     }
+    syncFireWxAvail(); // grey/un-grey the floating Fire-weather button for the new region's coverage
     paintStats(); // honest to the chosen region — derived per province / "Data not available" off-Canada
     paint(true); // a real region change DOES reframe (map + ticker agree)
   });
@@ -1189,6 +1194,9 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
       // While a forecast frame is in flight, mark the scrubber buffering (a soft pulse) so a slow
       // step reads as loading, not stuck.
       onSmokeLoad: (loading: boolean) => scrubTrackEl.classList.toggle('buffering', loading),
+      // Tap on empty map cleared a fire selection → close the detail sheet (only when it's showing a
+      // detail; a Layers/Sources sheet has no selection behind it, so the view never fires this then).
+      onDeselect: () => { if (!sheetEl.querySelector('[data-lf-layer]') && !sheetEl.querySelector('[data-lf-sources]')) sheetEl.hidden = true; },
     };
     const buildFlat = (): Promise<LiveMapView> => import('../../livefire/FireMap').then((m) => new m.FireMap(mapEl, handlers));
     const buildGlobe = (): Promise<LiveMapView> => import('../../livefire/FireGlobe').then((m) => new m.FireGlobe(mapEl, handlers));

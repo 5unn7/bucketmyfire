@@ -79,7 +79,8 @@ export const LIVEFIRE_COPY = {
   // Why a tier is greyed out when the country filter leaves its coverage area.
   disabledReason: { weather: 'Canada only' } as Record<string, string>,
   layersBtn: 'Layers',
-  sourcesBtn: 'Sources',
+  fireWxBtn: 'Fire weather',
+  sourcesBtn: 'Data sources',
   legendTitle: 'Legend',
   layersTitle: 'Map layers',
   layersSub: 'Choose what the map draws',

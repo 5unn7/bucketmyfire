@@ -79,6 +79,21 @@ const ROUTES = [
     },
   },
   {
+    // The live-fire tracker's DEFAULT view is the procedural Three.js globe (FireGlobe) — its own family
+    // of GLSL (earth/atmosphere/forecast-drape/marker-glow). It's a LAZY chunk built only when the map
+    // opens, so the game routes never compile it; this route does (FireGlobe's ctor renderer.compile()s
+    // them up front). Catches a broken globe shader that tsc/vite build sail past. Live tile/data fetches
+    // are allowlisted (headless BENIGN_RE) so a CI network sandbox can't false-fail it.
+    name: 'live-fire globe (?map)',
+    url: `${BASE}/?map`,
+    ready: () => !!document.querySelector('[data-lf-map] canvas'),
+    settle: 2500, // ctor compile + a few breath frames; any late program link surfaces in the console
+    check: async (page) => {
+      const ok = await page.evaluate(() => !!document.querySelector('[data-lf-map] canvas'));
+      return ok ? [] : ['live-fire map rendered no canvas (globe failed to boot)'];
+    },
+  },
+  {
     name: 'mission (autostart + scoop→drop)',
     url: `${BASE}/?autostart&qa`,
     ready: () => window.__game && window.__game.debug,
