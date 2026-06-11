@@ -38,6 +38,10 @@ regexes = [
   '''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Indub3JydGZrZnFyZ2lwbWdnZndoIiwicm9sZSI6ImFub24i[A-Za-z0-9._-]+''',
   # Empty/placeholder env assignments (`VITE_SUPABASE_ANON_KEY=` with nothing after).
   '''VITE_SUPABASE_[A-Z_]+=\s*$''',
+  # Namespaced localStorage KEY NAMES (`'bmf.livefire.region.v1'`, `'bmf.country.v1'`, …) — these are
+  # storage-slot identifiers, not credentials, but the generic-api-key rule trips on the `_KEY` const +
+  # dotted entropy. Scoped to the `bmf.<…>.v<n>` convention so a real token can't hide behind it.
+  '''bmf\.[a-z0-9.]+\.v[0-9]+''',
 ]
 
 # Belt-and-suspenders: a SERVICE_ROLE Supabase key must NEVER be allowlisted. This is a no-op
