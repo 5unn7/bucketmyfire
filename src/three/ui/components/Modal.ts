@@ -70,6 +70,7 @@ export function openModal(opts: ModalOpts = {}): ModalHandle {
   }
 
   const body = div({ padding: '0 16px 4px', overflowY: 'auto', flex: '1 1 auto' });
+  body.className = 'bmf-kit-scroll'; // branded liquid-glass scrollbar
   card.appendChild(body);
   const footer = div({ display: 'flex', justifyContent: 'flex-end', gap: '10px', padding: '14px 16px 16px' });
   card.appendChild(footer);

@@ -20,8 +20,9 @@
 import { cleanCallsign } from '../three/ui/callsign';
 import { careerScore, rankFor, nextRankProgress } from '../three/missions/rank';
 import { fmtInt } from '../three/livefire/strings';
-import { submitContact } from '../three/leaderboard/client';
-import { tabbarHtml, footerBrandHtml, footerNavHtml } from './siteNav.mjs';
+import { submitContact, submitLead } from '../three/leaderboard/client';
+import { openModal } from '../three/ui/components/Modal';
+import { tabbarHtml, footerBrandHtml } from './siteNav.mjs';
 
 export type ShellPage = 'home' | 'campaign' | 'prepare';
 
@@ -31,18 +32,16 @@ export function tabbarMarkup(active: ShellPage): string {
   return tabbarHtml(active);
 }
 
-/** The shared footer. It now LEADS with a ghost site-category row (the same NAV destinations as the
- *  appbar, built from the one source) sitting full-width above a hairline; below it, the safety
- *  disclaimer and the policy links (Privacy + Terms) share the base line with the brand lockup. */
+/** The shared footer. It LEADS with the safety disclaimer; below it, the policy links (Contact +
+ *  Privacy + Terms) share the base line with the brand lockup. */
 export function buildFooter(): string {
   return (
     `<footer class="fd-foot">` +
-    footerNavHtml() +
     `<p class="fd-disclaimer">A window onto real data, not an emergency tool. Always follow official sources and local authorities.</p>` +
     `<div class="fd-foot-links">` +
     `<button type="button" class="fd-foot-contact" data-front="contact">Contact</button>` +
-    `<a href="/privacy.html">Privacy</a>` +
-    `<a href="/terms.html">Terms</a>` +
+    `<a href="/privacy.html" data-front="legal" data-legal="privacy">Privacy</a>` +
+    `<a href="/terms.html" data-front="legal" data-legal="terms">Terms</a>` +
     `</div>` +
     footerBrandHtml() +
     `</footer>`
@@ -180,29 +179,17 @@ function closeSettings(): void {
 }
 
 /**
- * The agency "work with us" contact modal — a short enquiry form (name + a short description + a reply-to
- * email) opened from the footer Contact link (wired by wireFrontAppbar's `[data-front="contact"]`). It
- * posts to the locked `contacts` table via the `submit_contact` RPC (best-effort + env-gated in the
- * leaderboard client). Self-contained + kit-styled, mirroring the settings popover. No user text is ever
- * `innerHTML`-d: the form is static markup, values are read off the inputs, and the states swapped in are
- * static copy.
+ * The agency "work with us" contact modal — a short enquiry form (name + email + optional phone + a short
+ * project description) opened from the footer Contact link (wired by wireFrontAppbar's
+ * `[data-front="contact"]`). It posts to the locked `contacts` table via the `submit_contact` RPC
+ * (best-effort + env-gated in the leaderboard client). Built on the shared kit `openModal` component, so
+ * the scrim, frosted card, titlebar/close, ESC + scrim-click close, and focus-trap are all the one
+ * implementation. No user text is ever `innerHTML`-d: the form is static markup and values are read off
+ * the inputs; the states swapped in are static copy.
  */
 export function openContact(): void {
-  if (document.getElementById('fd-contact')) return;
-
-  const back = document.createElement('div');
-  back.id = 'fd-contact';
-  back.className = 'fd-pop-back fd-contact-back';
-  back.addEventListener('click', (e) => {
-    if (e.target === back) closeContact();
-  });
-
-  const card = document.createElement('div');
-  card.className = 'fd-pop fd-card metal';
-  card.setAttribute('role', 'dialog');
-  card.setAttribute('aria-label', 'Work with us');
-  card.innerHTML =
-    `<div class="fd-pop-head"><h3>Work with us</h3><button class="fd-pop-x" type="button" aria-label="Close">✕</button></div>` +
+  const m = openModal({ title: 'Work with us', width: '440px' });
+  m.body.innerHTML =
     `<form class="fd-cform" novalidate>` +
     `<p class="fd-cform-lead">Let's build your digital solution.</p>` +
     `<label class="fd-field"><span>Name</span><input type="text" name="name" autocomplete="name" maxlength="80" required></label>` +
@@ -212,14 +199,11 @@ export function openContact(): void {
     `<p class="fd-cform-msg" role="status" aria-live="polite"></p>` +
     `<button class="btn primary fd-cform-go" type="submit">Send enquiry</button>` +
     `</form>`;
-  back.appendChild(card);
-  document.body.appendChild(back);
-
-  card.querySelector('.fd-pop-x')?.addEventListener('click', closeContact);
-  const form = card.querySelector('form') as HTMLFormElement;
-  const msg = card.querySelector('.fd-cform-msg') as HTMLElement;
-  const go = card.querySelector('.fd-cform-go') as HTMLButtonElement;
-  (card.querySelector('input[name="name"]') as HTMLInputElement | null)?.focus();
+  const form = m.body.querySelector('form') as HTMLFormElement;
+  const msg = m.body.querySelector('.fd-cform-msg') as HTMLElement;
+  const go = m.body.querySelector('.fd-cform-go') as HTMLButtonElement;
+  // The kit modal focuses the close ✕ first; pull focus to the first field instead.
+  setTimeout(() => (m.body.querySelector('input[name="name"]') as HTMLInputElement | null)?.focus(), 0);
 
   form.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -246,7 +230,7 @@ export function openContact(): void {
         form.innerHTML =
           `<p class="fd-cform-msg ok">Thanks — we'll be in touch.</p>` +
           `<button class="btn ghost fd-cform-go" type="button">Close</button>`;
-        form.querySelector('button')?.addEventListener('click', closeContact);
+        form.querySelector('button')?.addEventListener('click', () => m.close());
       } else {
         go.disabled = false;
         go.textContent = 'Send enquiry';
@@ -255,16 +239,77 @@ export function openContact(): void {
       }
     });
   });
-
-  document.addEventListener('keydown', onContactEsc);
 }
 
-function onContactEsc(e: KeyboardEvent): void {
-  if (e.key === 'Escape') closeContact();
+/**
+ * "Under Production" capture for an UPCOMING (not-yet-live) map — the SAME front-door modal as the contact
+ * form (the shared kit `openModal` shell + the `.fd-cform`/`.fd-field` chrome). Two fields: a required
+ * email and an optional "feature request" note. On submit the email goes on the leadlist via `submitLead`
+ * tagged `notify:<mapId>` (validated, deduped + throttled server-side, callsign linked when set), and the
+ * feature note rides along in the `leads.note` column. Honest: a failed signup says so and never throws.
+ */
+export function openNotify(mapId: string): void {
+  const m = openModal({ title: 'Under Production', width: '440px' });
+  m.body.innerHTML =
+    `<form class="fd-cform" novalidate>` +
+    `<p class="fd-cform-lead">Leave your mail and some cool things you'd like to see that we can build.</p>` +
+    `<label class="fd-field"><span>Email</span><input type="email" name="email" autocomplete="email" inputmode="email" maxlength="254" required></label>` +
+    `<label class="fd-field"><span>Feature request <i>(optional)</i></span><textarea name="feature" rows="3" maxlength="2000" placeholder="Maps, aircraft, modes you'd love to fly…"></textarea></label>` +
+    `<p class="fd-cform-msg" role="status" aria-live="polite"></p>` +
+    `<button class="btn primary fd-cform-go" type="submit">Notify me</button>` +
+    `</form>`;
+  const form = m.body.querySelector('form') as HTMLFormElement;
+  const msg = m.body.querySelector('.fd-cform-msg') as HTMLElement;
+  const go = m.body.querySelector('.fd-cform-go') as HTMLButtonElement;
+  // The kit modal focuses the close ✕ first; pull focus to the email field instead.
+  setTimeout(() => (m.body.querySelector('input[name="email"]') as HTMLInputElement | null)?.focus(), 0);
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const email = (form.elements.namedItem('email') as HTMLInputElement).value.trim();
+    const feature = (form.elements.namedItem('feature') as HTMLTextAreaElement).value.trim();
+    msg.className = 'fd-cform-msg';
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      msg.classList.add('err');
+      msg.textContent = 'Please enter a valid email.';
+      return;
+    }
+    go.disabled = true;
+    go.textContent = 'Signing up…';
+    const callsign = savedCallsign() || undefined;
+    // Email → the waitlist (tagged by which upcoming map drew them); the feature note rides along in the
+    // leads.note column, and the saved callsign links a signup to a board pilot.
+    void submitLead(email, `notify:${mapId}`, callsign, feature || undefined).then((ok) => {
+      if (ok) {
+        form.innerHTML =
+          `<p class="fd-cform-msg ok">You're on the list — thanks, we'll keep you posted.</p>` +
+          `<button class="btn ghost fd-cform-go" type="button">Close</button>`;
+        form.querySelector('button')?.addEventListener('click', () => m.close());
+      } else {
+        go.disabled = false;
+        go.textContent = 'Notify me';
+        msg.className = 'fd-cform-msg err';
+        msg.textContent = "Couldn't sign you up right now — please try again in a moment.";
+      }
+    });
+  });
 }
-function closeContact(): void {
-  document.getElementById('fd-contact')?.remove();
-  document.removeEventListener('keydown', onContactEsc);
+
+/**
+ * Open a legal page (Privacy / Terms) inside the SAME kit modal, embedding the already-built, fully-styled
+ * `/privacy.html` · `/terms.html` via an iframe (one source of truth — no prose duplicated into the app).
+ * The pages read `#embed` and hide their own chrome (appbar/footer/breadcrumb) so only the legal text
+ * shows inside the modal. The footer links stay real anchors, so a modified click still opens the page.
+ */
+export function openLegal(slug: 'privacy' | 'terms'): void {
+  const title = slug === 'terms' ? 'Terms of Use' : 'Privacy Policy';
+  const m = openModal({ title, width: '760px' });
+  m.body.style.padding = '0';
+  const frame = document.createElement('iframe');
+  frame.className = 'fd-legal-frame';
+  frame.src = `/${slug}.html#embed`;
+  frame.title = title;
+  m.body.appendChild(frame);
 }
 
 /** Apply the saved reduce-motion preference to <html> as early as a page controller runs. */
@@ -346,16 +391,11 @@ const SHELL_CSS = `
 
 /* ── Agency "work with us" contact modal — the short enquiry form. Reuses the .fd-pop popover shell; these
    rules are only the centred placement + the form-field widgets (all values are theme tokens). ── */
-/* Centred over the busy bento + a DARKER, more-blurred scrim than the corner settings popover, so the
-   page reads as pushed back. */
-.fd-contact-back { align-items: center; justify-content: center; padding: 20px 14px;
-  background: rgba(5,8,11,0.72); backdrop-filter: blur(8px) saturate(115%); -webkit-backdrop-filter: blur(8px) saturate(115%); }
-/* FROST the card itself: a heavier blur + a near-opaque metal fill over it (the bare .fd-card.metal token
-   is translucent → it read as see-through), plus a lifted shadow so it floats above the scrim. */
-.fd-contact-back .fd-pop { max-width: 430px;
-  background: linear-gradient(180deg, rgba(16,23,30,0.92), rgba(11,16,21,0.95));
-  backdrop-filter: blur(22px) saturate(125%); -webkit-backdrop-filter: blur(22px) saturate(125%);
-  box-shadow: var(--shadow-card), 0 24px 70px rgba(0,0,0,0.55); }
+/* The scrim + frosted card now come from the shared kit openModal (Modal.ts); these rules are only the
+   form-field widgets + the legal-page iframe (all values are theme tokens). */
+/* Embedded legal page (Privacy / Terms) — the iframe fills the modal body; the page hides its own chrome
+   in #embed mode so only the legal text shows. */
+.fd-legal-frame { width: 100%; height: 72vh; max-height: 72vh; border: 0; display: block; background: transparent; }
 .fd-cform { display: flex; flex-direction: column; gap: 12px; }
 .fd-cform-lead { margin: 0 0 2px; font-size: var(--fs-md); line-height: 1.4; color: var(--text); font-weight: var(--fw-semibold); }
 .fd-field { display: flex; flex-direction: column; gap: 5px; }
@@ -538,7 +578,6 @@ const SHELL_CSS = `
   display: flex; flex-wrap: wrap; align-items: center; column-gap: 20px; row-gap: 8px; }
 /* Ghost site-category row leads the footer: a full-width line above a hairline, then the disclaimer +
    policy links + brand share the base line below it. */
-.fd-foot .site-foot-nav { order: 0; flex: 1 1 100%; padding-bottom: 13px; margin-bottom: 5px; border-bottom: 1px solid var(--hair); }
 .fd-foot .fd-disclaimer { order: 1; flex: 1 1 100%; margin: 0; font-size: var(--fs-sm); max-width: 60ch; }
 .fd-foot-links { order: 2; flex: 0 1 auto; min-width: 0; display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; }
 .fd-foot .site-foot-brand { align-self: center; }

@@ -17,6 +17,7 @@
  */
 import { spawnEmbers } from '../three/ui/home/styles';
 import { openBoard, openSettings } from '../three/ui/home/menus';
+import { openContact, openLegal } from './shell';
 import { appbarHtml, injectNavStyles } from './siteNav.mjs';
 
 // 'open-skies' is a real front-door PAGE but NOT a top-level nav item, so passing it marks no nav tab
@@ -41,14 +42,20 @@ export function frontAppbar(active: FrontPage): string {
   return appbarHtml({ active, actions: 'app' });
 }
 
-/** Wire the appbar's leaderboard + settings buttons to the same self-mounting overlays the home uses. */
+/** Wire the appbar's leaderboard + settings buttons (and the footer's Contact link) to their
+ *  self-mounting overlays. Every front page calls this, so the footer Contact modal works site-wide. */
 export function wireFrontAppbar(root: HTMLElement): void {
   root.querySelectorAll<HTMLElement>('[data-front]').forEach((el) => {
     el.addEventListener('click', (e) => {
+      const kind = el.dataset.front;
+      // Privacy/Terms stay real anchors — let a modified click (new tab) navigate to the full page.
+      if (kind === 'legal' && (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)) return;
       e.preventDefault();
       e.stopPropagation();
-      if (el.dataset.front === 'board') openBoard();
-      else if (el.dataset.front === 'settings') openSettings();
+      if (kind === 'board') openBoard();
+      else if (kind === 'settings') openSettings();
+      else if (kind === 'contact') openContact();
+      else if (kind === 'legal') openLegal(el.dataset.legal === 'terms' ? 'terms' : 'privacy');
     });
   });
 }

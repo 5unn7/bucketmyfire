@@ -233,6 +233,18 @@ ${frontAppbar('home')}
       </div>
     </section>
 
+    <!-- Map — opens the full live wildfire tracker (layer toggles + smoke scrubber + detail sheet). The
+         faint cyan cartographic grid (.fhome-map-grid) makes it read as a tactical map readout.
+         DOM-ordered BEFORE the play tile so the MOBILE single-column stack reads hero → map → gameplay
+         (the live data leads into the live map, then the game). Desktop is unaffected: every tile has an
+         explicit grid-area, so the bento layout ignores source order. -->
+    <button class="card fhome-map" data-act="fires" aria-label="Open the live wildfire map">
+      <span class="fhome-map-grid" aria-hidden="true"></span>
+      <span class="fhome-map-ic">${ic('map')}</span>
+      <span class="fhome-map-tx"><b>Live fire map</b><span>Reported fires, hotspots, fire weather &amp; smoke</span></span>
+      <span class="fhome-map-go">${ic('chevron-right')}</span>
+    </button>
+
     <!-- OPEN SKIES — the play CTA over the live-fire key-art. A top OVERLAY banner carries the slimmed
          dossier (the pilot's identity: callsign + rank + points) on the left and the live presence
          ("N Pilots Live") on the right; the Open Skies copy + Fly CTA stay at the base. The banner's
@@ -251,15 +263,6 @@ ${frontAppbar('home')}
         <span class="fhome-play-sub">Experience the glimpse of aerial firefighting.Fight along side your friends in real-time!</span>
         <span class="btn primary fhome-play-go">${ic('play')}Fly now</span>
       </div>
-    </button>
-
-    <!-- Map — opens the full live wildfire tracker (layer toggles + smoke scrubber + detail sheet). The
-         faint cyan cartographic grid (.fhome-map-grid) makes it read as a tactical map readout. -->
-    <button class="card fhome-map" data-act="fires" aria-label="Open the live wildfire map">
-      <span class="fhome-map-grid" aria-hidden="true"></span>
-      <span class="fhome-map-ic">${ic('map')}</span>
-      <span class="fhome-map-tx"><b>Live fire map</b><span>Reported fires, hotspots, fire weather &amp; smoke</span></span>
-      <span class="fhome-map-go">${ic('chevron-right')}</span>
     </button>
 
     <!-- Wear the fight — the BIG shop feature card. The real merch poster (Wearthefight.png) is the art,

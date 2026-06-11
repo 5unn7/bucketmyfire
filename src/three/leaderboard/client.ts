@@ -174,22 +174,64 @@ export async function submitScore(s: ScoreSubmission): Promise<boolean> {
  * per device. The callsign is sent so a lead and a board pilot share ONE handle in the leadlist;
  * getClientId() ties anonymous repeat signups from the same browser together.
  */
-export async function submitLead(email: string, source: string, pilot?: string): Promise<boolean> {
+export async function submitLead(email: string, source: string, pilot?: string, note?: string): Promise<boolean> {
   if (!isConfigured()) return false;
   const addr = (email ?? '').trim().toLowerCase();
   // Cheap client-side shape check (the RPC re-validates) — skips a wasted round-trip on obvious typos.
   if (addr.length < 5 || addr.length > 254 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(addr)) return false;
   const clean = pilot ? cleanCallsign(pilot) : '';
+  const noteTrim = (note ?? '').trim();
   const body = {
     p_email: addr,
     p_source: source.slice(0, 24),
     // Only attach a real, non-reserved callsign — never the silent 'Pilot' default.
     p_pilot: clean.length >= 2 && !isReservedCallsign(clean) ? clean.slice(0, 24) : null,
+    // Optional free-text the signup left (e.g. a feature request) — stored in leads.note (≤2000).
+    p_note: noteTrim ? noteTrim.slice(0, 2000) : null,
     p_client_id: getClientId(),
   };
   const t = withTimeout(8000);
   try {
     const res = await fetch(`${URL_BASE}/rest/v1/rpc/submit_lead`, {
+      method: 'POST',
+      headers: headers({ 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
+      body: JSON.stringify(body),
+      signal: t.signal,
+    });
+    return res.ok;
+  } catch {
+    return false;
+  } finally {
+    t.done();
+  }
+}
+
+/**
+ * Submit an agency "work with us" enquiry — name + a short description + a reply-to email. Fire-and-
+ * forget like submitLead: resolves true on a 2xx, false on any failure (unconfigured, malformed input,
+ * network, timeout, non-2xx) and never throws, so the modal can show a mailto fallback on false. Goes
+ * through the `submit_contact` SECURITY DEFINER RPC (supabase/schema.sql), which re-validates the three
+ * fields server-side and throttles per device; getClientId() ties repeat sends from one browser together.
+ */
+export async function submitContact(name: string, description: string, email: string, phone?: string): Promise<boolean> {
+  if (!isConfigured()) return false;
+  const nm = (name ?? '').trim();
+  const desc = (description ?? '').trim();
+  const addr = (email ?? '').trim().toLowerCase();
+  const tel = (phone ?? '').trim();
+  // Cheap client-side shape check (the RPC re-validates) — skips a wasted round-trip on obvious typos.
+  if (nm.length < 1 || desc.length < 1) return false;
+  if (addr.length < 5 || addr.length > 254 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(addr)) return false;
+  const body = {
+    p_name: nm.slice(0, 80),
+    p_description: desc.slice(0, 2000),
+    p_email: addr,
+    p_phone: tel ? tel.slice(0, 32) : null,
+    p_client_id: getClientId(),
+  };
+  const t = withTimeout(8000);
+  try {
+    const res = await fetch(`${URL_BASE}/rest/v1/rpc/submit_contact`, {
       method: 'POST',
       headers: headers({ 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
       body: JSON.stringify(body),

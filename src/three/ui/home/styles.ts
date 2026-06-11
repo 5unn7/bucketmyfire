@@ -196,8 +196,14 @@ const CSS = `
    stacking boost later rows paint over it and the title looks like content is bleeding through it); the
    opaque fill + hairline then let rows tuck cleanly underneath. (The drawer slides from the right, so it
    carries no bottom-sheet grab handle — the close button is the dismiss affordance.) */
-.bmf-app .fsheet-head{ position:sticky; top:0; z-index:2; display:flex; align-items:flex-start; gap:10px; padding:16px 0 10px; background:var(--card-bg); border-bottom:1px solid var(--hair); }
-.bmf-app .fsheet-ttl{ font-family:var(--mono); font-size:var(--fs-md); font-weight:var(--fw-bold); color:var(--text); }
+/* Full-bleed FROSTED header bar (was an opaque var(--card-bg) strip that read as a solid box on the now-
+   frosted drawer). The negative margins bleed it to the drawer's inner edges; its own card-glass + blur
+   match the panel so it reads as one surface, with just the hairline separating it from the rows. */
+.bmf-app .fsheet-head{ position:sticky; top:0; z-index:2; display:flex; align-items:flex-start; gap:12px; margin:0 -16px 6px; padding:15px 16px 12px;
+  background:var(--card-glass); backdrop-filter:var(--blur); -webkit-backdrop-filter:var(--blur); border-bottom:1px solid var(--hair); }
+.bmf-app .fsheet-ttl{ font-family:var(--mono); font-size:var(--fs-lg); font-weight:var(--fw-heavy); letter-spacing:.01em; line-height:1.18; color:var(--text); }
+.bmf-app .fsheet-head .s{ font-size:var(--fs-meta); color:var(--dim); margin-top:3px; line-height:1.3; }
+.bmf-app .fsheet-head .iconbtn{ flex:0 0 auto; margin-top:-1px; }
 /* At-a-glance fact chips under the detail header — kind · jurisdiction · freshness. Ghost pills wrap to a
    second row in the narrow drawer; tighter tracking than the brand chips keeps the labels readable. */
 .bmf-app .chiprow{ display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }

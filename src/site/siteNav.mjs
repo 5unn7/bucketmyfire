@@ -135,17 +135,6 @@ export function footerBrandHtml() {
   );
 }
 
-/** The footer's site-category row — the SAME top-level destinations as the appbar nav (built from the
- *  one `NAV` source so it can't drift), rendered as muted "ghost" mono links (dim → ember on hover),
- *  matching the appbar nav's register. Styled by `.site-foot-nav` in navCss. */
-export function footerNavHtml() {
-  const links = NAV.map((n) => {
-    const ext = n.external ? ' rel="noopener"' : '';
-    return `<a href="${n.href}"${ext}>${esc(n.label)}</a>`;
-  }).join('');
-  return `<nav class="site-foot-nav" aria-label="Site">${links}</nav>`;
-}
-
 /** A breadcrumb trail. Each crumb is `{label, href?}`; a crumb with no `href` is the current page. */
 export function breadcrumbHtml(trail) {
   const parts = trail
@@ -209,13 +198,6 @@ export const navCss = `
 .site-foot-mark .flame { width: auto; height: 20px; fill: url(#flameGrad); filter: drop-shadow(0 0 4px var(--glow-80)); }
 .site-foot-brand b { font-family: var(--mono); font-weight: var(--fw-heavy); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; }
 .site-foot-brand:hover b { color: var(--ember-hi); }
-
-/* Footer site-category row — ghost links (muted dim → ember on hover), same mono/uppercase register as
-   the appbar nav. Wraps on a phone; the footer's flex container places it (see .fd-foot .site-foot-nav). */
-.site-foot-nav { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 22px; }
-.site-foot-nav a { text-decoration: none; color: var(--dim); font-family: var(--mono); font-size: 11px; letter-spacing: .12em;
-  text-transform: uppercase; font-weight: var(--fw-bold); min-height: 36px; display: inline-flex; align-items: center; }
-.site-foot-nav a:hover { color: var(--ember-hi); }
 
 /* ── Breadcrumb trail (below the appbar on pages with a hierarchy) ─────────────── */
 .site-crumbs { font-family: var(--mono); font-size: var(--fs-meta); letter-spacing: .06em; color: var(--dim); margin: 0 0 18px; }

@@ -47,6 +47,9 @@ ${body}
       <p class="fn-disclaimer">General information, not an emergency tool. In an emergency, follow official sources and local authorities.</p>
       <div class="fn-foot-links"><a href="/privacy.html">Privacy</a><a href="/terms.html">Terms</a></div>
     </footer>
+    <!-- Embedded view: when opened in the front-door modal iframe (#embed) hide our own chrome so only the
+         legal text shows; the modal supplies the title + close. -->
+    <script>if(location.hash==='#embed')document.documentElement.classList.add('embed');</script>
   </body>
 </html>
 `;
@@ -139,6 +142,19 @@ h1,h2,h3{font-weight:800;letter-spacing:-0.01em;line-height:1.2;color:#fff}
 .fn-foot-links{order:2;flex:0 1 auto;min-width:0;display:flex;flex-wrap:wrap;gap:8px 18px}
 .fn-foot-links a{font-family:var(--mono);font-size:var(--fs-meta);letter-spacing:0.1em;text-transform:uppercase;color:var(--dim)}
 .fn-foot-links a:hover{color:var(--ember-hi)}
+/* Embedded in the front-door modal iframe (#embed → html.embed): hide our own chrome + the duplicate page
+   title (the modal supplies title + close); the legal prose blends onto the modal's frosted card. */
+html.embed .fhome-bar,html.embed .fd-tabbar,html.embed .fn-foot,html.embed .site-crumbs,html.embed .fd-hero{display:none!important}
+html.embed body.fn{background:transparent}
+html.embed .fn-wrap{padding-top:6px;padding-bottom:24px}
+/* Branded "liquid glass" scrollbar — matches the front-door modal (.bmf-kit-scroll): a translucent ember
+   thumb with a white-sheen top, floating on a clear track. So the legal page reads on-brand inside the
+   modal iframe (and standalone). */
+html{scrollbar-width:thin;scrollbar-color:var(--ember-50) transparent}
+html::-webkit-scrollbar{width:10px}
+html::-webkit-scrollbar-track{background:transparent}
+html::-webkit-scrollbar-thumb{border-radius:var(--r-pill);border:2px solid transparent;background-clip:padding-box;background:linear-gradient(180deg,var(--bevel-top),var(--ember-50))}
+html::-webkit-scrollbar-thumb:hover{background:linear-gradient(180deg,var(--bevel-top),var(--ember))}
 `;
 
 /** Build the two legal pages. `css` = tokens + navCss + LEGAL_CSS. Returns `[{file, html}]`. */

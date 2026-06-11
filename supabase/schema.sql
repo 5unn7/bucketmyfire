@@ -356,8 +356,9 @@ end $$;
 create table if not exists public.leads (
   id          bigint generated always as identity primary key,
   email       text        not null,
-  source      text,                                   -- where the signup came from: 'shop' | 'coop' | ...
+  source      text,                                   -- where the signup came from: 'shop' | 'coop' | 'notify:<map>' | ...
   pilot       text,                                   -- the player's callsign at signup (optional)
+  note        text,                                   -- optional free-text the signup left (e.g. a feature request)
   client_id   text,                                   -- anonymous per-device id (dedupe aid)
   created_at  timestamptz not null default now(),
 
@@ -365,8 +366,14 @@ create table if not exists public.leads (
   constraint leads_email_fmt    check (email ~* '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$'),
   constraint leads_source_len   check (source    is null or char_length(source)    <= 24),
   constraint leads_pilot_len    check (pilot     is null or char_length(pilot)     <= 24),
+  constraint leads_note_len     check (note      is null or char_length(note)      <= 2000),
   constraint leads_client_len   check (client_id is null or char_length(client_id) <= 64)
 );
+-- Migrate an already-live project: add the free-text note column + its length cap if missing.
+alter table public.leads add column if not exists note text;
+do $$ begin
+  alter table public.leads add constraint leads_note_len check (note is null or char_length(note) <= 2000);
+exception when duplicate_object then null; end $$;
 
 create index if not exists leads_created_idx on public.leads (created_at desc);
 -- Supports the throttle lookups in submit_lead (recent rows by device, and the email dedupe).
@@ -385,8 +392,11 @@ revoke all on public.leads from anon, authenticated;
 -- scripted client can't flood the table. Returns true when the signup is accepted (whether it
 -- inserted, refreshed, or was silently throttled — the caller only needs "we got it"); false only
 -- on a malformed email. Standard definer hardening: empty search_path + schema-qualified refs.
+-- (signature changed: added the optional p_note free-text) drop the prior 4-arg overload first so
+-- re-applying this file fully migrates an already-live project to the single 5-arg function.
+drop function if exists public.submit_lead(text, text, text, text);
 create or replace function public.submit_lead(
-  p_email text, p_source text, p_pilot text, p_client_id text
+  p_email text, p_source text, p_pilot text, p_client_id text, p_note text default ''
 ) returns boolean
 language plpgsql
 security definer
@@ -394,8 +404,8 @@ set search_path = ''
 as $$
 declare
   v_email  text := lower(trim(p_email));
+  v_note   text := nullif(left(p_note, 2000), '');
   v_recent int;
-  v_exists boolean;
 begin
   -- Validate format/length (mirrors the table CHECKs so a bad input is rejected, not raised).
   if v_email is null
@@ -404,11 +414,13 @@ begin
     return false;
   end if;
 
-  -- Dedupe: a returning email just touches its newest row's timestamp — no pile of duplicates.
+  -- Dedupe: a returning email just touches its newest row's timestamp — no pile of duplicates. A new
+  -- note refreshes it; an empty note leaves whatever was there (coalesce on the nulled-if-blank value).
   update public.leads
      set created_at = now(),
          source     = coalesce(left(p_source, 24), source),
-         pilot      = coalesce(nullif(left(p_pilot, 24), ''), pilot)
+         pilot      = coalesce(nullif(left(p_pilot, 24), ''), pilot),
+         note       = coalesce(v_note, note)
    where lower(email) = v_email
      and id = (select max(id) from public.leads where lower(email) = v_email);
   if found then
@@ -428,11 +440,12 @@ begin
     end if;
   end if;
 
-  insert into public.leads (email, source, pilot, client_id)
+  insert into public.leads (email, source, pilot, note, client_id)
   values (
     v_email,
     left(p_source, 24),
     nullif(left(p_pilot, 24), ''),
+    v_note,
     left(p_client_id, 64)
   );
   return true;
@@ -440,8 +453,101 @@ end;
 $$;
 
 -- Only anon may call the narrow RPC; the table itself stays sealed.
-revoke all on function public.submit_lead(text, text, text, text) from public;
-grant execute on function public.submit_lead(text, text, text, text) to anon;
+revoke all on function public.submit_lead(text, text, text, text, text) from public;
+grant execute on function public.submit_lead(text, text, text, text, text) to anon;
+
+-- ===========================================================================
+-- Contacts — the agency "work with us" enquiries (footer Contact modal)
+-- ===========================================================================
+-- A short enquiry form (name + description + reply-to email) posted from the front-door footer. Like
+-- `leads` this stores a PLAINTEXT emailable address ON PURPOSE — the whole point is to reply to the
+-- sender — and is FULLY LOCKED (RLS on, ZERO policies, all privs revoked); the only door is the
+-- SECURITY DEFINER `submit_contact` RPC below, which VALIDATES + THROTTLES before any write so the
+-- public anon key in the static bundle can't be scripted into a flood of junk rows.
+
+create table if not exists public.contacts (
+  id          bigint generated always as identity primary key,
+  name        text        not null,
+  description text        not null,
+  email       text        not null,                  -- reply-to (plaintext, emailable, consented)
+  phone       text,                                  -- optional phone (free-form, light cap)
+  client_id   text,                                  -- anonymous per-device id (throttle aid)
+  created_at  timestamptz not null default now(),
+
+  constraint contacts_name_len   check (char_length(name) between 1 and 80),
+  constraint contacts_desc_len   check (char_length(description) between 1 and 2000),
+  constraint contacts_email_len  check (char_length(email) between 5 and 254),
+  constraint contacts_email_fmt  check (email ~* '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$'),
+  constraint contacts_phone_len  check (phone is null or char_length(phone) <= 32),
+  constraint contacts_client_len check (client_id is null or char_length(client_id) <= 64)
+);
+-- Migrate an already-live project (the table shipped without `phone`): add the column + its CHECK.
+alter table public.contacts add column if not exists phone text;
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'contacts_phone_len') then
+    alter table public.contacts
+      add constraint contacts_phone_len check (phone is null or char_length(phone) <= 32);
+  end if;
+end $$;
+
+create index if not exists contacts_created_idx        on public.contacts (created_at desc);
+create index if not exists contacts_client_recent_idx  on public.contacts (client_id, created_at desc);
+
+alter table public.contacts enable row level security;
+-- No policies + revoke = anon/authenticated have NO direct table access. The RPC is the only door.
+revoke all on public.contacts from anon, authenticated;
+
+-- Capture an agency enquiry. SECURITY DEFINER writes past RLS; VALIDATES the three fields and
+-- THROTTLES per device (cap 5/hour) so a scripted client can't flood the table. Returns true when
+-- accepted (inserted OR silently throttled — the caller only needs "we got it"); false only on a
+-- malformed/empty input. Standard definer hardening: empty search_path + schema-qualified refs.
+-- Drop the legacy 4-arg version first (the phone arg changed the signature → can't CREATE OR REPLACE).
+drop function if exists public.submit_contact(text, text, text, text);
+create or replace function public.submit_contact(
+  p_name text, p_description text, p_email text, p_phone text, p_client_id text
+) returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_email text := lower(trim(p_email));
+  v_name  text := trim(coalesce(p_name, ''));
+  v_desc  text := trim(coalesce(p_description, ''));
+  v_phone text := nullif(trim(coalesce(p_phone, '')), '');   -- optional
+  v_recent int;
+begin
+  -- Validate format/length (mirrors the table CHECKs so a bad input is rejected, not raised). Phone is
+  -- optional + free-form, so it isn't validated here beyond the length clamp on insert.
+  if v_email is null
+     or char_length(v_email) not between 5 and 254
+     or v_email !~* '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$'
+     or char_length(v_name) < 1
+     or char_length(v_desc) < 1 then
+    return false;
+  end if;
+
+  -- Throttle: cap to 5 enquiries/hour per device. Over the cap → accept-but-drop (no insert), so an
+  -- attacker can't tell they're throttled and a real user never sees an error.
+  if p_client_id is not null then
+    select count(*) into v_recent
+      from public.contacts
+     where client_id = left(p_client_id, 64)
+       and created_at > now() - interval '1 hour';
+    if v_recent >= 5 then
+      return true;
+    end if;
+  end if;
+
+  insert into public.contacts (name, description, email, phone, client_id)
+  values (left(v_name, 80), left(v_desc, 2000), v_email, left(v_phone, 32), left(p_client_id, 64));
+  return true;
+end;
+$$;
+
+-- Only anon may call the narrow RPC; the table itself stays sealed.
+revoke all on function public.submit_contact(text, text, text, text, text) from public;
+grant execute on function public.submit_contact(text, text, text, text, text) to anon;
 
 -- ===========================================================================
 -- Live wildfire ingestion store — the "honest window" BACKEND (Phases 1–3).

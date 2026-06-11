@@ -48,6 +48,16 @@ export function injectKitStyles(): void {
   @keyframes bmf-kit-spin { to { transform: rotate(1turn); } }
   @keyframes bmf-kit-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 
+  /* ===== Branded "liquid glass" scrollbar — a translucent ember thumb with a white sheen at the top
+     (the --bevel-top gloss) so it reads as wet glass, floating on a clear track. Applied to the modal
+     body (and any kit surface that opts in via .bmf-kit-scroll). All tokens — no raw literals. ===== */
+  .bmf-kit-scroll{ scrollbar-width:thin; scrollbar-color:var(--ember-50) transparent; }
+  .bmf-kit-scroll::-webkit-scrollbar{ width:10px; }
+  .bmf-kit-scroll::-webkit-scrollbar-track{ background:transparent; }
+  .bmf-kit-scroll::-webkit-scrollbar-thumb{ border-radius:var(--r-pill); border:2px solid transparent; background-clip:padding-box;
+    background:linear-gradient(180deg, var(--bevel-top), var(--ember-50)); }
+  .bmf-kit-scroll::-webkit-scrollbar-thumb:hover{ background:linear-gradient(180deg, var(--bevel-top), var(--ember)); }
+
   /* ===== Canonical button — THE one button of record. Used by makeButton() AND by string-markup
      (class="btn …"). Warm "fight" register is the default; .cockpit switches to the cyan instrument
      register (DESIGN.md two registers). Rugged technical radius (--r-lg), never a round pill. ===== */
