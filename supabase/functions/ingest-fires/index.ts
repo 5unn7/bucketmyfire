@@ -170,10 +170,21 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const fires = [...byId.values()];
 
     if (fires.length) {
-      // What do we already have? (only the fields we diff on, to keep the read tiny)
-      const { data: existing, error: readErr } = await admin.from('fires').select('fire_id, stage, size_ha');
-      if (readErr) throw readErr;
-      const prevById = new Map((existing ?? []).map((r) => [r.fire_id as string, r as { stage: string; size_ha: number | null }]));
+      // What do we already have? PAGINATE: PostgREST HARD-caps a single response at 1000 rows
+      // (db-max-rows) even with an explicit .limit() — so a one-shot read of the >1700-row fires table
+      // silently truncated, the ~700 fires past row 1000 were absent from prevById, looked "new" every run,
+      // and appended a DUPLICATE snapshot each 10-min tick (110k+ junk rows). Read in 1000-row pages over a
+      // stable key (fire_id) so we actually diff against the WHOLE table.
+      type PrevRow = { fire_id: string; stage: string; size_ha: number | null };
+      const existing: PrevRow[] = [];
+      for (let from = 0; ; from += 1000) {
+        const { data, error: readErr } = await admin.from('fires').select('fire_id, stage, size_ha').order('fire_id').range(from, from + 999);
+        if (readErr) throw readErr;
+        const batch = (data ?? []) as PrevRow[];
+        existing.push(...batch);
+        if (batch.length < 1000) break;
+      }
+      const prevById = new Map(existing.map((r) => [r.fire_id, { stage: r.stage, size_ha: r.size_ha }]));
 
       const now = new Date().toISOString();
       const rows = fires.map((f) => ({

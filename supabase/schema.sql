@@ -592,6 +592,32 @@ drop policy if exists "provincial_fires: anyone can read" on public.provincial_f
 create policy "provincial_fires: anyone can read" on public.provincial_fires for select using (true);
 grant select on public.provincial_fires to anon;
 
+-- Per-fire size/stage HISTORY for provincial fires — the provincial mirror of public.fire_snapshots.
+-- ingest-provincial APPENDS a row only when a province's fire moved (stage or size changed, or it's new),
+-- so a steady fire doesn't pile up a row per cron tick. Keyed by (source, source_fire_id) like its parent.
+-- This is what lets a BC/AB/ON detail card draw a tracked-history chart: fire_snapshots only ever held the
+-- CIFFC-id'd national rows, so a provincial-id'd card (shown via the prefer-provincial path) could never
+-- find its history there. on delete cascade keeps it tidy when a parent provincial fire ages out.
+create table if not exists public.provincial_fire_snapshots (
+  id              bigint generated always as identity primary key,
+  source          text        not null,
+  source_fire_id  text        not null,
+  stage           text        not null,
+  size_ha         double precision,
+  reported_at     timestamptz,                            -- the source's own update/discovery time
+  observed_at     timestamptz not null default now(),     -- when our ingest recorded it
+  constraint provincial_fire_snapshots_stage_vals check (stage in ('OC','BH','UC','OUT','UNK')),
+  foreign key (source, source_fire_id) references public.provincial_fires (source, source_fire_id) on delete cascade
+);
+-- The sparkline query: this fire's points, in time order.
+create index if not exists provincial_fire_snapshots_fire_idx
+  on public.provincial_fire_snapshots (source, source_fire_id, observed_at);
+
+alter table public.provincial_fire_snapshots enable row level security;
+drop policy if exists "provincial_fire_snapshots: anyone can read" on public.provincial_fire_snapshots;
+create policy "provincial_fire_snapshots: anyone can read" on public.provincial_fire_snapshots for select using (true);
+grant select on public.provincial_fire_snapshots to anon;
+
 -- Schedule (run after deploying ingest-provincial; staggered :05/:15/… vs ingest-fires' :00/:10/…):
 --   select cron.schedule('ingest-provincial-10min', '5,15,25,35,45,55 * * * *', $cron$
 --     select net.http_post(

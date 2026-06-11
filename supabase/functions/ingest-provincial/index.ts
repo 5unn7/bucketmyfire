@@ -79,13 +79,13 @@ function stageFromText(v: unknown): Stage {
   return 'UNK'; // "being observed" / "being actioned" / "new" / unmapped
 }
 
-/** Newfoundland uses overloaded single-letter STATUS codes (legend unconfirmed): best-effort, not authoritative. */
+/** Newfoundland STATUS codes, verified against the FFA_Wildfire layer's coded-value DOMAIN (2026-06):
+ *  O = Out, OC = Out-of-Control, BH = Being Held, UC = Under Control. The earlier guesses (O→OC, plus
+ *  invented C/U/X/E) were WRONG — they flagged every Out fire as active (886 of 888 NL fires are 'O').
+ *  OC/BH/UC share the CIFFC codes so stageFromText maps them; only 'O' needs the override (stageFromText
+ *  would leave a bare 'O' as UNK). */
 function nlStage(v: unknown): Stage {
-  const s = String(v ?? '').trim().toUpperCase();
-  if (s === 'O') return 'OC'; // active-fire layer ⇒ treat 'O' as out-of-control (ambiguous w/ "Out")
-  if (s === 'C') return 'BH'; // Contained
-  if (s === 'U') return 'UC'; // Under control
-  if (s === 'X' || s === 'E') return 'OUT';
+  if (String(v ?? '').trim().toUpperCase() === 'O') return 'OUT';
   return stageFromText(v);
 }
 
@@ -270,18 +270,48 @@ const ntAdapter: Adapter = {
 
 const ADAPTERS: Adapter[] = [...ARCGIS_CFGS.map(arcgisAdapter), ntAdapter];
 
-async function upsertChunked(rows: ProvRow[]): Promise<void> {
+type PrevState = { stage: string | null; size_ha: number | null };
+const keyOf = (source: string, id: string): string => `${source} ${id}`;
+
+/** True if a provincial fire's tracked state moved enough to warrant a new history point (mirrors
+ *  ingest-fires' changed()). A new fire (no prev) always counts; a null/blank stage normalizes to UNK. */
+function changed(prev: PrevState | undefined, next: ProvRow): boolean {
+  if (!prev) return true;
+  if ((prev.stage ?? 'UNK') !== (next.stage ?? 'UNK')) return true;
+  const a = prev.size_ha, b = next.size_ha;
+  if (a == null || b == null) return a !== b; // a size appearing/disappearing is a change
+  return Math.abs(a - b) > 0.01; // ignore float noise
+}
+
+/** Dedupe the batch, upsert current state, then APPEND a history snapshot for each fire that MOVED (or is
+ *  new) vs `prevByKey` — the provincial mirror of ingest-fires' fire_snapshots logic, so a BC/AB/ON detail
+ *  card can finally draw a tracked-history chart. The upsert runs first so each snapshot's (source,
+ *  source_fire_id) FK target already exists. Returns the snapshot count written. */
+async function ingestRows(rows: ProvRow[], prevByKey: Map<string, PrevState>): Promise<number> {
   const now = new Date().toISOString();
   // Dedupe within the batch: a source can repeat a fire id across features, and a Postgres upsert rejects
-  // the same ON CONFLICT target appearing twice in one statement. Keep the last occurrence per id.
+  // the same ON CONFLICT target appearing twice in one statement. Keep the last occurrence per (source,id).
   const byId = new Map<string, ProvRow>();
-  for (const r of rows) byId.set(r.source_fire_id, r);
+  for (const r of rows) byId.set(keyOf(r.source, r.source_fire_id), r);
   const deduped = [...byId.values()];
   for (let i = 0; i < deduped.length; i += 500) {
     const chunk = deduped.slice(i, i + 500).map((r) => ({ ...r, last_updated: now }));
     const { error } = await admin.from('provincial_fires').upsert(chunk, { onConflict: 'source,source_fire_id' });
     if (error) throw new Error(error.message || JSON.stringify(error)); // surface PostgrestError text, not [object Object]
   }
+  // History: one row per fire whose stage/size moved (or that's new). reported_at = the source's own
+  // update/discovery time (NOT our poll time), so the client's "grew X over N" reads the real interval.
+  const snaps = deduped
+    .filter((r) => changed(prevByKey.get(keyOf(r.source, r.source_fire_id)), r))
+    .map((r) => ({
+      source: r.source, source_fire_id: r.source_fire_id, stage: r.stage ?? 'UNK',
+      size_ha: r.size_ha, reported_at: r.updated_at_src ?? r.discovered_at,
+    }));
+  for (let i = 0; i < snaps.length; i += 500) {
+    const { error } = await admin.from('provincial_fire_snapshots').insert(snaps.slice(i, i + 500));
+    if (error) throw new Error(error.message || JSON.stringify(error));
+  }
+  return snaps.length;
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -292,27 +322,48 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
   }
 
+  // Prior state for change detection — the pre-run baseline each adapter diffs its fresh rows against to
+  // decide which fires earned a new history snapshot. PAGINATE: PostgREST HARD-caps a response at 1000 rows
+  // (db-max-rows) even with an explicit .limit(), so once provincial_fires exceeds 1000 (NL alone carries
+  // ~900) a one-shot read truncates and the tail looks "new" every run → duplicate snapshots (same bug as
+  // ingest-fires). Read in 1000-row pages over the (source, source_fire_id) PK so we diff the WHOLE table.
+  type PriorRow = { source: string; source_fire_id: string; stage: string | null; size_ha: number | null };
+  const prior: PriorRow[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await admin.from('provincial_fires')
+      .select('source, source_fire_id, stage, size_ha').order('source').order('source_fire_id').range(from, from + 999);
+    if (error) throw error;
+    const batch = (data ?? []) as PriorRow[];
+    prior.push(...batch);
+    if (batch.length < 1000) break;
+  }
+  const prevByKey = new Map<string, PrevState>(
+    prior.map((r) => [keyOf(r.source, r.source_fire_id), { stage: r.stage, size_ha: r.size_ha }]),
+  );
+
   // Run adapters concurrently; one failing only nulls its own entry.
   const results = await Promise.all(
     ADAPTERS.map(async (adapter) => {
       try {
         const rows = await adapter.fetchRows();
-        if (rows.length) await upsertChunked(rows);
-        return { source: adapter.source, count: rows.length, error: null as string | null };
+        const snapshots = rows.length ? await ingestRows(rows, prevByKey) : 0;
+        return { source: adapter.source, count: rows.length, snapshots, error: null as string | null };
       } catch (e) {
-        return { source: adapter.source, count: 0, error: e instanceof Error ? e.message : String(e) };
+        return { source: adapter.source, count: 0, snapshots: 0, error: e instanceof Error ? e.message : String(e) };
       }
     }),
   );
 
   const perSource: Record<string, number> = {};
+  const snapshots: Record<string, number> = {};
   const errors: string[] = [];
   for (const r of results) {
     perSource[r.source] = r.count;
+    snapshots[r.source] = r.snapshots;
     if (r.error) errors.push(`${r.source}: ${r.error}`);
   }
   const any = Object.values(perSource).some((n) => n > 0);
-  return new Response(JSON.stringify({ perSource, errors }), {
+  return new Response(JSON.stringify({ perSource, snapshots, errors }), {
     status: errors.length && !any ? 502 : 200,
     headers: { 'Content-Type': 'application/json' },
   });
