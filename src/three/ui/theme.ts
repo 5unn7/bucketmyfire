@@ -24,6 +24,13 @@
 // drifted by accident (text 0.94 vs 0.96, blur 12 vs 14, two menu greens), they were
 // converged to the HUD's values so the in-flight HUD is byte-identical and only the
 // overlays shift sub-perceptually onto the shared token.
+
+// Type — ONE face now. JetBrains Mono is BOTH `--font` and `--mono`: the whole product speaks the
+// cockpit instrument voice (Saira retired — user call: "doesn't match"). Single source so the two
+// tokens can never drift; every consumer (DOM + canvas) resolves here.
+const MONO_FAMILY =
+  '"JetBrains Mono Variable", ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace';
+
 export const UI = {
   // Accents — cyan is the one interactive/live colour; it marks only what can be
   // acted on or what is happening right now (selection, primary action, fill bars).
@@ -119,12 +126,13 @@ export const UI = {
   dropGlow: 'drop-shadow(0 0 13px rgba(255,90,60,0.42)) drop-shadow(0 3px 6px rgba(0,0,0,0.45))', // DROP hero hex glow
   detachGlow: 'drop-shadow(0 0 10px rgba(255,90,60,0.34)) drop-shadow(0 2px 5px rgba(0,0,0,0.4))', // RELEASE-bucket hex glow (slightly smaller)
   knobHi: 'rgba(150,182,202,0.24)', // cool metallic lowlight in the joystick knob's radial highlight
-  // Type — TWO self-hosted faces (latin woff2, injected by ui/fonts.ts; tokens.ts emits these as
-  // `--font` / `--mono`). `font` = Saira (the display/UI grotesque: wordmark, headlines, body, buttons);
-  // `fontMono` = JetBrains Mono (the cockpit INSTRUMENT face: HUD numerals, eyebrows, tags, rail, pills —
-  // tabular by construction). System stacks trail as the swap fallback. See DESIGN.md → Typography.
-  font: '"Saira Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
-  fontMono: '"JetBrains Mono Variable", ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace',
+  // Type — ONE self-hosted face: JetBrains Mono Variable (latin woff2, injected by ui/fonts.ts;
+  // tokens.ts emits it as BOTH `--font` and `--mono`). The whole product speaks the cockpit instrument
+  // voice — wordmark, headlines, body, buttons, HUD numerals, eyebrows, tags, rail, pills — tabular by
+  // construction. Saira retired here. System monospace stacks trail as the swap fallback. See DESIGN.md
+  // → Typography. (`font`/`fontMono` are kept as distinct keys for consumer clarity but resolve identically.)
+  font: MONO_FAMILY,
+  fontMono: MONO_FAMILY,
 };
 
 /** `UI.accent` at an arbitrary alpha — for the cockpit-cyan glow RAMPS (the joystick's axis ticks, the

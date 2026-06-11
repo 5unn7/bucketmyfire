@@ -82,10 +82,10 @@ function loadCss(root) {
   return `${tokens}\n${navCss}\n${BLOG_CSS}`;
 }
 
-/** Best-effort self-host the two variable fonts so the blog matches the app; non-fatal if absent. */
+/** Best-effort self-host the brand font so the blog matches the app; non-fatal if absent. ONE face now —
+ *  JetBrains Mono is both `--font` and `--mono` (Saira retired); see theme.ts → Typography. */
 function fontFace(root, outBlog) {
   const fonts = [
-    ['@fontsource-variable/saira/files/saira-latin-wght-normal.woff2', 'saira.woff2', 'Saira Variable'],
     ['@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2', 'jetbrains-mono.woff2', 'JetBrains Mono Variable'],
   ];
   const faces = [];

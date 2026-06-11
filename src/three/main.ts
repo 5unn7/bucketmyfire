@@ -39,8 +39,8 @@ import type { EndScreenHooks } from './HUD';
  */
 const container = document.getElementById('game') as HTMLDivElement;
 
-// Brand type — inject the self-hosted Saira + JetBrains Mono @font-faces before any UI paints, so the
-// title/hub/HUD render in the real faces (font-display:swap keeps the first paint instant on a cold cache).
+// Brand type — inject the self-hosted JetBrains Mono @font-face before any UI paints, so the
+// title/hub/HUD render in the real face (font-display:swap keeps the first paint instant on a cold cache).
 injectFonts();
 
 // Crash/error beacon FIRST, so a failure during storage reset / renderer / world construction is

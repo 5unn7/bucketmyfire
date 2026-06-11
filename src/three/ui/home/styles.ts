@@ -339,6 +339,11 @@ const CSS = `
 .bmf-app .card{ position:relative; background:var(--metal-hi); border:1px solid var(--stroke); border-top-color:var(--bevel-top);
   border-radius:var(--r-md); box-shadow:var(--shadow-card), inset 0 1px 0 rgba(255,255,255,0.13), inset 1px 0 0 rgba(255,255,255,0.05), inset 0 -1px 0 rgba(0,0,0,0.22); padding:14px 15px;
   clip-path:var(--cut-tl); }
+/* A <button> doesn't inherit font-family from .bmf-app, so a card rendered AS a button (the gameplay /
+   shop feature cards) kept the UA default face instead of the brand font — which is why their headlines
+   never followed the type system. Reset it so every card-button speaks --font like the div/anchor cards
+   (matches the button-reset convention already on .daily-head / .shopbanner / the fly-picker cards). */
+.bmf-app button.card{ font:inherit; }
 .bmf-app .card.metal{ background:var(--metal); }
 .bmf-app .card.warm{ background:radial-gradient(140% 160% at 88% -8%, rgba(255,140,40,0.18) 0%, rgba(255,100,30,0.08) 40%, transparent 62%), var(--metal-hi); }
 /* The "readiness" register — a green glass glaze (the warm card's gradient, in the safe/ready hue) over a

@@ -424,7 +424,7 @@ export function ogCardSvg({ title, pillar, seed }) {
   <rect width="1200" height="630" fill="url(#ogscrim)"/>
   <rect width="1200" height="630" fill="url(#ogfade)"/>
   <rect x="0" y="0" width="1200" height="6" fill="#ff6a2c"/>
-  <g font-family="Saira, 'Segoe UI', system-ui, sans-serif">
+  <g font-family="'JetBrains Mono', ui-monospace, monospace">
     <text x="80" y="120" fill="#ffc24a" font-size="26" font-weight="700" letter-spacing="6">FIELD NOTES · BUCKET MY FIRE</text>
     <text x="80" y="170" fill="rgba(255,255,255,0.5)" font-size="22" font-weight="600" letter-spacing="3">${escapeHtml(
       pTitle
