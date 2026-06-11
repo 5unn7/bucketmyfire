@@ -126,13 +126,18 @@ export const UI = {
   dropGlow: 'drop-shadow(0 0 13px rgba(255,90,60,0.42)) drop-shadow(0 3px 6px rgba(0,0,0,0.45))', // DROP hero hex glow
   detachGlow: 'drop-shadow(0 0 10px rgba(255,90,60,0.34)) drop-shadow(0 2px 5px rgba(0,0,0,0.4))', // RELEASE-bucket hex glow (slightly smaller)
   knobHi: 'rgba(150,182,202,0.24)', // cool metallic lowlight in the joystick knob's radial highlight
-  // Type — ONE self-hosted face: JetBrains Mono Variable (latin woff2, injected by ui/fonts.ts;
-  // tokens.ts emits it as BOTH `--font` and `--mono`). The whole product speaks the cockpit instrument
-  // voice — wordmark, headlines, body, buttons, HUD numerals, eyebrows, tags, rail, pills — tabular by
-  // construction. Saira retired here. System monospace stacks trail as the swap fallback. See DESIGN.md
-  // → Typography. (`font`/`fontMono` are kept as distinct keys for consumer clarity but resolve identically.)
+  // Type — JetBrains Mono Variable is the voice (self-hosted latin woff2 via ui/fonts.ts; tokens.ts
+  // emits it as BOTH `--font` and `--mono`): wordmark, headlines, UI, buttons, HUD numerals, eyebrows,
+  // tags, rail, pills — tabular by construction. Saira retired. System monospace stacks trail as the
+  // swap fallback. (`font`/`fontMono` are distinct keys for consumer clarity but resolve identically.)
   font: MONO_FAMILY,
   fontMono: MONO_FAMILY,
+  // The ONE exception to all-mono: long-form READING prose (the Field Notes blog body; legal pages).
+  // Mono is punishing at paragraph length, so running body copy uses a neutral system sans — highly
+  // readable, zero payload (no webfont, always-available). Headings / chips / numerals / code in that
+  // prose stay mono so the surface still reads as the cockpit brand; only the paragraphs relax. Consumed
+  // as `--font-read`. See DESIGN.md → Typography.
+  fontRead: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
 };
 
 /** `UI.accent` at an arbitrary alpha — for the cockpit-cyan glow RAMPS (the joystick's axis ticks, the

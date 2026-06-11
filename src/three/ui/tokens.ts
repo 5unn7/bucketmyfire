@@ -36,7 +36,7 @@ export function tokenDecls(): string {
     `--caution-12:${HOME.caution12};--caution-50:${HOME.caution50};`,
     `--warn-10:${HOME.warn10};--warn-16:${HOME.warn16};--warn-18:${HOME.warn18};--warn-22:${HOME.warn22};--warn-50:${HOME.warn50};`,
     `--rank:${HOME.rank};--card-bg:${HOME.cardBg};`,
-    `--font:${UI.font};--mono:${UI.fontMono};`,
+    `--font:${UI.font};--mono:${UI.fontMono};--font-read:${UI.fontRead};`,
     `--fs-micro:${FS.micro};--fs-tag:${FS.tag};--fs-label:${FS.label};--fs-meta:${FS.meta};--fs-sm:${FS.sm};--fs-body:${FS.body};--fs-md:${FS.md};--fs-lg:${FS.lg};--fs-xl:${FS.xl};--fs-title:${FS.title};--fs-hero:${FS.hero};--fs-display:${FS.display};--fs-banner:${FS.banner};--fs-mega:${FS.mega};`,
     `--fw-medium:${FW.medium};--fw-semibold:${FW.semibold};--fw-bold:${FW.bold};--fw-heavy:${FW.heavy};--fw-black:${FW.black};`,
     `--r-xs:${R.xs};--r-sm:${R.sm};--r-md:${R.md};--r-lg:${R.lg};--r-xl:${R.xl};--r-pill:${R.pill};--r-round:${R.round};`,

@@ -239,14 +239,17 @@ h1,h2,h3,h4{font-weight:800;letter-spacing:-0.01em;line-height:1.15;color:#fff}
   border-top-color:var(--stroke-strong);box-shadow:var(--shadow-card);aspect-ratio:1200/630;background:var(--card-bg);
   clip-path:polygon(18px 0,100% 0,100% 100%,0 100%,0 18px)}
 .fn-hero img{display:block;width:100%;height:100%;object-fit:cover}
-.fn-lede{font-size:var(--fs-xl);color:var(--text-subtle);max-width:60ch;line-height:1.55}
+.fn-lede{font-family:var(--font-read);font-size:var(--fs-xl);color:var(--text-subtle);max-width:60ch;line-height:1.55}
 .fn-takeaways{background:var(--card-soft);border:1px solid var(--stroke);border-left:3px solid var(--ember);
   border-radius:var(--r-md);padding:16px 20px;margin:0 0 30px}
 .fn-takeaways .fn-tk-h{font-size:var(--fs-meta);letter-spacing:0.14em;text-transform:uppercase;color:var(--menu);margin:0 0 10px}
-.fn-takeaways ul{margin:0;padding-left:20px}.fn-takeaways li{margin:6px 0;color:var(--text-subtle)}
-.fn-prose{font-size:var(--fs-xl);line-height:1.72}
-.fn-prose h2{font-size:clamp(21px,3vw,27px);margin:38px 0 12px;scroll-margin-top:72px}
-.fn-prose h3{font-size:clamp(17px,2.4vw,20px);margin:28px 0 10px;color:var(--text)}
+.fn-takeaways ul{margin:0;padding-left:20px}.fn-takeaways li{margin:6px 0;color:var(--text-subtle);font-family:var(--font-read)}
+/* Long-form READING: the article body relaxes to the readable system sans (--font-read). Mono is great
+   for headings / chips / numerals but punishing at paragraph length. Section headings stay mono so the
+   piece still reads as the cockpit brand — only the running paragraphs relax. */
+.fn-prose{font-size:var(--fs-xl);line-height:1.72;font-family:var(--font-read)}
+.fn-prose h2{font-family:var(--mono);font-size:clamp(21px,3vw,27px);margin:38px 0 12px;scroll-margin-top:72px}
+.fn-prose h3{font-family:var(--mono);font-size:clamp(17px,2.4vw,20px);margin:28px 0 10px;color:var(--text)}
 .fn-prose p{margin:0 0 18px}
 .fn-prose ul,.fn-prose ol{margin:0 0 18px;padding-left:24px}
 .fn-prose li{margin:7px 0}
@@ -264,7 +267,7 @@ h1,h2,h3,h4{font-weight:800;letter-spacing:-0.01em;line-height:1.15;color:#fff}
 .fn-q summary::-webkit-details-marker{display:none}
 .fn-q summary::before{content:"+ ";color:var(--ember-hi)}
 .fn-q[open] summary::before{content:"– "}
-.fn-q>div{padding:0 0 16px;color:var(--text-subtle);line-height:1.6}
+.fn-q>div{padding:0 0 16px;color:var(--text-subtle);line-height:1.6;font-family:var(--font-read)}
 .fn-srcbox{margin:38px 0 0;background:var(--recess);border:1px solid var(--hair);border-radius:var(--r-md);padding:16px 20px}
 .fn-srcbox h2{font-size:var(--fs-meta);letter-spacing:0.14em;text-transform:uppercase;color:var(--dim);margin:0 0 10px}
 .fn-srcbox ul{margin:0;padding-left:18px}.fn-srcbox li{margin:6px 0;font-size:var(--fs-md)}
@@ -281,7 +284,7 @@ h1,h2,h3,h4{font-weight:800;letter-spacing:-0.01em;line-height:1.15;color:#fff}
 .fn-sec-line{flex:1;height:1px;background:linear-gradient(90deg,var(--gold-32),transparent)}
 .fn-sec-more{font-family:var(--mono);font-size:var(--fs-meta);letter-spacing:0.06em;color:var(--dim);white-space:nowrap;padding:8px 2px;min-height:44px;display:inline-flex;align-items:center}
 .fn-sec-more:hover{color:var(--ember-hi)}
-.fn-pillar-blurb{color:var(--dim);font-size:var(--fs-md);margin:0 0 16px;max-width:60ch}
+.fn-pillar-blurb{font-family:var(--font-read);color:var(--dim);font-size:var(--fs-md);margin:0 0 16px;max-width:60ch}
 
 /* ── Poster cards (mirrors the front-door .fd-mcard; warm "fight" register) ───────────── */
 .fn-grid{display:grid;gap:12px;grid-template-columns:1fr}
@@ -301,7 +304,7 @@ h1,h2,h3,h4{font-weight:800;letter-spacing:-0.01em;line-height:1.15;color:#fff}
 .fn-card-body{position:relative;z-index:2;padding:14px 15px 15px;display:flex;flex-direction:column}
 .fn-card-h{font-size:var(--fs-title);font-weight:var(--fw-black);color:#fff;line-height:1.1;letter-spacing:-0.01em;text-wrap:balance}
 .fn-foot{max-width:760px;margin:0 auto;padding:30px max(16px,env(safe-area-inset-left)) calc(40px + env(safe-area-inset-bottom));border-top:1px solid var(--hair);display:flex;flex-wrap:wrap;align-items:flex-end;column-gap:24px;row-gap:10px}
-.fn-disclaimer{order:1;flex:1 1 100%;color:var(--dim);font-size:var(--fs-sm);max-width:60ch;line-height:1.55;margin:0}
+.fn-disclaimer{order:1;flex:1 1 100%;color:var(--dim);font-size:var(--fs-sm);max-width:60ch;line-height:1.55;margin:0;font-family:var(--font-read)}
 .fn-foot-links{order:2;flex:0 1 auto;min-width:0;display:flex;flex-wrap:wrap;gap:8px 18px}
 .fn-foot-links a{font-family:var(--mono);font-size:var(--fs-meta);letter-spacing:0.1em;text-transform:uppercase;color:var(--dim)}
 .fn-foot-links a:hover{color:var(--ember-hi)}
