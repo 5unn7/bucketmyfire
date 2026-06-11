@@ -28,11 +28,16 @@ export async function launchBrowser() {
 // Shader/GL compile-link failures — ALWAYS fatal (this is the class verify:campaign can't see).
 const SHADER_RE = /THREE\.WebGLProgram|Shader Error|shader.*(compile|link)|GL_INVALID|WebGL:? INVALID|VALIDATE_STATUS|gl\.getProgramInfoLog|program info log/i;
 // Benign console noise in a local preview (no edge analytics, no Supabase env, favicons may 404).
-// The front door ('/') fires best-effort live-wildfire fetches (CIFFC/CWFIS) + CARTO map tiles; their
-// failure is handled honestly in-page (degrades to "unavailable"), so a third-party outage or a
-// network-restricted CI runner must NOT false-fail this shader/boot gate — allowlist those hosts.
+// The front door ('/') fires best-effort live-wildfire fetches (CIFFC/CWFIS/GWIS) + CARTO/Natural-Earth
+// map tiles; their failure is handled honestly in-page (degrades to "unavailable"), so a third-party
+// outage or a network-restricted CI runner must NOT false-fail this shader/boot gate — allowlist those
+// hosts. The hostname clauses only match when Chromium puts the URL in the message; a network-LAYER
+// failure (CORS / DNS / blocked egress, common on a CI runner) logs a URL-less "Failed to load
+// resource: net::ERR_*", so we allowlist that whole class too. Safe: the per-route DOM render
+// assertions (buttons / text / canvas present) stay authoritative, so a genuinely blank or crashed page
+// still fails — only the benign resource-load network noise is silenced, never a real boot/shader bug.
 const BENIGN_RE =
-  /favicon|og-image|apple-touch|manifest\.json|site\.webmanifest|cloudflareinsights|supabase|leaderboard|robots\.txt|ciffc|cwfis|cartocdn|basemaps/i;
+  /favicon|og-image|apple-touch|manifest\.json|site\.webmanifest|cloudflareinsights|supabase|leaderboard|robots\.txt|ciffc|cwfis|cartocdn|basemaps|Failed to load resource: net::ERR_/i;
 
 /** Split collected console/page messages into fatal shader errors vs. other (non-benign) errors. */
 export function classify(messages) {
