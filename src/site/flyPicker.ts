@@ -40,9 +40,12 @@ export function pickCard(item: CatalogItem, badge: string, opts: { locked?: bool
     meta +
     cta +
     `</div>`;
-  if (opts.locked) return `<div class="fd-mcard fd-card locked" aria-disabled="true">${inner}</div>`;
-  if (opts.href) return `<a class="fd-mcard fd-card" href="${opts.href}" aria-label="Fly ${esc(item.name)}">${inner}</a>`;
-  return `<button class="fd-mcard fd-card" data-pick="${esc(opts.pick ?? '')}" aria-label="Choose ${esc(item.name)}">${inner}</button>`;
+  // A map's art is a 3D terrain SLAB on transparency (built to FLOAT, not fill) → flag it (.fd-map) so the
+  // CSS shows the WHOLE slab over a spotlight (contain), not a cover-crop. Helis stay full-bleed key art.
+  const cls = `fd-mcard fd-card${item.stats ? ' fd-map' : ''}`;
+  if (opts.locked) return `<div class="${cls} locked" aria-disabled="true">${inner}</div>`;
+  if (opts.href) return `<a class="${cls}" href="${opts.href}" aria-label="Fly ${esc(item.name)}">${inner}</a>`;
+  return `<button class="${cls}" data-pick="${esc(opts.pick ?? '')}" aria-label="Choose ${esc(item.name)}">${inner}</button>`;
 }
 
 /** Wire the mobile picker carousel inside `host`: build position dots under a `.fly-strip` of poster
@@ -125,6 +128,18 @@ export function injectFlyPickerStyles(): void {
 .bmf-app.front .fly-strip .fd-spec > span { font-family: var(--mono); font-size: var(--fs-micro); letter-spacing: .07em; text-transform: uppercase; color: var(--dim); }
 .bmf-app.front .fly-strip .fd-spec .trk { height: 4px; border-radius: 99px; background: var(--recess); overflow: hidden; }
 .bmf-app.front .fly-strip .fd-spec .trk b { display: block; height: 100%; width: calc(var(--v, 0) * 100%); border-radius: 99px; background: linear-gradient(90deg, var(--ember), var(--ember-hi)); }
+/* Map pick cards (.fd-map): the art is a 3D terrain SLAB rendered on transparency — built to FLOAT, not
+   to fill. Show the WHOLE slab (contain), parked in the upper card over a faint warm spotlight and casting
+   a true silhouette shadow, so it reads as a floating object rather than a zoomed-in cover crop (mirrors
+   the in-game .artcard.map). Helis keep the full-bleed cover key art. */
+.bmf-app.front .fly-strip .fd-mcard.fd-map { background: radial-gradient(118% 82% at 50% 27%, var(--ember-12), var(--card-bg) 70%); }
+.bmf-app.front .fly-strip .fd-mcard.fd-map .fd-m-art { inset: 0 0 auto 0; height: 72%; }
+.bmf-app.front .fly-strip .fd-mcard.fd-map .fd-m-art img { object-fit: contain; object-position: 50% 42%;
+  padding: 20px 18px 0; box-sizing: border-box; filter: drop-shadow(0 18px 22px rgba(0,0,0,0.5)); }
+/* Base-anchored scrim only — the slab floats above it, so don't wash the whole card (which would dim the slab). */
+.bmf-app.front .fly-strip .fd-mcard.fd-map .fd-m-scrim { background: linear-gradient(180deg, transparent 0%, transparent 52%, rgba(6,9,11,0.74) 82%, rgba(6,9,11,0.95) 100%); }
+/* Hover LIFTS the slab (a contained slab should rise, not zoom like the cover key-art cards). */
+.bmf-app.front .fly-strip .fd-mcard.fd-map:hover .fd-m-art img { transform: translateY(-6px); }
 `;
   document.head.appendChild(s);
 }
