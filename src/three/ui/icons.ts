@@ -123,9 +123,9 @@ function heliBell(): string {
   // tail boom + fin (behind the cabin → drawn first)
   s += box(0.2, 1.42, 0.98, 0.95, 0.2, 0.2, '#dad8d2');
   s += box(0.08, 1.36, 1.0, 0.18, 0.32, 0.55, '#c8362a');
-  // cabin (red flanks, white roof) + nose + glass
-  s += box(1.05, 0.98, 0.65, 1.45, 1.1, 0.92, '#c8362a', { top: '#e6e5e0' });
-  s += box(2.45, 1.12, 0.65, 0.42, 0.82, 0.62, '#c8362a', { top: '#e6e5e0' });
+  // cabin (red flanks, black roof) + nose + glass
+  s += box(1.05, 0.98, 0.65, 1.45, 1.1, 0.92, '#c8362a', { top: '#16181d' });
+  s += box(2.45, 1.12, 0.65, 0.42, 0.82, 0.62, '#c8362a', { top: '#16181d' });
   s += poly([P(2.5, 1.18, 1.18), P(2.5, 1.86, 1.18), P(2.5, 1.86, 0.78), P(2.5, 1.18, 0.78)], '#27333d');
   // mast + two-blade rotor on top (drawn last → over everything)
   s += box(1.66, 1.44, 1.57, 0.2, 0.2, 0.2, '#3a3e44');
@@ -146,9 +146,9 @@ function heliBell212(): string {
   // tail boom + fin
   s += box(0.2, 1.42, 0.98, 0.95, 0.2, 0.2, '#e3dccb');
   s += box(0.08, 1.36, 1.0, 0.18, 0.32, 0.55, '#caa233');
-  // cabin (amber flanks, cream roof) + nose + glass
-  s += box(1.05, 0.98, 0.65, 1.45, 1.1, 0.92, '#d8a12a', { top: '#efe6cf' });
-  s += box(2.45, 1.12, 0.65, 0.42, 0.82, 0.62, '#d8a12a', { top: '#efe6cf' });
+  // cabin (amber flanks, black roof) + nose + glass
+  s += box(1.05, 0.98, 0.65, 1.45, 1.1, 0.92, '#d8a12a', { top: '#16181d' });
+  s += box(2.45, 1.12, 0.65, 0.42, 0.82, 0.62, '#d8a12a', { top: '#16181d' });
   s += poly([P(2.5, 1.18, 1.18), P(2.5, 1.86, 1.18), P(2.5, 1.86, 0.78), P(2.5, 1.18, 0.78)], '#27333d');
   // twin-pac engine hump on the roof (what tells it apart from the 205)
   s += box(1.0, 1.22, 1.55, 0.85, 0.58, 0.26, '#9aa0a6', { top: '#c2c7cc' });
@@ -173,9 +173,9 @@ function heliHawk(): string {
   s += box(-0.05, 1.42, 0.86, 1.05, 0.2, 0.2, '#5b6b50');
   s += box(-0.12, 1.36, 0.86, 0.16, 0.32, 0.66, '#46523d');
   s += box(0.2, 0.95, 0.92, 0.16, 1.5, 0.08, '#46523d');
-  // big slab cabin (olive, darker roof) + sloped nose + windscreen
-  s += box(0.9, 0.86, 0.6, 1.55, 1.3, 0.86, '#5b6b50', { top: '#46523d' });
-  s += box(2.35, 1.06, 0.6, 0.5, 0.9, 0.5, '#5b6b50', { top: '#46523d' });
+  // big slab cabin (olive, black roof) + sloped nose + windscreen
+  s += box(0.9, 0.86, 0.6, 1.55, 1.3, 0.86, '#5b6b50', { top: '#16181d' });
+  s += box(2.35, 1.06, 0.6, 0.5, 0.9, 0.5, '#5b6b50', { top: '#16181d' });
   s += poly([P(2.6, 1.12, 1.12), P(2.6, 1.92, 1.12), P(2.6, 1.92, 0.74), P(2.6, 1.12, 0.74)], '#222a30');
   // stub wings / ESSS pylons either side
   s += box(1.2, 0.4, 0.92, 0.5, 0.45, 0.12, '#46523d');

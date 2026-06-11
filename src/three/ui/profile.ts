@@ -86,7 +86,7 @@ const HELI_ART = '/images/heli/';
 export const HELIS: CatalogItem[] = [
   {
     id: 'bell-205a1',
-    name: 'Bell 204',
+    name: 'Bell 205A-1',
     tagline: 'The trainer',
     blurb: 'Single-engine Huey in firefighting livery. The forgiving one: stable and easy to place — but the slowest, with the smallest bucket (half the Black Hawk). Learn the slung-bucket feel here.',
     available: true,
@@ -156,17 +156,34 @@ export function missionsCleared(): number {
 }
 
 /**
- * Is a helicopter flyable right now? It must exist (`available`) AND be unlocked by EITHER path:
- * the campaign gate (cleared ≥ `unlockAfter`, default 0 → open from the start) OR a career-points
- * purchase. Pass a pre-read `cleared` count and `purchased` list when gating a whole picker grid so
- * it doesn't re-hit storage per card.
+ * TEST UNLOCK (dev / QA only): in a dev build (`npm run dev`) or behind `?qa` / `?unlockall` on the
+ * URL, EVERY airframe is flyable so the whole fleet can be exercised without grinding points. This
+ * NEVER fires on a normal prod load, so it can't hand real players free aircraft or feed the global
+ * board — the same gate the ConfigPanel / `__game` debug handle ride. Window access is try/guarded so
+ * a non-browser import (a Node gate that pulls this module in) just sees `false`.
+ */
+function testUnlockAll(): boolean {
+  try {
+    if (import.meta.env.DEV) return true;
+    const q = new URLSearchParams(window.location.search);
+    return q.has('qa') || q.has('unlockall');
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Is a helicopter flyable right now? It must exist (`available`) AND be unlocked by ANY path:
+ * the TEST gate (dev / `?qa` / `?unlockall`), the campaign gate (cleared ≥ `unlockAfter`, default
+ * 0 → open from the start), OR a career-points purchase. Pass a pre-read `cleared` count and
+ * `purchased` list when gating a whole picker grid so it doesn't re-hit storage per card.
  */
 export function isHeliUnlocked(
   heli: CatalogItem,
   cleared: number = missionsCleared(),
   purchased: string[] = getPurchasedHelis(),
 ): boolean {
-  return heli.available && (cleared >= (heli.unlockAfter ?? 0) || purchased.includes(heli.id));
+  return heli.available && (testUnlockAll() || cleared >= (heli.unlockAfter ?? 0) || purchased.includes(heli.id));
 }
 
 // --- Career-points economy (spend-to-unlock) --------------------------------

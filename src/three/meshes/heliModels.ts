@@ -32,7 +32,7 @@ import { HelicopterMesh, populateProcRotorGroup, makeProcTailMount } from './hel
  *     (whitespace → '_'), so the specs use the sanitized form ('main rotor prop_7' → '..._prop_7').
  *
  * All three wear the High-Vis Hero fire-bomber livery (see Livery / makeBodyMat / paintLivery): a
- * crisp three-zone paint — light roof, signature flank, near-black sill — split by a thin EMISSIVE
+ * crisp three-zone paint — black roof, signature flank, near-black sill — split by a thin EMISSIVE
  * cheatline that blooms through the post-fx, each ship in its own hue so the fleet reads as one.
  *
  * Orientation/scale are normalized per-spec: the model is yawed so its nose points
@@ -42,14 +42,14 @@ import { HelicopterMesh, populateProcRotorGroup, makeProcTailMount } from './hel
 
 /**
  * A "High-Vis Hero" fire-bomber livery: a crisp three-zone horizontal paint scheme baked as
- * vertex colours — a light ROOF, a signature FLANK, a near-black SILL/belly — split by a thin
+ * vertex colours — a black ROOF, a signature FLANK, a near-black SILL/belly — split by a thin
  * hot LINE (the cheatline) that is rendered EMISSIVE so it blooms through the post-fx. Zones are
  * keyed to the body's own height fraction (0 = skids, 1 = cabin roof), so the scheme is
  * pose-independent and scale-independent. Every airframe wears the same grammar in its own hue,
  * which is what makes the three ships read as one fleet. See paintLivery().
  */
 export interface Livery {
-  roof: number; // upper band (light)
+  roof: number; // upper band (black)
   flank: number; // signature mid band — the ship's identity colour
   sill: number; // lower band / belly (near-black)
   line: number; // thin cheatline at the roof/flank break (also the emissive glow colour)
@@ -152,14 +152,14 @@ export const HELI_MODELS: Record<string, HeliModelSpec> = {
     fuselageNode: 'Object_22',
     mainRotorNode: 'Object_13',
     tailRotorNode: 'Object_3',
-    // The hero "204" — the FIRST bird every pilot flies, so it's a showpiece, not a work hack: a
-    // glossy pearl-white roof over a deep candy-crimson flank, a polished gunmetal belly, and a hot
-    // amber pinstripe that BLOOMS through the post-fx. A full clearcoat lacquer gives it a wet,
-    // show-car sheen — a sharp sun streak rides the white roof and the crimson reads like candy paint.
+    // The hero 205A-1 — the FIRST bird every pilot flies. A MATTE black roof over a deep fire-crimson
+    // flank, a gunmetal belly, and a hot amber pinstripe that BLOOMS through the post-fx. The old
+    // clearcoat lacquer was REMOVED: even over a black roof it threw a hard white sun-streak that
+    // glared in gameplay — a flat, matte finish kills that highlight while the crimson stays rich.
     livery: {
-      roof: 0xf4f7fa, flank: 0xb31f2a, sill: 0x33373d, line: 0xffb12e, glass: 0x0b1320, blade: 0x1b1d22,
+      roof: 0x15171c, flank: 0xb31f2a, sill: 0x33373d, line: 0xffb12e, glass: 0x0b1320, blade: 0x1b1d22,
       roofAt: 0.6, sillAt: 0.18, lineAt: 0.585, lineHalf: 0.04, glow: 2.7,
-      roughness: 0.24, metalness: 0.28, clearcoat: 1, clearcoatRoughness: 0.07,
+      roughness: 0.55, metalness: 0.16, // matte — no clearcoat, so the roof can't catch a white sun glint
     },
     // Brand mark on both cabin doors ([fore/aft, height]; z fallback) — tuned in ?heliview.
     doorLogo: { offset: [0.5, 1.2, 0.55], size: 0.72 },
@@ -188,10 +188,10 @@ export const HELI_MODELS: Record<string, HeliModelSpec> = {
     procTailRotor: true,
     tailRotorOffset: [0.38, 0.32, 0.2], // on the fin — LOCKED
     tailRotorScale: 0.7, // LOCKED
-    // Gold medium: the orange stock paint is split off its texture and repainted — white roof,
+    // Gold medium: the orange stock paint is split off its texture and repainted — black roof,
     // amber-gold flank, graphite belly, molten-orange cheatline; the grey windows keep their map.
     livery: {
-      roof: 0xe9eced, flank: 0xd29a1f, sill: 0x1d1f24, line: 0xff5a26, glass: 0x0d1622, blade: 0x17181c,
+      roof: 0x15171c, flank: 0xd29a1f, sill: 0x1d1f24, line: 0xff5a26, glass: 0x0d1622, blade: 0x17181c,
       roofAt: 0.64, sillAt: 0.22, lineAt: 0.58, lineHalf: 0.035, glow: 2.0,
     },
     // Brand mark on both cabin doors ([fore/aft, height]; z fallback) — tuned in ?heliview.
@@ -212,11 +212,11 @@ export const HELI_MODELS: Record<string, HeliModelSpec> = {
     // (An earlier −1 here, on a guess that this glTF was lateral-mirrored, actually rolled it the
     // WRONG way: a left turn lifted the wrong wing. The model is NOT mirrored, so no negation.)
     // Tactical olive: the spec-gloss army skin can't bind in modern three (renders clay), so it
-    // repaints clean — pale-sage roof, olive-drab flank (its signature), near-black belly, hi-vis
+    // repaints clean — black roof, olive-drab flank (its signature), near-black belly, hi-vis
     // safety-yellow line. Grounded military green; reads against forest + smoke, distinct from the
     // crimson 205 + gold 212.
     livery: {
-      roof: 0xb9c2a6, flank: 0x4a5a36, sill: 0x14160f, line: 0xffd21a, glass: 0x0d1622, blade: 0x17181c,
+      roof: 0x15171c, flank: 0x4a5a36, sill: 0x14160f, line: 0xffd21a, glass: 0x0d1622, blade: 0x17181c,
       roofAt: 0.66, sillAt: 0.2, lineAt: 0.6, lineHalf: 0.04, glow: 2.0,
     },
     // The army diffuse renders clay (spec-gloss) so the canopy gets painted olive — carve the teal
