@@ -400,13 +400,24 @@ function injectHomeBentoStyles(): void {
 .bmf-app.front .fhome-grid { display: grid; gap: 12px; grid-template-columns: 1fr; }
 .bmf-app.front .fhome-grid > * { min-width: 0; }
 @media (min-width: 880px) {
-  .bmf-app.front .fhome-grid { grid-template-columns: 2fr 1fr; grid-template-areas: "hero play" "map merch" "prep notes"; align-items: stretch; }
+  /* STRETCHED to a balanced two-column bento (was 2fr/1fr): the data hero keeps a hair more room than
+     the play tile, the map/merch + prep/notes rows read as even halves. This is the whole "stretch the
+     layout" pass — same cards, same tokens, just spread to fill the band like the reference. */
+  .bmf-app.front .fhome-grid { grid-template-columns: 1.04fr 1fr; grid-template-areas: "hero play" "map merch" "prep notes"; align-items: stretch; }
   .bmf-app.front .fhome-hero { grid-area: hero; }
   .bmf-app.front .fhome-play { grid-area: play; }
   .bmf-app.front .fhome-map { grid-area: map; }
   .bmf-app.front .fhome-merch { grid-area: merch; }
   .bmf-app.front .fhome-prep { grid-area: prep; }
   .bmf-app.front .fhome-notes { grid-area: notes; }
+  /* Row 1 reads as one cinematic band: a taller hero, and the play tile DROPS its portrait aspect to
+     stretch to the hero's height as a wide landscape card (heli on the right, copy bottom-left). */
+  .bmf-app.front .fhome-hero { min-height: 432px; padding: 30px 26px 12px; }
+  .bmf-app.front .fhome-play { aspect-ratio: auto; padding: 30px 30px; }
+  .bmf-app.front .fhome-play-h { font-size: clamp(38px, 4.4vw, 60px); max-width: 9ch; line-height: .96; }
+  .bmf-app.front .fhome-play-sub { max-width: 36ch; }
+  /* The 4 supporting stats now spread into ONE row across the wider hero (they wrap 2×2 on a phone). */
+  .bmf-app.front .fhome-hero .fhome-stat { min-width: 0; }
 }
 
 /* The ThreeTown aerial key-art fills the WHOLE front door as a fixed cinematic background. Home ONLY — Campaign/Prepare
