@@ -42,10 +42,11 @@ export interface HudState {
   // Campaign layer: the live objective checklist + optional fuel gauge. Empty / undefined
   // in the open sandbox, so the mission UI simply doesn't render.
   objectives?: readonly TrackerItem[];
-  // Living Province layer (province/ProvinceMode): the in-flight SHIFT readout + radar town-status pins.
-  // Present only in the open-world dispatch mode; the HUD swaps the objective checklist for the shift
-  // panel when `shift` is set, and the radar draws a ring per town coloured by status.
-  shift?: { health: number; reputation: number; townsStanding: number; townsTotal: number; activeCalls: number };
+  // Open-world LIVE readout (Open Skies / Living Province): how many pilots are in the sky right now + the
+  // running points total. Present only in the endless open-world modes; the HUD swaps the objective
+  // checklist for the live panel (pilots + an animated points count-up) — this replaced the old province
+  // "DISPATCH" shift readout. The radar still draws a ring per town coloured by status (townPins).
+  live?: { pilots: number; points: number };
   townPins?: { x: number; z: number; status: 'standing' | 'threatened' | 'damaged' }[];
   // Living Province end-of-shift DEBRIEF (the achievement payoff). Present only when a province shift has
   // ended (won = rode out the quota; lost = overrun) → the end screen renders the SHIFT REPORT (grade,

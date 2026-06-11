@@ -481,9 +481,10 @@ export class Input {
     root.appendChild(a);
   }
 
-  /** RIGHT controls (bottom-right): the collective ▲/▼ climb-descend pair just inboard of the
-   *  DROP / RELEASE-BUCKET cluster, all sharing one baseline so they read as one right-thumb group.
-   *  Hold ▲ to climb / ▼ to descend; release holds the altitude band. */
+  /** RIGHT controls (bottom-right): the DROP / RELEASE-BUCKET cluster sits INBOARD (left) with the
+   *  collective ▲/▼ climb-descend pair toward the corner, all sharing one baseline so they read as one
+   *  right-thumb group. DROP is inboard so the corner-resting thumb on ▲/▼ never hides its rising-water
+   *  fill animation. Hold ▲ to climb / ▼ to descend; release holds the altitude band. */
   private buildRightControls(root: HTMLElement): void {
     const climb = button('▲', { position: 'relative', fontSize: 'calc(var(--coll) * 0.42)' });
     const descend = button('▼', { position: 'relative', fontSize: 'calc(var(--coll) * 0.42)' });
@@ -505,7 +506,7 @@ export class Input {
       alignItems: 'flex-end',
       gap: 'calc(var(--bmf-gap) * 1.9)',
     });
-    row.append(collective, cluster); // [▲/▼] [DROP + RELEASE] — collective inboard, DROP toward the corner
+    row.append(cluster, collective); // [DROP + RELEASE] [▲/▼] — DROP inboard (fill stays in view), collective toward the corner
 
     const a = anchor('bottom-right');
     a.appendChild(row);

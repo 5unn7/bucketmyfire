@@ -23,15 +23,6 @@ export interface TownPin {
   status: TownStatus;
 }
 
-/** The compact in-flight shift readout (the HUD's Living-Province status panel). */
-export interface ShiftReadout {
-  reputation: number;
-  health: number; // 0..1 province health (the stood-down meter)
-  townsStanding: number;
-  townsTotal: number;
-  activeCalls: number;
-}
-
 export interface ProvinceUpdate {
   actions: readonly MissionAction[]; // comms + ignite bundles to run via Game.runMissionAction
   justStoodDown: boolean; // the frame the province was overrun → Game ends the shift as a LOSS
@@ -184,14 +175,4 @@ export class ProvinceMode {
     return out;
   }
 
-  /** The compact in-flight shift readout (the HUD's Living-Province status panel). */
-  shift(): ShiftReadout {
-    return {
-      reputation: this.state.reputation,
-      health: this.state.health,
-      townsStanding: this.state.townsStanding,
-      townsTotal: this.state.townsTotal,
-      activeCalls: this.state.activeCount,
-    };
-  }
 }

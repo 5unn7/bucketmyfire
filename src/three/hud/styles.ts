@@ -101,12 +101,9 @@ const CSS = `
 .bmf-hud .pod .bar > .fill{ display:block; width:100%; height:100%; border-radius:var(--r-xs); background:var(--accent);
   transform-origin:left center; transform:scaleX(1); transition:transform .18s ease, background-color .2s ease, box-shadow .2s ease; }
 
-/* Portrait phones: drop the secondary WIND chamber so the AIRCRAFT + FIRE gauges keep ONE tidy row instead
-   of orphaning a lone chamber onto a second line (the original screenshot's eyesore). A phone's top band
-   can't hold AIRCRAFT + FIRE + WIND beside the radar at a glanceable size; wind is the most situational
-   gauge (the on-screen smoke plume reads its drift), so it yields here and returns on tablet/landscape/
-   desktop where there's room. Keyed to the phone-portrait boundary, the wide side of the fit crossover. */
-@media (max-width:480px){ .bmf-hud .chamber.wind{ display:none; } }
+/* WIND stays in the HUD on EVERY viewport. On the narrowest portrait phones the WIND chamber wraps to a
+   second strip row (the strip is flex-flow:row wrap) rather than being dropped — wind is a real flight cue
+   (it biases the fire front + the water drop), so it's always shown. */
 
 /* ===== DISPATCH / objective panel + crew-board bar — frosted cards under the strip, bounded to the left
    column so they can't collide with the radar. ===== */

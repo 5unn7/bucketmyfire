@@ -20,6 +20,7 @@ import type { TrackerItem, CommsSpeaker, CommsUrgency, MissionDef } from './miss
 import type { FireFieldView } from './sim/FireSystem';
 import { UI, FS, FW, R, el, makeCanvas, clamp01, prefersReducedMotion } from './ui/theme';
 import { onLayout, type LayoutState } from './ui/layout';
+import { ic } from './ui/home/icons';
 import { injectHudStyles } from './hud/styles';
 import { Radar } from './hud/Radar';
 import { EndScreen } from './hud/EndScreen';
@@ -75,7 +76,18 @@ export class HUD {
   private readonly objPanel: HTMLDivElement; // campaign objective checklist (hidden in sandbox)
   private objSig = ''; // last-rendered objective signature (skip DOM churn when unchanged)
   private objPrev = new Map<string, { current: number; done: boolean }>(); // per-goal last state → flash on advance
-  private shiftSig = ''; // Living Province: last-rendered shift-readout signature (same panel, same dedup)
+  // Open-world LIVE readout (Open Skies / Living Province) — the panel that replaced the old "DISPATCH"
+  // shift card. Built ONCE (refs kept) so the points total can count UP in place each frame rather than
+  // churning the DOM, and the pilot count is a single guarded text write.
+  private liveBuilt = false;
+  private livePilotsNum?: HTMLDivElement; // the live-pilot count readout
+  private livePointsNum?: HTMLDivElement; // the running points total (animated count-up + on-gain flash)
+  private livePrevPilots = -1; // last-written pilot count (skip the DOM write when unchanged)
+  private liveTargetPoints = 0; // latest points from Game (the shown value eases toward this)
+  private liveShownPoints = 0; // the currently-displayed (eased) points value
+  private liveShownText = ''; // last string written to the points number (skip redundant per-frame writes)
+  private livePrevPoints = -1; // last frame's target → detect a gain to flash the number
+  private livePointsFlashT = 0; // setTimeout id: clear the on-gain glow on the points number
   // Crew board/disembark progress bar — a labelled fill that appears while landed on a zone
   // ("CREW BOARDING" climbing in / "CREW DISEMBARKING" stepping off). Hidden when not working a zone.
   private readonly crewBar: HTMLDivElement;
@@ -416,9 +428,10 @@ export class HUD {
     // Persistent caution: bucket jettisoned → no scoop/drop until you set down at a base for a fresh one.
     this.setCaution(s.bucketDetached ? 'No bucket. Land at any base to rig a fresh one.' : null);
 
-    // Living Province swaps the objective checklist for a SHIFT readout (province health + reputation +
-    // towns); the campaign/sandbox keeps the objective checklist. Same panel, same no-churn dedup.
-    if (s.shift) this.renderShift(s.shift);
+    // The open-world modes (Open Skies / Living Province) swap the objective checklist for the LIVE
+    // readout — pilots in the sky + the running points total (animated). The campaign/sandbox keeps the
+    // objective checklist. (This replaced the old province "DISPATCH" shift panel.)
+    if (s.live) this.renderLive(s.live);
     else this.renderObjectives(s.objectives);
 
     // Jet scrolling tapes: airspeed in knots (left), altitude in feet (right) + VSI.
@@ -459,7 +472,7 @@ export class HUD {
       .join(';');
     if (sig === this.objSig) return;
     this.objSig = sig;
-    this.shiftSig = ''; // symmetric to renderShift: keep the shared panel's two renderers from leaking stale rows
+    this.liveBuilt = false; // if the panel ever flips back from the live readout, rebuild it fresh next time
 
     this.objPanel.classList.add('show');
     this.objPanel.replaceChildren(label('OBJECTIVES'));
@@ -503,40 +516,82 @@ export class HUD {
     this.objPrev = next;
   }
 
-  /** Living Province SHIFT readout — reuses the objective panel's container + footprint: a province-health
-   *  bar (cyan, warn when low) + reputation + towns-held + active-call count. Rebuilt only when a shown
-   *  value changes (same no-churn dedup as the objective checklist), so it's not a per-frame DOM cost. */
-  private renderShift(shift: NonNullable<HudState['shift']>): void {
-    const healthPct = Math.round(shift.health * 100);
-    const low = healthPct <= 33; // province in trouble → the bar + % go warn
-    const sig = `${shift.reputation}|${healthPct}|${shift.townsStanding}/${shift.townsTotal}|${shift.activeCalls}`;
-    if (sig === this.shiftSig) return;
-    this.shiftSig = sig;
-    this.objSig = ''; // keep the shared panel's two renderers from fighting if the mode ever flips
+  /** Open-world LIVE readout (Open Skies / Living Province) — the panel that replaced the province
+   *  "DISPATCH" shift card. The running POINTS total is the hero, and it keeps the SAME warm brand-currency
+   *  treatment used everywhere else (the menus/Hangar wallet chip): the `spark` glyph + an ember number +
+   *  a lowercase "pts". It eases up to the latest value and flashes the warm brand glow on every gain, so
+   *  banking points reads the same here as on the site. Below it, how many PILOTS are in the sky right now —
+   *  that stays cool/cyan (a live instrument value, not the points currency). Built once (refs kept), then
+   *  updated in place each frame — O(1), no DOM churn. */
+  private renderLive(live: NonNullable<HudState['live']>): void {
+    if (!this.liveBuilt) {
+      this.liveBuilt = true;
+      this.objSig = ''; // a later flip back to the objective checklist must rebuild from scratch
 
-    this.objPanel.classList.add('show');
-    this.objPanel.replaceChildren(label('DISPATCH'));
+      this.objPanel.classList.add('show');
+      // Points hero — the WARM brand currency: spark glyph (ember) + the running total (menu/ember, bold) +
+      // a lowercase "pts", matching the menus/Hangar wallet chip exactly so points read the same everywhere.
+      const ptsRow = el('div', { display: 'flex', alignItems: 'baseline', gap: '6px' });
+      const spark = el('span', { display: 'flex', alignSelf: 'center', color: UI.emberHi });
+      spark.innerHTML = ic('spark');
+      sizeIcon(spark, 18);
+      this.livePointsNum = el('div', { fontSize: FS.display, fontWeight: FW.heavy, color: UI.menu, lineHeight: '1' }, '0');
+      this.livePointsNum.style.setProperty('font-variant-numeric', 'tabular-nums');
+      ptsRow.append(spark, this.livePointsNum, el('div', { fontSize: FS.meta, fontWeight: FW.semibold, color: UI.textCool }, 'pts'));
 
-    // Province-health bar — the stood-down meter, made glanceable.
-    const barRow = el('div', { marginTop: '6px' });
-    const head = el('div', { display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', fontSize: FS.sm });
-    head.appendChild(el('div', { color: UI.textCool }, 'Province'));
-    head.appendChild(el('div', { color: low ? UI.warn : UI.accent, fontWeight: FW.bold }, `${healthPct}%`));
-    barRow.appendChild(head);
-    const track = el('div', { position: 'relative', height: '5px', marginTop: '4px', borderRadius: R.xs, background: UI.stroke, overflow: 'hidden' });
-    track.appendChild(el('div', { position: 'absolute', left: '0', top: '0', bottom: '0', width: `${healthPct}%`, background: low ? UI.warn : UI.accent }));
-    barRow.appendChild(track);
-    this.objPanel.appendChild(barRow);
+      // Pilots — the live count, with the Lucide "users" glyph (cyan = a live/interactive instrument value).
+      const pilotsRow = el('div', { display: 'flex', alignItems: 'center', gap: '7px', marginTop: '7px' });
+      const users = el('span', { display: 'flex', alignItems: 'center', color: UI.accent });
+      users.innerHTML = ic('users');
+      sizeIcon(users, 14);
+      this.livePilotsNum = el('div', { color: UI.accent, fontWeight: FW.bold, fontSize: FS.sm }, '1');
+      pilotsRow.append(
+        users,
+        this.livePilotsNum,
+        el('div', { color: UI.textCool, fontSize: FS.label, fontWeight: FW.semibold, letterSpacing: '1.5px' }, 'PILOTS'),
+      );
 
-    const statRow = (lab: string, val: string, vcol: string): void => {
-      const row = el('div', { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginTop: '5px', fontSize: FS.sm });
-      row.appendChild(el('div', { color: UI.textCool }, lab));
-      row.appendChild(el('div', { color: vcol, fontWeight: FW.bold }, val));
-      this.objPanel.appendChild(row);
-    };
-    statRow('Reputation', shift.reputation.toLocaleString('en-US'), UI.accent);
-    statRow('Towns', `${shift.townsStanding}/${shift.townsTotal}`, shift.townsStanding < shift.townsTotal ? UI.warn : UI.text);
-    if (shift.activeCalls > 0) statRow('Active calls', String(shift.activeCalls), UI.warn);
+      this.objPanel.replaceChildren(ptsRow, pilotsRow);
+
+      // Seed the counters so the first paint doesn't streak up from zero or flash on entry.
+      this.liveShownPoints = live.points;
+      this.liveTargetPoints = live.points;
+      this.livePrevPoints = live.points;
+      this.liveShownText = '';
+      this.livePrevPilots = -1;
+    }
+
+    // Pilots: one text write, only when the count changes.
+    if (live.pilots !== this.livePrevPilots) {
+      this.livePrevPilots = live.pilots;
+      this.livePilotsNum!.textContent = `${live.pilots}`;
+    }
+
+    // Points: flash the warm brand glow the instant the total ticks up, then ease the SHOWN value toward it
+    // so the number visibly counts up (snap for reduced-motion). The flash is event-driven; the ease is
+    // O(1)/frame and the text only writes when the rounded value actually changes.
+    const reduce = prefersReducedMotion();
+    this.liveTargetPoints = live.points;
+    if (live.points > this.livePrevPoints && !reduce) {
+      this.livePointsNum!.style.textShadow = UI.emberGlow; // warm brand glow — the "+N just banked" pulse
+      window.clearTimeout(this.livePointsFlashT);
+      this.livePointsFlashT = window.setTimeout(() => {
+        this.livePointsNum!.style.textShadow = 'none';
+        this.livePointsFlashT = 0;
+      }, 480);
+    }
+    this.livePrevPoints = live.points;
+    if (reduce) {
+      this.liveShownPoints = this.liveTargetPoints;
+    } else {
+      const d = this.liveTargetPoints - this.liveShownPoints;
+      this.liveShownPoints = Math.abs(d) < 1 ? this.liveTargetPoints : this.liveShownPoints + d * 0.18;
+    }
+    const txt = Math.round(this.liveShownPoints).toLocaleString('en-US');
+    if (txt !== this.liveShownText) {
+      this.liveShownText = txt;
+      this.livePointsNum!.textContent = txt;
+    }
   }
 
   /**
@@ -705,6 +760,7 @@ export class HUD {
     this.messages.dispose(); // clears the bar's queue + tip/hint timers
     window.clearTimeout(this.hitFlashTimer);
     window.clearTimeout(this.cautionMiniT);
+    window.clearTimeout(this.livePointsFlashT);
     this.engine.hide(); // detaches the dial's window key listeners if still up
     this.coach.hide(); // fold the coach overlay (clears its hide timer); idempotent
     this.unsubLayout?.();
@@ -856,6 +912,16 @@ function headingDeg(yaw: number): number {
 /** A small uppercase tracked caption. */
 function label(text: string): HTMLDivElement {
   return el('div', { fontSize: FS.label, fontWeight: FW.semibold, letterSpacing: '2px', color: UI.dim }, text);
+}
+
+/** Size an inline `ic()` glyph (it ships no width/height of its own) to a square px box. Colour comes from
+ *  `currentColor`, so set the host's `color` to tint the stroke. */
+function sizeIcon(host: HTMLElement, px: number): void {
+  const svg = host.querySelector('svg');
+  if (svg) {
+    svg.setAttribute('width', `${px}`);
+    svg.setAttribute('height', `${px}`);
+  }
 }
 
 // --- Instrument-strip cells -------------------------------------------------
