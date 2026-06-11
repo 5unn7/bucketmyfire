@@ -14,7 +14,7 @@
   <rect width="1200" height="630" fill="url(#ogscrim)"/>
   <rect width="1200" height="630" fill="url(#ogfade)"/>
   <rect x="0" y="0" width="1200" height="6" fill="#ff6a2c"/>
-  <g font-family="Saira, 'Segoe UI', system-ui, sans-serif">
+  <g font-family="'JetBrains Mono', ui-monospace, monospace">
     <text x="80" y="120" fill="#ffc24a" font-size="26" font-weight="700" letter-spacing="6">FIELD NOTES · BUCKET MY FIRE</text>
     <text x="80" y="170" fill="rgba(255,255,255,0.5)" font-size="22" font-weight="600" letter-spacing="3">WILDFIRE PREPAREDNESS</text>
     <text fill="#ffffff" font-size="60" font-weight="800"><tspan x="80" y="266">When a Wildfire Nears Your</tspan><tspan x="80" y="338">Home, Leave Early</tspan></text>
