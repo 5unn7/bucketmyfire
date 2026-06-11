@@ -15,7 +15,7 @@ import { injectFonts } from '../three/ui/fonts';
 import { injectKitStyles } from '../three/ui/components/base';
 import { injectHomeStyles } from '../three/ui/home/styles';
 import { DEFS } from '../three/ui/home/icons';
-import { injectShellStyles, applyMotionPref, buildFooter, tabbarMarkup } from '../site/shell';
+import { injectShellStyles, applyMotionPref, buildFooter, tabbarMarkup, openNotify } from '../site/shell';
 import { esc } from '../site/siteNav.mjs';
 import { injectFrontShell, frontScene, frontAppbar, spawnFrontEmbers, wireFrontAppbar } from '../site/frontShell';
 import { pickCard, wireFlyPicker, injectFlyPickerStyles } from '../site/flyPicker';
@@ -76,7 +76,7 @@ function renderMaps(app: HTMLElement): void {
       : pickCard(m, `<span class="badge locked">Soon</span>`, { locked: true }),
   ).join('');
   wizard.innerHTML =
-    `<div class="fcamp-whead"><h2>Choose your ground</h2><span class="fcamp-step">Step 1 of 2</span></div>` +
+    `<div class="fcamp-whead"><h2>Choose your ground</h2></div>` +
     `<div class="fly-strip">${cards}</div>` +
     `<div class="fly-dots" aria-hidden="true"></div>`;
   wizard.querySelectorAll<HTMLButtonElement>('[data-pick]').forEach((b) =>
@@ -84,6 +84,13 @@ function renderMaps(app: HTMLElement): void {
       mapId = b.dataset.pick || mapId;
       renderHelis(app);
       window.scrollTo({ top: 0, behavior: 'smooth' });
+    }),
+  );
+  // Upcoming (locked) maps carry a "Notify me" CTA → the front-door capture modal (same shell as Contact).
+  wizard.querySelectorAll<HTMLElement>('[data-notify-map]').forEach((b) =>
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openNotify(b.dataset.notifyMap!);
     }),
   );
   wireFlyPicker(wizard);
@@ -103,7 +110,7 @@ function renderHelis(app: HTMLElement): void {
   const mapName = MAPS.find((m) => m.id === mapId)?.name ?? '';
   wizard.innerHTML =
     `<div class="fcamp-whead"><button class="fcamp-back" id="fd-back">← Maps</button>` +
-    `<h2>Choose your aircraft</h2><span class="fcamp-step">${esc(mapName)} · Step 2 of 2</span></div>` +
+    `<h2>Choose your aircraft</h2><span class="fcamp-step">${esc(mapName)}</span></div>` +
     `<div class="fly-strip">${cards}</div>` +
     `<div class="fly-dots" aria-hidden="true"></div>` +
     `<p class="fcamp-note">Locked aircraft unlock with career points earned in Open Skies and solo flights.</p>`;
@@ -124,8 +131,11 @@ function injectCampaignStyles(): void {
   s.textContent = `
 .bmf-app.front .fcamp-hero { padding: 2px 2px 0; }
 .bmf-app.front .fcamp-wizard { display: flex; flex-direction: column; gap: 16px; }
-.bmf-app.front .fcamp-whead { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.bmf-app.front .fcamp-whead h2 { font-size: clamp(20px, 2.4vw, 25px); color: #fff; }
+.bmf-app.front .fcamp-whead { display: flex; align-items: center; gap: 10px 12px; flex-wrap: wrap; }
+/* Caption-style step header (mirrors .fd-sec-tag): a compact mono kicker, not a display heading — so
+   the pick cards ride higher up the screen and their full detail clears the fold without scrolling. */
+.bmf-app.front .fcamp-whead h2 { font-family: var(--mono); font-size: var(--fs-sm); font-weight: var(--fw-bold);
+  letter-spacing: .2em; text-transform: uppercase; color: var(--menu); }
 .bmf-app.front .fcamp-step { font-family: var(--mono); font-size: var(--fs-meta); letter-spacing: .08em; text-transform: uppercase; color: var(--dim); margin-left: auto; }
 .bmf-app.front .fcamp-back { appearance: none; background: none; border: 0; padding: 0 4px 0 0; cursor: pointer; font: inherit;
   font-family: var(--mono); font-size: var(--fs-meta); letter-spacing: .06em; text-transform: uppercase; color: var(--ember-hi); min-height: 36px; display: inline-flex; align-items: center; }

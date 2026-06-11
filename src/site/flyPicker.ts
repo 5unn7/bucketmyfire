@@ -10,6 +10,7 @@
  * only CSS (every value a `var(--*)` from theme.ts). No Three, no game bundle.
  */
 import { type CatalogItem } from '../three/ui/profile';
+import { ic } from '../three/ui/home/icons';
 import { esc } from './siteNav.mjs';
 
 /** A poster pick card — the corner-cut poster card (`.fd-mcard`), reframed for the picker as an
@@ -29,7 +30,18 @@ export function pickCard(item: CatalogItem, badge: string, opts: { locked?: bool
     : item.stats
       ? `<div class="fd-m-meta"><span>${esc(item.stats.area)}</span><span>${esc(item.stats.lakes)}</span></div>`
       : '';
-  const cta = opts.locked ? '' : `<span class="fd-m-go">${opts.href ? 'Fly' : 'Choose'} →</span>`;
+  // A locked MAP (carries stats) is an UPCOMING region → offer a "Notify me" email capture instead of a
+  // dead "Soon" card; the host page wires [data-notify-map] to the Notify modal. A locked HELI (carries a
+  // points `cost`) shows its career-points unlock PRICE — the same gate + copy as the in-game Hangar's
+  // "Unlock · N pts", but informational here (this front-door picker can't transact; the footer note says
+  // where points come from).
+  const cta = !opts.locked
+    ? `<span class="fd-m-go">${opts.href ? 'Fly' : 'Choose'} →</span>`
+    : item.stats
+      ? `<button type="button" class="btn secondary block fd-m-notify" data-notify-map="${esc(item.id)}">${ic('bell')}Notify me</button>`
+      : item.cost
+        ? `<span class="fd-m-unlock">${ic('spark')}Unlock · ${item.cost.toLocaleString()} pts</span>`
+        : '';
   const inner =
     art +
     `<span class="fd-m-scrim"></span>` +
@@ -112,8 +124,12 @@ export function injectFlyPickerStyles(): void {
 @media (min-width: 600px) {
   .bmf-app.front .fly-strip > .fd-mcard { flex: 0 0 300px; max-width: none; }
 }
-.bmf-app.front .fly-strip .fd-mcard { min-height: 300px; }
-@media (min-width: 600px) { .bmf-app.front .fly-strip .fd-mcard { min-height: 326px; } }
+/* Pick posters carry a FIXED height (overriding the base 3/4 aspect) so EVERY card matches — the map
+   step and the aircraft step land at the same height even though a heli card's body (4 spec meters) is
+   taller than a map's two-fact line. Kept a touch shorter than the natural poster so the full card —
+   name, specs, CTA — clears the fold without scrolling. */
+.bmf-app.front .fly-strip .fd-mcard { height: 372px; min-height: 0; aspect-ratio: auto; }
+@media (min-width: 600px) { .bmf-app.front .fly-strip .fd-mcard { height: 384px; } }
 /* The pick card can be a <button>; null its UA chrome so the copy left/bottom-aligns in the app font,
    exactly like the locked <div> and the <a> aircraft cards (a bare button defaults to centre + Arial). */
 .bmf-app.front .fly-strip button.fd-mcard { appearance: none; -webkit-appearance: none; text-align: left; font: inherit; color: var(--text); cursor: pointer; }
@@ -140,6 +156,19 @@ export function injectFlyPickerStyles(): void {
 .bmf-app.front .fly-strip .fd-mcard.fd-map .fd-m-scrim { background: linear-gradient(180deg, transparent 0%, transparent 52%, rgba(6,9,11,0.74) 82%, rgba(6,9,11,0.95) 100%); }
 /* Hover LIFTS the slab (a contained slab should rise, not zoom like the cover key-art cards). */
 .bmf-app.front .fly-strip .fd-mcard.fd-map:hover .fd-m-art img { transform: translateY(-6px); }
+/* Upcoming (locked) MAP cards carry a working "Notify me" CTA: only the slab stays dimmed (the "not
+   flyable yet" signal) — keep the copy + button crisp, and re-enable pointer events on the button since
+   the locked card itself is inert (pointer-events:none from the shell). */
+.bmf-app.front .fly-strip .fd-mcard.fd-map.locked .fd-m-body { filter: none; opacity: 1; }
+.bmf-app.front .fly-strip .fd-mcard.locked .fd-m-notify { pointer-events: auto; }
+.bmf-app.front .fly-strip .fd-m-notify { margin-top: 13px; }
+/* Locked AIRCRAFT surface their career-points unlock PRICE. Keep the locked heli BODY crisp (like locked
+   maps) so the price + specs stay readable — only the art dims to signal "not flyable yet". The price uses
+   the same warm wallet language as .pts-bal everywhere (text = --menu, the ◇ spark = --ember-hi). */
+.bmf-app.front .fly-strip .fd-mcard.locked:not(.fd-map) .fd-m-body { filter: none; opacity: 1; }
+.bmf-app.front .fly-strip .fd-m-unlock { display: inline-flex; align-items: center; gap: 5px; margin-top: 12px;
+  font-family: var(--mono); font-size: var(--fs-meta); font-weight: var(--fw-bold); letter-spacing: .03em; color: var(--menu); }
+.bmf-app.front .fly-strip .fd-m-unlock svg { width: 14px; height: 14px; color: var(--ember-hi); flex: none; }
 `;
   document.head.appendChild(s);
 }
