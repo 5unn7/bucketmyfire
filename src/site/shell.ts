@@ -339,7 +339,7 @@ const SHELL_CSS = `
 .fd-glyph { width: 34px; height: 34px; flex: 0 0 auto; display: grid; place-items: center; border-radius: var(--r-md);
   border: 1px solid var(--warm-stroke); background: radial-gradient(circle at 40% 30%, var(--warm-38), rgba(10,12,14,0.9));
   box-shadow: inset 0 0 10px var(--ember-35), 0 0 14px var(--ember-12); }
-.fd-glyph img { width: 17px; height: 17px; display: block; filter: drop-shadow(0 0 4px var(--glow-80)); }
+.fd-glyph img { width: 17px; height: 17px; display: block; }
 .fd-brand b { font-family: var(--mono); font-weight: 800; font-size: 13px; letter-spacing: 0.16em; text-transform: uppercase; white-space: nowrap; }
 @media (max-width: 520px) { .fd-brand b { display: none; } }
 .fd-spacer { flex: 1; }

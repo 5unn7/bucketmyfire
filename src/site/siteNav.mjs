@@ -165,7 +165,7 @@ export const navCss = `
   -webkit-backdrop-filter: blur(10px) saturate(120%); border-bottom: 1px solid var(--hair); }
 .fhome-brand { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); }
 .fhome-brand .bmk { width: 30px; height: 30px; flex: 0 0 auto; display: grid; place-items: center; }
-.fhome-brand .bmk .flame { width: auto; height: 28px; fill: url(#flameGrad); filter: drop-shadow(0 0 5px var(--glow-80)); }
+.fhome-brand .bmk .flame { width: auto; height: 28px; fill: url(#flameGrad); }
 .fhome-brand b { font-family: var(--mono); font-weight: var(--fw-heavy); font-size: 13px; letter-spacing: .16em; text-transform: uppercase; white-space: nowrap; }
 /* Keep the wordmark next to the mark at every width (the icon + wordmark IS the logo lockup); just
    tighten it on the narrowest phones so it never crowds the right-hand actions. */
@@ -195,7 +195,7 @@ export const navCss = `
    the same bottom line as the policy links (align-self bottom; the front door re-centres it). ─────── */
 .site-foot-brand { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; color: var(--text-subtle); margin: 0 0 0 auto; order: 3; align-self: end; }
 .site-foot-mark { width: 20px; height: 22px; flex: 0 0 auto; display: grid; place-items: center; }
-.site-foot-mark .flame { width: auto; height: 20px; fill: url(#flameGrad); filter: drop-shadow(0 0 4px var(--glow-80)); }
+.site-foot-mark .flame { width: auto; height: 20px; fill: url(#flameGrad); }
 .site-foot-brand b { font-family: var(--mono); font-weight: var(--fw-heavy); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; }
 .site-foot-brand:hover b { color: var(--ember-hi); }
 

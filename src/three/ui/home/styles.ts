@@ -334,7 +334,7 @@ const CSS = `
 .bmf-app .brand{ width:36px; height:36px; flex:0 0 auto; display:grid; place-items:center; border-radius:var(--r-sm);
   background:radial-gradient(circle at 40% 30%, var(--warm-38), rgba(10,12,14,0.9)); border:1px solid var(--warm-stroke);
   box-shadow:inset 0 0 10px var(--ember-35), 0 0 14px var(--ember-18); }
-.bmf-app .brand svg{ width:17px; height:21px; filter:drop-shadow(0 0 4px var(--glow-80)); }
+.bmf-app .brand svg{ width:17px; height:21px; }
 .bmf-app .brand.lg{ width:62px; height:62px; border-radius:var(--r-md); } .bmf-app .brand.lg svg{ width:31px; height:39px; }
 
 .bmf-app .helmet{ position:relative; width:54px; height:54px; flex:0 0 auto; border-radius:var(--r-round);
@@ -483,7 +483,7 @@ const CSS = `
 
 .bmf-app .glyph{ width:36px; height:36px; flex:0 0 auto; display:grid; place-items:center; border-radius:var(--r-sm); border:1px solid var(--warm-stroke);
   background:radial-gradient(circle at 40% 30%, var(--warm-38), rgba(10,12,14,0.9)); box-shadow:inset 0 0 10px var(--ember-35); }
-.bmf-app .glyph svg{ width:17px; height:21px; } .bmf-app .glyph svg path{ fill:url(#flameGrad); filter:drop-shadow(0 0 4px var(--glow-80)); }
+.bmf-app .glyph svg{ width:17px; height:21px; } .bmf-app .glyph svg path{ fill:url(#flameGrad); }
 .bmf-app .glyph.flicker svg path{ animation:bmf-glyph 2.8s ease-in-out infinite; }
 @keyframes bmf-glyph{ 0%,100%{opacity:1;transform:scale(1)} 45%{opacity:.82;transform:scale(.97)} 70%{opacity:.95} }
 
