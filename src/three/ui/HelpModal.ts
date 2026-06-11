@@ -7,20 +7,17 @@
  *   CONTROLS  — a compact action ⇢ keys · touch reference (keyboard + on-screen).
  *
  * Built on the component kit: the scrim, card, close ✕, ESC / scrim-click close and
- * focus-trap all come from `openModal()`; the footer buttons are `makeButton()`s. This
- * module owns only the CONTENT + a small token-driven layout stylesheet (no hard-coded
- * colour/blur — the `verify:ui` ratchet enforces it).
+ * focus-trap all come from `openModal()`. There are NO footer buttons — the close ✕ is
+ * the only action. This module owns only the CONTENT + a small token-driven layout
+ * stylesheet (no hard-coded colour/blur — the `verify:ui` ratchet enforces it).
  *
  * Lifecycle: `Input` builds ONE controller and wires the "?" icon to `toggle()`. The
  * modal is created on `open()` (via `openModal`, which mounts its own scrim) and
- * destroyed on `close()`. The footer keeps a "Replay first flight" link that re-runs
- * the interactive coach. The first-run TEACHER is the coach, not this reference.
+ * destroyed on `close()`. The first-run TEACHER is the interactive coach, not this reference.
  */
 
-import { UI, FS, FW, R } from './theme';
+import { UI, HOME, FS, FW, R } from './theme';
 import { openModal, type ModalHandle } from './components/Modal';
-import { makeButton } from './components/Button';
-import { resetTutorial } from './coach/coachStore';
 
 const SEEN_KEY = 'bmf.help.seen.v1';
 
@@ -51,9 +48,14 @@ interface Beat {
 }
 const LOOP: Beat[] = [
   { title: 'Fill the bucket', body: 'Fly low over a lake until the slung bucket dips in. It fills itself, no button.' },
-  { title: 'Drop on fire', body: 'Line up over the flames and hit DROP. Fly level so the water lands true.' },
-  { title: 'Get points', body: 'Every fire you put out banks points.' },
-  { title: 'Unlock helis', body: 'Spend points on faster aircraft.' },
+  { title: 'Drop on the fire', body: 'Line up over the flames and hit DROP. Fly level so the water lands true.' },
+  { title: 'Hold the towns', body: 'Dispatch calls every fire as it breaks out. Put it out before it reaches the cabins. The fires keep coming.' },
+  { title: 'Bank points', body: 'Every fire you put out banks points. Spend them on faster aircraft.' },
+];
+
+/** A one-line "good to know" note — surfaced under the controls, amber like the in-game caution. */
+const NOTES: string[] = [
+  'Lose your bucket? Set down at any base to rig a fresh one. You can release it yourself with B / RELEASE.',
 ];
 
 /** A control row: an action and the keyboard + touch ways to do it. */
@@ -63,11 +65,11 @@ interface Ctrl {
   touch: string; // on-screen control name
 }
 const CONTROLS: Ctrl[] = [
+  { action: 'Turn the nose', keys: ['A', 'D'], touch: 'Left stick' },
   { action: 'Speed (fwd / back)', keys: ['W', 'S'], touch: 'Left stick' },
-  { action: 'Strafe (sideways)', keys: ['A', 'D'], touch: 'Left stick' },
-  { action: 'Turn the nose', keys: ['Q', 'E'], touch: 'Right stick' },
-  { action: 'Altitude', keys: ['I', 'J'], touch: 'Right stick' },
+  { action: 'Altitude', keys: ['I', 'J'], touch: '▲ / ▼' },
   { action: 'Drop water', keys: ['Space'], touch: 'DROP' },
+  { action: 'Release bucket', keys: ['B'], touch: 'RELEASE' },
   { action: 'Look around', keys: [], touch: 'Drag the view' },
 ];
 
@@ -109,6 +111,12 @@ function injectStyles(): void {
   }
   .bmf-help-sep { color: ${UI.faint}; font-size: ${FS.meta}; }
   .bmf-help-touch { font-size: ${FS.sm}; color: ${UI.dim}; white-space: nowrap; }
+
+  /* Good-to-know note — amber, matching the in-flight caution annunciator */
+  .bmf-help-note { display: flex; align-items: flex-start; gap: 8px; margin-top: 18px; padding: 10px 12px;
+    border-radius: ${R.md}; background: ${HOME.caution12}; border: 1px solid ${HOME.caution50}; border-left: 2px solid ${UI.caution}; }
+  .bmf-help-note .ic { flex: 0 0 auto; color: ${UI.caution}; font-size: ${FS.body}; line-height: 1.3; }
+  .bmf-help-note .tx { font-size: ${FS.sm}; line-height: 1.45; color: ${UI.textCool}; margin: 0; }
 
   @media (max-width: 380px) {
     .bmf-help-title { font-size: ${FS.title}; }
@@ -160,33 +168,10 @@ export class HelpModal {
       head.firstChild,
     );
 
-    m.body.append(this.loopSection(), this.controlsSection());
+    m.body.append(this.loopSection(), this.controlsSection(), this.notesSection());
 
-    // Footer: one primary "Let's fly", then a quiet "Replay first flight" link.
-    const fly = makeButton({ label: 'Let’s fly', variant: 'primary', register: 'cockpit', block: true, onClick: () => this.close() });
-    const replay = makeButton({
-      label: 'Replay first flight',
-      variant: 'ghost',
-      register: 'cockpit',
-      size: 'sm',
-      block: true,
-      onClick: () => {
-        // Re-fly the guided first shift: clear the coach "done" flag and force the onboarding arc on
-        // (`?onboard=1`) via a plain navigation (works in prod, not just the dev in-place switch).
-        resetTutorial();
-        const url = new URL(window.location.href);
-        url.searchParams.delete('m');
-        url.searchParams.delete('daily');
-        url.searchParams.delete('ffa');
-        url.searchParams.set('province', '1');
-        url.searchParams.set('onboard', '1');
-        url.searchParams.delete('autostart');
-        url.searchParams.delete('qa');
-        window.location.assign(url.toString());
-      },
-    });
-    Object.assign(m.footer.style, { flexDirection: 'column', alignItems: 'stretch', gap: '8px', justifyContent: 'flex-start' });
-    m.footer.append(fly.el, replay.el);
+    // No footer buttons — the close ✕ is enough. Collapse the (now empty) footer so it adds no padding.
+    m.footer.style.display = 'none';
 
     m.onClose(() => {
       this.modal = null;
@@ -240,6 +225,20 @@ export class HelpModal {
       keys.append(h('span', { className: 'bmf-help-touch', textContent: c.touch }));
       frag.append(
         h('div', { className: 'bmf-help-row' }, [h('span', { className: 'bmf-help-act', textContent: c.action }), keys]),
+      );
+    }
+    return frag;
+  }
+
+  /** NOTES — short amber "good to know" lines (matches the in-flight caution annunciator). */
+  private notesSection(): DocumentFragment {
+    const frag = document.createDocumentFragment();
+    for (const n of NOTES) {
+      frag.append(
+        h('div', { className: 'bmf-help-note' }, [
+          h('span', { className: 'ic', textContent: '⚠' }),
+          h('p', { className: 'tx', textContent: n }),
+        ]),
       );
     }
     return frag;

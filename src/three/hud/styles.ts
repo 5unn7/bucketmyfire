@@ -34,7 +34,8 @@ const VARS = `.bmf-hud{
   --stick: clamp(116px, 33vw, 140px);          /* joystick DISH diameter (pointer math reads it live) */
   --drop: clamp(86px, 25vw, 104px);            /* DROP hero diameter */
   --detach: clamp(46px, 13vw, 56px);           /* RELEASE-bucket button */
-  --help: max(44px, 11vw);                      /* "?" help — floored at the 44px touch target */
+  --coll: clamp(50px, 14vw, 60px);             /* collective ▲/▼ climb-descend buttons */
+  --help: clamp(22px, 5vw, 27px);               /* "?" help — the smallest detail in the cockpit (under the radar) */
   --comms-max: min(520px, 92vw);               /* advisory / comms bar max width */
   --dispatch-w: min(190px, 60vw);              /* DISPATCH / objective panel width cap in the left column */
 }`;
@@ -114,6 +115,21 @@ const CSS = `
   box-shadow:var(--shadow); backdrop-filter:var(--blur); -webkit-backdrop-filter:var(--blur); }
 .bmf-hud .dispatch.show, .bmf-hud .crew-bar.show{ display:block; }
 
+/* ===== Caution annunciator — a persistent amber "heads up" under the strip. It pops EXPANDED (icon +
+   message), then the mini class collapses it to a chip that STAYS until cleared (currently the detached-
+   bucket cue: no scoop/drop until you set down at a base). Aviation-correct caution: unmissable, never blocks. ===== */
+.bmf-hud .caution{ display:none; align-items:center; gap:8px; width:max-content; max-width:var(--dispatch-w);
+  padding:7px 11px; border-radius:var(--r-md); background:var(--panel); border:1px solid var(--caution-50);
+  border-left:2px solid var(--caution); box-shadow:var(--shadow);
+  backdrop-filter:var(--blur); -webkit-backdrop-filter:var(--blur); transition:padding .25s ease; }
+.bmf-hud .caution.show{ display:flex; }
+.bmf-hud .caution .caution-ic{ flex:0 0 auto; color:var(--caution); font-size:var(--fs-body); line-height:1; text-shadow:0 0 8px var(--caution-50); }
+.bmf-hud .caution .caution-tx{ font-size:var(--fs-sm); font-weight:var(--fw-medium); line-height:1.3; color:var(--instrument); }
+.bmf-hud .caution.mini{ padding:6px; animation:bmf-caution-pulse 1.7s ease-in-out infinite; }
+.bmf-hud .caution.mini .caution-tx{ display:none; }
+@keyframes bmf-caution-pulse{ 0%,100%{ box-shadow:var(--shadow); } 50%{ box-shadow:0 0 10px var(--caution-50), var(--shadow); } }
+@media (prefers-reduced-motion:reduce){ .bmf-hud .caution.mini{ animation:none; } }
+
 /* ===== Comms / advisory bar (hud/MessageBar.ts) — one frosted pill; colour + edge are state-driven in JS. ===== */
 .bmf-hud .comms{ display:none; align-items:baseline; gap:8px; max-width:var(--comms-max); padding:6px 14px;
   border-radius:var(--r-pill); text-align:left; opacity:0; pointer-events:none;
@@ -138,6 +154,7 @@ const CSS = `
 .bmf-hud .drop{ width:var(--drop); height:var(--drop); }
 .bmf-hud .drop .drop-label{ font-size:calc(var(--drop) * 0.18); }
 .bmf-hud .drop .drop-pct{ font-size:calc(var(--drop) * 0.15); }
+.bmf-hud .coll-btn{ width:var(--coll); height:var(--coll); } /* font-size set inline (theme.button() pins one a class can't beat) */
 .bmf-hud .detach-btn{ width:var(--detach); height:var(--detach); }
 .bmf-hud .help-btn{ width:var(--help); height:var(--help); } /* font-size set inline (theme.button() pins one a class can't beat) */
 

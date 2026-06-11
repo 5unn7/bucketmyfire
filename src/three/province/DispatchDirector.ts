@@ -132,7 +132,7 @@ export class DispatchDirector {
       // disc would). It grows from one to a cluster as the weather worsens.
       const count = f < 0.5 ? 1 : 2;
       const place: FirePlacement = { at: 'nearCommunity', community: town.ref, offset, size, count };
-      const text = `${town.name} dispatch — fire's on the town's doorstep. Knock it down before it reaches the cabins.`;
+      const text = `${town.name} dispatch. Fire's on the town's doorstep. Knock it down before it reaches the cabins.`;
       return {
         id,
         kind: 'townThreat',
@@ -150,7 +150,7 @@ export class DispatchDirector {
     // A bush spot fire — douse it before it spreads. Exact site is fuel-snapped at ignite, so no pin.
     const size = spotSize(f);
     const place: FirePlacement = { at: 'random', count: 1, size, minFromOrigin: 160 };
-    const text = 'Smoke reported in the bush — a new spot fire. Get on it before it runs.';
+    const text = 'Smoke reported in the bush. A new spot fire. Get on it before it runs.';
     return {
       id,
       kind: 'spotFire',

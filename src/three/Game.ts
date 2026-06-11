@@ -61,7 +61,8 @@ import { submitScore, getClientId } from './leaderboard/client';
 import type { OpenSkiesNet, DouseEvent } from './net/openSkies';
 import type { RemotePilots } from './net/RemotePilots';
 import { cloudAutoSave } from './leaderboard/cloudSave';
-import { button, UI, FW } from './ui/theme';
+import { button, div, UI } from './ui/theme';
+import { makeIconSvg } from './ui/svgIcons';
 import { coached, coachBump } from './ui/hints';
 import { CoachDirector } from './ui/coach/CoachDirector';
 import { tutorialDone, markTutorialDone } from './ui/coach/coachStore';
@@ -995,12 +996,12 @@ export class Game {
       this.pilotName,
       this.end,
     );
-    // Tuck the controls "?" button into the radar's corner (top-right, under the minimap) so it
-    // shares the map column and reflows down when the radar is expanded.
-    this.hud.mountUnderRadar(this.input.helpButton);
-    // On-screen mute toggle, beside the "?" under the radar — the only way to silence the rotor on
-    // touch (the 'M' key is desktop-only). Persisted; stays in sync if 'M' flips it.
-    this.hud.mountUnderRadar(this.buildMuteButton());
+    // The "?" help + the mute toggle as ONE small horizontal cluster — SIDE BY SIDE so they read as a
+    // matched pair — sharing the map column and reflowing down when the radar expands. The mute is the
+    // only way to silence the rotor on touch (the 'M' key is desktop-only); persisted, stays in sync.
+    const utilRow = div({ display: 'flex', alignItems: 'center', gap: 'var(--bmf-gap)' });
+    utilRow.append(this.buildMuteButton(), this.input.helpButton);
+    this.hud.mountUnderRadar(utilRow);
     // C5: hand the radar the live fire field so it shades the burnt area (and the live front).
     this.hud.setBurnField(this.fireSystem.fieldView());
     // The pre-flight DISPATCH briefing card no longer lives here — it's painted by `ui/Briefing.ts`
@@ -2438,21 +2439,20 @@ export class Game {
     return [{ label: 'Points', current: this.ffaScore, target: scoreTarget, done: false, failed: false, kind: 'goal' }];
   }
 
-  /** Build the on-screen mute toggle (mounted under the radar). A round glass button that flips the
-   *  rotor audio + reflects state; subscribes to HeliAudio so the 'M' key keeps the glyph in sync. */
+  /** Build the on-screen mute toggle (mounted under the radar, beside the "?" help). Styled to MATCH the
+   *  help icon — same small round-glass `.help-btn` (sized by `--help`), a clean Lucide speaker glyph
+   *  (not an emoji) inheriting the muted instrument colour. Subscribes to HeliAudio so the 'M' key keeps
+   *  the glyph in sync; reddens when muted. */
   private buildMuteButton(): HTMLDivElement {
-    const btn = button(this.audio.isMuted ? '🔇' : '🔊', {
-      position: 'relative',
-      width: '40px',
-      height: '40px',
-      fontSize: '18px',
-      color: UI.dim,
-      fontWeight: FW.semibold,
-    });
+    const btn = button('', { position: 'relative', color: UI.dim });
+    btn.className = 'help-btn'; // share the help icon's size + round-glass chrome so they read as a pair
     btn.title = 'Mute / unmute sound (M)';
     btn.setAttribute('aria-label', 'Mute or unmute sound');
     const sync = (m: boolean): void => {
-      btn.textContent = m ? '🔇' : '🔊';
+      const svg = makeIconSvg(m ? 'volume-off' : 'volume');
+      svg.style.width = 'calc(var(--help) * 0.66)'; // track the help "?" glyph scale off the same var
+      svg.style.height = 'calc(var(--help) * 0.66)';
+      btn.replaceChildren(svg);
       btn.style.color = m ? UI.warn : UI.dim;
     };
     btn.addEventListener('pointerdown', (e) => {
@@ -3065,7 +3065,7 @@ export class Game {
     this.bucket.group.visible = false;
     this.rope.visible = false;
     this.dropMarker.hide();
-    this.hud.pushComms('warning', 'Bucket released — RTB to a base to rig a fresh one.', 'warn');
+    this.hud.pushComms('warning', 'Bucket released.', 'warn');
     this.audio.playSquelch('warn');
   }
 
@@ -3081,7 +3081,7 @@ export class Game {
     this.bucketFull = false;
     this.bucket.group.visible = true;
     this.rope.visible = true;
-    this.hud.pushComms('dispatch', 'Fresh bucket rigged — fill from the lake.', 'info');
+    this.hud.pushComms('dispatch', 'Fresh bucket rigged. Fill from the lake.', 'info');
     this.audio.playSquelch('info');
   }
 

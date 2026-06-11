@@ -3,11 +3,11 @@
  * `read()`. This is a mobile-browser game, so the touch UI is always present
  * (it also works with a mouse) and the keyboard is a desktop convenience.
  *
- * Controls (real-helicopter layout — TWO 2-axis sticks, each self-centring so a release HOLDS):
- *   - LEFT stick = cyclic. UP/DOWN = forward/back throttle (W/S, ↑/↓); LEFT/RIGHT = lateral STRAFE
- *     (A/D), a sideways slide perpendicular to the nose. Push further for more; ease off to creep.
- *   - RIGHT stick = pedals + collective. LEFT/RIGHT = YAW the nose (Q/E, ←/→); UP/DOWN = altitude
- *     (climb / descend; I/J). Letting go holds your heading + altitude band.
+ * Controls (helicopter-style — you steer the nose, not a world direction):
+ *   - Turn the nose: push the LEFT stick LEFT/RIGHT, or A/D / ←/→.
+ *   - Forward / back (variable speed): push the stick UP/DOWN, or W/S / ↑/↓.
+ *     Push the stick further for more speed; ease off to creep in precisely.
+ *   - Altitude (collective): the on-screen ▲/▼ buttons on the RIGHT, or I (climb) / J (descend).
  *   - Drop water: the DROP button, or Space. A 'bambi' bucket dumps fully on a
  *     single tap; a 'valve' bucket pours while held and pauses on release. The DROP
  *     button doubles as the BUCKET gauge — water rises inside it as you scoop.
@@ -33,10 +33,10 @@ import { HelpModal, hasSeenHelp, markHelpSeen } from './ui/HelpModal';
 import type { HighlightId } from './ui/coach/CoachDirector';
 
 export interface ControlState {
-  turn: number; // -1 turn left .. +1 turn right (yaw / pedals — RIGHT stick X)
+  turn: number; // -1 turn left .. +1 turn right (yaw — LEFT stick X)
   throttle: number; // -1 reverse .. +1 forward (variable along the nose — LEFT stick Y)
-  lateral: number; // -1 strafe left .. +1 strafe right (sideways cyclic — LEFT stick X)
-  lift: number; // -1 descend .. +1 climb (collective — RIGHT stick Y)
+  lateral: number; // sideways strafe — retired from the controls; always 0 (the flight model still accepts it)
+  lift: number; // -1 descend .. +1 climb (collective — ▲/▼ buttons)
   drop: boolean; // DROP held this frame (the 'valve' bucket pours while held)
   dropPressed: boolean; // DROP went down THIS frame (edge) — a one-tap 'bambi' dump trigger
   swapPressed: boolean; // SWAP went down THIS frame (edge) — re-rig bucket↔crew at base (mixed missions)
@@ -54,8 +54,7 @@ const STICK_EXPO = 2.7;
 // (max speed / max turn) — twitchy next to the analog stick. These scale a held key
 // down to a moderate "stick push" so flying on a desktop feels closer to touch.
 const KEY_THROTTLE = 0.6; // forward/back gain for W/S / ↑↓
-const KEY_LATERAL = 0.7; // sideways-strafe gain for A/D
-const KEY_TURN = 0.9; // yaw-rate gain for Q/E / ←→
+const KEY_TURN = 0.9; // turn-rate gain for A/D / ←→
 
 /** Drop shadow under the bucket % readout — keeps the digits legible over the cyan water fill. */
 const PCT_SHADOW = '0 1px 2px rgba(0,0,0,0.55)';
@@ -63,15 +62,14 @@ const PCT_SHADOW = '0 1px 2px rgba(0,0,0,0.55)';
 export class Input {
   private readonly held = new Set<string>();
 
-  // Touch state. Two 2-axis sticks (real-helicopter layout):
-  //   LEFT (cyclic):  X = lateral strafe, Y = throttle (fwd / back).
-  //   RIGHT (pedals + collective): X = yaw, Y = altitude. Both self-centre on release.
-  private leftX = 0; // -1..1, right = strafe right
+  // Touch state. ONE 2-axis stick (bottom-left) + ▲/▼ collective buttons (bottom-right):
+  //   LEFT stick: X = turn (yaw), Y = throttle (fwd / back). Self-centres → release holds heading.
+  //   RIGHT: ▲ climb / ▼ descend buttons hold the altitude change while pressed.
+  private leftX = 0; // -1..1, right = turn right
   private leftY = 0; // -1..1, up = forward
   private leftActive = false;
-  private rightX = 0; // -1..1, right = yaw right
-  private rightY = 0; // -1..1, up = climb
-  private rightActive = false;
+  private btnUp = false; // ▲ climb held
+  private btnDown = false; // ▼ descend held
   private btnDrop = false;
   private prevDrop = false; // last frame's drop level, for press-edge detection
   private dropEnabled = true; // false while a crew low-hover hold owns the controls — DROP greys out + ignores taps/Space
@@ -93,7 +91,8 @@ export class Input {
   // Element refs (the controls themselves are CSS-sized via the `.bmf-hud` clamp vars). Only the stick
   // BASES are kept — the coach spotlights them; the knobs + ticks live under each base and need no ref.
   private leftBase!: HTMLDivElement;
-  private rightBase!: HTMLDivElement;
+  private climbBtn!: HTMLDivElement;
+  private descendBtn!: HTMLDivElement;
   private dropBtn!: HTMLDivElement;
   // The DROP hero IS the bucket: a cool water layer rises inside it as you scoop and drains as you
   // drop (carry + spend fused into one element). These three refs drive that fill + its % readout.
@@ -152,10 +151,9 @@ export class Input {
   setHighlight(id: HighlightId | null): void {
     injectPulseStyles();
     const map: Record<HighlightId, HTMLElement | undefined> = {
-      stick: this.leftBase, // movement lives on the left cyclic stick
-      // climb/descend (altitude) are the right stick's vertical axis — point both at it.
-      climb: this.rightBase,
-      descend: this.rightBase,
+      stick: this.leftBase, // movement lives on the left stick
+      climb: this.climbBtn,
+      descend: this.descendBtn,
       drop: this.dropBtn,
     };
     const next = id ? (map[id] ?? null) : null;
@@ -168,30 +166,24 @@ export class Input {
   read(): ControlState {
     const k = this.held;
 
-    // Keyboard (real-heli split): W/S (or ↑/↓) throttle, A/D strafe, Q/E (or ←/→) yaw, I/J collective.
-    let kThrottle = 0;
-    let kLateral = 0;
+    // Keyboard steering: A/D (or ←/→) turn the nose; W/S (or ↑/↓) throttle; I/J collective.
     let kTurn = 0;
+    let kThrottle = 0;
     if (k.has('KeyW') || k.has('ArrowUp')) kThrottle += KEY_THROTTLE; // forward
     if (k.has('KeyS') || k.has('ArrowDown')) kThrottle -= KEY_THROTTLE; // reverse
-    if (k.has('KeyA')) kLateral -= KEY_LATERAL; // strafe left
-    if (k.has('KeyD')) kLateral += KEY_LATERAL; // strafe right
-    if (k.has('KeyQ') || k.has('ArrowLeft')) kTurn -= KEY_TURN; // yaw left
-    if (k.has('KeyE') || k.has('ArrowRight')) kTurn += KEY_TURN; // yaw right
+    if (k.has('KeyA') || k.has('ArrowLeft')) kTurn -= KEY_TURN; // turn left
+    if (k.has('KeyD') || k.has('ArrowRight')) kTurn += KEY_TURN; // turn right
 
-    // Each touch stick overrides the keyboard for its own axes when engaged (deadzoned + rescaled).
-    // LEFT = cyclic (throttle + lateral); RIGHT = pedals + collective (yaw + altitude). Both self-centre,
-    // so releasing holds heading + altitude.
+    // The touch stick overrides the keyboard for its axes when engaged (deadzoned + rescaled). It
+    // self-centres, so releasing holds heading. Strafe is retired — lateral is always 0.
+    const turn = this.leftActive ? deadzone(this.leftX) : kTurn;
     const throttle = this.leftActive ? deadzone(this.leftY) : kThrottle;
-    const lateral = this.leftActive ? deadzone(this.leftX) : kLateral;
-    const turn = this.rightActive ? deadzone(this.rightX) : kTurn;
+    const lateral = 0;
+
+    // Collective: the ▲/▼ buttons or I (climb) / J (descend).
     let lift = 0;
-    if (this.rightActive) {
-      lift = deadzone(this.rightY);
-    } else {
-      if (k.has('KeyI')) lift += 1;
-      if (k.has('KeyJ')) lift -= 1;
-    }
+    if (k.has('KeyI') || this.btnUp) lift += 1;
+    if (k.has('KeyJ') || this.btnDown) lift -= 1;
 
     // Drop: Space (or the on-screen DROP button). Gated off while disabled (a crew low-hover hold) so a
     // held button or Space can't leak a phantom drop through.
@@ -333,7 +325,7 @@ export class Input {
 
     this.buildLookLayer(root); // first → sits BENEATH the controls; drags on empty space orbit the camera
     this.buildLeftStick(root);
-    this.buildRightControls(root); // right stick + the DROP / RELEASE-BUCKET cluster
+    this.buildRightControls(root); // collective ▲/▼ + the DROP / RELEASE-BUCKET cluster
     this.buildSwapUI(root);
     this.buildHelpUI(root);
 
@@ -368,7 +360,7 @@ export class Input {
   }
 
   /** Build one 2-axis virtual joystick — a frosted dish with a 4-way tick cross and a glowing cyan knob,
-   *  so it reads as an instrument rather than a flat blob. Both flight sticks share it; the caller maps the
+   *  so it reads as an instrument rather than a flat blob. The left flight stick uses it; the caller maps the
    *  normalised knob offset to its axes via `apply(nx, ny)` (ny is UP-positive). `clear()` fires on release
    *  — the knob springs back to centre, so the axes return to 0 (heading + altitude hold). */
   private makeJoystick(opts: {
@@ -468,11 +460,11 @@ export class Input {
     return { base, thumb, ticks };
   }
 
-  /** LEFT cyclic stick (bottom-left): X = lateral strafe, Y = throttle (forward / back). */
+  /** LEFT stick (bottom-left): X = turn (yaw), Y = throttle (forward / back). */
   private buildLeftStick(root: HTMLElement): void {
     const { base } = this.makeJoystick({
       apply: (nx, ny) => {
-        this.leftX = nx; // push right → strafe right
+        this.leftX = nx; // push right → turn right
         this.leftY = ny; // push up → forward
         this.leftActive = true;
       },
@@ -489,24 +481,21 @@ export class Input {
     root.appendChild(a);
   }
 
-  /** RIGHT controls (bottom-right): the cyclic-pedals + collective stick (X = yaw, Y = altitude) in the
-   *  corner — the right thumb's home — with the DROP / RELEASE-BUCKET cluster a short roll inboard. The
-   *  held flight control sits in the corner; the actions are inboard, so a quick drop never fights the
-   *  stick and DROP isn't the fat-finger target the corner is. */
+  /** RIGHT controls (bottom-right): the collective ▲/▼ climb-descend pair just inboard of the
+   *  DROP / RELEASE-BUCKET cluster, all sharing one baseline so they read as one right-thumb group.
+   *  Hold ▲ to climb / ▼ to descend; release holds the altitude band. */
   private buildRightControls(root: HTMLElement): void {
-    const { base } = this.makeJoystick({
-      apply: (nx, ny) => {
-        this.rightX = nx; // push right → yaw right
-        this.rightY = ny; // push up → climb
-        this.rightActive = true;
-      },
-      clear: () => {
-        this.rightActive = false;
-        this.rightX = 0;
-        this.rightY = 0;
-      },
-    });
-    this.rightBase = base;
+    const climb = button('▲', { position: 'relative', fontSize: 'calc(var(--coll) * 0.42)' });
+    const descend = button('▼', { position: 'relative', fontSize: 'calc(var(--coll) * 0.42)' });
+    climb.className = 'coll-btn'; // diameter from CSS (--coll)
+    descend.className = 'coll-btn';
+    this.climbBtn = climb;
+    this.descendBtn = descend;
+    holdButton(climb, (on) => (this.btnUp = on));
+    holdButton(descend, (on) => (this.btnDown = on));
+
+    const collective = div({ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--bmf-gap)' });
+    collective.append(climb, descend);
 
     const cluster = this.buildDropCluster();
 
@@ -516,14 +505,14 @@ export class Input {
       alignItems: 'flex-end',
       gap: 'calc(var(--bmf-gap) * 1.9)',
     });
-    row.append(cluster, base); // [DROP + RELEASE] [stick] — stick outermost (corner = thumb home)
+    row.append(collective, cluster); // [▲/▼] [DROP + RELEASE] — collective inboard, DROP toward the corner
 
     const a = anchor('bottom-right');
     a.appendChild(row);
     root.appendChild(a);
   }
 
-  /** The DROP + RELEASE-BUCKET cluster, inboard of the right stick. DROP is a round WATER-GAUGE button
+  /** The DROP + RELEASE-BUCKET cluster, in the bottom-right corner beside the collective ▲/▼. DROP is a round WATER-GAUGE button
    *  (warm): a cool water layer rises with the bucket's fill and drains as you drop, behind the warm
    *  action word, with an animated crest sloshing on its surface (the round button clips the fill to a
    *  filling porthole). RELEASE BUCKET is a small round button stacked ABOVE it — clustered with DROP
@@ -673,7 +662,7 @@ export class Input {
 
     // Size from CSS (--help, floored at 44px); the "?" glyph font-size is set inline because theme.button()
     // pins its own fontSize that a class rule can't beat. The inline calc still resolves off the --help var.
-    const icon = button('?', { position: 'relative', color: UI.dim, fontWeight: FW.semibold, fontSize: 'calc(var(--help) * 0.5)' });
+    const icon = button('?', { position: 'relative', color: UI.dim, fontWeight: FW.semibold, fontSize: 'calc(var(--help) * 0.62)' });
     icon.className = 'help-btn';
     this.helpBtn = icon;
     icon.addEventListener('pointerdown', (e) => {

@@ -23,7 +23,7 @@ const HINT_MS = 3600; // a teaching hint holds this long, then fades (matches th
 const TIP_FIRST_MS = 15000; // the first idle tip waits this long after load — let the player settle in
 const TIP_HOLD_MS = 6500; // a tip stays up this long…
 const TIP_GAP_MS = 16000; // …then the bar rests this long before the next (paced — ambient, not a nag)
-const TTL: Record<CommsUrgency, number> = { info: 4200, warn: 5500, alert: 6500 };
+const TTL: Record<CommsUrgency, number> = { info: 3500, warn: 4600, alert: 5500 };
 const MAX_QUEUE = 3; // bound the backlog so a burst of score pops can't pile up
 
 interface FuncMsg {

@@ -41,6 +41,7 @@ export type { HudState, EndScreenHooks, MapLabels };
 const TAPE_W = 78; // jet tape canvas width
 const TAPE_H = 188; // jet tape canvas height (the scrolling window)
 const LOW_AGL_FT = 250; // altimeter reads LOW (red) below this AGL in feet
+const CAUTION_EXPAND_MS = 4500; // a raised caution shows its full message this long, then minimizes to the ⚠ chip
 
 // The cockpit instrument face (JetBrains Mono) — one source via theme.ts; used by the flight tapes +
 // radar text below. (The pre-flight DISPATCH SLIP that also used it now lives in ui/Briefing.ts, so it
@@ -81,6 +82,13 @@ export class HUD {
   private readonly crewBarLabel: HTMLDivElement;
   private readonly crewBarFill: HTMLDivElement;
   private crewBarShown = false; // last visibility (re-seat the bar only when it toggles)
+  // Caution annunciator — a persistent amber "heads up" under the strip. It pops EXPANDED (the message),
+  // then minimizes to a ⚠ chip and STAYS until cleared. Driven each frame by the detached-bucket state
+  // (no scoop/drop until you set down at a base). Idempotent on the text, so per-frame calls are cheap.
+  private readonly caution: HTMLDivElement;
+  private readonly cautionTx: HTMLDivElement;
+  private cautionText: string | null = null; // current shown message (the per-frame idempotent guard)
+  private cautionMiniT = 0; // setTimeout id: collapse the expanded message to the ⚠ chip
   // The ONE glass advisory bar: dispatch/comms + contextual hints + idle flying tips, all through a single
   // pill, mounted in the top-band grid's centre column (hud/styles.ts `.hud-comms`). It can no longer
   // overlap a corner, so the old getBoundingClientRect measure-and-nudge (positionMessages) is gone.
@@ -229,6 +237,18 @@ export class HUD {
     setPodHidden(this.crewPod, true); // hidden until a crew-transport mission supplies a count
     setPodHidden(this.compassPod, true); // #10 density: numeric heading is redundant with the heading-up radar — parked hidden (flip to false to restore)
     leftCol.appendChild(this.spine);
+
+    // Caution annunciator — a persistent amber heads-up directly under the strip. Hidden until raised
+    // (setCaution); it pops with its full message, then minimizes to a ⚠ chip that stays put. The ⚠ glyph
+    // is always present; the message text collapses out under the `mini` class (CSS).
+    this.caution = el('div', {});
+    this.caution.className = 'caution';
+    const cautionIc = el('span', {}, '⚠');
+    cautionIc.className = 'caution-ic';
+    this.cautionTx = el('div', {});
+    this.cautionTx.className = 'caution-tx';
+    this.caution.append(cautionIc, this.cautionTx);
+    leftCol.appendChild(this.caution);
 
     // Objective checklist / Living-Province DISPATCH readout (same panel; populated each frame). Frosted +
     // bounded to the left column by CSS (`.dispatch`); shown via the `show` class (no inline display flip).
@@ -393,6 +413,8 @@ export class HUD {
     this.spine.style.boxShadow = anyLow ? `0 0 12px ${UI.warn}, ${UI.shadow}` : UI.shadow;
 
     this.messages.setHint(s.hint);
+    // Persistent caution: bucket jettisoned → no scoop/drop until you set down at a base for a fresh one.
+    this.setCaution(s.bucketDetached ? 'No bucket. Land at any base to rig a fresh one.' : null);
 
     // Living Province swaps the objective checklist for a SHIFT readout (province health + reputation +
     // towns); the campaign/sandbox keeps the objective checklist. Same panel, same no-churn dedup.
@@ -578,6 +600,28 @@ export class HUD {
     this.alertEl.style.animation = prefersReducedMotion() ? 'none' : 'bmf-alert-pulse 0.7s ease-in-out infinite';
   }
 
+  /**
+   * Raise or clear the persistent caution annunciator. Pass a message to RAISE it: it pops EXPANDED
+   * (icon + text), then auto-minimizes to a ⚠ chip after `CAUTION_EXPAND_MS` and STAYS until cleared.
+   * Pass `null` to clear it once the condition is resolved. Idempotent on the text — safe every frame.
+   * Currently the detached-bucket cue (Game drives it from `bucketDetached`).
+   */
+  setCaution(text: string | null): void {
+    if (text === this.cautionText) return; // unchanged since last frame — leave it as-is (expanded or mini)
+    this.cautionText = text;
+    window.clearTimeout(this.cautionMiniT);
+    if (!text) {
+      this.caution.classList.remove('show', 'mini');
+      return;
+    }
+    this.cautionTx.textContent = text;
+    this.caution.classList.remove('mini'); // pop EXPANDED…
+    this.caution.classList.add('show');
+    this.cautionMiniT = window.setTimeout(() => {
+      this.caution.classList.add('mini'); // …then minimize to the ⚠ chip (stays until cleared)
+    }, CAUTION_EXPAND_MS);
+  }
+
   // --- Radio comms (the mission "experience" layer) --------------------------
   // (The pre-flight DISPATCH SLIP moved to ui/Briefing.ts so it can paint before the World/HUD exist;
   // `personalize` is now the shared helper in hud/common.ts, used by both the comms below and the slip.)
@@ -660,6 +704,7 @@ export class HUD {
   dispose(): void {
     this.messages.dispose(); // clears the bar's queue + tip/hint timers
     window.clearTimeout(this.hitFlashTimer);
+    window.clearTimeout(this.cautionMiniT);
     this.engine.hide(); // detaches the dial's window key listeners if still up
     this.coach.hide(); // fold the coach overlay (clears its hide timer); idempotent
     this.unsubLayout?.();
