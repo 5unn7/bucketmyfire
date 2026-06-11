@@ -17,7 +17,7 @@
 import { getProgress, getPurchasedHelis, recordHeliPurchase } from '../missions/progress';
 import { careerScore } from '../missions/rank';
 import { mapCards } from '../maps/registry';
-import { cleanCallsign } from './callsign';
+import { cleanCallsign, randomCallsign } from './callsign';
 
 export interface Profile {
   /** Pilot callsign — display only (shown on the end banner). */
@@ -279,6 +279,22 @@ export function saveProfile(profile: Profile): void {
   } catch {
     // Storage unavailable — the session still works, the choice just won't persist.
   }
+}
+
+/**
+ * The pilot's callsign for lead/board association — guaranteed non-empty. Returns the saved callsign,
+ * or, for a player who reaches a capture surface WITHOUT ever naming themselves (rare: the notify-me /
+ * front-door flows can fire before the in-game identity screen), generates a random callsign AND
+ * PERSISTS it as a fresh profile. Persisting is the "sync": the same handle ties their email to a row
+ * in the leadlist now, and follows them into the game + onto the board when they later fly — so a
+ * lead captured pre-naming and a future pilot are the same person, not two.
+ */
+export function ensureCallsign(): string {
+  const existing = loadProfile();
+  if (existing) return existing.name;
+  const name = randomCallsign();
+  saveProfile({ name, mapId: firstAvailable(MAPS).id, heliId: firstAvailable(HELIS).id });
+  return name;
 }
 
 export function clearProfile(): void {

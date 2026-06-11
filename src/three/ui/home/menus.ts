@@ -19,6 +19,7 @@ import { provinceSessionId } from '../../province/buildProvince';
 import { PROVINCE_COPY } from '../../province/strings';
 import { getCloudLink } from '../../leaderboard/cloudSave';
 import { openCloudSave } from '../CloudSave';
+import { openNotifyModal } from '../NotifyModal';
 import { resetProgress } from '../../missions/progress';
 import { openLeaderboard } from '../Leaderboard';
 import { injectHomeStyles, spawnEmbers } from './styles';
@@ -420,7 +421,7 @@ export function openSolo(): void {
       ? `<div class="ctx-row"><span class="ctx">${ic('map')}${m.stats.area}</span><span class="ctx">${ic('droplet')}${m.stats.lakes}</span></div>`
       : '';
     const footer = !m.available
-      ? `<button class="btn ghost block is-disabled">${ic('lock')}Coming soon</button>`
+      ? `<button class="btn secondary block" data-notify-map="${m.id}" data-notify-name="${esc(m.name)}">${ic('bell')}Notify me</button>`
       : `<button class="btn ember block" data-solo-map="${m.id}">${ic('play')}Fly solo</button>`;
     return posterCard({ locked: !m.available, cardClass: 'map', backdrop, tagline: m.tagline, badge, title: m.name, body, footer });
   });
@@ -442,6 +443,14 @@ export function openSolo(): void {
       url.searchParams.set('solo', '1'); // private round — no ghosts, off the shared board
       url.searchParams.set('heli', currentProfile().heliId); // fly the saved airframe (loadProfile clamps locked → trainer)
       location.assign(url.toString());
+    }),
+  );
+  // Upcoming maps carry a "Notify me" CTA instead of a play button — capture an email for the launch
+  // (the lead is tied to the pilot's callsign, generating one if they never named themselves).
+  root.querySelectorAll<HTMLElement>('[data-notify-map]').forEach((b) =>
+    b.addEventListener('click', (e) => {
+      e.stopPropagation(); // don't let the slide's re-centre handler swallow the tap
+      openNotifyModal(b.dataset.notifyMap!, b.dataset.notifyName || 'This map');
     }),
   );
 }

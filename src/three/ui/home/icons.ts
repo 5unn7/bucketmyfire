@@ -62,6 +62,8 @@ const STROKE: Record<string, string> = {
   edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
   // Earned-points spark — the spendable career-points currency (Hangar unlock economy).
   spark: '<path d="M12 3l1.7 5.8L19 10l-5.3 1.2L12 17l-1.7-5.8L5 10l5.3-1.2z"/>',
+  // Bell (Lucide) — the "notify me when this map ships" CTA glyph.
+  bell: '<path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/>',
 };
 
 /** Inline a stroke icon as an HTML string (24px viewBox, currentColor). */

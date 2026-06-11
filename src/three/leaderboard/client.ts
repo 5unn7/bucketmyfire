@@ -165,6 +165,44 @@ export async function submitScore(s: ScoreSubmission): Promise<boolean> {
   }
 }
 
+/**
+ * Capture a marketing/notify lead — an email (+ the pilot's callsign) for the leadlist. Fire-and-forget
+ * like submitScore: resolves true on a 2xx, false on any failure (unconfigured, malformed email, network,
+ * timeout, non-2xx) and never throws — the caller can message offline however it likes. Goes through the
+ * `submit_lead` SECURITY DEFINER RPC (supabase/schema.sql), which validates the address server-side,
+ * DEDUPES by email (a returning address refreshes its newest row + callsign), and throttles fresh signups
+ * per device. The callsign is sent so a lead and a board pilot share ONE handle in the leadlist;
+ * getClientId() ties anonymous repeat signups from the same browser together.
+ */
+export async function submitLead(email: string, source: string, pilot?: string): Promise<boolean> {
+  if (!isConfigured()) return false;
+  const addr = (email ?? '').trim().toLowerCase();
+  // Cheap client-side shape check (the RPC re-validates) — skips a wasted round-trip on obvious typos.
+  if (addr.length < 5 || addr.length > 254 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(addr)) return false;
+  const clean = pilot ? cleanCallsign(pilot) : '';
+  const body = {
+    p_email: addr,
+    p_source: source.slice(0, 24),
+    // Only attach a real, non-reserved callsign — never the silent 'Pilot' default.
+    p_pilot: clean.length >= 2 && !isReservedCallsign(clean) ? clean.slice(0, 24) : null,
+    p_client_id: getClientId(),
+  };
+  const t = withTimeout(8000);
+  try {
+    const res = await fetch(`${URL_BASE}/rest/v1/rpc/submit_lead`, {
+      method: 'POST',
+      headers: headers({ 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
+      body: JSON.stringify(body),
+      signal: t.signal,
+    });
+    return res.ok;
+  } catch {
+    return false;
+  } finally {
+    t.done();
+  }
+}
+
 /** A page of board rows plus the TOTAL number of ranked pilots (read from PostgREST's
  *  `Content-Range` header), so the UI can say "top 25 of 312" and compute percentiles. */
 export interface Board<E> {
