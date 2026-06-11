@@ -66,7 +66,7 @@ import { makeIconSvg } from './ui/svgIcons';
 import { coached, coachBump } from './ui/hints';
 import { CoachDirector } from './ui/coach/CoachDirector';
 import { tutorialDone, markTutorialDone } from './ui/coach/coachStore';
-import type { MissionDef, MissionSignals, MissionAction, ZonePlacement, ScoreTally, TrackerItem } from './missions/types';
+import type { MissionDef, MissionSignals, MissionAction, ZonePlacement, ScoreTally } from './missions/types';
 import type { EndScreenHooks } from './HUD';
 import { seedFires, structurePlan, crewZones, resolveCrewZone, igniteFromPlacement, backburnLine } from './missions/scenario';
 import { ProvinceMode, type TownPin, type ShiftResult } from './province/ProvinceMode';
@@ -2052,16 +2052,17 @@ export class Game {
       threatName: this.structures.threatName,
       lost: this.lost,
       score: this.finalScore,
-      // Campaign layer: live objective checklist, fuel gauge, crew landing-zone radar blips.
-      // Open Skies swaps the goal/fail checklist for its live "fires out / score" readout.
-      // Living Province uses the SHIFT panel (below), not the objective checklist; FFA uses the points
-      // tracker; the campaign uses the real objective ledger.
-      objectives: this.living ? undefined : this.endless ? this.ffaTracker() : this.runtime.tracker,
+      // Campaign layer: live objective checklist, fuel gauge, crew landing-zone radar blips. The open-world
+      // modes (Open Skies + Living Province) hide the checklist entirely — they use the LIVE pilots+points
+      // readout (`live`, below) instead; only the campaign/sandbox renders the objective ledger.
+      objectives: this.endless ? undefined : this.runtime.tracker,
       fuel: this.fuelSim ? this.fuelSim.fuel : undefined,
       fuelLow: this.fuelSim ? this.fuelSim.low : undefined,
       zones: this.crew ? this.crew.views.map((v) => ({ x: v.x, z: v.z, active: v.active, done: v.done, home: v.home, lost: v.lost })) : undefined,
-      // Living Province: the in-flight shift readout (swaps the objective checklist) + radar town-status pins.
-      shift: this.living && this.province ? this.province.shift() : undefined,
+      // Open-world LIVE readout (Open Skies / Living Province): pilots in the sky (you + ghost peers) + the
+      // running points total. Replaces the old province "DISPATCH" shift panel + the FFA "Points" objective
+      // row. In a solo round there are no peers, so it reads 1 pilot (you) + your banked points.
+      live: this.endless ? { pilots: (this.remotePilots?.count ?? 0) + 1, points: this.ffaScore } : undefined,
       townPins: this.living && this.province ? this.province.townPins(this.provTownPins) : undefined,
       shiftReport: this.provShiftResult ?? undefined, // set once the shift ends → the SHIFT REPORT debrief
 
@@ -2429,14 +2430,6 @@ export class Game {
       const p = this.heliSim.position;
       if (this.remotePilots.collides(p.x, p.y, p.z, FFA.collideRadius, FFA.collideMinAgl)) this.detonate('collision');
     }
-  }
-
-  /** The live in-flight readout for Open Skies — a SINGLE objective: the points counter. Extinguish
-   *  fires, earn points; the row climbs and flashes on each douse (renderObjectives). A milestone
-   *  target keeps it always "chasing" so it never latches done and the run stays endless. */
-  private ffaTracker(): TrackerItem[] {
-    const scoreTarget = (Math.floor(this.ffaScore / FFA.scoreMilestone) + 1) * FFA.scoreMilestone;
-    return [{ label: 'Points', current: this.ffaScore, target: scoreTarget, done: false, failed: false, kind: 'goal' }];
   }
 
   /** Build the on-screen mute toggle (mounted under the radar, beside the "?" help). Styled to MATCH the
@@ -2982,11 +2975,22 @@ export class Game {
   /**
    * Pick a flat, on-land spot for the helipad a short way off the depot building (which sits AT the
    * base XZ, so the pad can't share it). Samples a ring inside the cleared yard and takes the
-   * flattest dry candidate (tie-break toward the open interior). The heli faces AWAY from the depot
-   * so the parked bucket lays out over open deck and the chase camera frames the base behind it.
+   * flattest dry candidate, BIASED onto the lake-facing shore. The parked heli faces OUT over the
+   * base's scoop lake (the water it scoops from), so a cold-start lift-off points at open water.
    */
   private findHelipadSpot(depot: { x: number; z: number }): { x: number; z: number; yaw: number } {
     const roadClear = 10; // keep the ~7u-radius deck this far off a road centreline
+    // The base sits on the shore of its scoop lake — find that lake (nearest to the depot) so the deck
+    // can sit on its shore and the nose can point at the water. Null only on a (theoretical) lakeless map.
+    let lake: { x: number; z: number } | null = null;
+    let lakeD = Infinity;
+    for (const l of this.world.lakes) {
+      const d = Math.hypot(l.x - depot.x, l.z - depot.z);
+      if (d < lakeD) {
+        lakeD = d;
+        lake = { x: l.x, z: l.z };
+      }
+    }
     let best: { x: number; z: number; yaw: number } | null = null;
     let bestScore = -Infinity;
     // Two rings inside the 34u cleared yard: the outer is the nominal offset, the inner gives the
@@ -3002,11 +3006,16 @@ export class Game {
         // clear candidate always wins, but if a road hugs the whole yard we still pick the least-bad.
         const dRoad = this.world.distanceToRoad(x, z);
         const roadPenalty = dRoad < roadClear ? (roadClear - dRoad) * 12 : 0;
-        const score = -this.world.slopeAt(x, z) * 40 - Math.hypot(x, z) * 0.04 - roadPenalty; // flat + interior + off-road
+        // Pull the deck toward the lake-facing shore (so the parked nose looks out over the water, not
+        // back across the depot). Weak enough that flatness/off-road still dominate the pick.
+        const lakeBias = lake ? -Math.hypot(x - lake.x, z - lake.z) * 0.6 : 0;
+        const score = -this.world.slopeAt(x, z) * 40 - Math.hypot(x, z) * 0.04 - roadPenalty + lakeBias; // flat + off-road + lake-side
         if (score > bestScore) {
           bestScore = score;
-          // world-forward (cos yaw, -sin yaw) should point from the depot OUT to this spot (and beyond).
-          best = { x, z, yaw: Math.atan2(-(z - depot.z), x - depot.x) };
+          // world-forward (cos yaw, -sin yaw) should point at the lake (face the water); with no lake,
+          // fall back to facing OUT from the depot so the bucket still lays over open deck.
+          const yaw = lake ? Math.atan2(-(lake.z - z), lake.x - x) : Math.atan2(-(z - depot.z), x - depot.x);
+          best = { x, z, yaw };
         }
       }
     }

@@ -219,23 +219,23 @@ export const FOREST = {
 // pitches with the throttle. Altitude (collective) carries its own inertia so
 // climbs/descents feel weighty.
 export const FLIGHT = {
-  enginePower: 105, // horizontal thrust (units/s^2) in the input direction (lowered with maxSpeed so
-  // the build-up to cruise stays weighty instead of snapping straight to the lower cap)
+  enginePower: 150, // horizontal thrust (units/s^2) in the input direction (scaled WITH maxSpeed so
+  // the build-up to cruise stays weighty instead of snapping straight to the cap)
   linearDrag: 1.1, // horizontal air resistance — the ONLY thing decelerating the craft once you let off
   // throttle (there's no brake), so this is the "coast on release" lever. LOWERED from 1.6: releasing
   // forward now carries momentum and glides out (~2s to bleed off) instead of stopping quick. Higher =
   // settles faster / less drift through turns; lower = floatier, skates more. Per-heli dragMul scales it
   // (the Black Hawk already coasts further).
-  maxSpeed: 30, // horizontal AIRSPEED cap (units/s). LOWERED from 41 so the whole game flies SLOWER:
-  // at this pace you maneuver more, so the per-heli handling spread (the docile, precise 205 vs the
-  // fast, slippery Black Hawk) actually READS instead of blurring together at speed. A world-diagonal
-  // crossing is now ~70s. The kt calibration (INSTRUMENTS.topSpeedKt) tracks this cap, lowered with it.
+  maxSpeed: 42, // horizontal AIRSPEED cap (units/s). RAISED 30→42 so the whole game flies FASTER —
+  // cruise has real pace and a world-diagonal crossing is now ~50s (was ~70). The per-heli handling
+  // spread (the docile, precise 205 vs the fast, slippery Black Hawk) still reads via the per-heli
+  // speedMul. The kt calibration (INSTRUMENTS.topSpeedKt) and wind drift below track this cap.
   // Wind blows the airframe over the ground: ground velocity = airspeed + wind, so a
   // headwind cuts your ground speed (you crawl into it) and a tailwind shoves you
   // along — a light heli gets pushed around. Scales the unit Wind vector to units/s.
-  windSpeed: 6, // world units/s of drift at full wind strength (scaled down with maxSpeed so wind's
+  windSpeed: 8, // world units/s of drift at full wind strength (scaled WITH maxSpeed so wind's
   // pull RELATIVE to airspeed is unchanged — it still nudges, doesn't shove)
-  windHoldSpeed: 9, // airspeed (units/s) below which wind fades out → a hover holds station
+  windHoldSpeed: 12, // airspeed (units/s) below which wind fades out → a hover holds station
   // (so releasing the stick doesn't let the wind carry you away)
   // Helicopter-style steering: the stick TURNS the nose (yawRate) and pushes
   // forward/back along it (variable throttle). The nose no longer chases velocity.
@@ -382,9 +382,9 @@ export const WASH = {
 // (AS350-class): 80 kt empty / ~66 kt full airspeed, 2000 ft ceiling. The factors
 // are derived from the FLIGHT caps so changing those keeps the gauges consistent.
 export const INSTRUMENTS = {
-  topSpeedKt: 80, // empty FLIGHT.maxSpeed maps to this on the airspeed tape (lowered WITH maxSpeed,
-  // 41→30, keeping the world→kt scale constant so the slower aircraft reads honestly; the faster
-  // Black Hawk still tapes well above this)
+  topSpeedKt: 112, // empty FLIGHT.maxSpeed maps to this on the airspeed tape (raised WITH maxSpeed,
+  // 30→42, keeping the world→kt scale constant (~2.67 kt/unit) so the aircraft reads honestly; the
+  // faster Black Hawk still tapes well above this)
   ceilingFt: 2000, // top of the AGL band (FLIGHT.maxClearance) maps to this on the altimeter (LOWERED
   // from 2500 with maxClearance 555→444 — same ~4.5 ft/unit scale, just a lower cap)
   maxVsiFpm: 1600, // full-collective climb (FLIGHT.climbSpeed) maps to this on the VSI

@@ -347,8 +347,10 @@ function buildAndRunMission(mission: MissionDef): Game {
   // Skip the hold-to-spool ritual for headless QA/autostart, AND once the pilot has completed it once
   // before (#9) — after the first time it's a speed bump, so later missions boot engine-running.
   // Open Skies (free-for-all) ALWAYS boots in flight — "no start cycle" (it's a drop-in sandbox, and a
-  // respawn is in-flight too). Campaign/daily keep the cold-start ritual for a first-time pilot.
-  const skipColdStart = params.has('qa') || params.has('autostart') || coldStartSeen() || isFfaId(mission.id) || isProvinceId(mission.id);
+  // respawn is in-flight too). The Living Province / Solo (and campaign/daily) keep the cold-start
+  // ritual for a first-time pilot: the very first round parks shut-down on the home pad so the pilot
+  // spools the rotors and lifts off from base — then coldStartSeen() boots later rounds engine-running.
+  const skipColdStart = params.has('qa') || params.has('autostart') || coldStartSeen() || isFfaId(mission.id);
   // The interactive first-flight coach must be OFF under headless QA — it would interfere with the
   // verify:render scoop→drop autopilot (a hard CI deploy gate). Real boots leave it on; the Game
   // gates it further to a new pilot's first campaign mission.
