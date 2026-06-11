@@ -218,7 +218,7 @@ html,body{margin:0;padding:0}
 body.fn{
   background:
     radial-gradient(130% 60% at 50% -8%, var(--ember-20) 0%, var(--ember-05) 30%, transparent 56%),
-    linear-gradient(180deg,#0a0d10 0%,#0b0e10 42%,#07090b 100%);
+    linear-gradient(180deg,#12171d 0%,#10151b 42%,var(--bg) 100%);
   background-attachment:fixed;
   color:var(--text);font-family:var(--font);line-height:1.6;
   -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
@@ -247,7 +247,7 @@ h1,h2,h3,h4{font-weight:800;letter-spacing:-0.01em;line-height:1.15;color:#fff}
 /* Long-form READING: the article body relaxes to the readable system sans (--font-read). Mono is great
    for headings / chips / numerals but punishing at paragraph length. Section headings stay mono so the
    piece still reads as the cockpit brand — only the running paragraphs relax. */
-.fn-prose{font-size:var(--fs-xl);line-height:1.72;font-family:var(--font-read)}
+.fn-prose{font-size:var(--fs-xl);line-height:1.72;font-family:var(--font-read);color:var(--text-subtle)}
 .fn-prose h2{font-family:var(--mono);font-size:clamp(21px,3vw,27px);margin:38px 0 12px;scroll-margin-top:72px}
 .fn-prose h3{font-family:var(--mono);font-size:clamp(17px,2.4vw,20px);margin:28px 0 10px;color:var(--text)}
 .fn-prose p{margin:0 0 18px}

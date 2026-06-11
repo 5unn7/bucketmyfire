@@ -77,9 +77,9 @@ export const UI = {
   ctaGlow: 'rgba(239,170,43,0.42)',
   // Text hierarchy
   text: 'rgba(255,255,255,0.94)',
-  textSubtle: 'rgba(255,255,255,0.82)', // subtle body white — dimmer than `text`, brighter than `dim`; the
-  // home of the ~0.78–0.86 whites used for card taglines / brief copy (continue card, daily brief) that
-  // had no token and were hand-typed per screen.
+  textSubtle: 'rgba(255,255,255,0.76)', // subtle body / SUBTEXT white — softened from 0.82 so the secondary
+  // copy you READ (card taglines / brief copy, the blog article body) is gentler on the eye over long
+  // sessions, while bright headlines still pop. Dimmer than `text`, brighter than `dim`. Still clears AA (~11:1).
   textCool: 'rgba(198,224,236,0.82)', // body text that wants a COOL cast without claiming "interactive" —
   // the correct home for the cyan-tinted prose that was wrongly using the `accent` (cyan = actionable only).
   ink: '#0c1410', // near-black text for drawing ON a bright fill (a gold medal chip, an accent pill).
@@ -88,6 +88,9 @@ export const UI = {
   faint: 'rgba(255,255,255,0.48)', // smallest labels, captions, separators — lifted from 0.34 for the same
   // sun-legibility floor; as a hairline divider it reads only a touch firmer, which also helps outdoors.
   // Surfaces
+  bg: '#0e1318', // the app / page BASE fill — a LIFTED near-black (was a hand-typed `#05080b` void). Still
+  // deep + premium, but not pure-black against bright type, so long sessions fatigue the eye less and the
+  // pure-white headlines stop blooming. The home for the `#05080b`/blog `#07090b` background literals.
   panel: 'rgba(14,20,27,0.50)', // HUD frosted chip fill — raised from 0.38 so white readouts hold ≥4.5:1
   // over BRIGHT sunlit terrain (verify:contrast). Still 50% translucent + blurred, so the world reads through.
   glass: 'rgba(12,18,25,0.52)', // touch-button fill — a touch more opaque than `panel`, holds up over bright terrain
@@ -278,7 +281,9 @@ export const FW = {
   semibold: '600',
   bold: '700',
   heavy: '800',
-  black: '900',
+  // JetBrains Mono's variable weight axis maxes at 800; a 900 request just clamps to 800,
+  // so name it honestly rather than imply a heavier face exists.
+  black: '800',
 };
 
 export const R = {
