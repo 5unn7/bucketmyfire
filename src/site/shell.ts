@@ -326,11 +326,17 @@ const SHELL_CSS = `
 
 /* ── Interactive readiness checklist — the /prepare TOP card. Its collapsible header reuses the in-game
    .daily card verbatim (injectHomeStyles: .daily-head/.daily-body/.chev/.collapsed); the rules here are
-   only the list's OWN widgets — the progress ring + the check rows. ─── */
-.fd-ring { --p: 0; position: relative; width: 54px; height: 54px; flex: 0 0 auto; border-radius: 50%;
-  background: conic-gradient(var(--ember-hi) calc(var(--p) * 1%), var(--recess) 0); display: grid; place-items: center; }
-.fd-ring::after { content: ""; position: absolute; inset: 6px; border-radius: 50%; background: var(--card-bg); border: 1px solid var(--hair); }
-.fd-ring b { position: relative; z-index: 1; font-family: var(--mono); font-size: var(--fs-sm); font-weight: var(--fw-bold); color: var(--text); }
+   only the list's OWN widgets — the readiness progress BAR + the check rows. ─── */
+/* The "loading bar": a full-width stretched track that fills green as items are checked, with a mono % at
+   the end. Always visible (sits OUTSIDE the collapsible body) so the readiness state reads even when closed. */
+.fd-progress { --p: 0; display: flex; align-items: center; gap: 11px; margin-top: 15px; }
+/* NOTE: distinct from the sticky .fd-bar appbar above (which carries min-height:56px) — this readiness
+   track uses its OWN .fd-pbar names so the appbar rule can't cascade in and inflate it. */
+.fd-pbar { position: relative; flex: 1 1 auto; height: 4px; border-radius: 999px; background: var(--recess); border: 1px solid var(--hair); overflow: hidden; }
+.fd-pbar-fill { position: absolute; left: 0; top: 0; bottom: 0; width: calc(var(--p) * 1%); min-width: 0; border-radius: inherit;
+  background: linear-gradient(90deg, var(--ok-50) 0%, var(--ok) 100%); transition: width .32s cubic-bezier(.4,0,.2,1); }
+.fd-pbar-n { flex: 0 0 auto; font-family: var(--mono); font-size: var(--fs-sm); font-weight: var(--fw-bold); color: var(--ok); letter-spacing: .02em; min-width: 38px; text-align: right; }
+.bmf-app .daily.collapsed .fd-progress { margin-top: 11px; }
 .fd-check-list { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
 .fd-item { display: flex; align-items: flex-start; gap: 12px; padding: 13px 14px; border-radius: var(--r-md);
   background: var(--bezel); border: 1px solid var(--hair); cursor: pointer; transition: border-color .14s, background .14s; }
@@ -341,10 +347,12 @@ const SHELL_CSS = `
 .fd-item.done .fd-box { background: var(--ok); border-color: var(--ok); }
 .fd-box svg { width: 15px; height: 15px; fill: var(--ink); opacity: 0; }
 .fd-item.done .fd-box svg { opacity: 1; }
-.fd-item-txt { min-width: 0; }
-.fd-item-h { font-size: var(--fs-md); font-weight: var(--fw-semibold); color: var(--text); line-height: 1.25; }
+/* Title OVER body, never inline — each is block so the bold action heads the row and the prose sits
+   beneath it. (Was inline → "Clear the house" ran straight into "Move firewood…".) */
+.fd-item-txt { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.fd-item-h { display: block; font-size: var(--fs-md); font-weight: var(--fw-bold); color: var(--text); line-height: 1.25; letter-spacing: .005em; }
 .fd-item.done .fd-item-h { text-decoration: line-through; text-decoration-color: var(--ok-50); color: var(--text-subtle); }
-.fd-item-b { margin-top: 3px; font-size: var(--fs-sm); line-height: 1.45; color: var(--dim); }
+.fd-item-b { display: block; font-size: var(--fs-sm); line-height: 1.5; color: var(--dim); text-align: justify; text-justify: inter-word; hyphens: auto; }
 
 /* ── Live-map overlay + fire-detail sheet (the Map button surface). ───────────── */
 .fd-map-over { position: fixed; inset: 0; z-index: 80; display: flex; flex-direction: column; background: rgba(5,8,11,0.96);

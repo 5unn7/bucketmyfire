@@ -1,5 +1,5 @@
 /**
- * The interactive "15 minutes to ready" wildfire-readiness checklist (the Prepare page's centrepiece).
+ * The interactive "15 mins to fire ready" wildfire-readiness checklist (the Prepare page's centrepiece).
  *
  * Honest-window position: this is general preparedness, not an emergency tool. Every item is a quick,
  * concrete action from our own Field Notes research. The card is COLLAPSIBLE (the header row is the
@@ -107,13 +107,20 @@ export function mountChecklist(host: HTMLElement): void {
   head.setAttribute('aria-expanded', String(!collapsed));
   head.setAttribute('aria-controls', 'fd-check-body');
   head.innerHTML =
-    `<div class="fd-ring" id="fd-ring"><b id="fd-ring-n">0%</b></div>` +
     `<div class="dhead-id fd-hero-main">` +
     `<p class="fd-hero-eyebrow">Prepare</p>` +
-    `<span class="fd-hero-head">15 minutes to ready</span>` +
+    `<span class="fd-hero-head">15 mins to fire ready</span>` +
     `<span class="fd-hero-sub">Get wildfire ready before fire season.</span>` +
     `</div>` +
     `<span class="chev" aria-hidden="true">${ic('chevron-down')}</span>`;
+
+  // The readiness "loading bar" — full-width, always visible (a sibling of the head, so it reads even
+  // when the card is collapsed). Fills green toward 100% as items are checked.
+  const bar = document.createElement('div');
+  bar.className = 'fd-progress';
+  bar.innerHTML =
+    `<div class="fd-pbar"><span class="fd-pbar-fill"></span></div>` +
+    `<b class="fd-pbar-n" id="fd-bar-n" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">0%</b>`;
 
   const body = document.createElement('div');
   body.className = 'daily-body';
@@ -130,7 +137,7 @@ export function mountChecklist(host: HTMLElement): void {
   ).join('');
   body.appendChild(list);
 
-  host.append(head, body);
+  host.append(head, bar, body);
 
   head.addEventListener('click', () => {
     collapsed = host.classList.toggle('collapsed');
@@ -138,12 +145,14 @@ export function mountChecklist(host: HTMLElement): void {
     saveCollapsed(collapsed);
   });
 
-  const ring = head.querySelector<HTMLElement>('#fd-ring');
-  const ringN = head.querySelector<HTMLElement>('#fd-ring-n');
+  const barN = bar.querySelector<HTMLElement>('#fd-bar-n');
   const update = (): void => {
     const pct = Math.round((done.size / ITEMS.length) * 100);
-    if (ring) ring.style.setProperty('--p', String(pct));
-    if (ringN) ringN.textContent = `${pct}%`;
+    bar.style.setProperty('--p', String(pct));
+    if (barN) {
+      barN.textContent = `${pct}%`;
+      barN.setAttribute('aria-valuenow', String(pct));
+    }
   };
   update();
 

@@ -32,7 +32,7 @@ export function tokenDecls(): string {
     `--ember-05:${HOME.ember05};--ember-10:${HOME.ember10};--ember-12:${HOME.ember12};--ember-14:${HOME.ember14};--ember-18:${HOME.ember18};--ember-20:${HOME.ember20};--ember-22:${HOME.ember22};--ember-30:${HOME.ember30};--ember-32:${HOME.ember32};--ember-35:${HOME.ember35};--ember-40:${HOME.ember40};--ember-42:${HOME.ember42};--ember-50:${HOME.ember50};`,
     `--fire-06:${HOME.fire06};--fire-12:${HOME.fire12};--fire-16:${HOME.fire16};--fire-28:${HOME.fire28};--fire-55:${HOME.fire55};`,
     `--glow-50:${HOME.glow50};--glow-60:${HOME.glow60};--glow-80:${HOME.glow80};--glow-90:${HOME.glow90};--warm-26:${HOME.warm26};--warm-38:${HOME.warm38};`,
-    `--gold-32:${HOME.gold32};--gold-70:${HOME.gold70};--ok-12:${HOME.ok12};--ok-50:${HOME.ok50};`,
+    `--gold-32:${HOME.gold32};--gold-70:${HOME.gold70};--ok-12:${HOME.ok12};--ok-50:${HOME.ok50};--ok-glaze:${HOME.okGlaze};--ok-glaze-soft:${HOME.okGlazeSoft};`,
     `--caution-12:${HOME.caution12};--caution-50:${HOME.caution50};`,
     `--warn-10:${HOME.warn10};--warn-16:${HOME.warn16};--warn-18:${HOME.warn18};--warn-22:${HOME.warn22};--warn-50:${HOME.warn50};`,
     `--rank:${HOME.rank};--card-bg:${HOME.cardBg};`,

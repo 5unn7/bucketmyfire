@@ -52,15 +52,13 @@ function campaignMarkup(): string {
 ${frontScene()}
 ${frontAppbar('campaign')}
 <div class="pad fhome">
-  <section class="card warm cut fcamp-hero rise">
-    <div class="fd-hero">
-      <div class="fd-hero-main">
-        <p class="fd-hero-eyebrow">Campaign · Solo</p>
-        <h1 class="fd-hero-head">Fly solo.</h1>
-        <p class="fd-hero-sub">Pick your ground and your aircraft, then fly a private round — just you, the fire, and the towns to hold.</p>
-      </div>
+  <header class="fcamp-hero fd-hero rise">
+    <div class="fd-hero-main">
+      <p class="fd-hero-eyebrow">Campaign · Solo</p>
+      <h1 class="fd-hero-head">Fly solo.</h1>
+      <p class="fd-hero-sub">Pick your ground and your aircraft, then fly a private round — just you, the fire, and the towns to hold.</p>
     </div>
-  </section>
+  </header>
 
   <section class="fcamp-wizard" id="fd-wizard"></section>
 
@@ -124,7 +122,7 @@ function injectCampaignStyles(): void {
   const s = document.createElement('style');
   s.id = 'fd-camp-css';
   s.textContent = `
-.bmf-app.front .fcamp-hero { padding: 22px 22px 24px; }
+.bmf-app.front .fcamp-hero { padding: 2px 2px 0; }
 .bmf-app.front .fcamp-wizard { display: flex; flex-direction: column; gap: 16px; }
 .bmf-app.front .fcamp-whead { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .bmf-app.front .fcamp-whead h2 { font-size: clamp(20px, 2.4vw, 25px); color: #fff; }

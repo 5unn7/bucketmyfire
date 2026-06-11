@@ -5,7 +5,7 @@
  * shared front-door chrome (frontShell → the `.bmf-app.front` scroll shell + `.fhome-bar` appbar). No
  * bespoke layout: every surface is an existing brand cut-corner card. Light — no Three, no game bundle.
  *
- * Cards (all `.card cut`): the TOP card is the collapsible "15 minutes to ready" readiness checklist
+ * Cards (all `.card cut`): the TOP card is the collapsible "15 mins to fire ready" readiness checklist
  * (mountChecklist, reusing the `.daily` collapsible); below it, Field Notes — our own articles, as
  * mission-style poster cards (mountBlogCarousel into a `.fd-mgrid`).
  */
@@ -48,7 +48,7 @@ function prepareMarkup(): string {
 ${frontScene()}
 ${frontAppbar('prepare')}
 <div class="pad fhome">
-  <section class="card warm cut rise" id="checklist"></section>
+  <section class="card green cut rise" id="checklist"></section>
 
   <section class="card cut">
     <div class="sec"><span class="tag">Field Notes</span><span class="line"></span></div>

@@ -176,6 +176,8 @@ export const HOME = {
   gold70: 'rgba(255,194,74,0.7)',
   ok12: 'rgba(99,214,138,0.12)', // UI.ok wash
   ok50: 'rgba(99,214,138,0.5)', // UI.ok edge
+  okGlaze: 'rgba(99,214,138,0.16)', // green "readiness" card glaze — hi corner stop (the warm-card glaze in a safe/ready register)
+  okGlazeSoft: 'rgba(99,214,138,0.06)', // green readiness card glaze — soft mid stop
   caution12: 'rgba(255,200,97,0.12)', // UI.caution wash (the amber "being held" badge)
   caution50: 'rgba(255,200,97,0.5)', // UI.caution edge
   warn10: 'rgba(255,93,77,0.1)', // UI.warn wash (danger button)

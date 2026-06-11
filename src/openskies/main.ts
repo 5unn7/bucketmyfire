@@ -50,16 +50,14 @@ function openSkiesMarkup(): string {
 ${frontScene()}
 ${frontAppbar('open-skies')}
 <div class="pad fhome">
-  <section class="card warm cut osk-hero rise">
-    <div class="fd-hero">
-      <div class="fd-hero-main">
-        <p class="fd-hero-eyebrow">Open Skies · Live</p>
-        <h1 class="fd-hero-head">Everyone flies the same fire.</h1>
-        <p class="fd-hero-sub">One live province, every pilot in it. Dispatch calls as fires break out. Get to each one before it reaches the towns.</p>
-      </div>
-      <div class="fd-hero-trail"><span class="badge ok">Live</span></div>
+  <header class="osk-hero fd-hero rise">
+    <div class="fd-hero-main">
+      <p class="fd-hero-eyebrow">Open Skies · Live</p>
+      <h1 class="fd-hero-head">Everyone flies the same fire.</h1>
+      <p class="fd-hero-sub">One live province, every pilot in it. Dispatch calls as fires break out. Get to each one before it reaches the towns.</p>
     </div>
-  </section>
+    <div class="fd-hero-trail"><span class="badge ok">Live</span></div>
+  </header>
 
   <section class="osk-pick" id="fd-picker"></section>
 
@@ -96,7 +94,7 @@ function injectOpenSkiesStyles(): void {
   const s = document.createElement('style');
   s.id = 'fd-osk-css';
   s.textContent = `
-.bmf-app.front .osk-hero { padding: 22px 22px 24px; }
+.bmf-app.front .osk-hero { padding: 2px 2px 0; }
 .bmf-app.front .osk-hero .fd-hero-trail { align-self: flex-start; }
 .bmf-app.front .osk-pick { display: flex; flex-direction: column; gap: 14px; }
 .bmf-app.front .osk-pick .sec { margin: 0; }

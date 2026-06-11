@@ -270,9 +270,9 @@ ${frontAppbar('home')}
     </button>
 
     <!-- Prepare row — the 15-min checklist promo + the Field Notes rail. -->
-    <a class="card warm cut fhome-prep" href="/prepare/#checklist">
+    <a class="card green cut fhome-prep" href="/prepare/#checklist">
       <p class="fhome-eyebrow">Prepare</p>
-      <span class="h-big fhome-prep-h">15 minutes to ready</span>
+      <span class="h-big fhome-prep-h">15 mins to fire ready</span>
       <span class="fhome-prep-b">An interactive wildfire-readiness checklist. Six concrete actions that lower your wildfire risk.</span>
       <span class="fhome-prep-go">Start the checklist →</span>
     </a>
