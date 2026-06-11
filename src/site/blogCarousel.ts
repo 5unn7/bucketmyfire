@@ -29,12 +29,13 @@ function card(a: FeedArticle, i: number): string {
   const px = PROC_X[i % PROC_X.length];
   const py = PROC_Y[i % PROC_Y.length];
   return (
-    `<a class="fd-mcard fd-card" href="/blog/${esc(a.slug)}/" aria-label="Read ${esc(a.title)}">` +
+    `<a class="fd-mcard fd-card fd-note" href="/blog/${esc(a.slug)}/" aria-label="Read ${esc(a.title)}">` +
     `<div class="fd-m-art proc" style="--px:${px}%;--py:${py}%"></div>` +
     `<span class="fd-m-scrim"></span>` +
     `<div class="fd-m-body">` +
     `<span class="fd-m-no">${esc(a.pillarTitle)}</span>` +
     `<div class="fd-m-name">${esc(a.title)}</div>` +
+    `<span class="fd-m-go">Read →</span>` +
     `</div>` +
     `</a>`
   );
@@ -42,12 +43,13 @@ function card(a: FeedArticle, i: number): string {
 
 function fallbackCard(): string {
   return (
-    `<a class="fd-mcard fd-card" href="/blog/" aria-label="Read Field Notes">` +
+    `<a class="fd-mcard fd-card fd-note" href="/blog/" aria-label="Read Field Notes">` +
     `<div class="fd-m-art proc" style="--px:70%;--py:18%"></div>` +
     `<span class="fd-m-scrim"></span>` +
     `<div class="fd-m-body">` +
     `<span class="fd-m-no">Field Notes</span>` +
     `<div class="fd-m-name">Plain answers to real wildfire questions</div>` +
+    `<span class="fd-m-go">Read →</span>` +
     `</div>` +
     `</a>`
   );

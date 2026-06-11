@@ -481,9 +481,11 @@ function injectHomeBentoStyles(): void {
 
 /* OPEN SKIES play tile — key-art backdrop + the same fade. The top overlay banner (profile + live
    presence) and the base copy split top/bottom via space-between, both above the art/fade. */
-/* Mobile: a SHORT landscape card (was a tall 4/5 portrait) so the hero + this gameplay card both clear
-   the first viewport — the fold. Desktop overrides aspect-ratio:auto in the 880px band above. */
-.bmf-app.front .fhome-play { position: relative; overflow: hidden; display: flex; flex-direction: column; justify-content: space-between; cursor: pointer; aspect-ratio: 16 / 10; padding: 20px 17px; text-align: left; }
+/* Mobile: a content-sized card with a min-height FLOOR (was a hard 16/10 aspect that capped the box below
+   its own content height, so overflow:hidden clipped the banner/CTA and buried the art). The card now grows
+   to fit the banner + copy + Fly CTA and the key-art reads. Desktop overrides aspect-ratio:auto in the 880px
+   band above; grid align-items:stretch sizes it there. */
+.bmf-app.front .fhome-play { position: relative; overflow: hidden; display: flex; flex-direction: column; justify-content: space-between; gap: 18px; cursor: pointer; min-height: 420px; padding: 20px 17px; text-align: left; }
 .bmf-app.front .fhome-play:hover { transform: translateY(-2px); }
 /* Top overlay banner: profile cluster (left) + live presence chip (right). */
 .bmf-app.front .fhome-play-banner { position: relative; z-index: 2; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }

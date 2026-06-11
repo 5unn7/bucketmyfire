@@ -20,6 +20,7 @@
 import { cleanCallsign } from '../three/ui/callsign';
 import { careerScore, rankFor, nextRankProgress } from '../three/missions/rank';
 import { fmtInt } from '../three/livefire/strings';
+import { submitContact } from '../three/leaderboard/client';
 import { tabbarHtml, footerBrandHtml, footerNavHtml } from './siteNav.mjs';
 
 export type ShellPage = 'home' | 'campaign' | 'prepare';
@@ -39,6 +40,7 @@ export function buildFooter(): string {
     footerNavHtml() +
     `<p class="fd-disclaimer">A window onto real data, not an emergency tool. Always follow official sources and local authorities.</p>` +
     `<div class="fd-foot-links">` +
+    `<button type="button" class="fd-foot-contact" data-front="contact">Contact</button>` +
     `<a href="/privacy.html">Privacy</a>` +
     `<a href="/terms.html">Terms</a>` +
     `</div>` +
@@ -177,6 +179,94 @@ function closeSettings(): void {
   document.removeEventListener('keydown', onSettingsEsc);
 }
 
+/**
+ * The agency "work with us" contact modal — a short enquiry form (name + a short description + a reply-to
+ * email) opened from the footer Contact link (wired by wireFrontAppbar's `[data-front="contact"]`). It
+ * posts to the locked `contacts` table via the `submit_contact` RPC (best-effort + env-gated in the
+ * leaderboard client). Self-contained + kit-styled, mirroring the settings popover. No user text is ever
+ * `innerHTML`-d: the form is static markup, values are read off the inputs, and the states swapped in are
+ * static copy.
+ */
+export function openContact(): void {
+  if (document.getElementById('fd-contact')) return;
+
+  const back = document.createElement('div');
+  back.id = 'fd-contact';
+  back.className = 'fd-pop-back fd-contact-back';
+  back.addEventListener('click', (e) => {
+    if (e.target === back) closeContact();
+  });
+
+  const card = document.createElement('div');
+  card.className = 'fd-pop fd-card metal';
+  card.setAttribute('role', 'dialog');
+  card.setAttribute('aria-label', 'Work with us');
+  card.innerHTML =
+    `<div class="fd-pop-head"><h3>Work with us</h3><button class="fd-pop-x" type="button" aria-label="Close">✕</button></div>` +
+    `<form class="fd-cform" novalidate>` +
+    `<p class="fd-cform-lead">Let's build your digital solution.</p>` +
+    `<label class="fd-field"><span>Name</span><input type="text" name="name" autocomplete="name" maxlength="80" required></label>` +
+    `<label class="fd-field"><span>Email</span><input type="email" name="email" autocomplete="email" inputmode="email" maxlength="254" required></label>` +
+    `<label class="fd-field"><span>Phone <i>(optional)</i></span><input type="tel" name="phone" autocomplete="tel" inputmode="tel" maxlength="32"></label>` +
+    `<label class="fd-field"><span>Tell us something about the project</span><textarea name="description" rows="3" maxlength="2000" required></textarea></label>` +
+    `<p class="fd-cform-msg" role="status" aria-live="polite"></p>` +
+    `<button class="btn primary fd-cform-go" type="submit">Send enquiry</button>` +
+    `</form>`;
+  back.appendChild(card);
+  document.body.appendChild(back);
+
+  card.querySelector('.fd-pop-x')?.addEventListener('click', closeContact);
+  const form = card.querySelector('form') as HTMLFormElement;
+  const msg = card.querySelector('.fd-cform-msg') as HTMLElement;
+  const go = card.querySelector('.fd-cform-go') as HTMLButtonElement;
+  (card.querySelector('input[name="name"]') as HTMLInputElement | null)?.focus();
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const name = (form.elements.namedItem('name') as HTMLInputElement).value.trim();
+    const desc = (form.elements.namedItem('description') as HTMLTextAreaElement).value.trim();
+    const email = (form.elements.namedItem('email') as HTMLInputElement).value.trim();
+    const phone = (form.elements.namedItem('phone') as HTMLInputElement).value.trim();
+    msg.className = 'fd-cform-msg';
+    if (!name || !desc) {
+      msg.classList.add('err');
+      msg.textContent = 'Please add your name and a note about the project.';
+      return;
+    }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      msg.classList.add('err');
+      msg.textContent = 'Please enter a valid email.';
+      return;
+    }
+    go.disabled = true;
+    go.textContent = 'Sending…';
+    void submitContact(name, desc, email, phone).then((ok) => {
+      if (ok) {
+        // Static success panel (no user text echoed). The form is replaced wholesale.
+        form.innerHTML =
+          `<p class="fd-cform-msg ok">Thanks — we'll be in touch.</p>` +
+          `<button class="btn ghost fd-cform-go" type="button">Close</button>`;
+        form.querySelector('button')?.addEventListener('click', closeContact);
+      } else {
+        go.disabled = false;
+        go.textContent = 'Send enquiry';
+        msg.className = 'fd-cform-msg err';
+        msg.textContent = "Couldn't send right now — please try again in a moment.";
+      }
+    });
+  });
+
+  document.addEventListener('keydown', onContactEsc);
+}
+
+function onContactEsc(e: KeyboardEvent): void {
+  if (e.key === 'Escape') closeContact();
+}
+function closeContact(): void {
+  document.getElementById('fd-contact')?.remove();
+  document.removeEventListener('keydown', onContactEsc);
+}
+
 /** Apply the saved reduce-motion preference to <html> as early as a page controller runs. */
 export function applyMotionPref(): void {
   if (localStorage.getItem('bmf.reduceMotion') === '1') {
@@ -254,6 +344,33 @@ const SHELL_CSS = `
 .fd-pop-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
 .fd-pop-actions .btn { text-decoration: none; }
 
+/* ── Agency "work with us" contact modal — the short enquiry form. Reuses the .fd-pop popover shell; these
+   rules are only the centred placement + the form-field widgets (all values are theme tokens). ── */
+/* Centred over the busy bento + a DARKER, more-blurred scrim than the corner settings popover, so the
+   page reads as pushed back. */
+.fd-contact-back { align-items: center; justify-content: center; padding: 20px 14px;
+  background: rgba(5,8,11,0.72); backdrop-filter: blur(8px) saturate(115%); -webkit-backdrop-filter: blur(8px) saturate(115%); }
+/* FROST the card itself: a heavier blur + a near-opaque metal fill over it (the bare .fd-card.metal token
+   is translucent → it read as see-through), plus a lifted shadow so it floats above the scrim. */
+.fd-contact-back .fd-pop { max-width: 430px;
+  background: linear-gradient(180deg, rgba(16,23,30,0.92), rgba(11,16,21,0.95));
+  backdrop-filter: blur(22px) saturate(125%); -webkit-backdrop-filter: blur(22px) saturate(125%);
+  box-shadow: var(--shadow-card), 0 24px 70px rgba(0,0,0,0.55); }
+.fd-cform { display: flex; flex-direction: column; gap: 12px; }
+.fd-cform-lead { margin: 0 0 2px; font-size: var(--fs-md); line-height: 1.4; color: var(--text); font-weight: var(--fw-semibold); }
+.fd-field { display: flex; flex-direction: column; gap: 5px; }
+.fd-field > span { font-family: var(--mono); font-size: var(--fs-micro); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+.fd-field > span i { font-style: normal; color: var(--faint); text-transform: none; letter-spacing: 0; }
+.fd-field input, .fd-field textarea { width: 100%; box-sizing: border-box; background: var(--recess); border: 1px solid var(--stroke);
+  border-radius: var(--r-sm); color: var(--text); font-family: var(--font); font-size: var(--fs-md); padding: 10px 12px; }
+.fd-field textarea { resize: vertical; min-height: 82px; line-height: 1.45; }
+.fd-field input:focus, .fd-field textarea:focus { outline: none; border-color: var(--warm-stroke); box-shadow: 0 0 0 3px var(--ember-12); }
+.fd-cform-msg { margin: 0; min-height: 1.1em; font-size: var(--fs-sm); line-height: 1.4; }
+.fd-cform-msg.ok { color: var(--ok); }
+.fd-cform-msg.err { color: var(--warn); }
+.fd-cform-go { width: 100%; justify-content: center; }
+.fd-cform-go[disabled] { opacity: .6; pointer-events: none; }
+
 /* ── Card of record + section header (mirrors ui/home/styles.ts .card; also in index.html critical). ── */
 .fd-card { position: relative; background: var(--metal-hi); border: 1px solid var(--stroke); border-top-color: var(--bevel-top);
   border-radius: var(--r-md); box-shadow: var(--shadow-card), inset 0 1px 0 rgba(255,255,255,0.05); padding: 16px 17px; }
@@ -319,6 +436,14 @@ const SHELL_CSS = `
 .fd-mcard .fd-m-body .fd-m-no { display: block; margin-bottom: 6px; }
 .fd-mcard .fd-m-name { font-size: var(--fs-title); font-weight: var(--fw-black); color: #fff; line-height: 1.08; }
 .fd-mcard .fd-m-tag { margin-top: 5px; font-size: var(--fs-sm); line-height: 1.4; color: var(--text-subtle); }
+/* Field Notes variant (.fd-note): the article posters are title-forward (no body subtext — the description
+   lives in page meta + the manifest), so a lifted scrim keeps the title + Read → legible at the base over a
+   taller crop. Scoped here so the gameplay PICK posters (flyPicker.ts, image-forward) keep the base treatment. */
+.fd-mcard.fd-note .fd-m-scrim { background: linear-gradient(180deg, rgba(6,9,11,0.05) 0%, rgba(6,9,11,0.62) 50%, rgba(6,9,11,0.97) 100%); }
+/* Mobile: run the Field Notes posters TALLER than the base 3/4 — a true movie-poster crop (2/3) that gives
+   the art column room above the enriched body. Mobile-only + .fd-note-scoped (desktop + gameplay pick cards
+   keep --ar-poster). */
+@media (max-width: 759px) { .fd-mcard.fd-note { aspect-ratio: 2 / 3; } }
 .fd-mcard .fd-m-diff { display: inline-flex; gap: 3px; margin-top: 9px; }
 .fd-mcard .fd-m-diff i { width: 7px; height: 7px; border-radius: 1px; transform: rotate(45deg); background: var(--fire); box-shadow: 0 0 6px var(--ember-35); }
 .fd-mcard .fd-m-diff i.off { background: var(--recess); box-shadow: none; }
@@ -417,8 +542,10 @@ const SHELL_CSS = `
 .fd-foot .fd-disclaimer { order: 1; flex: 1 1 100%; margin: 0; font-size: var(--fs-sm); max-width: 60ch; }
 .fd-foot-links { order: 2; flex: 0 1 auto; min-width: 0; display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; }
 .fd-foot .site-foot-brand { align-self: center; }
-.fd-foot-links a { text-decoration: none; color: var(--dim); font-size: var(--fs-sm); font-weight: var(--fw-semibold); min-height: 44px; display: inline-flex; align-items: center; }
-.fd-foot-links a:hover { color: var(--text); }
+.fd-foot-links a, .fd-foot-links .fd-foot-contact { text-decoration: none; color: var(--dim); font-size: var(--fs-sm); font-weight: var(--fw-semibold); min-height: 44px; display: inline-flex; align-items: center; }
+.fd-foot-links a:hover, .fd-foot-links .fd-foot-contact:hover { color: var(--text); }
+/* The Contact link is a <button> (opens the modal) — strip the native chrome so it reads as a link. */
+.fd-foot-links .fd-foot-contact { appearance: none; background: none; border: 0; padding: 0; cursor: pointer; font-family: var(--font); }
 
 /* ── Mobile bottom tab bar. ───────────────────────────────────────────────────── */
 /* The base .fd-tabbar / .fd-tab rules now live in siteNav.mjs (navCss) — ONE source shared with the
