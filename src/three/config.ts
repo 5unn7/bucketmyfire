@@ -674,8 +674,8 @@ export const CRASH = {
 // bridge sits over real water (see meshes/bridges.ts + World.namedRiverPath/projectLatLon). The dare:
 // descend below the deck and thread the helicopter UNDER it, low over the river — clip the deck, the
 // truss, or a bank pier and you STRIKE (reuses the crash pipeline → crumble + fall + detonate, cause
-// 'bridge'). A clean pass-through earns a quiet radio nod naming that bridge (recognition only — no
-// score change), gated by `rewardCooldown`. World shapes a river VALLEY at each so the bridge spans
+// 'bridge'). A clean pass-through earns a radio nod — and the `FFA.pointsPerBridge` stunt bonus where
+// points are live — gated by `rewardCooldown`. World shapes a river VALLEY at each so the bridge spans
 // the banks instead of standing on stilts. Bridges whose river isn't on the active map skip silently
 // (so non-SK maps get none). Dimensions are SHARED across all bridges. All values are WORLD UNITS
 // unless noted. Set enabled:false to remove them all; trim `sites` to remove individual bridges.
@@ -1805,7 +1805,7 @@ export const FFA = {
   spawnEverySec: 5, // cadence (s) at which the spawner tries to add one fire while under targetActive
   pointsPerFire: 50, // score awarded per fire knocked down with water
   pointsPerHit: 6, // small bonus per EFFECTIVE drop (rewards steady, accurate work between kills)
-  pointsPerBridge: 250, // stunt bonus for cleanly threading UNDER a bridge deck (the "crazy move")
+  pointsPerBridge: 2000, // stunt bonus for cleanly threading UNDER a bridge deck (the "crazy move")
   fireMilestone: 10, // reserved — a separate fires-knocked-down readout (the in-flight HUD now shows ONE counter: Points)
   scoreMilestone: 500, // the live "Points  N/M" readout rounds the target up to the next multiple of this — keeps it always chasing
   boardEverySec: 45, // push the running score to the shared per-day board this often (so others see you climb)
@@ -1871,8 +1871,9 @@ export const PROVINCE = {
   onboardMaxWaitSec: 35, // emit the NEXT teaching call by this long after the last even if unanswered (no soft-lock)
 } as const;
 
-// --- Live wildfire tracker (the home-screen "honest window" — real CWFIS/CIFFC/ECCC data on a Leaflet
-//     map). Look/feel knobs only; the data sources + freshness live in src/three/livefire/. ----------
+// --- Live wildfire tracker (the home-screen "honest window" — real CWFIS/CIFFC/ECCC data on the 3D
+//     globe, with the flat Leaflet map behind ?flat=1). Look/feel knobs only; the data sources +
+//     freshness live in src/three/livefire/. ---------------------------------------------------------
 export const LIVEFIRE = {
   // Fire-Weather-Index WMS raster opacity. The danger field is a full-bleed orange wash, so keep it LOW
   // enough that the basemap (towns, lakes, the fire dots) stays legible underneath. Was 0.42 (washed the

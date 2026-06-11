@@ -60,6 +60,13 @@ export interface Livery {
   lineAt: number; // height fraction at the cheatline centre
   lineHalf: number; // half-thickness of the cheatline (fraction)
   glow: number; // emissive intensity of the cheatline (blooms via post-fx)
+  // --- Optional finish (paint sheen) — omit for the default semi-gloss ---------
+  roughness?: number; // body micro-roughness: lower = glossier (default 0.52)
+  metalness?: number; // body metalness: higher = more metallic flake (default 0.18)
+  clearcoat?: number; // 0..1 lacquer layer over the paint (default 0 = off). >0 → a polished,
+  //                     show-car sheen: a sharp sun highlight + crisp env reflection on top of
+  //                     the base colour, independent of the base roughness (the MeshPhysical path).
+  clearcoatRoughness?: number; // lacquer micro-roughness — lower = a tighter, wetter highlight (default 0.1)
 }
 
 export interface HeliModelSpec {
@@ -118,6 +125,12 @@ export interface HeliModelSpec {
    *  airfoil blades, flybar, gearbox). `splitRotorMinY` is still used to strip the merged
    *  mesh's blade geometry from the body so the proc rotor sits cleanly on top. */
   useProcRotor?: boolean;
+  /** For a model whose GLAZING is baked into a diffuse TEXTURE we discard (e.g. a spec-gloss export
+   *  that renders clay → repaints wholesale, burying the windows under body paint): load the diffuse
+   *  PNG ourselves and carve the glass-coloured (teal/bluish) triangles back out into a glass mesh,
+   *  so the canopy reads as tinted glass instead of painted body. Loaded + applied DEFERRED (the
+   *  windows pop in a frame later, like the door logo). Omit → no texture-driven glass. */
+  glassFromTexture?: { url: string };
   /** Brand icon decal on both cabin doors. `offset` = the PORT (+Z) door-centre in group-local
    *  (= world) units [+x nose, +y up, +z port]; the starboard copy mirrors to −z and faces outward.
    *  `size` = decal HEIGHT in world units (width locked to the icon's ~0.81:1 aspect). Dial live with
@@ -139,10 +152,14 @@ export const HELI_MODELS: Record<string, HeliModelSpec> = {
     fuselageNode: 'Object_22',
     mainRotorNode: 'Object_13',
     tailRotorNode: 'Object_3',
-    // Crimson tanker: white roof, fire-red flank, graphite belly, hot-amber cheatline.
+    // The hero "204" — the FIRST bird every pilot flies, so it's a showpiece, not a work hack: a
+    // glossy pearl-white roof over a deep candy-crimson flank, a polished gunmetal belly, and a hot
+    // amber pinstripe that BLOOMS through the post-fx. A full clearcoat lacquer gives it a wet,
+    // show-car sheen — a sharp sun streak rides the white roof and the crimson reads like candy paint.
     livery: {
-      roof: 0xeceff1, flank: 0xc12a1b, sill: 0x16181d, line: 0xff8a1e, glass: 0x0d1622, blade: 0x1b1d22,
-      roofAt: 0.66, sillAt: 0.2, lineAt: 0.6, lineHalf: 0.035, glow: 2.2,
+      roof: 0xf4f7fa, flank: 0xb31f2a, sill: 0x33373d, line: 0xffb12e, glass: 0x0b1320, blade: 0x1b1d22,
+      roofAt: 0.6, sillAt: 0.18, lineAt: 0.585, lineHalf: 0.04, glow: 2.7,
+      roughness: 0.24, metalness: 0.28, clearcoat: 1, clearcoatRoughness: 0.07,
     },
     // Brand mark on both cabin doors ([fore/aft, height]; z fallback) — tuned in ?heliview.
     doorLogo: { offset: [0.5, 1.2, 0.55], size: 0.72 },
@@ -202,6 +219,9 @@ export const HELI_MODELS: Record<string, HeliModelSpec> = {
       roof: 0xb9c2a6, flank: 0x4a5a36, sill: 0x14160f, line: 0xffd21a, glass: 0x0d1622, blade: 0x17181c,
       roofAt: 0.66, sillAt: 0.2, lineAt: 0.6, lineHalf: 0.04, glow: 2.0,
     },
+    // The army diffuse renders clay (spec-gloss) so the canopy gets painted olive — carve the teal
+    // glazing baked into that diffuse back out into a glass mesh so the windows read as glass.
+    glassFromTexture: { url: BASE + 'models/blackhawk/us_army_uh-60m_black_hawk_low_poly_model/textures/UH60M_diffuse.png' },
     // Brand mark on both cabin doors ([fore/aft, height]; z fallback) — tuned in ?heliview.
     doorLogo: { offset: [-2.02, 1.16, 0.32], size: 0.78 },
   },
@@ -370,6 +390,13 @@ export function swapInModel(heli: HelicopterMesh, heliId?: string, onReady?: () 
         if (paint) bodyMeshes.push(paint);
       }
       paintLivery(model, bodyMeshes, bodyMat);
+
+      // --- Texture-baked glass (e.g. UH-60) --------------------------------
+      // Models whose canopy is painted into a discarded spec-gloss diffuse just got their windows
+      // buried under body paint. Load that diffuse ourselves and carve the teal glazing triangles
+      // out of each painted mesh into a glass sibling. Deferred (async decode) → windows pop in a
+      // frame later; the painted meshes captured here are exactly the ones to re-split.
+      if (spec.glassFromTexture) carveGlassFromTexture(spec.glassFromTexture.url, bodyMeshes.slice(), glassMat);
 
       // --- Blades stay matte-dark ------------------------------------------
       // For useProcRotor models the proc rotor already carries the right materials
@@ -697,8 +724,17 @@ function addProcTailRotor(parent: THREE.Object3D, radius: number): void {
  * blooms through the post-fx. Patched once at construction (compiles once at load — no runtime
  * recompiles), and each airframe builds its own so `uGlow` carries that ship's accent.
  */
-function makeBodyMat(liv: Livery): THREE.MeshStandardMaterial {
-  const mat = new THREE.MeshStandardMaterial({ roughness: 0.52, metalness: 0.18 });
+function makeBodyMat(liv: Livery): THREE.MeshPhysicalMaterial {
+  // MeshPhysical (a superset of Standard — same shader chunks, so the onBeforeCompile patches below
+  // still bind) so a livery can opt into a `clearcoat` lacquer for a polished, show-car sheen. With
+  // clearcoat omitted/0 it behaves exactly like the old Standard semi-gloss, so the other airframes
+  // are byte-unchanged. Compiles once at load — no runtime recompiles.
+  const mat = new THREE.MeshPhysicalMaterial({
+    roughness: liv.roughness ?? 0.52,
+    metalness: liv.metalness ?? 0.18,
+    clearcoat: liv.clearcoat ?? 0,
+    clearcoatRoughness: liv.clearcoatRoughness ?? 0.1,
+  });
   // Everything is driven by `aHeight` (the body's 0..1 height fraction, baked per vertex in
   // paintLivery) so the zones and cheatline are crisp PER-PIXEL — a low-poly fuselage gets a
   // sharp beltline, not a fat gradient smeared across a few big triangles. Uniforms carry this
@@ -807,6 +843,80 @@ function splitTexturedBody(mesh: THREE.Mesh, bodyMat: THREE.Material): THREE.Mes
   paint.receiveShadow = true;
   (mesh.parent ?? mesh).add(paint);
   return paint;
+}
+
+/**
+ * Carve the GLASS out of already-painted body meshes by reading a DISCARDED diffuse texture. For a
+ * model whose glazing is baked into a spec-gloss diffuse (which renders clay, so paintLivery already
+ * repainted the whole airframe — windows included — in body paint), we load that PNG ourselves and
+ * test each triangle's UV centroid: a teal/cyan texel (the tinted canopy) is glass. Matching tris
+ * move into a sibling mesh wearing `glassMat`; the source mesh keeps the rest with its livery paint.
+ * Async (image decode) → the windows pop in a frame later, exactly like the door logo. Shares the
+ * source attribute buffers (different index only), so it's cheap and pixel-aligned in place.
+ */
+function carveGlassFromTexture(url: string, meshes: THREE.Mesh[], glassMat: THREE.Material): void {
+  const img = new Image();
+  img.onload = () => {
+    const w = img.width;
+    const h = img.height;
+    if (!w) return;
+    const cv = document.createElement('canvas');
+    cv.width = w;
+    cv.height = h;
+    const ctx = cv.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
+    ctx.drawImage(img, 0, 0);
+    const px = ctx.getImageData(0, 0, w, h).data;
+    const wrap = (t: number): number => t - Math.floor(t); // UVs can run outside [0,1]
+    const isGlass = (u: number, vv: number): boolean => {
+      const x = Math.min(w - 1, Math.floor(wrap(u) * w));
+      const y = Math.min(h - 1, Math.floor(wrap(vv) * h)); // glTF v=0 is the top row (flipY=false)
+      const i = (y * w + x) * 4;
+      const r = px[i] / 255;
+      const g = px[i + 1] / 255;
+      const b = px[i + 2] / 255;
+      // Tinted glazing reads TEAL/CYAN: green + blue lifted above red and roughly level with each
+      // other (the `g − b` floor rejects pure-blue decals), and bright enough to exclude the
+      // near-black body. Everything else stays painted.
+      return Math.max(r, g, b) > 0.18 && g - r > 0.05 && b - r > 0.02 && g - b > -0.12 && b > 0.14;
+    };
+    for (const mesh of meshes) {
+      const geo = mesh.geometry;
+      const uv = geo.attributes.uv;
+      if (!uv) continue;
+      const index = geo.index;
+      const triCount = index ? index.count / 3 : uv.count / 3;
+      const vi = (t: number, k: number): number => (index ? index.getX(t * 3 + k) : t * 3 + k);
+      const glassIdx: number[] = [];
+      const keepIdx: number[] = [];
+      for (let t = 0; t < triCount; t++) {
+        const a = vi(t, 0);
+        const b = vi(t, 1);
+        const c = vi(t, 2);
+        const cu = (uv.getX(a) + uv.getX(b) + uv.getX(c)) / 3;
+        const cv2 = (uv.getY(a) + uv.getY(b) + uv.getY(c)) / 3;
+        (isGlass(cu, cv2) ? glassIdx : keepIdx).push(a, b, c);
+      }
+      if (!glassIdx.length) continue;
+      const sub = (idx: number[]): THREE.BufferGeometry => {
+        const gg = new THREE.BufferGeometry();
+        gg.setAttribute('position', geo.attributes.position);
+        if (geo.attributes.normal) gg.setAttribute('normal', geo.attributes.normal);
+        if (geo.attributes.uv) gg.setAttribute('uv', geo.attributes.uv);
+        if (geo.attributes.aHeight) gg.setAttribute('aHeight', geo.attributes.aHeight);
+        gg.setIndex(idx);
+        gg.computeBoundingSphere();
+        return gg;
+      };
+      mesh.geometry = sub(keepIdx); // source keeps the painted body, minus the glazing
+      const glass = new THREE.Mesh(sub(glassIdx), glassMat);
+      glass.name = 'glassCarved';
+      glass.castShadow = true;
+      glass.receiveShadow = true;
+      (mesh.parent ?? mesh).add(glass); // sibling → same transform, renders in place
+    }
+  };
+  img.src = url;
 }
 
 /**

@@ -86,11 +86,11 @@ const HELI_ART = '/images/heli/';
 export const HELIS: CatalogItem[] = [
   {
     id: 'bell-205a1',
-    name: 'Bell 205A-1',
+    name: 'Bell 204',
     tagline: 'The trainer',
     blurb: 'Single-engine Huey in firefighting livery. The forgiving one: stable and easy to place — but the slowest, with the smallest bucket (half the Black Hawk). Learn the slung-bucket feel here.',
     available: true,
-    accent: '#c8362a',
+    accent: '#c4232c',
     glyph: '🚁',
     imageUrl: HELI_ART + 'Bell205A1.webp',
     specs: [
