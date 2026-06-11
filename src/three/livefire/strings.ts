@@ -2,7 +2,7 @@
  * Live wildfire tracker — copy + small presentation helpers. Tight + declarative per the brand. Severity
  * + stage map onto EXISTING `.bmf-app` token classes (no new colours) for the detail panel's badge.
  */
-import type { FireSeverity, FireStage, NationalSummary, FeedMeta, AlertLevel, BanType } from './types';
+import type { FireSeverity, FireStage, NationalSummary, FeedMeta } from './types';
 
 /** Whole-number with thousands separators ("148,939"). */
 export function fmtInt(n: number): string {
@@ -40,18 +40,14 @@ export const LIVEFIRE_COPY = {
     perimeters: 'Burn area',
     fwi: 'Fire weather',
     smoke: 'Smoke',
-    alerts: 'Alerts',
-    bans: 'Fire bans',
   },
   layerHint: {
     reported: 'Agency-reported fires, sized by area & coloured by stage of control',
     out: 'Fires reported out (extinguished) this year',
     hotspots: 'Raw satellite heat detections, last 24 hours',
     perimeters: 'Satellite-mapped burn footprints',
-    fwi: 'Fire Weather Index — continuous national forecast (full coverage)',
+    fwi: 'Fire Weather Index — worldwide forecast (CWFIS over Canada, GWIS globally)',
     smoke: 'Surface-smoke forecast (ECCC FireWork) — drag the timeline to see it move',
-    alerts: 'Active wildfire & evacuation alerts (SaskAlert) — tap for the official notice',
-    bans: 'Provincial fire bans & open-fire restrictions (SK)',
   },
   // National summary stat-strip labels (the CIFFC "Current fires / Year-to-date" panel).
   stat: { today: 'Reported today', active: 'Active', out: 'Out', total: 'Total', area: 'Area burned', prep: 'Prep level' },
@@ -68,12 +64,20 @@ export const LIVEFIRE_COPY = {
       `Out ${out} · Total ${total} · ${prep}${asOf ? ` · ${asOf}` : ''}`,
     caOnly: 'Season totals are Canada only',
     down: 'Live totals unavailable',
+    // Region ticker: honest empty + the US/MX satellite-detections metric.
+    na: 'Data not available',
+    activeLabel: 'active',
+    todayLabel: 'today',
+    areaLabel: 'burned ’yr',
+    prepLabel: 'prep',
+    detections: (n: number) => `${n.toLocaleString()} ${n === 1 ? 'fire' : 'fires'} · satellite`,
+    detectionsLabel: 'detected',
   },
   // Layer grouping (Watch-Duty-style tiers) + the summoned-sheet control labels.
-  tiers: { fires: 'Fires', weather: 'Weather', local: 'Local' },
-  tierScope: { fires: '', weather: 'Canada', local: 'Saskatchewan' } as Record<string, string>,
+  tiers: { fires: 'Fires', weather: 'Weather' },
+  tierScope: { fires: '', weather: 'Canada' } as Record<string, string>,
   // Why a tier is greyed out when the country filter leaves its coverage area.
-  disabledReason: { weather: 'Canada only', local: 'Saskatchewan only' } as Record<string, string>,
+  disabledReason: { weather: 'Canada only' } as Record<string, string>,
   layersBtn: 'Layers',
   sourcesBtn: 'Sources',
   legendTitle: 'Legend',
@@ -182,49 +186,14 @@ export interface SourceInfo {
   what: string;
   url: string;
 }
-export const LIVEFIRE_SOURCES: Record<'reported' | 'hotspots' | 'perimeters' | 'fwi' | 'smoke' | 'alerts' | 'bans' | 'summary', SourceInfo> = {
+export const LIVEFIRE_SOURCES: Record<'reported' | 'hotspots' | 'perimeters' | 'fwi' | 'smoke' | 'summary', SourceInfo> = {
   reported: { label: 'Active fires', what: 'Agency-reported fires, stage of control + size — CIFFC', url: 'https://ciffc.net' },
   hotspots: { label: 'Satellite hotspots', what: 'Last-24h thermal detections — CWFIS (NRCan)', url: 'https://cwfis.cfs.nrcan.gc.ca' },
   perimeters: { label: 'Burn area', what: 'Satellite-mapped fire footprints — CWFIS M3', url: 'https://cwfis.cfs.nrcan.gc.ca' },
-  fwi: { label: 'Fire weather', what: 'Fire Weather Index — continuous national FORECAST grid — CWFIS', url: 'https://cwfis.cfs.nrcan.gc.ca' },
+  fwi: { label: 'Fire weather', what: 'Fire Weather Index FORECAST — CWFIS over Canada, GWIS (EC JRC) worldwide', url: 'https://gwis.jrc.ec.europa.eu' },
   smoke: { label: 'Smoke forecast', what: 'Surface PM2.5 wildfire-smoke FORECAST — ECCC FireWork', url: 'https://eccc-msc.github.io/open-data/msc-data/nwp_raqdps-fw/readme_raqdps-fw_en/' },
-  alerts: { label: 'Alerts', what: 'Wildfire & evacuation alerts — SaskAlert', url: 'https://emergencyalert.saskatchewan.ca' },
-  bans: { label: 'Fire bans', what: 'Provincial fire bans & restrictions — SK SPSA', url: 'https://www.saskatchewan.ca/residents/environment-public-health-and-safety/wildfire-management' },
   summary: { label: 'National totals', what: 'Year-to-date national summary — CIFFC', url: 'https://ciffc.net' },
 };
-
-// ── Alert + fire-ban presentation (tones from the existing badge ramp; no new tokens) ────────────────
-
-/** SaskAlert level → kit badge tone: critical = danger (warn), advisory = caution, info/unknown = neutral. */
-export function alertLevelClass(l: AlertLevel): string {
-  if (l === 'critical') return 'badge warn';
-  if (l === 'advisory') return 'badge caution';
-  return 'badge';
-}
-export function alertLevelLabel(l: AlertLevel): string {
-  return l === 'unknown' ? 'Alert' : l.charAt(0).toUpperCase() + l.slice(1);
-}
-/** Title-case an issuer's event code for display ("evacuation order" → "Evacuation order"); shown verbatim otherwise. */
-export function titleCase(s: string): string {
-  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
-}
-/** Fire-ban type → kit badge tone: Ban = danger, Restriction = caution, else neutral. */
-export function banTypeClass(t: BanType): string {
-  if (t === 'Ban') return 'badge warn';
-  if (t === 'Restriction') return 'badge caution';
-  return 'badge';
-}
-
-/** Ledger freshness for fire bans: 0 bans is the HONEST "no ban in effect" state, never a stale timestamp. */
-export function banFreshness(meta: FeedMeta, count: number): string {
-  if (meta.status !== 'live') return freshnessLine(meta);
-  return count > 0 ? `${count} in effect · ${publishedWhen(meta.publishedAt)}` : 'No provincial ban in effect';
-}
-/** Ledger freshness for alerts: 0 is the honest "none active" state (the feed publish time still applies). */
-export function alertFreshness(meta: FeedMeta, count: number): string {
-  if (meta.status !== 'live') return freshnessLine(meta);
-  return count > 0 ? `${count} active · ${publishedWhen(meta.publishedAt)}` : `No wildfire alerts · ${publishedWhen(meta.publishedAt)}`;
-}
 
 /** A smoke scrubber frame's valid time, in the viewer's local zone: "Mon 6 PM". */
 export function frameTimeLabel(iso: string): string {

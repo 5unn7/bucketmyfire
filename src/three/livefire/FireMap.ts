@@ -21,15 +21,15 @@ import 'leaflet/dist/leaflet.css';
 import { UI } from '../ui/theme';
 import { LIVEFIRE } from '../config';
 import { radiusMetersForHa } from './normalize';
-import { FWI_WMS_URL, FWI_WMS_LAYER, FWI_WMS_SLD, fwiForecastTime, GEOMET_WMS_URL, SMOKE_WMS_LAYER, SMOKE_WMS_SLD, isLiveFireEnabled } from './client';
-import type { Hotspot, FireSeverity, ReportedFire, BurnPolygon, AlertItem, BanArea } from './types';
-import { STAGE_COLOR, SEV_COLOR, ALERT_COLOR, BAN_COLOR } from './view';
+import { FWI_WMS_URL, FWI_WMS_LAYER, FWI_WMS_SLD, GWIS_FWI_WMS_URL, GWIS_FWI_LAYER, GWIS_FWI_SLD, fwiForecastTime, GEOMET_WMS_URL, SMOKE_WMS_LAYER, SMOKE_WMS_SLD, isLiveFireEnabled } from './client';
+import type { Hotspot, FireSeverity, ReportedFire, BurnPolygon } from './types';
+import { STAGE_COLOR, SEV_COLOR } from './view';
 import type { FireLayer, FireMapHandlers, LiveMapView } from './view';
 
 export type { FireLayer, FireMapHandlers } from './view';
 
 // Hotspot dot geometry per intensity band; the COLOURS come from the SHARED semantic maps in
-// `view.ts` (STAGE_COLOR / SEV_COLOR / ALERT_COLOR / BAN_COLOR) so both views paint identical meanings.
+// `view.ts` (STAGE_COLOR / SEV_COLOR) so both views paint identical meanings.
 const SEV_STYLE: Record<FireSeverity, { radius: number; fill: number }> = {
   low: { radius: 2.5, fill: 0.7 },
   moderate: { radius: 3, fill: 0.82 },
@@ -175,16 +175,15 @@ export class FireMap implements LiveMapView {
   private reportedLayer: L.LayerGroup;
   private outLayer: L.LayerGroup;
   private perimLayer: L.LayerGroup;
-  private bansLayer: L.LayerGroup;
-  private alertsLayer: L.LayerGroup;
   private fwiLayer: L.TileLayer.WMS;
+  private fwiGlobalLayer: L.TileLayer.WMS; // GWIS worldwide FWI — beneath the CWFIS Canada raster
   private smoke: SmokeForecastLayer;
   private selected: L.CircleMarker | null = null;
   private selectedBase: { weight: number; color: string } | null = null; // the selected dot's pre-ring style
   private handlers: FireMapHandlers;
   // Which layers are currently shown (default: the authoritative fires + their footprints + hotspots;
   // the FWI raster is opt-in so the map stays legible until the player asks for the danger field).
-  private visible: Record<FireLayer, boolean> = { reported: true, out: false, perimeters: true, hotspots: true, fwi: false, smoke: false, alerts: false, bans: false };
+  private visible: Record<FireLayer, boolean> = { reported: true, out: false, perimeters: true, hotspots: true, fwi: false, smoke: false };
 
   constructor(container: HTMLElement, handlers: FireMapHandlers) {
     this.handlers = handlers;
@@ -211,6 +210,22 @@ export class FireMap implements LiveMapView {
       opacity: LIVEFIRE.fwiOpacity, // low tint, not a paint — keep the map legible underneath (config.ts)
       time: fwiForecastTime(),
       crossOrigin: true,
+      zIndex: 220, // ABOVE the global wash → CWFIS's finer national grid wins over Canada
+    } as L.WMSOptions);
+
+    // GWIS GLOBAL Fire Weather Index (EC JRC) — the SAME danger field worldwide. Drawn with a LOWER
+    // zIndex so the higher-resolution CWFIS raster above wins where they overlap; toggled together with
+    // `fwi`. Keyless + CORS-`*`; a future/empty day yields blank tiles that degrade silently.
+    this.fwiGlobalLayer = L.tileLayer.wms(GWIS_FWI_WMS_URL, {
+      layers: GWIS_FWI_LAYER,
+      styles: '',
+      sld_body: GWIS_FWI_SLD,
+      format: 'image/png',
+      transparent: true,
+      opacity: LIVEFIRE.fwiOpacity,
+      time: fwiForecastTime(),
+      crossOrigin: true,
+      zIndex: 210,
     } as L.WMSOptions);
 
     // The surface-smoke FORECAST raster (ECCC GeoMet FireWork) — double-buffered so the hourly animation
@@ -225,15 +240,12 @@ export class FireMap implements LiveMapView {
     );
     if (handlers.onSmokeLoad) this.smoke.setOnState(handlers.onSmokeLoad);
 
-    // Vector layers, drawn back-to-front: footprints → ban areas → extinguished → hotspots → active
-    // fires → alert pins (authoritative above raw detections — see applyVisibility — and the
-    // highest-priority overlay on top). Each added per its toggle.
+    // Vector layers, drawn back-to-front: footprints → extinguished → hotspots → active fires
+    // (authoritative above raw detections — see applyVisibility). Each added per its toggle.
     this.perimLayer = L.layerGroup();
-    this.bansLayer = L.layerGroup();
     this.outLayer = L.layerGroup();
     this.reportedLayer = L.layerGroup();
     this.hotspotLayer = L.layerGroup();
-    this.alertsLayer = L.layerGroup();
     this.applyVisibility();
   }
 
@@ -338,48 +350,6 @@ export class FireMap implements LiveMapView {
     }
   }
 
-  /** Plot active wildfire/evacuation ALERTS as bold ringed pins coloured by level (critical→advisory→info).
-   *  Tapping one opens the issuer's notice (which links out to the official page). Drawn on top of fires. */
-  setAlerts(alerts: AlertItem[]): void {
-    this.alertsLayer.clearLayers();
-    this.clearSelection();
-    for (const a of alerts) {
-      const color = ALERT_COLOR[a.level];
-      darkCasing(a.lat, a.lon, 10).addTo(this.alertsLayer); // dark halo so the bold pin reads against sun-glare
-      const m = L.circleMarker([a.lat, a.lon], {
-        radius: 8,
-        color: UI.text,
-        weight: 2.5,
-        opacity: 1,
-        fillColor: color,
-        fillOpacity: 1,
-      });
-      m.on('click', () => {
-        this.highlight(m);
-        this.handlers.onSelectAlert?.(a);
-      });
-      m.addTo(this.alertsLayer);
-    }
-  }
-
-  /** Draw provincial fire-ban / restriction AREAS as dashed tinted polygons coloured by type. Tappable for
-   *  the ban detail. An empty `bans` array simply clears the layer (the "no ban" state shows as nothing). */
-  setBans(bans: BanArea[]): void {
-    this.bansLayer.clearLayers();
-    for (const b of bans) {
-      const color = BAN_COLOR[b.type];
-      const poly = L.polygon(b.ring, {
-        color,
-        weight: 1.5,
-        opacity: 0.85,
-        fillColor: color,
-        fillOpacity: 0.14,
-        dashArray: '6 4',
-      });
-      poly.on('click', () => this.handlers.onSelectBan?.(b));
-      poly.addTo(this.bansLayer);
-    }
-  }
 
   // ── Visibility ──
 
@@ -399,6 +369,7 @@ export class FireMap implements LiveMapView {
    *  the day-scrubber can step the continuous forecast grid forward (each day is its own model run). */
   setFwiTime(iso: string): void {
     this.fwiLayer.setParams({ time: iso } as unknown as L.WMSParams);
+    this.fwiGlobalLayer.setParams({ time: iso } as unknown as L.WMSParams);
   }
 
   isVisible(layer: FireLayer): boolean {
@@ -415,17 +386,16 @@ export class FireMap implements LiveMapView {
     // The FWI raster is a live CWFIS feed, so the kill-switch must stop it too (the JSON feeds gate in
     // the client; this layer is constructed directly, so gate it here — never hit CWFIS when disabled).
     sync(this.fwiLayer, this.visible.fwi && isLiveFireEnabled());
+    sync(this.fwiGlobalLayer, this.visible.fwi && isLiveFireEnabled()); // GWIS worldwide wash, beneath CWFIS
     // Smoke is its own double-buffered manager (two panes), not a single Leaflet layer — drive it directly.
     this.smoke.setVisible(this.visible.smoke && isLiveFireEnabled());
     sync(this.perimLayer, this.visible.perimeters);
-    sync(this.bansLayer, this.visible.bans);
     sync(this.outLayer, this.visible.out);
     // Hotspots UNDER the reported dots: where the two stack (an active fire usually has hotspots on
     // it), the topmost-wins canvas tap must open the AUTHORITATIVE fire — the shared tap-priority
     // rule in view.ts, and what the globe's picker does.
     sync(this.hotspotLayer, this.visible.hotspots);
     sync(this.reportedLayer, this.visible.reported);
-    sync(this.alertsLayer, this.visible.alerts);
   }
 
   // ── Framing + selection ──

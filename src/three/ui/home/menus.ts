@@ -27,16 +27,16 @@ import { railNav } from './rail';
 import { DEFS, FLAME, ic } from './icons';
 import { openStore } from '../storeLink';
 import { validateCallsign, MAX_CALLSIGN } from '../callsign';
-import { fetchActiveFires, fetchSummary, fetchReportedFires, fetchBurnPerimeters, fetchFwiMeta, fetchAlerts, fetchBans, fetchFireHistory, fwiForecastTime, getCountryPref, setCountryPref, isLiveFireEnabled } from '../../livefire/client';
+import { fetchActiveFires, fetchSummary, fetchReportedFires, fetchBurnPerimeters, fetchFwiMeta, fetchFireHistory, fwiForecastTime, getRegionPref, setRegionPref, isLiveFireEnabled } from '../../livefire/client';
 import {
   LIVEFIRE_COPY, severityClass, severityLabel, stageClass, stageLabel, relTime,
   freshnessLine, statusDotClass, publishedWhen, LIVEFIRE_SOURCES, NOT_FOR_EMERGENCY, SK_OFFICIAL,
-  frameTimeLabel, smokeFreshness, fwiFreshness, alertLevelClass, alertLevelLabel, banTypeClass, titleCase, banFreshness, alertFreshness,
+  frameTimeLabel, smokeFreshness, fwiFreshness,
 } from '../../livefire/strings';
 import { FIELD_GROUPS, REPORTED_FIELD_GROUPS, type FieldGroup } from '../../livefire/fields';
-import { countFires, filterCountry, filterReportedCountry, countryLabel, COUNTRIES, smokeForecastFrames, forecastLeadLabel, safeUrl } from '../../livefire/normalize';
+import { filterReportedRegion, filterRegionHotspots, regionValue, parseRegion, regionOptions, deriveRegionStats, countryLabel, COUNTRIES, smokeForecastFrames, forecastLeadLabel } from '../../livefire/normalize';
 import { LIVEFIRE } from '../../config';
-import type { Hotspot, ReportedFire, ReportedFeed, FireHistoryPoint, NationalSummary, BurnFeed, AlertFeed, AlertItem, BanFeed, BanArea, FeedMeta, LiveFireFeed, CountryFilter } from '../../livefire/types';
+import type { Hotspot, ReportedFire, ReportedFeed, FireHistoryPoint, NationalSummary, BurnFeed, FeedMeta, LiveFireFeed, CountryFilter, RegionFilter, RegionStats } from '../../livefire/types';
 import type { LiveMapView, FireLayer } from '../../livefire/view';
 import { esc } from '../../../site/siteNav.mjs';
 
@@ -467,18 +467,42 @@ function fieldGroupsHtml(groups: FieldGroup[], props: Record<string, unknown>): 
     .join('');
 }
 
+/** Quick-glance fact chips for a fire detail header — kind · jurisdiction · freshness. Ghost pills that
+ *  surface the at-a-glance metadata in one scannable row, leaving the stage/severity badge to own colour
+ *  and the grouped rows below to carry the full record. Blank cells (unknown time, no agency) are dropped. */
+function metaChipsHtml(cells: Array<{ icon: string; label: string }>): string {
+  const chips = cells
+    .filter((c) => c.label && c.label !== '—')
+    .map((c) => `<span class="chip ghost mchip">${ic(c.icon)}${esc(c.label)}</span>`)
+    .join('');
+  return chips ? `<div class="chiprow">${chips}</div>` : '';
+}
+
+/** Jurisdiction chip text — agency code + country (e.g. "SK · Canada"), the bare country when the agency
+ *  is unknown. `country` is the already-classified `Country` (a subset of `CountryFilter`). */
+function jurisLabel(agency: string, country: CountryFilter): string {
+  const a = (agency || '').toUpperCase();
+  const c = countryLabel(country);
+  return a ? `${a} · ${c}` : c;
+}
+
 /** The full CWFIS record for one tapped satellite HOTSPOT — every meaningful field, grouped +
  *  unit-formatted (detection · behaviour · the FWI System codes · weather · site). */
 function fireDetailHtml(h: Hotspot): string {
-  const when = relTime(h.at);
+  const chips = metaChipsHtml([
+    { icon: 'fire', label: 'Satellite hotspot' },
+    { icon: 'pin', label: jurisLabel(h.agency, h.country) },
+    { icon: 'clock', label: relTime(h.at) },
+  ]);
   return `<div class="fsheet-head">
       <div class="grow" style="min-width:0;">
         <div class="fsheet-ttl">${LIVEFIRE_COPY.coords(h.lat, h.lon)}</div>
-        <div class="s">Satellite hotspot · ${esc(h.agency || '—')}${when ? ` · ${when}` : ''}</div>
+        <div class="s">Thermal detection</div>
       </div>
       <span class="${severityClass(h.severity)}">${severityLabel(h.severity)}</span>
       <button class="iconbtn" data-lf-close aria-label="Close detail">${ic('close')}</button>
     </div>
+    ${chips}
     <div>${fieldGroupsHtml(FIELD_GROUPS, h.props)}</div>`;
 }
 
@@ -514,18 +538,24 @@ function provDetailHtml(f: ReportedFire): string {
  *  (f.source set) render the curated provincial group. Closes on the standing honesty line — this is a
  *  window onto real agency data, not an emergency tool. */
 function reportedDetailHtml(f: ReportedFire): string {
-  const when = relTime(f.at);
   const title = f.name ? esc(f.name) : f.fireId ? esc(f.fireId) : LIVEFIRE_COPY.coords(f.lat, f.lon);
-  const agency = f.agency ? f.agency.toUpperCase() : '—';
   const body = f.source ? provDetailHtml(f) : `<div>${fieldGroupsHtml(REPORTED_FIELD_GROUPS, f.props)}</div>`;
+  // Provincial feeds may name the fire type explicitly; CIFFC fires are wildfires by definition.
+  const ftype = f.source ? pickProp(f.props, ['FIRE_TYPE', 'FireType', 'fire_type']) : '';
+  const chips = metaChipsHtml([
+    { icon: 'fire', label: ftype || 'Wildfire' },
+    { icon: 'pin', label: jurisLabel(f.agency, f.country) },
+    { icon: 'clock', label: relTime(f.at) },
+  ]);
   return `<div class="fsheet-head">
       <div class="grow" style="min-width:0;">
         <div class="fsheet-ttl">${title}</div>
-        <div class="s">${esc(agency)} · ${esc(LIVEFIRE_COPY.fireSize(f.sizeHa))}${when ? ` · ${when}` : ''}</div>
+        <div class="s">${esc(LIVEFIRE_COPY.fireSize(f.sizeHa))}</div>
       </div>
       <span class="${stageClass(f.stage)}">${esc(stageLabel(f.stage))}</span>
       <button class="iconbtn" data-lf-close aria-label="Close detail">${ic('close')}</button>
     </div>
+    ${chips}
     <div data-lf-hist></div>
     ${body}
     <p class="alertnote">${esc(NOT_FOR_EMERGENCY)}</p>`;
@@ -559,17 +589,24 @@ function fireHistoryHtml(points: FireHistoryPoint[], f: ReportedFire): string {
   for (const p of points) if (!stages.length || stages[stages.length - 1] !== p.stage) stages.push(p.stage);
   const haveSpark = sized.length >= 2 && sized.some((p) => p.sizeHa > 0);
   const haveStagePath = stages.length >= 2;
-  if (!haveSpark && !haveStagePath) return '';
+  if (!points.length) return ''; // backend answered but no snapshot for this fire yet → stay silent
 
   let spark = '';
   let changeRow = '';
   if (haveSpark) {
     const W = 252, H = 46, padX = 2, padY = 4;
-    const t0 = sized[0].observedAt, t1 = sized[sized.length - 1].observedAt;
+    // Time axis = the SOURCE's report time (sitrep date), NOT our poll time. `observedAt` is just when
+    // the ingest cron happened to run (every 10 min), so using it reported "grew X over 31 min" on EVERY
+    // fire at once — that 31 min was the gap between two cron runs, not the fire's real growth interval.
+    // Fall back to `observedAt` only for a snapshot with no source date; min/max is robust to a backward
+    // sitrep revision (a later poll carrying an earlier reported date).
+    const tOf = (p: FireHistoryPoint): number => p.reportedAt || p.observedAt;
+    const ts = sized.map(tOf);
+    const t0 = Math.min(...ts), t1 = Math.max(...ts);
     const span = Math.max(1, t1 - t0);
     const maxHa = Math.max(...sized.map((p) => p.sizeHa), 1);
     const coords = sized.map((p) => {
-      const x = padX + ((p.observedAt - t0) / span) * (W - 2 * padX);
+      const x = padX + ((tOf(p) - t0) / span) * (W - 2 * padX);
       const y = H - padY - (p.sizeHa / maxHa) * (H - 2 * padY);
       return `${x.toFixed(1)},${y.toFixed(1)}`;
     });
@@ -588,7 +625,10 @@ function fireHistoryHtml(points: FireHistoryPoint[], f: ReportedFire): string {
     const arrow = delta > 1 ? '▲' : delta < -1 ? '▼' : '•';
     const verb = delta > 1 ? 'grew' : delta < -1 ? 'shrank' : 'held';
     const mag = Math.abs(delta) >= 1 ? `${esc(LIVEFIRE_COPY.fireSize(Math.abs(delta)))} ` : '';
-    changeRow = `<div class="frow"><span class="fk">Change</span><span class="fv">${arrow} ${verb} ${mag}over ${esc(fmtSpan(span))}</span></div>`;
+    // Only name the interval when the source actually reported one (>2 min of real sitrep span). Two
+    // snapshots sharing a sitrep date give a ~0 span — say "grew X" without inventing a tiny window.
+    const over = span > 120_000 ? ` over ${esc(fmtSpan(span))}` : '';
+    changeRow = `<div class="frow"><span class="fk">Change</span><span class="fv">${arrow} ${verb} ${mag}${over}</span></div>`;
   }
 
   const firstSeen = points.length ? points[0].observedAt : 0;
@@ -596,46 +636,60 @@ function fireHistoryHtml(points: FireHistoryPoint[], f: ReportedFire): string {
   const stageRow = haveStagePath
     ? `<div class="frow"><span class="fk">Stage path</span><span class="fv">${esc(stages.map((s) => stageLabel(s as ReportedFire['stage'])).join(' → '))}</span></div>`
     : '';
+  // Nothing to chart yet (a single observation, or steady since first seen): say so plainly instead of
+  // dropping the whole block — the fire IS being tracked, it just hasn't moved. Reads "young", not "broken".
+  const quietRow = !haveSpark && !haveStagePath
+    ? `<div class="frow"><span class="fk">Change</span><span class="fv" style="color:var(--faint)">No changes recorded yet</span></div>`
+    : '';
 
-  return `<div class="fgroup"><div class="fgh">Tracked history</div>${spark}${changeRow}${stageRow}${seenRow}</div>`;
+  return `<div class="fgroup"><div class="fgh">Tracked history</div>${spark}${changeRow}${stageRow}${quietRow}${seenRow}</div>`;
 }
 
-/** A tapped SaskAlert alert — the issuer's OWN words + level badge + a link to the official notice. We
- *  never re-label it; the standing "not an emergency tool" line + the link-out carry the authority. */
-function alertDetailHtml(a: AlertItem): string {
-  const when = relTime(a.sentAt);
-  const sub = [a.author, a.coverage, when].filter(Boolean).map(esc).join(' · ');
-  const link = safeUrl(a.url); // feed-controlled URL → only http(s) reaches the href (no javascript: scheme)
-  return `<div class="fsheet-head">
-      <div class="grow" style="min-width:0;">
-        <div class="fsheet-ttl">${a.event ? esc(titleCase(a.event)) : 'Alert'}</div>
-        <div class="s">${sub}</div>
-      </div>
-      <span class="${alertLevelClass(a.level)}">${esc(alertLevelLabel(a.level))}</span>
-      <button class="iconbtn" data-lf-close aria-label="Close detail">${ic('close')}</button>
-    </div>
-    ${a.summary ? `<p class="alertsum">${esc(a.summary)}</p>` : ''}
-    ${link ? `<a class="btn primary block" href="${link}" target="_blank" rel="noopener">${ic('shield')}Official notice</a>` : ''}
-    <p class="alertnote">${esc(NOT_FOR_EMERGENCY)}</p>`;
-}
+/** The region firestats ticker — ONE compact line rendered from the honest `RegionStats` POJO. Lead =
+ *  region + live active count (or, for US/MX where no official reported feed exists, satellite detections);
+ *  supporting chips = the OC/BH/UC stage split, reported-today, area-burned, prep level — each rendering
+ *  "Data not available" (faint) where the region has no source. No honesty logic here (that's all in
+ *  `deriveRegionStats`); this only paints. Tokens only → AA-safe; icons are Lucide via `ic()`. */
+function regionTickerHtml(s: RegionStats): string {
+  const C = LIVEFIRE_COPY.strip;
+  if (s.scope === 'down') return `<span class="fstat-load">${esc(C.down)}</span>`;
+  const num = (n: number): string => n.toLocaleString();
+  const na = `<span class="fstat-na">${esc(C.na)}</span>`;
+  const fresh = s.asOfMs ? `<span class="fstat-fresh">${esc(publishedWhen(s.asOfMs))}</span>` : '';
+  const loc = `${ic('fire', 'fstat-ic')}<b class="fstat-loc">${esc(s.label)}</b><span class="fstat-sep">·</span>`;
 
-/** A tapped fire-ban area — type + "in effect since" + the issuer's comment + a link to the SK source. */
-function banDetailHtml(b: BanArea): string {
-  const since =
-    b.startAt > 0
-      ? `In effect since ${new Date(b.startAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`
-      : 'In effect';
-  return `<div class="fsheet-head">
-      <div class="grow" style="min-width:0;">
-        <div class="fsheet-ttl">${esc(b.type === 'Other' ? 'Fire restriction' : b.type)}</div>
-        <div class="s">${esc(since)}</div>
-      </div>
-      <span class="${banTypeClass(b.type)}">${esc(b.type)}</span>
-      <button class="iconbtn" data-lf-close aria-label="Close detail">${ic('close')}</button>
-    </div>
-    ${b.comment ? `<p class="alertsum">${esc(b.comment)}</p>` : ''}
-    <a class="btn primary block" href="${LIVEFIRE_SOURCES.bans.url}" target="_blank" rel="noopener">${ic('shield')}Saskatchewan fire bans</a>
-    <p class="alertnote">${esc(NOT_FOR_EMERGENCY)}</p>`;
+  // US / MX — no official reported feed; satellite detections are the only honest number. Make the
+  // satellite provenance explicit AND mark the official "active fires" count itself as unavailable.
+  if (s.scope === 'foreign') {
+    const det = s.hotspots != null
+      ? `<b class="fstat-big">${num(s.hotspots)}</b><span class="fstat-lbl">${esc(C.detectionsLabel)} · sat</span>`
+      : na;
+    return `<div class="fstat-row"><span class="fstat-lead">${loc}${det}</span>`
+      + `<span class="fstat-rest"><span class="fstat-chip na">${ic('pin', 'fstat-ic')}<span class="fstat-lbl">${esc(C.activeLabel)}</span> ${na}</span>${fresh}</span></div>`;
+  }
+
+  // Canada — national (authoritative summary) or one province (derived from the agency-filtered feed).
+  const lead = s.active != null
+    ? `${loc}<b class="fstat-big">${num(s.active)}</b><span class="fstat-lbl">${esc(C.activeLabel)}</span>`
+    : `${loc}${na}`;
+
+  let pips = '';
+  if (s.byStage) {
+    const b = s.byStage;
+    const pip = (k: 'OC' | 'BH' | 'UC', cls: string): string =>
+      `<span class="fstat-pip ${cls}" title="${esc(stageLabel(k))}"><i></i>${num(b[k])}</span>`;
+    pips = `<span class="fstat-pips">${pip('OC', 'oc')}${pip('BH', 'bh')}${pip('UC', 'uc')}</span>`;
+  }
+
+  const chip = (icon: string, label: string, value: number | null, fmt: (n: number) => string): string =>
+    `<span class="fstat-chip${value == null ? ' na' : ''}">${ic(icon, 'fstat-ic')}` +
+    `${value == null ? `<span class="fstat-lbl">${esc(label)}</span> ${na}` : `<b>${esc(fmt(value))}</b><span class="fstat-lbl">${esc(label)}</span>`}</span>`;
+
+  const today = chip('clock', C.todayLabel, s.reportedToday, num);
+  const area = chip('droplet', C.areaLabel, s.areaBurnedHa, (n) => LIVEFIRE_COPY.fireSize(n));
+  const prep = chip('shield', C.prepLabel, s.prepLevel, (n) => `L${n}`);
+
+  return `<div class="fstat-row"><span class="fstat-lead">${lead}</span>${pips}<span class="fstat-rest">${today}${area}${prep}${fresh}</span></div>`;
 }
 
 /**
@@ -659,29 +713,17 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
   // ledger names it for ("Forecast · Jun 10"). Computed once so the tile layer + the label always agree.
   const fwiDayLabel = new Date(`${fwiForecastTime()}T00:00:00Z`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
 
-  // Compact status block (CIFFC) — ONE bold lead line that carries the live active-fire count + region
-  // (data-lf-head, painted by `paint`), with the two supporting season numbers folded in as inline
-  // mini-stats (today / this year) so the old three big hero cells no longer eat a whole row. A tiny
-  // freshness sub + the demoted season subline sit under it, and a same-height note swaps in for the
-  // US/MX filter or a down feed — the honest empty≠down≠off states are preserved (paintStats just hides
-  // the mini-stats + season and shows the note). `set('active', …)` in paintStats now no-ops (the cell is
-  // gone — the count lives in the lead), which is why paint/paintStats need no change.
-  const statStrip =
-    `<div class="fstat-head">` +
-    `<b class="t" data-lf-head>${C.bannerLoading}</b>` +
-    `<div class="fstat-mini" data-lf-stat-row>` +
-    `<span><b data-lf-stat="today">—</b>${C.strip.today}</span>` +
-    `<span><b data-lf-stat="area">—</b>${C.strip.area}</span>` +
-    `</div>` +
-    `</div>` +
-    `<div class="s" data-lf-sub>${C.hint}</div>` +
-    `<div class="fstat-season" data-lf-season hidden></div>` +
-    `<div class="fstat-note" data-lf-note hidden></div>`;
+  // Region firestats — ONE compact icon ticker (data-lf-ticker), repainted by `paintStats` from a pure
+  // `deriveRegionStats(region,…)` so it is HONEST to the chosen region (country OR Canadian province):
+  // it shows "Data not available" for any metric with no per-region source, never a Canada number under
+  // another label. The lead carries the region + live active count; supporting chips (stage split / today
+  // / area / prep / satellite detections) + a freshness stamp ride the same line. See `regionTickerHtml`.
+  const statStrip = `<div class="fstat-ticker" data-lf-ticker><span class="fstat-load">${esc(C.bannerLoading)}</span></div>`;
 
-  // The eight map layers, grouped into three tiers (Fires / Weather · Canada / Local · Saskatchewan) and
-  // surfaced inside the summoned LAYERS sheet — not a crammed permanent chip row. Each carries the legend
-  // swatch its mark draws with. Default-on = active fires + hotspots + burn area only; the rest are opt-in.
-  type LayerRow = { id: FireLayer; tier: 'fires' | 'weather' | 'local'; label: string; hint: string; swatch: string };
+  // The six map layers, grouped into two tiers (Fires / Weather) and surfaced inside the summoned LAYERS
+  // sheet — not a crammed permanent chip row. Each carries the legend swatch its mark draws with.
+  // Default-on = active fires + hotspots + burn area only; the rest are opt-in.
+  type LayerRow = { id: FireLayer; tier: 'fires' | 'weather'; label: string; hint: string; swatch: string };
   const ALL_LAYERS: LayerRow[] = [
     { id: 'reported', tier: 'fires', label: C.layers.reported, hint: C.layerHint.reported, swatch: 'oc' },
     { id: 'hotspots', tier: 'fires', label: C.layers.hotspots, hint: C.layerHint.hotspots, swatch: 'ramp' },
@@ -689,13 +731,11 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
     { id: 'out', tier: 'fires', label: C.layers.out, hint: C.layerHint.out, swatch: 'neutral' },
     { id: 'fwi', tier: 'weather', label: C.layers.fwi, hint: C.layerHint.fwi, swatch: 'fwiramp' },
     { id: 'smoke', tier: 'weather', label: C.layers.smoke, hint: C.layerHint.smoke, swatch: 'smoke' },
-    { id: 'alerts', tier: 'local', label: C.layers.alerts, hint: C.layerHint.alerts, swatch: 'alert' },
-    { id: 'bans', tier: 'local', label: C.layers.bans, hint: C.layerHint.bans, swatch: 'ban' },
   ];
   // FWI + smoke are live WMS feeds, so the kill-switch drops them entirely (never hit CWFIS when disabled).
   const LIVE_WMS = new Set<FireLayer>(['fwi', 'smoke']);
   // Visible-layer mirror (matches FireMap's own default `visible`); mutated as toggles flip in the sheet.
-  const layerOn: Record<FireLayer, boolean> = { reported: true, out: false, hotspots: true, perimeters: true, fwi: false, smoke: false, alerts: false, bans: false };
+  const layerOn: Record<FireLayer, boolean> = { reported: true, out: false, hotspots: true, perimeters: true, fwi: false, smoke: false };
 
   // The header is now TWO slim rows, not three: a control bar (region filter + refresh + the Layers /
   // Sources sheet buttons) and the compact status block above — so the map keeps far more height.
@@ -705,7 +745,7 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
   const body = `<div class="firewrap">
     <div class="firebar">
       ${topNav ?? ''}
-      <select class="firesel" data-lf-country aria-label="Country filter">${options}</select>
+      <select class="firesel" data-lf-region aria-label="Region filter">${options}</select>
       <span class="grow"></span>
       <button class="iconbtn" data-lf-refresh aria-label="Refresh">${ic('refresh')}</button>
     </div>
@@ -741,16 +781,14 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
     map = null;
   }, 'home', navMarkup);
 
-  const headEl = root.querySelector<HTMLElement>('[data-lf-head]')!;
-  const subEl = root.querySelector<HTMLElement>('[data-lf-sub]')!;
-  const statsEl = root.querySelector<HTMLElement>('[data-lf-stats]')!;
+  const tickerEl = root.querySelector<HTMLElement>('[data-lf-ticker]')!;
   const mapEl = root.querySelector<HTMLElement>('[data-lf-map]')!;
   const sheetEl = root.querySelector<HTMLElement>('[data-lf-sheet]')!;
   const refreshBtn = root.querySelector<HTMLButtonElement>('[data-lf-refresh]')!;
   const layersBtn = root.querySelector<HTMLButtonElement>('[data-lf-layers]')!;
   const sourcesBtn = root.querySelector<HTMLButtonElement>('[data-lf-sources]')!;
   const layerCountEl = root.querySelector<HTMLElement>('[data-lf-layern]')!;
-  const countryEl = root.querySelector<HTMLSelectElement>('[data-lf-country]')!;
+  const regionEl = root.querySelector<HTMLSelectElement>('[data-lf-region]')!;
   const scrubEl = root.querySelector<HTMLElement>('[data-lf-scrub]')!;
   const scrubTrackEl = root.querySelector<HTMLElement>('[data-lf-scrubtrack]')!;
   const playBtn = root.querySelector<HTMLButtonElement>('[data-lf-play]')!;
@@ -766,8 +804,6 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
   let summary: NationalSummary | null = null;
   let burnFeed: BurnFeed = { polys: [], meta: offline };
   let fwiMeta: FeedMeta = offline;
-  let alertFeed: AlertFeed = { alerts: [], meta: offline };
-  let banFeed: BanFeed = { bans: [], meta: offline };
   let biggest: ReportedFire | null = null; // tracked for the ?qa detail-panel hook below
   let hottest: Hotspot | null = null;
   // The two FORECAST rasters share ONE bottom scrubber. `forecastMode` says which one it currently drives
@@ -782,8 +818,29 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
   let fwiIdx = 0;
   let forecastMode: 'none' | 'smoke' | 'fwi' = 'none';
   let forecastPlaying = false;
-  let country: CountryFilter = getCountryPref(); // defaults to Canada
-  countryEl.value = country;
+  let region: RegionFilter = getRegionPref(); // country + optional Canadian province; defaults to Canada
+  regionEl.value = regionValue(region);
+  // Rebuild the region <select> from the live feed (Canada + only the provinces that HAVE fires), keeping
+  // the current pick if still valid. Called after each load once `reportedFeed` is populated; skipped while
+  // the native dropdown is focused-open so we never collapse it under the user.
+  let regionOptKey = ''; // the option-set signature last rendered (rebuild only when it changes)
+  const rebuildRegionOptions = (): void => {
+    if (document.activeElement === regionEl) return; // don't yank an open dropdown
+    const opts = regionOptions(reportedFeed);
+    const key = opts.map((o) => o.value).join(',');
+    if (key === regionOptKey) return;
+    regionOptKey = key;
+    let html = '';
+    let group = '';
+    for (const o of opts) {
+      if (o.group !== group) { if (group) html += '</optgroup>'; html += `<optgroup label="${esc(o.group)}">`; group = o.group; }
+      html += `<option value="${esc(o.value)}">${esc(o.label)}</option>`;
+    }
+    if (group) html += '</optgroup>';
+    regionEl.innerHTML = html;
+    if (!opts.some((o) => o.value === regionValue(region))) region = { country: 'CA' }; // saved province vanished
+    regionEl.value = regionValue(region);
+  };
 
   const wireClose = (): void => {
     sheetEl.querySelector('[data-lf-close]')?.addEventListener('click', () => {
@@ -796,32 +853,20 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
     sheetEl.hidden = false;
     sheetEl.scrollTop = 0;
     wireClose();
-    // Enrich with the fire's tracked history from the ingestion backend. Best-effort + async: a no-op
-    // when the backend is unconfigured/empty (fetchFireHistory → []), so the panel is unchanged offline.
+    // Enrich with the fire's tracked history from the ingestion backend. Best-effort + async. `source`
+    // routes provincial fires to their own snapshot table. A NULL result = backend unavailable → leave the
+    // panel untouched (unchanged offline); an answered result (even a "no changes yet" block) is painted.
     const token = ++detailToken;
     if (f.fireId) {
-      void fetchFireHistory(f.fireId).then((points) => {
-        if (closed || token !== detailToken) return;
-        const html = fireHistoryHtml(points, f);
+      void fetchFireHistory(f.fireId, f.source).then((points) => {
+        if (closed || token !== detailToken || points === null) return;
         const host = sheetEl.querySelector<HTMLElement>('[data-lf-hist]');
-        if (html && host) host.innerHTML = html;
+        if (host) host.innerHTML = fireHistoryHtml(points, f);
       });
     }
   };
   const showHotspot = (h: Hotspot): void => {
     sheetEl.innerHTML = fireDetailHtml(h);
-    sheetEl.hidden = false;
-    sheetEl.scrollTop = 0;
-    wireClose();
-  };
-  const showAlert = (a: AlertItem): void => {
-    sheetEl.innerHTML = alertDetailHtml(a);
-    sheetEl.hidden = false;
-    sheetEl.scrollTop = 0;
-    wireClose();
-  };
-  const showBan = (b: BanArea): void => {
-    sheetEl.innerHTML = banDetailHtml(b);
     sheetEl.hidden = false;
     sheetEl.scrollTop = 0;
     wireClose();
@@ -836,26 +881,19 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
       { key: 'perimeters', meta: burnFeed.meta },
       { key: 'fwi', meta: fwiMeta },
       { key: 'smoke', meta: smokeMeta },
-      { key: 'alerts', meta: alertFeed.meta },
-      { key: 'bans', meta: banFeed.meta },
       { key: 'summary', meta: summary?.meta ?? offline },
     ];
     const rowHtml = rows
       .map(({ key, meta }) => {
         const info = LIVEFIRE_SOURCES[key];
         // Per-source freshness, honestly: smoke + FWI are FORECASTS (name them so + the day in view, never
-        // "updated X ago"); alerts/bans = the count + the honest "none active" / "no ban in effect" empty
-        // state; the rest use their real source publish time.
+        // "updated X ago"); the rest use their real source publish time.
         const fresh =
           key === 'smoke' && meta.status === 'live'
             ? smokeFreshness(currentSmokeFrame())
             : key === 'fwi'
               ? fwiFreshness(meta, fwiDayLabel)
-              : key === 'alerts'
-                ? alertFreshness(meta, alertFeed.alerts.length)
-                : key === 'bans'
-                  ? banFreshness(meta, banFeed.bans.length)
-                  : freshnessLine(meta);
+              : freshnessLine(meta);
         return `<a class="lrow" href="${info.url}" target="_blank" rel="noopener">
           <i class="sdot ${statusDotClass(meta)}"></i>
           <span class="grow" style="min-width:0;"><span class="lname">${esc(info.label)}</span><span class="lwhat">${esc(info.what)}</span></span>
@@ -959,10 +997,10 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
     updateLayerCount();
   };
 
-  // A tier is AVAILABLE only where its data lives: Weather + Local are Canada / SK scoped, so they grey out
-  // (with a reason) when the filter leaves Canada. Fires is continent-wide.
+  // A tier is AVAILABLE only where its data lives: Weather's CWFIS/GWIS forecast greys out (with a reason)
+  // when the filter leaves Canada. Fires is continent-wide.
   const tierAvailable = (tier: LayerRow['tier']): boolean =>
-    tier === 'fires' ? true : country !== 'US' && country !== 'MX';
+    tier === 'fires' ? true : region.country !== 'US' && region.country !== 'MX';
 
   // The legend keys exactly what the map is CURRENTLY drawing (it tracks the live toggles), so it never
   // explains a mark that isn't on screen. The stage breakdown rides the reported/out layers.
@@ -975,8 +1013,6 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
     }
     if (layerOn.hotspots) rows += lg('ramp', C.layers.hotspots, 'Low → extreme heat');
     if (layerOn.perimeters) rows += lg('scar', C.layers.perimeters, 'Satellite-mapped footprint');
-    if (layerOn.alerts) rows += lg('alert', C.layers.alerts, 'Critical → advisory');
-    if (layerOn.bans) rows += lg('ban', C.layers.bans, 'Ban → restriction');
     if (layerOn.fwi && isLiveFireEnabled()) rows += lg('fwiramp', C.layers.fwi, 'Low → extreme danger');
     if (layerOn.smoke && isLiveFireEnabled()) rows += lg('smoke', C.layers.smoke, 'Light → heavy · forecast');
     if (!rows) return '';
@@ -1005,7 +1041,7 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
         <div class="grow" style="min-width:0;"><div class="fsheet-ttl">${esc(C.layersTitle)}</div><div class="s">${esc(C.layersSub)}</div></div>
         <button class="iconbtn" data-lf-close aria-label="Close">${ic('close')}</button>
       </div>
-      ${tierBlock('fires')}${tierBlock('weather')}${tierBlock('local')}
+      ${tierBlock('fires')}${tierBlock('weather')}
       <div data-lf-legend>${legendHtml()}</div>`;
   };
 
@@ -1033,74 +1069,24 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
     });
   };
 
-  // Paint the CIFFC summary strip. The numbers are CANADA-national, so the US/MX filter or a down summary
-  // swaps in a same-height NOTE (never collapse the strip — that jumps the header). Live + CA shows three
-  // headline numbers + a demoted season subline (out / total / prep + the source "as of" day).
-  const statRowEl = statsEl.querySelector<HTMLElement>('[data-lf-stat-row]')!;
-  const seasonEl = statsEl.querySelector<HTMLElement>('[data-lf-season]')!;
-  const noteEl = statsEl.querySelector<HTMLElement>('[data-lf-note]')!;
+  // Repaint the region firestats ticker. ALL honesty lives in the pure `deriveRegionStats` — this just
+  // renders the POJO it returns, so the strip is always accurate to the chosen region (country/province)
+  // and shows "Data not available" wherever no per-region source exists.
   const paintStats = (): void => {
-    const showNote = (msg: string): void => {
-      statRowEl.hidden = true;
-      seasonEl.hidden = true;
-      noteEl.textContent = msg;
-      noteEl.hidden = false;
-    };
-    if (country === 'US' || country === 'MX') return showNote(C.strip.caOnly);
-    if (!summary || summary.meta.status !== 'live') return showNote(C.strip.down);
-    const s = summary;
-    const set = (k: string, v: string): void => {
-      const el = statRowEl.querySelector<HTMLElement>(`[data-lf-stat="${k}"]`);
-      if (el) el.textContent = v;
-    };
-    set('active', s.activeFires.toLocaleString());
-    set('today', s.firesToday.toLocaleString());
-    set('area', C.fireSize(s.areaBurnedHa));
-    const asOf = s.meta.publishedAt ? publishedWhen(s.meta.publishedAt) : '';
-    seasonEl.textContent = C.strip.season(s.ytdOut.toLocaleString(), s.ytdTotal.toLocaleString(), C.prepLevel(s.prepLevel), asOf);
-    noteEl.hidden = true;
-    statRowEl.hidden = false;
-    seasonEl.hidden = false;
+    tickerEl.innerHTML = regionTickerHtml(deriveRegionStats(region, reportedFeed, hsFeed, summary, Date.now()));
   };
 
-  // Paint the map for the SELECTED country: filter each layer → re-plot → refit. The headline uses the
-  // AUTHORITATIVE reported active-fire count (falls back to the clustered hotspot count if CIFFC is down).
+  // Paint the map for the SELECTED region (country OR Canadian province): filter each layer → re-plot →
+  // refit, so the map and the ticker always agree on what's in view. The ticker (paintStats) owns the
+  // headline numbers — paint() just plots + frames.
   const paint = (refit: boolean): void => {
-    const reported = filterReportedCountry(reportedFeed.fires, country);
-    const out = filterReportedCountry(reportedFeed.out, country);
-    const hs = filterCountry(hsFeed.hotspots, country);
-    const label = countryLabel(country);
+    const reported = filterReportedRegion(reportedFeed.fires, region);
+    const out = filterReportedRegion(reportedFeed.out, region);
+    const hs = filterRegionHotspots(hsFeed.hotspots, region);
     biggest = reported.reduce<ReportedFire | null>((a, b) => (!a || b.sizeHa > a.sizeHa ? b : a), null);
     hottest = hs.reduce<Hotspot | null>((a, b) => (!a || b.hfi > a.hfi ? b : a), null);
 
-    const canada = country !== 'US' && country !== 'MX';
-    // Alerts + bans are Saskatchewan (SaskAlert / SK SPSA), so they show only when Canada is in frame.
-    const alerts = canada ? alertFeed.alerts : [];
-    const bans = canada ? banFeed.bans : [];
-
-    // Headline honesty: "unavailable" (both authoritative feeds down) ≠ "no fires in view" (a LIVE feed
-    // with 0 results) ≠ a real count. We only show the offline copy when there's genuinely nothing live.
-    if (reportedFeed.meta.status !== 'live' && hsFeed.meta.status !== 'live') {
-      headEl.textContent = C.offlineTitle;
-      subEl.textContent = C.offlineBody;
-    } else {
-      // Headline active count: for the strict Canada view use CIFFC's OFFICIAL national tally
-      // (summary.activeFires) so the headline equals the strip's "Active fires" hero exactly — no two
-      // different "active" numbers side by side. Otherwise (US/MX/all) the plotted reported count, falling
-      // back to clustered hotspots when CIFFC is down. (The map still plots what it can; the official count
-      // is ≥ the plottable set, as every fire tracker shows.)
-      const active =
-        country === 'CA' && summary && summary.meta.status === 'live'
-          ? summary.activeFires
-          : reported.length || countFires(hs);
-      headEl.textContent = active > 0 ? C.head(active, label) : `${C.emptyTitle} · ${label}`;
-      // Freshness = the FRESHEST source on the map (satellite pass usually beats the ~daily CIFFC sitrep),
-      // honestly stamped to that layer's own publish time — NEVER our fetch time. This sub-line counts
-      // satellite detections, so the satellite pass is the consistent datum; CIFFC's older sitrep date keeps
-      // its own honest row in the source ledger.
-      const freshMs = Math.max(reportedFeed.meta.publishedAt, hsFeed.meta.publishedAt);
-      subEl.textContent = C.subStats(hs.length, publishedWhen(freshMs));
-    }
+    const canada = region.country !== 'US' && region.country !== 'MX';
 
     // Hotspots BEFORE reported: on the flat map, canvas tap-dispatch is topmost-wins by marker add
     // order — the authoritative reported dots must repaint LAST so a stacked tap opens the official
@@ -1108,10 +1094,8 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
     map?.setOutFires(out);
     map?.setHotspots(hs);
     map?.setReportedFires(reported);
-    map?.setAlerts(alerts);
-    map?.setBans(bans);
     // The M3 burn perimeters are Canada-only (CWFIS), so drop them when the map is scoped to US/Mexico —
-    // mirrors the stat strip. Shown for Canada + All North America (where Canada is part of the frame).
+    // mirrors the ticker. Shown for Canada + All North America (where Canada is part of the frame).
     map?.setBurnPolygons(canada ? burnFeed.polys : []);
     // Reframe ONLY on first load + a real country change (refit). NEVER on a silent refresh — that would
     // yank the user out of a zoom/pan they set by hand (the fitTo-on-every-paint regression).
@@ -1143,18 +1127,15 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
       fetchActiveFires({ force }),
       fetchBurnPerimeters({ force }),
       fetchFwiMeta({ force }),
-      fetchAlerts({ force }),
-      fetchBans({ force }),
     ])
-      .then(([sum, rep, hot, per, fwi, alr, ban]) => {
+      .then(([sum, rep, hot, per, fwi]) => {
         if (closed) return; // overlay dismissed mid-flight — don't paint into a removed DOM
         if (sum.status === 'fulfilled') summary = sum.value;
         if (rep.status === 'fulfilled') reportedFeed = rep.value;
         if (hot.status === 'fulfilled') hsFeed = hot.value;
         if (per.status === 'fulfilled') burnFeed = per.value;
         if (fwi.status === 'fulfilled') fwiMeta = fwi.value;
-        if (alr.status === 'fulfilled') alertFeed = alr.value;
-        if (ban.status === 'fulfilled') banFeed = ban.value;
+        rebuildRegionOptions(); // the feed just told us which provinces actually have fires
         paintStats();
         paint(!force); // first load (force=false) frames the data; a refresh (force=true) keeps the view
       })
@@ -1165,17 +1146,17 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
   refreshBtn.addEventListener('click', () => load(true));
   sourcesBtn.addEventListener('click', () => showLedger());
   layersBtn.addEventListener('click', () => showLayers());
-  countryEl.addEventListener('change', () => {
-    country = countryEl.value as CountryFilter;
-    setCountryPref(country);
-    sheetEl.hidden = true; // a country switch clears any open sheet (the set / availability just changed)
-    // Weather + SK layers hold no US/MX data — turn off any that were on so a Canadian raster doesn't
-    // linger over a US view and the active-layer count stays honest.
-    if (country === 'US' || country === 'MX') {
-      (['fwi', 'smoke', 'alerts', 'bans'] as FireLayer[]).forEach((id) => { if (layerOn[id]) setLayerState(id, false); });
+  regionEl.addEventListener('change', () => {
+    region = parseRegion(regionEl.value);
+    setRegionPref(region);
+    sheetEl.hidden = true; // a region switch clears any open sheet (the set / availability just changed)
+    // The Weather forecast layers hold no US/MX data — turn off any that were on so a Canadian raster
+    // doesn't linger over a US view and the active-layer count stays honest.
+    if (region.country === 'US' || region.country === 'MX') {
+      (['fwi', 'smoke'] as FireLayer[]).forEach((id) => { if (layerOn[id]) setLayerState(id, false); });
     }
-    paintStats(); // the national summary is Canada-only — note vs. numbers for the chosen country
-    paint(true); // a real filter change DOES reframe
+    paintStats(); // honest to the chosen region — derived per province / "Data not available" off-Canada
+    paint(true); // a real region change DOES reframe (map + ticker agree)
   });
 
   // Forecast scrubber: play/pause toggles the active animation (smoke hourly / fire-weather daily);
@@ -1196,8 +1177,6 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
     const handlers = {
       onSelectHotspot: showHotspot,
       onSelectReported: showReported,
-      onSelectAlert: showAlert,
-      onSelectBan: showBan,
       // While a forecast frame is in flight, mark the scrubber buffering (a soft pulse) so a slow
       // step reads as loading, not stuck.
       onSmokeLoad: (loading: boolean) => scrubTrackEl.classList.toggle('buffering', loading),
@@ -1217,8 +1196,7 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
       })
       .catch(() => {
         if (closed) return;
-        headEl.textContent = C.offlineTitle;
-        subEl.textContent = C.offlineBody;
+        tickerEl.innerHTML = `<span class="fstat-load">${esc(C.offlineTitle)}</span>`;
       });
   });
 }

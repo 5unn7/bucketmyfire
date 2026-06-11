@@ -13,9 +13,6 @@
  *   • fwi / smoke— the two FORECAST rasters, fetched as single EPSG:4326 GetMap images and DRAPED
  *                  onto the sphere in the earth shader (smoke double-buffered + crossfaded so the
  *                  scrubber morphs instead of strobing — the same honesty/feel as the flat map).
- *   • alerts     — SaskAlert pins (bold ringed markers), tappable.
- *   • bans       — SK fire-ban areas: dashed boundary lines + a conformal raster tint; tap-to-detail
- *                  via point-in-polygon on the sphere.
  *
  * Implements the same `LiveMapView` contract as the Leaflet `FireMap` (kept behind `?flat=1` and as
  * the no-WebGL fallback), so the tracker page — layer sheet, scrubber, detail sheets, ledger — is
@@ -28,13 +25,14 @@ import { UI, GLOBE } from '../ui/theme';
 import { LIVEFIRE } from '../config';
 import { radiusMetersForHa } from './normalize';
 import {
-  FWI_WMS_URL, FWI_WMS_LAYER, FWI_WMS_SLD, fwiForecastTime, GEOMET_WMS_URL, SMOKE_WMS_LAYER, SMOKE_WMS_SLD, isLiveFireEnabled,
+  FWI_WMS_URL, FWI_WMS_LAYER, FWI_WMS_SLD, GWIS_FWI_WMS_URL, GWIS_FWI_LAYER, GWIS_FWI_SLD,
+  fwiForecastTime, GEOMET_WMS_URL, SMOKE_WMS_LAYER, SMOKE_WMS_SLD, isLiveFireEnabled,
 } from './client';
 import { paintBasemap, landEdges } from './globe/basemap';
 import { GlobeTiles, llToV3 } from './globe/TileLayer';
-import { STAGE_COLOR, SEV_COLOR, ALERT_COLOR, BAN_COLOR } from './view';
+import { STAGE_COLOR, SEV_COLOR } from './view';
 import type { FireLayer, FireMapHandlers, LiveMapView } from './view';
-import type { Hotspot, FireSeverity, ReportedFire, BurnPolygon, AlertItem, BanArea } from './types';
+import type { Hotspot, FireSeverity, ReportedFire, BurnPolygon } from './types';
 
 export type { FireLayer, FireMapHandlers } from './view';
 
@@ -46,14 +44,17 @@ const EARTH_R_M = 6_371_000; // mean earth radius (m) — the globe is unit-radi
 // (≤ ~5 km) because at the deep zoom the tiles enable, a high-floating constant-px dot would
 // parallax visibly off its true location; the dynamic near plane (setDist) keeps the z-buffer
 // resolving these separations at every distance.
-const ALT = { drape: 1.00045, lines: 1.0005, perim: 1.00055, bans: 1.0006, disc: 1.00065, dots: 1.0008 } as const;
+const ALT = { drape: 1.00045, lines: 1.0005, perim: 1.00055, disc: 1.00065, dots: 1.0008 } as const;
 
 // Hotspot dot size per intensity band (px); colours come from the SHARED `view.ts` semantic maps so
 // both views paint identical meanings.
 const SEV_PX: Record<FireSeverity, number> = { low: 6, moderate: 7, high: 9, extreme: 12 };
 
-// The FWI + ban drape window — one EPSG:4326 GetMap covering Canada (that data IS Canada-only).
+// The CWFIS FWI drape window — one EPSG:4326 GetMap covering Canada (that data IS Canada-only).
 const BOX = { lonMin: -141, latMin: 40, lonMax: -50, latMax: 84 } as const;
+// The GWIS global FWI drape spans the WHOLE planet (its data IS global) — drawn UNDER the Canada drape,
+// so the danger field colours everywhere and the finer CWFIS grid wins over Canada. r maps to vUv 1:1.
+const GLOBE_BOX = { lonMin: -180, latMin: -90, lonMax: 180, latMax: 90 } as const;
 // The SMOKE drape window is WIDER: the ECCC FireWork/RAQDPS-FW model is continental, and plumes
 // routinely cross 40°N / drift over Alaska — a Canada-clipped drape cuts them with a razor edge.
 const SMOKE_BOX = { lonMin: -170, latMin: 25, lonMax: -50, latMax: 84 } as const;
@@ -147,22 +148,21 @@ void main() {
   gl_FragColor = vec4(col, 1.0);
 }`;
 
-// The forecast-drape SHELL: FWI + ban tint + double-buffered smoke, on a transparent sphere ABOVE
+// The forecast-drape SHELL: FWI + double-buffered smoke, on a transparent sphere ABOVE
 // the raster tiles (the drapes are live DATA — they must read over real geography at close zoom,
 // not be buried under it). Each drape samples inside its own lat/lon window; layers over-compose
 // premultiplied and un-premultiply on output so standard alpha blending is exact.
 const DRAPE_FRAG = /* glsl */ `
-uniform sampler2D uBans;
 uniform sampler2D uFwi;
+uniform sampler2D uFwiG; // GWIS global FWI wash (whole planet), drawn beneath the Canada drape
 uniform sampler2D uSmokeA;
 uniform sampler2D uSmokeB;
 uniform float uSmokeMix;
 uniform float uFwiOn;
 uniform float uSmokeOn;
-uniform float uBansOn;
 uniform float uFwiAlpha;
 uniform float uSmokeAlpha;
-uniform vec4 uBox; // FWI + ban window: lonMin, latMin, lonSpan, latSpan
+uniform vec4 uBox; // FWI window: lonMin, latMin, lonSpan, latSpan
 uniform vec4 uSBox; // the wider smoke window (the FireWork model is continental)
 varying vec2 vUv;
 varying vec3 vN;
@@ -172,16 +172,18 @@ void main() {
   float lat = vUv.y * 180.0 - 90.0;
   vec3 acc = vec3(0.0);
   float accA = 0.0;
+  // GWIS global FWI wash — the whole-planet danger field. GLOBE_BOX spans -180..180 / -90..90, so the
+  // sample coord IS vUv. Composited first; the finer CWFIS Canada drape below overlays on top of it.
+  vec4 fwig = texture2D(uFwiG, vUv);
+  float fga = fwig.a * uFwiAlpha * uFwiOn;
+  acc = acc * (1.0 - fga) + fwig.rgb * fga;
+  accA = accA * (1.0 - fga) + fga;
   vec2 r = vec2((lon - uBox.x) / uBox.z, (lat - uBox.y) / uBox.w);
   if (r.x > 0.0 && r.x < 1.0 && r.y > 0.0 && r.y < 1.0) {
     vec4 fwi = texture2D(uFwi, r);
     float fa = fwi.a * uFwiAlpha * uFwiOn;
     acc = acc * (1.0 - fa) + fwi.rgb * fa;
     accA = accA * (1.0 - fa) + fa;
-    vec4 ban = texture2D(uBans, r);
-    float ba = ban.a * uBansOn;
-    acc = acc * (1.0 - ba) + ban.rgb * ba;
-    accA = accA * (1.0 - ba) + ba;
   }
   vec2 sr = vec2((lon - uSBox.x) / uSBox.z, (lat - uSBox.y) / uSBox.w);
   if (sr.x > 0.0 && sr.x < 1.0 && sr.y > 0.0 && sr.y < 1.0) {
@@ -311,17 +313,6 @@ function pointsGeometry(specs: PointSpec[]): THREE.BufferGeometry {
   return g;
 }
 
-/** Even-odd point-in-polygon in lat/lon degrees (`ring` is [lat,lon] pairs — Leaflet order). */
-function inRing(lat: number, lon: number, ring: [number, number][]): boolean {
-  let inside = false;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const [yi, xi] = ring[i];
-    const [yj, xj] = ring[j];
-    if (yi > lat !== yj > lat && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) inside = !inside;
-  }
-  return inside;
-}
-
 interface Pickable<T> { lat: number; lon: number; data: T }
 
 // Frame-loop scratch (applyView runs per frame — no allocation allowed there).
@@ -351,11 +342,7 @@ export class FireGlobe implements LiveMapView {
   private reportedGrp = new THREE.Group(); // area discs + rim rings + marker dots
   private reportedDots: THREE.Points;
   private outPts: THREE.Points;
-  private alertPts: THREE.Points;
   private perimLines: THREE.LineSegments;
-  private banLines: THREE.LineSegments;
-  private banCanvas: HTMLCanvasElement;
-  private banTex: THREE.CanvasTexture;
   private selPts: THREE.Points; // single-vertex selection ring
   private selLayer: FireLayer | null = null; // which layer the selection ring belongs to (cleared with it)
   // Reusable disc/ring materials — created ONCE so a data repaint never constructs a material
@@ -363,14 +350,12 @@ export class FireGlobe implements LiveMapView {
   private discMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, side: THREE.DoubleSide });
   private ringMat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false });
 
-  // Pickables (screen-space nearest on tap; priority alerts → reported → out → hotspots).
+  // Pickables (screen-space nearest on tap; priority reported → out → hotspots).
   private pickHot: Pickable<Hotspot>[] = [];
   private pickRep: Pickable<ReportedFire>[] = [];
   private pickOut: Pickable<ReportedFire>[] = [];
-  private pickAlert: Pickable<AlertItem>[] = [];
-  private bans: BanArea[] = [];
 
-  private visible: Record<FireLayer, boolean> = { reported: true, out: false, perimeters: true, hotspots: true, fwi: false, smoke: false, alerts: false, bans: false };
+  private visible: Record<FireLayer, boolean> = { reported: true, out: false, perimeters: true, hotspots: true, fwi: false, smoke: false };
 
   // View state — the lat/lon facing the camera + camera distance (earth radii), animated.
   private vLat = 56; private vLon = -96; private vDist: number;
@@ -389,10 +374,14 @@ export class FireGlobe implements LiveMapView {
 
   // Forecast rasters.
   private fwiTex: THREE.Texture;
+  private fwiTexG: THREE.Texture; // GWIS global FWI drape (its own WMS request/load state)
   private fwiTime = fwiForecastTime();
   private fwiLoadedTime: string | null = null;
   private fwiInflight: string | null = null; // dedupe — toggle-on + the scrubber both request the same day
   private fwiToken = 0;
+  private fwiLoadedTimeG: string | null = null;
+  private fwiInflightG: string | null = null;
+  private fwiTokenG = 0;
   private smokeTexA: THREE.Texture;
   private smokeTexB: THREE.Texture;
   private smokeFrontIsA = true;
@@ -471,12 +460,12 @@ export class FireGlobe implements LiveMapView {
       uniforms: {
         uBans: { value: null },
         uFwi: { value: (this.fwiTex = blankTex()) },
+        uFwiG: { value: (this.fwiTexG = blankTex()) },
         uSmokeA: { value: (this.smokeTexA = blankTex()) },
         uSmokeB: { value: (this.smokeTexB = blankTex()) },
         uSmokeMix: { value: 0 },
         uFwiOn: { value: 0 },
         uSmokeOn: { value: 0 },
-        uBansOn: { value: 0 },
         uFwiAlpha: { value: G.fwiOpacity }, // the drape's OWN config token (a sphere drape reads softer than tiles)
         uSmokeAlpha: { value: LIVEFIRE.smokeOpacity },
         uBox: { value: new THREE.Vector4(BOX.lonMin, BOX.latMin, boxSpan(BOX).lon, boxSpan(BOX).lat) },
@@ -494,15 +483,6 @@ export class FireGlobe implements LiveMapView {
     const drapeMesh = new THREE.Mesh(new THREE.SphereGeometry(ALT.drape, 96, 64), this.drapeMat);
     drapeMesh.renderOrder = 0.5; // after the tiles (0), before every data mark (≥1)
     this.earth.add(drapeMesh);
-
-    // Ban tint canvas (painted by setBans, sampled by the drape shell inside the Canada window).
-    this.banCanvas = document.createElement('canvas');
-    this.banCanvas.width = 1024;
-    this.banCanvas.height = Math.round((1024 * boxSpan(BOX).lat) / boxSpan(BOX).lon);
-    this.banTex = new THREE.CanvasTexture(this.banCanvas);
-    this.banTex.minFilter = THREE.LinearFilter;
-    this.banTex.generateMipmaps = false;
-    this.drapeMat.uniforms.uBans.value = this.banTex;
 
     // Crisp vector geography: coastlines + international borders + Canadian province lines. These
     // FADE OUT as the tiles fade in — the tiles carry the real coastlines at close zoom, and a
@@ -546,28 +526,19 @@ export class FireGlobe implements LiveMapView {
     this.hotspotPts = new THREE.Points(pointsGeometry([]), this.pointMat.hotspot);
     this.reportedDots = new THREE.Points(pointsGeometry([]), this.pointMat.marker);
     this.outPts = new THREE.Points(pointsGeometry([]), this.pointMat.soft);
-    this.alertPts = new THREE.Points(pointsGeometry([]), this.pointMat.marker);
     this.perimLines = new THREE.LineSegments(new THREE.BufferGeometry(), lineMat(UI.ember));
     (this.perimLines.material as THREE.LineBasicMaterial).opacity = 0.5;
-    // Ban boundaries: dashed, with PER-VERTEX colour so each area strokes its own BAN_COLOR type
-    // (Ban=warn, Restriction=caution…) exactly like the flat map.
-    this.banLines = new THREE.LineSegments(
-      new THREE.BufferGeometry(),
-      new THREE.LineDashedMaterial({ vertexColors: true, transparent: true, opacity: 0.85, depthWrite: false, dashSize: 0.012, gapSize: 0.008 }),
-    );
     this.selPts = new THREE.Points(pointsGeometry([]), this.pointMat.sel);
     this.selPts.visible = false;
 
-    // Draw order mirrors the flat map's panes: footprints → bans → out → discs → hotspots → alerts.
+    // Draw order mirrors the flat map's panes: footprints → out → discs → hotspots.
     this.perimLines.renderOrder = 1;
-    this.banLines.renderOrder = 1;
     this.reportedGrp.renderOrder = 2;
     this.outPts.renderOrder = 3;
     this.reportedDots.renderOrder = 4;
     this.hotspotPts.renderOrder = 5;
-    this.alertPts.renderOrder = 6;
     this.selPts.renderOrder = 7;
-    this.earth.add(this.perimLines, this.banLines, this.reportedGrp, this.outPts, this.reportedDots, this.hotspotPts, this.alertPts, this.selPts);
+    this.earth.add(this.perimLines, this.reportedGrp, this.outPts, this.reportedDots, this.hotspotPts, this.selPts);
     this.scene.add(this.earth);
 
     this.applyVisibility();
@@ -713,69 +684,6 @@ export class FireGlobe implements LiveMapView {
     this.dirty = true;
   }
 
-  setAlerts(alerts: AlertItem[]): void {
-    this.clearSelection();
-    this.pickAlert = alerts.map((a) => ({ lat: a.lat, lon: a.lon, data: a }));
-    this.swapPoints(this.alertPts, alerts.map((a) => ({
-      lat: a.lat, lon: a.lon, color: tok(ALERT_COLOR[a.level]).c, px: LIVEFIRE.globe.alertPx,
-    })));
-  }
-
-  setBans(bans: BanArea[]): void {
-    this.bans = bans;
-    // Conformal fill: painted into the Canada-window canvas the earth shader drapes (a big polygon
-    // triangulated onto the sphere would sag under the surface; a raster tint can't).
-    const ctx = this.banCanvas.getContext('2d')!;
-    const w = this.banCanvas.width;
-    const h = this.banCanvas.height;
-    ctx.clearRect(0, 0, w, h);
-    for (const b of bans) {
-      const { c, a } = tok(BAN_COLOR[b.type]);
-      ctx.fillStyle = `rgba(${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)},${0.14 * a})`;
-      ctx.beginPath();
-      b.ring.forEach(([la, lo], i) => {
-        const x = ((lo - BOX.lonMin) / boxSpan(BOX).lon) * w;
-        const y = h - ((la - BOX.latMin) / boxSpan(BOX).lat) * h; // canvas y-down; texture flipY rights it
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      });
-      ctx.closePath();
-      ctx.fill();
-    }
-    this.banTex.needsUpdate = true;
-    // Dashed boundary stroke as crisp vector lines, PER-VERTEX coloured by ban type (the flat map
-    // strokes each polygon BAN_COLOR[b.type]; one uniform red would contradict the legend).
-    let segs = 0;
-    for (const b of bans) segs += b.ring.length; // closed ring: n points → n segments
-    const bPos = new Float32Array(segs * 2 * 3);
-    const bCol = new Float32Array(segs * 2 * 3);
-    const bv = new THREE.Vector3();
-    let bo = 0;
-    for (const b of bans) {
-      const { c } = tok(BAN_COLOR[b.type]);
-      const n = b.ring.length;
-      for (let i = 0; i < n; i++) {
-        const [la1, lo1] = b.ring[i];
-        const [la2, lo2] = b.ring[(i + 1) % n];
-        llToV3(la1, lo1, ALT.bans, bv);
-        bPos.set([bv.x, bv.y, bv.z], bo * 3);
-        bCol.set([c.r, c.g, c.b], bo * 3);
-        bo++;
-        llToV3(la2, lo2, ALT.bans, bv);
-        bPos.set([bv.x, bv.y, bv.z], bo * 3);
-        bCol.set([c.r, c.g, c.b], bo * 3);
-        bo++;
-      }
-    }
-    this.banLines.geometry.dispose();
-    const bg = new THREE.BufferGeometry();
-    bg.setAttribute('position', new THREE.BufferAttribute(bPos, 3));
-    bg.setAttribute('color', new THREE.BufferAttribute(bCol, 3));
-    this.banLines.geometry = bg;
-    this.banLines.computeLineDistances();
-    this.dirty = true;
-  }
-
   /** Swap a Points object's geometry for freshly-built marker data (dispose the old buffers). */
   private swapPoints(pts: THREE.Points, specs: PointSpec[]): void {
     pts.geometry.dispose();
@@ -800,9 +708,6 @@ export class FireGlobe implements LiveMapView {
     this.outPts.visible = v.out;
     this.hotspotPts.visible = v.hotspots;
     this.perimLines.visible = v.perimeters;
-    this.alertPts.visible = v.alerts;
-    this.banLines.visible = v.bans;
-    this.drapeMat.uniforms.uBansOn.value = v.bans ? 1 : 0;
     // A selection whose layer just went hidden must take its ring with it (the flat map's highlight
     // lives ON the marker, so it gets this for free).
     if (this.selLayer && !v[this.selLayer]) this.clearSelection();
@@ -810,7 +715,10 @@ export class FireGlobe implements LiveMapView {
     const live = isLiveFireEnabled();
     this.drapeMat.uniforms.uFwiOn.value = v.fwi && live ? 1 : 0;
     this.drapeMat.uniforms.uSmokeOn.value = v.smoke && live ? 1 : 0;
-    if (v.fwi && live && this.fwiLoadedTime !== this.fwiTime) this.loadFwi();
+    if (v.fwi && live) {
+      if (this.fwiLoadedTime !== this.fwiTime) this.loadFwi();
+      if (this.fwiLoadedTimeG !== this.fwiTime) this.loadFwiGlobal();
+    }
     if (v.smoke && live && this.smokePending && this.smokePending !== this.smokeFrame) this.showSmokeFrame(this.smokePending);
     if (!(v.smoke && live)) {
       // Hiding the smoke layer orphans any in-flight frame and settles the scrubber's buffering hint
@@ -824,7 +732,7 @@ export class FireGlobe implements LiveMapView {
 
   setFwiTime(iso: string): void {
     this.fwiTime = iso;
-    if (this.visible.fwi && isLiveFireEnabled()) this.loadFwi();
+    if (this.visible.fwi && isLiveFireEnabled()) { this.loadFwi(); this.loadFwiGlobal(); }
   }
 
   private loadFwi(): void {
@@ -848,6 +756,29 @@ export class FireGlobe implements LiveMapView {
         // day's drape stays up (same as the flat map's stale tiles) — never a hard blank.
         if (token === this.fwiToken) this.fwiInflight = null;
       },
+    );
+  }
+
+  /** The GWIS GLOBAL FWI drape — same TIME + ramp as loadFwi(), but the worldwide ecmwf.fwi layer over
+   *  the whole-planet box. A separate WMS request/texture so the two danger fields layer (global wash +
+   *  Canada detail). A future/empty day returns a transparent tile → the wash just shows nothing. */
+  private loadFwiGlobal(): void {
+    const time = this.fwiTime;
+    if (time === this.fwiLoadedTimeG || time === this.fwiInflightG) return;
+    const token = ++this.fwiTokenG;
+    this.fwiInflightG = time;
+    this.loadRaster(
+      wmsUrl(GWIS_FWI_WMS_URL, GWIS_FWI_LAYER, GLOBE_BOX, { time, sld: GWIS_FWI_SLD, width: LIVEFIRE.globe.rasterW }),
+      (tex) => {
+        if (token !== this.fwiTokenG || this.disposed) { tex.dispose(); return; }
+        if (this.fwiTexG && this.fwiTexG !== tex) this.fwiTexG.dispose();
+        this.fwiTexG = tex;
+        this.drapeMat.uniforms.uFwiG.value = tex;
+        this.fwiLoadedTimeG = time;
+        this.fwiInflightG = null;
+        this.dirty = true;
+      },
+      () => { if (token === this.fwiTokenG) this.fwiInflightG = null; },
     );
   }
 
@@ -1080,10 +1011,9 @@ export class FireGlobe implements LiveMapView {
     this.setDist(1 + (this.vDist - 1) * factor);
   }
 
-  /** Tap → screen-space nearest pickable (priority: alerts → reported → out → hotspots), else a
-   *  ban-area point-in-polygon via the sphere intersection. The hit radius is finger-generous on
-   *  touch — and HOTSPOTS get the largest of all, since they're the smallest marks and the hardest
-   *  to hit with a fingertip (the user-requested mobile leniency). */
+  /** Tap → screen-space nearest pickable (priority: reported → out → hotspots). The hit radius is
+   *  finger-generous on touch — and HOTSPOTS get the largest of all, since they're the smallest marks
+   *  and the hardest to hit with a fingertip (the user-requested mobile leniency). */
   private onTap(clientX: number, clientY: number): void {
     const rect = this.renderer.domElement.getBoundingClientRect();
     const sx = clientX - rect.left;
@@ -1110,14 +1040,6 @@ export class FireGlobe implements LiveMapView {
       return best;
     };
 
-    if (this.visible.alerts) {
-      const hit = nearest(this.pickAlert, base);
-      if (hit) {
-        this.select(hit.item.lat, hit.item.lon, LIVEFIRE.globe.alertPx, 'alerts');
-        this.handlers.onSelectAlert?.(hit.item.data);
-        return;
-      }
-    }
     if (this.visible.reported) {
       const hit = nearest(this.pickRep, base);
       if (hit) {
@@ -1142,30 +1064,6 @@ export class FireGlobe implements LiveMapView {
         return;
       }
     }
-    if (this.visible.bans && this.bans.length && this.handlers.onSelectBan) {
-      const ll = this.tapLatLon(sx, sy, w, h);
-      if (ll) {
-        for (const b of this.bans) {
-          if (inRing(ll.lat, ll.lon, b.ring)) {
-            this.handlers.onSelectBan(b);
-            return;
-          }
-        }
-      }
-    }
-  }
-
-  /** Screen point → the lat/lon under it (ray–sphere in the earth's local frame), or null off-globe. */
-  private tapLatLon(sx: number, sy: number, w: number, h: number): { lat: number; lon: number } | null {
-    const ray = new THREE.Raycaster();
-    ray.setFromCamera(new THREE.Vector2((sx / w) * 2 - 1, -(sy / h) * 2 + 1), this.camera);
-    const hit = ray.ray.intersectSphere(new THREE.Sphere(new THREE.Vector3(0, 0, 0), 1), new THREE.Vector3());
-    if (!hit) return null;
-    this.earth.worldToLocal(hit);
-    const lat = 90 - Math.acos(THREE.MathUtils.clamp(hit.y, -1, 1)) / DEG;
-    let lon = Math.atan2(hit.z, -hit.x) / DEG - 180;
-    if (lon <= -180) lon += 360;
-    return { lat, lon };
   }
 
   // ── frame loop (O(1): view math + uniform nudges + one draw) ──
@@ -1279,7 +1177,7 @@ export class FireGlobe implements LiveMapView {
       const mat = mesh.material as THREE.Material | undefined;
       if (mat) mat.dispose();
     });
-    for (const t of [this.earthMat.uniforms.uBase.value, this.banTex, this.fwiTex, this.smokeTexA, this.smokeTexB]) {
+    for (const t of [this.earthMat.uniforms.uBase.value, this.fwiTex, this.fwiTexG, this.smokeTexA, this.smokeTexB]) {
       (t as THREE.Texture | null)?.dispose();
     }
     this.discMat.dispose(); // class-held — unattached when no sized fires, so the traverse can miss them

@@ -14,8 +14,8 @@ import {
   normalizeFeed, parseHotspots, countFires, severityFor, countryOf, filterCountry,
   parseReportedFires, normalizeReported, normalizeSummary, parseBurnPolygons, normalizeBurn,
   stageOf, isActiveStage, radiusMetersForHa, filterReportedCountry, parseFwiIssueDate, parseMs, smokeForecastFrames,
-  parseAlerts, normalizeAlerts, alertLevel, isWildfireAlert, parseBans, normalizeBans, parseYmd, banType, safeUrl,
   forecastLeadLabel,
+  parseRegion, regionValue, regionLabel, filterReportedRegion, filterRegionHotspots, regionOptions, deriveRegionStats,
 } from '../src/three/livefire/normalize';
 
 let pass = 0;
@@ -149,6 +149,40 @@ try {
 ok('summary tolerates junk → zeros, no throw', !sThrew && !!sJunk && sJunk.ytdTotal === 0 && sJunk.activeFires === 0 && sJunk.ytdOut === 0);
 ok('junk summary has no fabricated publish time (publishedAt === 0)', !!sJunk && sJunk.meta.publishedAt === 0);
 
+// ════════════ Region selection (country + Canadian province) + the HONEST firestats ════════════
+// Parse / round-trip / label — illegal combos degrade to Canada-all, never throw.
+ok('parseRegion: CA:SK → province', JSON.stringify(parseRegion('CA:SK')) === JSON.stringify({ country: 'CA', agency: 'SK' }));
+ok('parseRegion: country values pass through (no agency)', parseRegion('US').country === 'US' && parseRegion('all').country === 'all' && parseRegion('US').agency === undefined);
+ok('parseRegion: illegal/junk → Canada-all', JSON.stringify(parseRegion('US:SK')) === JSON.stringify({ country: 'CA' }) && JSON.stringify(parseRegion('CA:ZZ')) === JSON.stringify({ country: 'CA' }) && JSON.stringify(parseRegion('')) === JSON.stringify({ country: 'CA' }));
+ok('regionValue round-trips parseRegion', regionValue({ country: 'CA', agency: 'SK' }) === 'CA:SK' && regionValue({ country: 'CA' }) === 'CA' && regionValue({ country: 'US' }) === 'US');
+ok('regionLabel names the province / country', regionLabel({ country: 'CA', agency: 'SK' }) === 'Saskatchewan' && regionLabel({ country: 'US' }) === 'United States');
+
+// Filters: a province narrows WITHIN Canada; with no agency the region filter == the country filter.
+const skFires = filterReportedRegion(repFeed.fires, { country: 'CA', agency: 'SK' });
+ok('filterReportedRegion(SK) returns only SK active fires', skFires.length > 0 && skFires.every((f) => f.agency.toUpperCase() === 'SK'), `sk=${skFires.length}`);
+ok('filterReportedRegion(no agency) === filterReportedCountry(CA)', filterReportedRegion(repFeed.fires, { country: 'CA' }).length === filterReportedCountry(repFeed.fires, 'CA').length);
+ok('filterRegionHotspots(SK) keeps only SK detections', filterRegionHotspots(feed.hotspots, { country: 'CA', agency: 'SK' }).every((h) => h.agency.toUpperCase() === 'SK'));
+
+// regionOptions: only the provinces PRESENT in the active feed (SK/BC/AB/QC/ON), never the OUT-only MB.
+const optVals = regionOptions(repFeed).map((o) => o.value);
+ok('regionOptions lists provinces present in the active feed', optVals.includes('CA:SK') && optVals.includes('CA:BC') && optVals.includes('CA:ON'), optVals.join(','));
+ok('regionOptions excludes a province with only OUT fires (MB)', !optVals.includes('CA:MB'));
+ok('regionOptions always offers CA / US / MX / all', optVals.includes('CA') && optVals.includes('US') && optVals.includes('MX') && optVals.includes('all'));
+
+// deriveRegionStats — the HONESTY LOCKS (what the ticker is allowed to show per scope).
+const REGION_NOW = repFeed.meta.publishedAt + 1;
+const stProv = deriveRegionStats({ country: 'CA', agency: 'SK' }, repFeed, feed, sum, REGION_NOW);
+ok('province scope = ca-province; active = SK count; stage split sums to active', stProv.scope === 'ca-province' && stProv.active === skFires.length && !!stProv.byStage && stProv.byStage.OC + stProv.byStage.BH + stProv.byStage.UC === stProv.active);
+ok('HONESTY: province area/prep/season = Data not available (null)', stProv.areaBurnedHa === null && stProv.prepLevel === null && stProv.ytdTotal === null && stProv.ytdOut === null);
+const stCA = deriveRegionStats({ country: 'CA' }, repFeed, feed, sum, REGION_NOW);
+ok('Canada-all scope = ca-national; uses the AUTHORITATIVE summary', stCA.scope === 'ca-national' && stCA.active === sum.activeFires && stCA.areaBurnedHa === sum.areaBurnedHa && stCA.prepLevel === sum.prepLevel);
+const stUS = deriveRegionStats({ country: 'US' }, repFeed, feed, sum, REGION_NOW);
+ok('US scope = foreign: NO reported active (null); satellite hotspots are the metric', stUS.scope === 'foreign' && stUS.active === null && stUS.byStage === null && typeof stUS.hotspots === 'number' && (stUS.hotspots ?? -1) >= 0);
+const downRep = normalizeReported({ features: [] }, { fetchedAt: FETCHED, status: 'unavailable', fromCache: false });
+const downHs = normalizeFeed({ features: [] }, { fetchedAt: FETCHED, status: 'unavailable', fromCache: false });
+const stDown = deriveRegionStats({ country: 'CA' }, downRep, downHs, null, REGION_NOW);
+ok('all feeds unavailable → scope down; every headline number null', stDown.scope === 'down' && stDown.active === null && stDown.byStage === null && stDown.areaBurnedHa === null && stDown.hotspots === null);
+
 // ── Burn perimeters (CWFIS M3 polygons) ──
 const polys = parseBurnPolygons(fx('livefire-m3-polygons.geojson'));
 ok('parseBurnPolygons keeps Polygon + MultiPolygon, drops the degenerate (<3 pt) ring', polys.length === 2, `kept ${polys.length}`);
@@ -181,34 +215,6 @@ ok('forecastLeadLabel: frame 0 is "Now"', forecastLeadLabel(0) === 'Now' && fore
 ok('forecastLeadLabel: hours within a day', forecastLeadLabel(1) === '+1 h' && forecastLeadLabel(6) === '+6 h' && forecastLeadLabel(23) === '+23 h');
 ok('forecastLeadLabel: rolls past a day', forecastLeadLabel(24) === '+1 d' && forecastLeadLabel(26) === '+1 d 2 h' && forecastLeadLabel(48) === '+2 d');
 ok('forecastLeadLabel: junk → "Now" (never NaN)', forecastLeadLabel(NaN) === 'Now' && forecastLeadLabel(Infinity) === 'Now');
-
-// ════════════ Public alerts (SaskAlert) — surface verbatim, filter to wildfire, never re-classify ════════════
-const saFx = fx('livefire-saskalert.json');
-const parsedAlerts = parseAlerts(saFx);
-ok('parseAlerts drops cancelled/ended + bad-point alerts (keeps the 2 active valid)', parsedAlerts.alerts.length === 2, `kept ${parsedAlerts.alerts.length}`);
-ok('alertLevel maps codes + blanks', alertLevel('critical') === 'critical' && alertLevel('ADVISORY') === 'advisory' && alertLevel('') === 'unknown');
-ok('isWildfireAlert: the fire/evac alert yes, the tornado no', isWildfireAlert(parsedAlerts.alerts[0], parsedAlerts.codes[0]) === true && isWildfireAlert(parsedAlerts.alerts[1], parsedAlerts.codes[1]) === false);
-const alertFeed = normalizeAlerts(saFx, { fetchedAt: FETCHED, status: 'live', fromCache: false });
-ok('normalizeAlerts filters to WILDFIRE-relevant (the evac alert, not the tornado)', alertFeed.alerts.length === 1 && alertFeed.alerts[0].event === 'evacuation order', `kept ${alertFeed.alerts.length}`);
-ok('alert keeps the issuer verbatim (level/coverage/url) — never re-classified', alertFeed.alerts[0].level === 'critical' && alertFeed.alerts[0].coverage === 'Northern Saskatchewan' && alertFeed.alerts[0].url.includes('emergencyalert'));
-ok('alert publishedAt = the feed updated time (NOT our fetch time)', alertFeed.meta.publishedAt === parseMs('2026-06-09T14:30:00-06:00') && alertFeed.meta.status === 'live');
-let aThrew = false;
-try { parseAlerts(null); parseAlerts({ entries: 'no' }); normalizeAlerts(42, { fetchedAt: FETCHED, status: 'live', fromCache: false }); } catch { aThrew = true; }
-ok('alert parsers tolerate junk', !aThrew && parseAlerts(null).alerts.length === 0);
-ok('safeUrl passes http(s), blocks javascript:/data:/junk (the alert html_link href guard)', safeUrl('https://x.test/a') === 'https://x.test/a' && safeUrl('http://x.test') === 'http://x.test' && safeUrl('javascript:alert(1)') === '' && safeUrl('data:text/html,x') === '' && safeUrl('  HTTPS://x.test  ') === 'HTTPS://x.test' && safeUrl('') === '' && safeUrl(null) === '');
-
-// ════════════ Fire bans (SK SPSA) — empty = "no ban", a valid state ════════════
-const banFx = fx('livefire-firebans.geojson');
-const parsedBans = parseBans(banFx);
-ok('parseBans keeps Polygon + MultiPolygon rings, drops the <3-pt ring (1 Ban + 2 Restriction = 3)', parsedBans.length === 3, `kept ${parsedBans.length}`);
-ok('ban ring is [lat,lon] order', parsedBans[0].ring[0][0] === 55 && parsedBans[0].ring[0][1] === -106);
-ok('parseBans keeps both Restriction rings from the MultiPolygon', parsedBans.filter((b) => b.type === 'Restriction').length === 2);
-ok('banType maps Ban/Restriction/Advisory/other', banType('Ban') === 'Ban' && banType('restriction') === 'Restriction' && banType('advisory') === 'Advisory' && banType('zzz') === 'Other');
-ok('parseYmd parses YYYYMMDD (+ tolerates ISO, junk → 0)', parseYmd('20260527') === parseMs('2026-05-27') && parseYmd('2026-05-27') === parseMs('2026-05-27') && parseYmd('') === 0);
-const banFeed = normalizeBans(banFx, { fetchedAt: FETCHED, status: 'live', fromCache: false });
-ok('normalizeBans publishedAt = freshest Start_Date', banFeed.meta.publishedAt === parseYmd('20260601'), `${banFeed.meta.publishedAt}`);
-ok('an empty ban feed is a VALID "no ban" state (status live, 0 bans, no throw)', normalizeBans({ type: 'FeatureCollection', features: [] }, { fetchedAt: FETCHED, status: 'live', fromCache: false }).bans.length === 0);
-ok('parseBans tolerates junk', parseBans(null).length === 0 && parseBans({ features: 'no' }).length === 0);
 
 // ── Report ──
 console.log(`\nverify:livefire — ${pass} passed, ${fail} failed`);

@@ -16,6 +16,15 @@ export type Country = 'CA' | 'US' | 'MX' | 'OT';
 /** The map's country filter — a country or 'all' (the whole continent). */
 export type CountryFilter = Country | 'all';
 
+/** The tracker's region selection: a country (or 'all') optionally narrowed to one Canadian province.
+ *  `agency` is a CIFFC province code (SK/BC/AB/…) and is ONLY meaningful when `country === 'CA'` — the
+ *  CIFFC reported feed is Canada-only, so no other country has province granularity. Encoded as a
+ *  `<select>` value via `regionValue()` (`'CA'`, `'CA:SK'`, `'US'`, `'all'`) and parsed by `parseRegion()`. */
+export interface RegionFilter {
+  country: CountryFilter;
+  agency?: string;
+}
+
 /** One satellite hotspot detection. `props` is the UNTOUCHED CWFIS property bag (all ~35 fields) so the
  *  detail panel renders the full record; the top-level fields are just the few we need to plot + colour. */
 export interface Hotspot {
@@ -128,47 +137,25 @@ export interface NationalSummary {
   meta: FeedMeta;
 }
 
-// ── Public alerts (SaskAlert) + fire bans (SK SPSA) ─────────────────────────────────────────────────
-// These are the highest-stakes layers: getting an evacuation alert wrong is the worst possible trust
-// failure. So we NEVER re-classify — we surface the issuer's own words + level + a link to the official
-// incident page, and the tracker carries the standing "not an emergency tool, follow official sources" line.
-
-/** SaskAlert priority → severity ramp (critical = danger, advisory = caution, info = neutral). */
-export type AlertLevel = 'critical' | 'advisory' | 'info' | 'unknown';
-
-/** One active SaskAlert public alert, filtered to wildfire/evacuation-relevant + plotted as a pin. The
- *  fields are the issuer's verbatim words — we don't paraphrase or re-label (e.g. never invent "ORDER"). */
-export interface AlertItem {
-  lat: number;
-  lon: number;
-  level: AlertLevel;
-  event: string; // event_en — the issuer's event name (verbatim)
-  summary: string; // summary_en
-  coverage: string; // coverage_en — the affected area, plain text
-  sentAt: number; // `sent` epoch ms (0 if unparseable)
-  lifecycle: string; // type_en — Issued / Update
-  author: string; // author_en — who issued it (e.g. an agency)
-  url: string; // html_link — the official incident page (the authority)
-  id: string;
-}
-export interface AlertFeed {
-  alerts: AlertItem[];
-  meta: FeedMeta;
+/** Region-scoped stats for the firestats ticker — the HONEST per-region view `deriveRegionStats`
+ *  produces from whatever source is authoritative at that scope. A `null` field means "no per-region
+ *  source exists" → the ticker renders "Data not available", never a Canada number under another label.
+ *    • ca-national — Canada-all (or 'all'): the authoritative CIFFC `NationalSummary` numbers.
+ *    • ca-province — one province: active/stage/today DERIVED from the agency-filtered reported feed;
+ *                    area-burned/prep/season-total are national-only metrics → null.
+ *    • foreign     — US/MX: no reported feed → active/stage/today null; `hotspots` is the honest metric.
+ *    • down        — every backing feed unavailable → all headline numbers null. */
+export interface RegionStats {
+  scope: 'ca-national' | 'ca-province' | 'foreign' | 'down';
+  label: string; // the region's display name (regionLabel)
+  active: number | null; // active reported fires (OC+BH+UC); null = no reported source for this region
+  byStage: { OC: number; BH: number; UC: number } | null;
+  reportedToday: number | null; // fires whose sitrep is < 24h old
+  areaBurnedHa: number | null; // season area burned — national-only metric
+  prepLevel: number | null; // national preparedness 1–5 — national-only metric
+  ytdTotal: number | null;
+  ytdOut: number | null;
+  hotspots: number | null; // satellite detections (clustered) in-region — the honest US/MX metric
+  asOfMs: number; // freshest SOURCE publish time backing these numbers (0 = unknown)
 }
 
-/** SK SPSA fire-ban `Type`: a hard ban, a partial restriction, or an advisory. */
-export type BanType = 'Ban' | 'Restriction' | 'Advisory' | 'Other';
-
-/** One provincial fire-ban / open-fire-restriction area (a polygon). `ring` is the outer ring [lat,lon];
- *  MultiPolygons flatten to one BanArea per outer ring (shared type/date). An EMPTY feed means "no ban
- *  in effect" — a VALID state, never confused with the feed being down. */
-export interface BanArea {
-  ring: [number, number][];
-  type: BanType;
-  startAt: number; // Start_Date (YYYYMMDD) → epoch ms (0 if unknown) — "in effect since"
-  comment: string; // Comment (e.g. "Full Ban")
-}
-export interface BanFeed {
-  bans: BanArea[];
-  meta: FeedMeta;
-}

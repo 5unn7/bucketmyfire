@@ -101,22 +101,34 @@ const CSS = `
 .bmf-app .fmn{ position:absolute; top:-6px; right:-6px; min-width:17px; height:17px; padding:0 4px; display:grid; place-items:center; border-radius:var(--r-pill); background:var(--ember); color:var(--ink); font-family:var(--mono); font-size:var(--fs-micro); font-weight:var(--fw-bold); line-height:1; }
 .bmf-app .fmn:empty{ display:none; }
 
-/* Compact status block (CIFFC) — a bold lead (live count + region, data-lf-head) with the two supporting
-   season numbers folded in as inline mini-stats, then a tiny freshness sub + the demoted season subline.
-   A same-height note swaps in for US/MX / a down feed, so the honest empty≠down≠off states never collapse
-   the header. Far slimmer than the old three big hero cells (which ate a whole row). */
-.bmf-app .firestats{ flex:0 0 auto; z-index:2; display:flex; flex-direction:column; gap:2px; padding:7px 12px 8px; background:var(--card-bg); border-bottom:1px solid var(--stroke); }
+/* Region firestats — ONE compact icon TICKER (data-lf-ticker), repainted from a pure RegionStats POJO so
+   it's HONEST to the chosen region: a lead (region + live active count, or satellite detections for US/MX)
+   + supporting chips (OC/BH/UC stage split · today · area · prep), each showing "Data not available" (faint)
+   where the region has no source. Single line (clips on a narrow phone, lead + pips stay anchored left);
+   tokens only → AA-safe (text/dim/faint all clear AA over the glass); icons are Lucide via ic(). */
+.bmf-app .firestats{ flex:0 0 auto; z-index:2; display:flex; flex-direction:column; padding:7px 12px 8px; background:var(--card-bg); border-bottom:1px solid var(--stroke); }
 .bmf-app .firestats[hidden]{ display:none; }
-.bmf-app .fstat-head{ display:flex; align-items:baseline; justify-content:space-between; gap:6px 16px; flex-wrap:wrap; }
-.bmf-app .firestats .t{ min-width:0; font-size:var(--fs-md); font-weight:var(--fw-bold); color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.bmf-app .fstat-mini{ flex:0 0 auto; display:flex; align-items:baseline; gap:14px; font-size:var(--fs-tag); color:var(--dim); white-space:nowrap; }
-.bmf-app .fstat-mini[hidden]{ display:none; }
-.bmf-app .fstat-mini b{ font-family:var(--mono); font-weight:var(--fw-bold); color:var(--text); margin-right:5px; }
-.bmf-app .firestats .s{ font-size:var(--fs-micro); color:var(--dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.bmf-app .fstat-season{ font-family:var(--mono); font-size:var(--fs-micro); color:var(--text-subtle); letter-spacing:.02em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.bmf-app .fstat-season[hidden]{ display:none; }
-.bmf-app .fstat-note{ font-size:var(--fs-meta); color:var(--dim); padding:3px 0 2px; }
-.bmf-app .fstat-note[hidden]{ display:none; }
+.bmf-app .fstat-ticker{ min-width:0; }
+.bmf-app .fstat-load{ font-size:var(--fs-meta); color:var(--dim); }
+.bmf-app .fstat-row{ display:flex; align-items:center; gap:8px 13px; min-width:0; white-space:nowrap; overflow:hidden; }
+.bmf-app .fstat-ic{ width:15px; height:15px; flex:0 0 auto; vertical-align:-3px; }
+.bmf-app .fstat-lead{ display:inline-flex; align-items:center; gap:5px; flex:0 0 auto; }
+.bmf-app .fstat-lead .fstat-ic{ color:var(--ember); }
+.bmf-app .fstat-loc{ font-size:var(--fs-md); font-weight:var(--fw-bold); color:var(--text); max-width:34vw; overflow:hidden; text-overflow:ellipsis; }
+.bmf-app .fstat-sep{ color:var(--faint); }
+.bmf-app .fstat-big{ font-family:var(--mono); font-size:var(--fs-md); font-weight:var(--fw-bold); color:var(--text); }
+.bmf-app .fstat-lbl{ font-size:var(--fs-micro); color:var(--dim); }
+.bmf-app .fstat-pips{ display:inline-flex; align-items:center; gap:8px; flex:0 0 auto; }
+.bmf-app .fstat-pip{ display:inline-flex; align-items:center; gap:4px; font-family:var(--mono); font-size:var(--fs-tag); color:var(--text); }
+.bmf-app .fstat-pip i{ width:8px; height:8px; flex:0 0 auto; border-radius:var(--r-round); background:var(--faint); }
+.bmf-app .fstat-pip.oc i{ background:var(--warn); } .bmf-app .fstat-pip.bh i{ background:var(--caution); } .bmf-app .fstat-pip.uc i{ background:var(--ok); }
+.bmf-app .fstat-rest{ display:flex; align-items:center; gap:6px 13px; min-width:0; flex:1 1 auto; overflow:hidden; }
+.bmf-app .fstat-chip{ display:inline-flex; align-items:center; gap:5px; flex:0 0 auto; font-size:var(--fs-tag); color:var(--dim); }
+.bmf-app .fstat-chip .fstat-ic{ color:var(--dim); }
+.bmf-app .fstat-chip b{ font-family:var(--mono); font-weight:var(--fw-bold); color:var(--text); }
+.bmf-app .fstat-chip.na, .bmf-app .fstat-chip.na .fstat-ic{ color:var(--faint); }
+.bmf-app .fstat-na{ color:var(--faint); font-style:italic; }
+.bmf-app .fstat-fresh{ font-size:var(--fs-micro); color:var(--faint); margin-left:auto; padding-left:6px; }
 
 /* Layers sheet — tiered toggles (reuse .srow/.toggle) + the full legend. A layer row's icon slot carries a
    legend swatch; a country-gated tier shows a reason badge instead of a toggle. */
@@ -168,6 +180,10 @@ const CSS = `
    carries no bottom-sheet grab handle — the close button is the dismiss affordance.) */
 .bmf-app .fsheet-head{ position:sticky; top:0; z-index:2; display:flex; align-items:flex-start; gap:10px; padding:16px 0 10px; background:var(--card-bg); border-bottom:1px solid var(--hair); }
 .bmf-app .fsheet-ttl{ font-family:var(--mono); font-size:var(--fs-md); font-weight:var(--fw-bold); color:var(--text); }
+/* At-a-glance fact chips under the detail header — kind · jurisdiction · freshness. Ghost pills wrap to a
+   second row in the narrow drawer; tighter tracking than the brand chips keeps the labels readable. */
+.bmf-app .chiprow{ display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+.bmf-app .chip.mchip{ letter-spacing:.08em; }
 .bmf-app .fgroup{ margin-top:12px; }
 .bmf-app .fgh{ font-family:var(--mono); font-size:var(--fs-micro); letter-spacing:.12em; text-transform:uppercase; color:var(--ember-hi); margin-bottom:4px; }
 .bmf-app .frow{ display:flex; justify-content:space-between; gap:14px; padding:5px 0; border-bottom:1px solid var(--hair); }
@@ -301,6 +317,15 @@ const CSS = `
   clip-path:var(--cut-tl); }
 .bmf-app .card.metal{ background:var(--metal); }
 .bmf-app .card.warm{ background:radial-gradient(140% 160% at 88% -8%, rgba(255,140,40,0.18) 0%, rgba(255,100,30,0.08) 40%, transparent 62%), var(--metal-hi); }
+/* The "readiness" register — a green glass glaze (the warm card's gradient, in the safe/ready hue) over a
+   subtle tactical grid. Three stacked background layers (glaze ON TOP so it naturally dims the grid toward
+   the lit corner; the faint --ok-12 grid lines beneath; --metal-hi base) — no pseudo-element, no mask, all
+   tokenised. Used by the Prepare promo (home) + the readiness checklist card (prepare). */
+.bmf-app .card.green{ background:
+  radial-gradient(140% 160% at 88% -8%, var(--ok-glaze) 0%, var(--ok-glaze-soft) 42%, transparent 64%),
+  repeating-linear-gradient(90deg, var(--ok-12) 0 1px, transparent 1px 22px),
+  repeating-linear-gradient(0deg, var(--ok-12) 0 1px, transparent 1px 22px),
+  var(--metal-hi); }
 /* The notch is the DEFAULT on every .card (above) — so a bare class="card" (e.g. the Settings panels)
    cuts the same as the hub's warm "card cut". .cut stays as an explicit alias so existing markup still
    reads intentionally; it's a no-op now but harmless. (Brand law: every card carries the corner-cut.) */
@@ -432,6 +457,13 @@ const CSS = `
 .bmf-app .daily.collapsed .chev{ transform:rotate(-90deg); }
 .bmf-app .daily-body{ overflow:hidden; }
 .bmf-app .daily.collapsed .daily-body{ display:none; }
+/* Compact collapsed variant (the Prepare readiness checklist): the closed card reads as a single tight
+   title row beside its progress ring — the eyebrow + sub fold away, and the hero title drops to a compact
+   size so it sits on one line. */
+.bmf-app .daily.collapsed .fd-hero-eyebrow,
+.bmf-app .daily.collapsed .fd-hero-sub{ display:none; }
+.bmf-app .daily.collapsed .fd-hero-main{ gap:0; }
+.bmf-app .daily.collapsed .fd-hero-head{ font-size:18px; }
 /* Daily slip layout: brand-mark glyph at LEFT, the dispatch content (date · brief · resets/Fly) at right —
    mirrors the dossier's helmet-left row so the two warm cards read as a family, with the daily clearly the
    lighter secondary beneath the Continue poster hero. */

@@ -13,7 +13,7 @@
  * is identical whichever view is mounted.
  */
 import { UI } from '../ui/theme';
-import type { Hotspot, ReportedFire, BurnPolygon, AlertItem, BanArea, FireSeverity, FireStage, AlertLevel, BanType } from './types';
+import type { Hotspot, ReportedFire, BurnPolygon, FireSeverity, FireStage } from './types';
 
 // ── Shared marker colour SEMANTICS ──────────────────────────────────────────────────────────────
 // Both views must paint the same MEANING with the same token, or the Layers-sheet legend lies on
@@ -37,24 +37,15 @@ export const SEV_COLOR: Record<FireSeverity, string> = {
   extreme: UI.warn,
 };
 
-/** SaskAlert level → pin colour (critical=red, advisory=amber, info=neutral). */
-export const ALERT_COLOR: Record<AlertLevel, string> = { critical: UI.warn, advisory: UI.caution, info: UI.text, unknown: UI.caution };
-
-/** Fire-ban type → area tint (Ban=red, Restriction=amber, else neutral). */
-export const BAN_COLOR: Record<BanType, string> = { Ban: UI.warn, Restriction: UI.caution, Advisory: UI.text, Other: UI.caution };
-
 // Tap priority where marks stack (an active fire usually has hotspots on top of it): the
-// AUTHORITATIVE layer wins — alerts → reported → out → hotspots. Both views implement this order.
+// AUTHORITATIVE layer wins — reported → out → hotspots. Both views implement this order.
 
 /** The toggleable data layers (the Layers sheet + the per-layer setters below). */
-export type FireLayer = 'reported' | 'out' | 'perimeters' | 'hotspots' | 'fwi' | 'smoke' | 'alerts' | 'bans';
+export type FireLayer = 'reported' | 'out' | 'perimeters' | 'hotspots' | 'fwi' | 'smoke';
 
 export interface FireMapHandlers {
   onSelectHotspot: (h: Hotspot) => void;
   onSelectReported: (f: ReportedFire) => void;
-  // Optional so a simpler consumer (e.g. a front-door map) need not wire the alert/ban layers.
-  onSelectAlert?: (a: AlertItem) => void;
-  onSelectBan?: (b: BanArea) => void;
   // Optional: fired true/false as a smoke forecast frame's tiles load/settle (drives the scrubber's
   // buffering hint). A consumer that doesn't animate smoke can omit it.
   onSmokeLoad?: (loading: boolean) => void;
@@ -67,8 +58,6 @@ export interface LiveMapView {
   setReportedFires(fires: ReportedFire[]): void;
   setOutFires(fires: ReportedFire[]): void;
   setBurnPolygons(polys: BurnPolygon[]): void;
-  setAlerts(alerts: AlertItem[]): void;
-  setBans(bans: BanArea[]): void;
   setLayer(layer: FireLayer, on: boolean): void;
   setSmokeTime(iso: string): void;
   setFwiTime(iso: string): void;

@@ -11,8 +11,7 @@
  */
 import type {
   Hotspot, FireSeverity, LiveFireFeed, SourceStatus, FeedMeta, Country, CountryFilter,
-  FireStage, ReportedFire, ReportedFeed, BurnPolygon, BurnFeed, NationalSummary,
-  AlertItem, AlertFeed, AlertLevel, BanArea, BanFeed, BanType,
+  FireStage, ReportedFire, ReportedFeed, BurnPolygon, BurnFeed, NationalSummary, RegionFilter, RegionStats,
 } from './types';
 
 /** What the fetch layer hands the pure normalizers: the fetch-level outcome (status/fromCache/fetchedAt).
@@ -102,7 +101,8 @@ const CLUSTER_KM = 6; // detections within this radius count as the same fire (h
 const MAX_DETECTIONS = 8000; // guard so a freak day can't blow up the O(n²) count
 
 // CWFIS reports `agency` as a Canadian province/territory code, a US state code, or MX. Classify by it.
-const CA_AGENCIES = new Set(['BC', 'AB', 'SK', 'MB', 'ON', 'QC', 'NB', 'NS', 'PE', 'PEI', 'NL', 'NF', 'YT', 'NT', 'NU', 'PC']);
+// Exported so the region helpers below (province granularity) share ONE source of truth for "is CA".
+export const CA_AGENCIES = new Set(['BC', 'AB', 'SK', 'MB', 'ON', 'QC', 'NB', 'NS', 'PE', 'PEI', 'NL', 'NF', 'YT', 'NT', 'NU', 'PC']);
 
 /** Country a detection belongs to, from its agency code. 2-letter non-Canada/MX = a US state. */
 export function countryOf(agency: string): Country {
@@ -133,6 +133,142 @@ export function filterCountry(hotspots: Hotspot[], country: CountryFilter): Hots
 /** Filter reported fires to a country (or 'all'). Same contract as `filterCountry` for the dropdown. */
 export function filterReportedCountry(fires: ReportedFire[], country: CountryFilter): ReportedFire[] {
   return country === 'all' ? fires : fires.filter((f) => f.country === country);
+}
+
+// ── Region (country + optional Canadian province) — the tracker's region selection ──────────────────
+// The CIFFC reported feed is Canada-only and each fire carries an `agency` province code, so we can
+// narrow within Canada to one province. The filters DELEGATE to the country filters above (byte-identical
+// country contract) then narrow by agency. `now` is always passed in (deterministic for the gate).
+const DAY_MS = 86_400_000;
+
+/** CIFFC agency code → province display name (covers both alternate codes the feed uses). */
+export const PROVINCE_LABEL: Record<string, string> = {
+  BC: 'British Columbia', AB: 'Alberta', SK: 'Saskatchewan', MB: 'Manitoba', ON: 'Ontario',
+  QC: 'Quebec', NB: 'New Brunswick', NS: 'Nova Scotia', PE: 'Prince Edward Island', PEI: 'Prince Edward Island',
+  NL: 'Newfoundland and Labrador', NF: 'Newfoundland and Labrador', YT: 'Yukon', NT: 'Northwest Territories',
+  NU: 'Nunavut', PC: 'Parks Canada',
+};
+
+/** Parse a `<select>` value (`'all'|'US'|'MX'|'CA'|'CA:SK'…`) into a RegionFilter. Junk / illegal
+ *  combos (`'US:SK'`, `'CA:ZZ'`, `''`) degrade to Canada-all — never throws. */
+export function parseRegion(value: string): RegionFilter {
+  const raw = (value || '').trim();
+  if (raw === 'US' || raw === 'MX' || raw === 'all') return { country: raw };
+  if (raw.startsWith('CA:')) {
+    const ag = raw.slice(3).toUpperCase();
+    return CA_AGENCIES.has(ag) ? { country: 'CA', agency: ag } : { country: 'CA' };
+  }
+  return { country: 'CA' };
+}
+
+/** RegionFilter → the encoded `<select>` value (the inverse of parseRegion). */
+export function regionValue(r: RegionFilter): string {
+  return r.country === 'CA' && r.agency ? `CA:${r.agency}` : r.country;
+}
+
+/** RegionFilter → display name (province name when narrowed, else the country label). */
+export function regionLabel(r: RegionFilter): string {
+  if (r.country === 'CA' && r.agency) return PROVINCE_LABEL[r.agency] ?? r.agency;
+  return countryLabel(r.country);
+}
+
+/** Filter reported fires to a region: country first, then the province agency if present. */
+export function filterReportedRegion(fires: ReportedFire[], r: RegionFilter): ReportedFire[] {
+  const byCountry = filterReportedCountry(fires, r.country);
+  return r.agency ? byCountry.filter((f) => (f.agency || '').toUpperCase() === r.agency) : byCountry;
+}
+
+/** Filter hotspots to a region: country first, then the province agency if present. */
+export function filterRegionHotspots(hotspots: Hotspot[], r: RegionFilter): Hotspot[] {
+  const byCountry = filterCountry(hotspots, r.country);
+  return r.agency ? byCountry.filter((h) => (h.agency || '').toUpperCase() === r.agency) : byCountry;
+}
+
+/** The selectable regions for the dropdown: Canada-all + the provinces ACTUALLY PRESENT in the current
+ *  reported feed (never a dead "0 fires" province), in canonical CA_AGENCIES order, then US / MX / all.
+ *  `group` lets the selector build optgroups. */
+export function regionOptions(reportedFeed: ReportedFeed): { value: string; label: string; group: string }[] {
+  const present = new Set<string>();
+  for (const f of reportedFeed.fires) {
+    const a = (f.agency || '').toUpperCase();
+    if (CA_AGENCIES.has(a)) present.add(a);
+  }
+  const out: { value: string; label: string; group: string }[] = [{ value: 'CA', label: 'Canada — all', group: 'Canada' }];
+  for (const a of CA_AGENCIES) if (present.has(a)) out.push({ value: `CA:${a}`, label: PROVINCE_LABEL[a] ?? a, group: 'Canada' });
+  out.push({ value: 'US', label: 'United States', group: 'Other' });
+  out.push({ value: 'MX', label: 'Mexico', group: 'Other' });
+  out.push({ value: 'all', label: 'All North America', group: 'Other' });
+  return out;
+}
+
+/** Count OC/BH/UC among already-active reported fires (the feed's `fires` array is active-only). */
+function tallyStages(fires: ReportedFire[]): { OC: number; BH: number; UC: number } {
+  const t = { OC: 0, BH: 0, UC: 0 };
+  for (const f of fires) if (f.stage === 'OC' || f.stage === 'BH' || f.stage === 'UC') t[f.stage] += 1;
+  return t;
+}
+
+function downStats(label: string): RegionStats {
+  return { scope: 'down', label, active: null, byStage: null, reportedToday: null, areaBurnedHa: null, prepLevel: null, ytdTotal: null, ytdOut: null, hotspots: null, asOfMs: 0 };
+}
+
+/** The HEART of the region-accurate firestats bar: produce the honest per-region stats from whatever
+ *  source is authoritative at that scope. A `null` field = "no per-region source" → the ticker renders
+ *  "Data not available" (NEVER a Canada number under another label). See RegionStats for the scope rules.
+ *    • US / MX → no reported feed exists → active/stage/today all null; satellite `hotspots` is the metric.
+ *    • A Canadian province → active/stage/today DERIVED from the agency-filtered reported feed;
+ *      area-burned / prep / season-total are national-only → null.
+ *    • Canada-all (or 'all') → the authoritative CIFFC summary, with a reported-feed fallback for `active`. */
+export function deriveRegionStats(
+  region: RegionFilter,
+  reportedFeed: ReportedFeed,
+  hsFeed: LiveFireFeed,
+  summary: NationalSummary | null,
+  now: number,
+): RegionStats {
+  const label = regionLabel(region);
+  const repLive = reportedFeed.meta.status === 'live';
+  const hsLive = hsFeed.meta.status === 'live';
+  const sumLive = !!summary && summary.meta.status === 'live';
+  const hotspots = hsLive ? countFires(filterRegionHotspots(hsFeed.hotspots, region)) : null;
+
+  // US / MX — the CIFFC reported feed is Canada-only, so the only honest number is satellite detections.
+  if (region.country === 'US' || region.country === 'MX') {
+    if (!hsLive) return downStats(label);
+    return { scope: 'foreign', label, active: null, byStage: null, reportedToday: null, areaBurnedHa: null, prepLevel: null, ytdTotal: null, ytdOut: null, hotspots, asOfMs: hsFeed.meta.publishedAt };
+  }
+
+  // A specific Canadian province — derive from the agency-filtered reported feed.
+  if (region.agency) {
+    if (!repLive) return hsLive ? { ...downStats(label), scope: 'down', hotspots, asOfMs: hsFeed.meta.publishedAt } : downStats(label);
+    const fires = filterReportedRegion(reportedFeed.fires, region);
+    return {
+      scope: 'ca-province', label,
+      active: fires.length,
+      byStage: tallyStages(fires),
+      reportedToday: fires.filter((f) => f.at > 0 && now - f.at < DAY_MS).length,
+      areaBurnedHa: null, prepLevel: null, ytdTotal: null, ytdOut: null, // national-only metrics → Data not available
+      hotspots,
+      asOfMs: fires.reduce((m, f) => (f.at > m ? f.at : m), 0) || reportedFeed.meta.publishedAt,
+    };
+  }
+
+  // Canada-all (or 'all') — the authoritative national summary, with a reported-feed fallback for active.
+  if (!sumLive && !repLive && !hsLive) return downStats(label);
+  const caReported = repLive ? filterReportedCountry(reportedFeed.fires, region.country) : [];
+  return {
+    scope: sumLive || repLive ? 'ca-national' : 'down',
+    label,
+    active: sumLive ? summary!.activeFires : repLive ? caReported.length : null,
+    byStage: repLive ? tallyStages(caReported) : null,
+    reportedToday: sumLive ? summary!.firesToday : null,
+    areaBurnedHa: sumLive ? summary!.areaBurnedHa : null,
+    prepLevel: sumLive && summary!.prepLevel > 0 ? summary!.prepLevel : null, // 0 = unknown → Data not available
+    ytdTotal: sumLive ? summary!.ytdTotal : null,
+    ytdOut: sumLive ? summary!.ytdOut : null,
+    hotspots,
+    asOfMs: sumLive ? summary!.meta.publishedAt : repLive ? caReported.reduce((m, f) => (f.at > m ? f.at : m), 0) : 0,
+  };
 }
 
 function asNum(v: unknown): number | null {
@@ -378,140 +514,3 @@ export function parseBurnPolygons(geojson: unknown): BurnPolygon[] {
   return out;
 }
 
-// ════════════ Public alerts (SaskAlert) ════════════
-// The highest-stakes layer: we surface the issuer's verbatim words + a link to the official page and
-// NEVER re-classify (no inventing "ORDER"/"ALERT"). Filtered to wildfire/evacuation-relevant alerts.
-
-/** SaskAlert `point` ("lat lon", space-separated decimal degrees) → coordinate, or null if unusable. */
-function parsePoint(v: unknown): { lat: number; lon: number } | null {
-  if (typeof v !== 'string') return null;
-  const parts = v.trim().split(/\s+/);
-  const lat = asNum(parts[0]);
-  const lon = asNum(parts[1]);
-  if (lat == null || lon == null || lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
-  return { lat, lon };
-}
-
-/** SaskAlert `level` → AlertLevel (critical/advisory/info, else unknown). */
-export function alertLevel(v: unknown): AlertLevel {
-  const s = String(v ?? '').trim().toLowerCase();
-  if (s === 'critical' || s === 'advisory' || s === 'info') return s;
-  return 'unknown';
-}
-
-/** Wildfire/evacuation-relevant? Keyword match over code + the issuer's text. Inclusive on purpose —
- *  better to show a borderline alert than to miss a real evacuation. */
-export function isWildfireAlert(a: AlertItem, code = ''): boolean {
-  const hay = `${code} ${a.event} ${a.summary} ${a.coverage}`.toLowerCase();
-  return /(fire|wildfire|evac|evacuat|smoke|burn)/.test(hay);
-}
-
-/** Parse the SaskAlert feed.json into ACTIVE alerts (valid coord, not ended/cancelled), keeping ALL
- *  types; `codes[i]` is the matching `code` for each. Defensive: junk → empty, never throws. */
-export function parseAlerts(json: unknown): { alerts: AlertItem[]; codes: string[] } {
-  const j = (json && typeof json === 'object' ? json : {}) as { entries?: unknown };
-  const entries = Array.isArray(j.entries) ? j.entries : [];
-  const alerts: AlertItem[] = [];
-  const codes: string[] = [];
-  for (const e of entries) {
-    const o = (e && typeof e === 'object' ? e : {}) as Record<string, unknown>;
-    const state = String(o.state ?? '').toLowerCase();
-    const life = typeof o.type_en === 'string' ? o.type_en : '';
-    if (state === 'ended' || life.toLowerCase() === 'cancelled') continue; // active alerts only
-    const pt = parsePoint(o.point);
-    if (!pt) continue;
-    alerts.push({
-      lat: pt.lat,
-      lon: pt.lon,
-      level: alertLevel(o.level),
-      event: typeof o.event_en === 'string' ? o.event_en : '',
-      summary: typeof o.summary_en === 'string' ? o.summary_en : '',
-      coverage: typeof o.coverage_en === 'string' ? o.coverage_en : '',
-      sentAt: parseMs(o.sent),
-      lifecycle: life,
-      author: typeof o.author_en === 'string' ? o.author_en : '',
-      url: typeof o.html_link === 'string' ? o.html_link : '',
-      id: typeof o.id === 'string' ? o.id : '',
-    });
-    codes.push(typeof o.code === 'string' ? o.code : '');
-    if (alerts.length >= MAX_DETECTIONS) break;
-  }
-  return { alerts, codes };
-}
-
-/** Build the alert feed: keep only wildfire/evacuation-relevant active alerts; publishedAt = the feed's
- *  own `updated` time (else the freshest `sent`). */
-export function normalizeAlerts(json: unknown, opts: NormalizeOpts): AlertFeed {
-  const { alerts, codes } = parseAlerts(json);
-  const wild = alerts.filter((a, i) => isWildfireAlert(a, codes[i]));
-  const feedUpdated = parseMs((json as { updated?: unknown } | null)?.updated);
-  const publishedAt = feedUpdated || wild.reduce((m, a) => (a.sentAt > m ? a.sentAt : m), 0);
-  return { alerts: wild, meta: metaFrom(opts, publishedAt) };
-}
-
-// ════════════ Fire bans (SK SPSA Public_Fire_Ban, provincial) ════════════
-// EMPTY ⇒ "no provincial ban in effect" — a VALID state, never confused with the feed being down.
-
-/** SPSA `Start_Date` ("YYYYMMDD" string, despite a date field type) → epoch ms (tolerates ISO too; 0 if bad). */
-export function parseYmd(v: unknown): number {
-  const s = String(v ?? '').trim();
-  const m = /^(\d{4})(\d{2})(\d{2})$/.exec(s);
-  return m ? parseMs(`${m[1]}-${m[2]}-${m[3]}`) : parseMs(s);
-}
-
-/** SPSA `Type` → BanType. */
-export function banType(v: unknown): BanType {
-  const s = String(v ?? '').trim().toLowerCase();
-  if (s === 'ban') return 'Ban';
-  if (s === 'restriction') return 'Restriction';
-  if (s === 'advisory') return 'Advisory';
-  return 'Other';
-}
-
-/** Parse the SPSA fire-ban GeoJSON into ban areas (outer rings as [lat,lon]). Polygon + MultiPolygon
- *  (flattened to one BanArea per outer ring); drops <3-pt rings; caps vertices. Defensive: junk → []. */
-export function parseBans(geojson: unknown): BanArea[] {
-  const fc = geojson as { features?: unknown };
-  const feats = Array.isArray(fc?.features) ? fc.features : [];
-  const out: BanArea[] = [];
-  const ringFrom = (coords: unknown): [number, number][] => {
-    const ring: [number, number][] = [];
-    if (!Array.isArray(coords)) return ring;
-    for (const pt of coords) {
-      if (!Array.isArray(pt)) continue;
-      const lon = asNum(pt[0]);
-      const lat = asNum(pt[1]);
-      if (lat == null || lon == null || lat < -90 || lat > 90 || lon < -180 || lon > 180) continue;
-      ring.push([lat, lon]);
-      if (ring.length >= 4000) break;
-    }
-    return ring;
-  };
-  for (const f of feats) {
-    const feat = f as { properties?: Record<string, unknown>; geometry?: { type?: string; coordinates?: unknown } };
-    const g = feat?.geometry;
-    const p = feat?.properties ?? {};
-    const type = banType(p.Type);
-    const startAt = parseYmd(p.Start_Date);
-    const comment = typeof p.Comment === 'string' ? p.Comment : '';
-    const push = (ring: [number, number][]): void => {
-      if (ring.length >= 3) out.push({ ring, type, startAt, comment });
-    };
-    if (g?.type === 'Polygon' && Array.isArray(g.coordinates)) {
-      push(ringFrom(g.coordinates[0]));
-    } else if (g?.type === 'MultiPolygon' && Array.isArray(g.coordinates)) {
-      for (const poly of g.coordinates as unknown[]) {
-        if (Array.isArray(poly)) push(ringFrom((poly as unknown[])[0]));
-      }
-    }
-    if (out.length >= MAX_DETECTIONS) break;
-  }
-  return out;
-}
-
-/** Build the fire-ban feed: publishedAt = the freshest Start_Date (0 if no bans — a valid "none" state). */
-export function normalizeBans(geojson: unknown, opts: NormalizeOpts): BanFeed {
-  const bans = parseBans(geojson);
-  const publishedAt = bans.reduce((m, b) => (b.startAt > m ? b.startAt : m), 0);
-  return { bans, meta: metaFrom(opts, publishedAt) };
-}

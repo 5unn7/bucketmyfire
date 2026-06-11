@@ -13,9 +13,9 @@
  */
 import type {
   LiveFireFeed, CountryFilter, ReportedFeed, ReportedFire, FireStage, Country, FireHistoryPoint,
-  NationalSummary, BurnFeed, AlertFeed, BanFeed, FeedMeta, SourceStatus,
+  NationalSummary, BurnFeed, FeedMeta, SourceStatus, RegionFilter,
 } from './types';
-import { normalizeFeed, normalizeReported, normalizeSummary, normalizeBurn, normalizeAlerts, normalizeBans, parseFwiIssueDate, countryOf, isActiveStage } from './normalize';
+import { normalizeFeed, normalizeReported, normalizeSummary, normalizeBurn, parseFwiIssueDate, countryOf, isActiveStage, parseRegion, regionValue } from './normalize';
 // The ingestion backend lives in the SAME Supabase project as the leaderboard; reuse its rest accessors
 // (the cloud-save module reuses them the same way) rather than re-reading the env vars here.
 import { isConfigured as supabaseConfigured, restBase, restHeaders } from '../leaderboard/client';
@@ -37,6 +37,27 @@ export function setCountryPref(c: CountryFilter): void {
   } catch {
     /* ignore */
   }
+}
+
+// Remembered REGION (country + optional Canadian province), stored as the encoded value (`'CA:SK'`) under
+// its OWN versioned key — the country key above whitelists CA|US|MX|all and would reject a province code.
+const REGION_KEY = 'bmf.livefire.region.v1';
+export function getRegionPref(): RegionFilter {
+  try {
+    const v = localStorage.getItem(REGION_KEY);
+    if (v) return parseRegion(v); // parseRegion is junk-safe → always a valid RegionFilter
+  } catch {
+    /* storage blocked — fall through */
+  }
+  return { country: getCountryPref() }; // legacy migration: inherit the old country-only pref
+}
+export function setRegionPref(r: RegionFilter): void {
+  try {
+    localStorage.setItem(REGION_KEY, regionValue(r));
+  } catch {
+    /* ignore */
+  }
+  setCountryPref(r.country); // keep the legacy country key coherent (the home banner still reads it)
 }
 
 // ── Source endpoints (each a single swappable const; all keyless + CORS-`*` from the browser) ─────────
@@ -63,17 +84,6 @@ export const BURN_PERIM_SOURCE =
   'https://cwfis.cfs.nrcan.gc.ca/geoserver/public/ows?service=WFS&version=2.0.0&request=GetFeature' +
   '&typeNames=public:m3_polygons_current&outputFormat=application/json&srsName=EPSG:4326&count=1500';
 
-// SaskAlert public alert feed (Atom-as-JSON). Keyless, CORS `*`. The WHOLE provincial feed (all hazard
-// types); the client filters to wildfire/evacuation-relevant alerts. We surface the issuer's own words
-// and link to each alert's html_link for the authoritative detail — we never re-classify an alert.
-export const ALERTS_SOURCE = 'https://emergencyalert.saskatchewan.ca/sapublic/feed.json';
-
-// SK SPSA provincial fire-ban / open-fire-restriction polygons (ArcGIS GeoJSON, layer 3 = "FireBan
-// Provincial"). Keyless, CORS (echoed-origin). An EMPTY result = "no provincial ban in effect" (a real
-// state, not a failure). credentials are omitted (the server sets a Cloudflare cookie we don't need).
-export const BANS_SOURCE =
-  'https://gis.saskatchewan.ca/egis/rest/services/Wildfire/Public_Fire_Ban/MapServer/3/query' +
-  '?where=1%3D1&outFields=*&returnGeometry=true&outSR=4326&f=geojson';
 
 // CWFIS Fire Weather Index raster (a Leaflet WMS tile overlay — the orange-shaded fire-danger field).
 export const FWI_WMS_URL = 'https://cwfis.cfs.nrcan.gc.ca/geoserver/public/wms';
@@ -134,8 +144,20 @@ export const FWI_WMS_SLD =
   '<ColorMapEntry color="#e23a2a" quantity="45" opacity="0.84"/>' + // extreme: deep red, hottest + most opaque
   '</ColorMap></RasterSymbolizer></Rule></FeatureTypeStyle></UserStyle></NamedLayer></StyledLayerDescriptor>';
 
+// ── GWIS: the GLOBAL Fire Weather Index forecast (EC JRC — Global Wildfire Information System) ───────
+// CWFIS's FWI grid is Canada-only; GWIS computes the SAME Canadian FWI index WORLDWIDE from the ECMWF
+// 8 km model (1–9 day forecast). Keyless, CORS-`*`, and it honors `sld_body` (all verified live against
+// the GetCapabilities + sample GetMaps). We draw it as a WHOLE-PLANET wash BENEATH the finer CWFIS Canada
+// drape — the danger field colours the entire globe while Canada keeps its higher-resolution national grid
+// on top. Same TIME (yyyy-mm-dd) param + same brand ramp as CWFIS. Its data window is rolling/near-real-
+// time, so a future-dated request returns a blank tile and the drape degrades silently (no hard error).
+export const GWIS_FWI_WMS_URL = 'https://ies-ows.jrc.ec.europa.eu/gwis';
+export const GWIS_FWI_LAYER = 'ecmwf.fwi';
+// The brand ramp re-pointed at the GWIS layer name (an SLD's NamedLayer Name must match the layer it styles).
+export const GWIS_FWI_SLD = FWI_WMS_SLD.replace('public:fwi', GWIS_FWI_LAYER);
+
 /** Source attribution shown in the tracker UI. */
-export const LIVEFIRE_CREDIT = 'Sources: CWFIS (NRCan) · CIFFC · ECCC';
+export const LIVEFIRE_CREDIT = 'Sources: CWFIS (NRCan) · CIFFC · ECCC · GWIS (EC JRC)';
 
 // ── Cache + timing ────────────────────────────────────────────────────────────────────────────────
 const HOTSPOT_CACHE = 'bmf.livefire.v3'; // v3: raw-json shape + meta model (v1 SK list, v2 geojson key)
@@ -143,8 +165,6 @@ const SUMMARY_CACHE = 'bmf.livefire.summary.v1';
 const REPORTED_CACHE = 'bmf.livefire.reported.v2'; // v2 caches the NORMALIZED feed (the raw roll is ~965 KB)
 const PERIM_CACHE = 'bmf.livefire.perim.v1';
 const FWI_META_CACHE = 'bmf.livefire.fwi.v1';
-const ALERTS_CACHE = 'bmf.livefire.alerts.v1';
-const BANS_CACHE = 'bmf.livefire.bans.v1';
 const TTL_MS = 30 * 60 * 1000; // 30 min — beyond this the cache is "stale" and we refetch
 const FWI_TTL_MS = 6 * 60 * 60 * 1000; // the FWI issue date changes daily — re-derive at most every 6h
 const TIMEOUT_MS = 12000; // the hotspot feed is ~750 KB, give a flaky mobile link room
@@ -370,9 +390,11 @@ function provRowToReported(r: ProvFireRow): ReportedFire {
   };
 }
 
-/** Provincial sources whose stage→CIFFC mapping is NOT yet trusted, so we DON'T prefer them over CIFFC
- *  (their rows still ingest; the national roll covers those provinces meanwhile). NL uses overloaded
- *  single-letter status codes whose legend is unconfirmed — preferring it would inflate "active". */
+/** Provincial sources we DON'T prefer over CIFFC yet (their rows still ingest; the national roll covers
+ *  those provinces meanwhile). NL's stage codes are now mapped CORRECTLY (O=Out per the FFA_Wildfire
+ *  domain — see ingest-provincial nlStage), but it stays gated for a separate reason: its feed carries
+ *  MULTI-YEAR history (2024/2025 fires) and ~886 Out records, unlike the current-season provincial feeds.
+ *  Remove 'nl-ffa' here to show NL's (currently 2) real active fires once that feed shape is handled. */
 const UNTRUSTED_PROVINCIAL = new Set(['nl-ffa']);
 
 async function fetchBackendRows<T>(table: string, query: string): Promise<T[] | null> {
@@ -424,19 +446,23 @@ async function fetchReportedFromBackend(): Promise<ReportedFeed | null> {
 }
 
 /** A fire's tracked HISTORY (size + stage over time) from the ingestion backend. The browser-only feed
- *  can't produce this — it only ever sees "now". Returns [] when the backend is unconfigured / empty /
- *  down, so the detail panel simply omits the history chart (never an error). */
-export async function fetchFireHistory(fireId: string): Promise<FireHistoryPoint[]> {
-  if (!isLiveFireEnabled() || !supabaseConfigured() || !fireId) return [];
-  const q =
-    `fire_id=eq.${encodeURIComponent(fireId)}` +
-    '&select=stage,size_ha,reported_at,observed_at&order=observed_at.asc&limit=500';
+ *  can't produce this — it only ever sees "now". A provincial fire (BC/AB/ON/… shown via the
+ *  prefer-provincial path) carries its own `source` + provincial id and lives in provincial_fire_snapshots;
+ *  a national CIFFC fire is keyed by fire_id in fire_snapshots — `source` picks the table. Returns NULL when
+ *  the backend is unavailable (unconfigured / down) so the panel omits the block as before; an empty ARRAY
+ *  means the backend answered but has no snapshot for this fire yet (a brand-new fire) — distinct states. */
+export async function fetchFireHistory(fireId: string, source?: string): Promise<FireHistoryPoint[] | null> {
+  if (!isLiveFireEnabled() || !supabaseConfigured() || !fireId) return null;
+  const sel = 'select=stage,size_ha,reported_at,observed_at&order=observed_at.asc&limit=500';
+  const url = source
+    ? `${restBase()}/rest/v1/provincial_fire_snapshots?source=eq.${encodeURIComponent(source)}&source_fire_id=eq.${encodeURIComponent(fireId)}&${sel}`
+    : `${restBase()}/rest/v1/fire_snapshots?fire_id=eq.${encodeURIComponent(fireId)}&${sel}`;
   const t = withTimeout(8000);
   try {
-    const res = await fetch(`${restBase()}/rest/v1/fire_snapshots?${q}`, { headers: restHeaders(), signal: t.signal });
-    if (!res.ok) return [];
+    const res = await fetch(url, { headers: restHeaders(), signal: t.signal });
+    if (!res.ok) return null;
     const rows = (await res.json()) as { stage: string; size_ha: number | null; reported_at: string | null; observed_at: string }[];
-    if (!Array.isArray(rows)) return [];
+    if (!Array.isArray(rows)) return null;
     return rows.map((r) => ({
       stage: r.stage as FireStage,
       sizeHa: typeof r.size_ha === 'number' ? r.size_ha : -1,
@@ -444,7 +470,7 @@ export async function fetchFireHistory(fireId: string): Promise<FireHistoryPoint
       observedAt: Date.parse(r.observed_at) || 0,
     }));
   } catch {
-    return [];
+    return null;
   } finally {
     t.done();
   }
@@ -456,24 +482,6 @@ export async function fetchBurnPerimeters(opts: { force?: boolean } = {}): Promi
   const r = await loadCachedRaw(BURN_PERIM_SOURCE, PERIM_CACHE, TTL_MS, 15000, !!opts.force);
   if (r.json == null) return { polys: [], meta: offMeta('unavailable') };
   return normalizeBurn(r.json, { fetchedAt: r.fetchedAt, status: r.status, fromCache: r.fromCache });
-}
-
-/** Active public alerts (SaskAlert), filtered to wildfire/evacuation-relevant. Best-effort + honest meta;
- *  an empty result with status 'live' means "no wildfire alerts active", NOT that the feed is down. */
-export async function fetchAlerts(opts: { force?: boolean } = {}): Promise<AlertFeed> {
-  if (!isLiveFireEnabled()) return { alerts: [], meta: DISABLED_META };
-  const r = await loadCachedRaw(ALERTS_SOURCE, ALERTS_CACHE, TTL_MS, TIMEOUT_MS, !!opts.force);
-  if (r.json == null) return { alerts: [], meta: offMeta('unavailable') };
-  return normalizeAlerts(r.json, { fetchedAt: r.fetchedAt, status: r.status, fromCache: r.fromCache });
-}
-
-/** Provincial fire bans / open-fire restrictions (SK SPSA). An EMPTY result with status 'live' means
- *  "no provincial ban in effect" — a real state, never the same as the feed being unavailable. */
-export async function fetchBans(opts: { force?: boolean } = {}): Promise<BanFeed> {
-  if (!isLiveFireEnabled()) return { bans: [], meta: DISABLED_META };
-  const r = await loadCachedRaw(BANS_SOURCE, BANS_CACHE, TTL_MS, TIMEOUT_MS, !!opts.force);
-  if (r.json == null) return { bans: [], meta: offMeta('unavailable') };
-  return normalizeBans(r.json, { fetchedAt: r.fetchedAt, status: r.status, fromCache: r.fromCache });
 }
 
 // ── FWI raster issue date (no per-feature JSON — parse the dated WMS <Title>) ──────────────────────
