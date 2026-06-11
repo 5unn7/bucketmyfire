@@ -104,7 +104,7 @@ const TERMS_BODY = `        <p>By playing Bucket My Fire ("the game") you agree 
         </ul>
 
         <h2>Merchandise</h2>
-        <p>Any merchandise is sold through a third-party print-on-demand store under that provider's own terms, pricing, shipping, and return policies. Your purchase contract is with that store, not with us, and your payment details are handled entirely by them.</p>
+        <p>Merchandise is sold through our shop at <a href="https://shop.bucketmyfire.com/">shop.bucketmyfire.com</a>, which operates under its own policies. For anything related to a merchandise purchase — pricing, payment, shipping, returns, refunds, and exchanges — please refer to the shop's policies, which govern that order.</p>
 
         <h2>Intellectual property &amp; fictional setting</h2>
         <p>"Bucket My Fire," its name, art, and code are owned by the operator. All other product names, trademarks, place names, and brands belong to their respective owners and are used for descriptive or setting purposes only. The game is a work of fiction: it is not affiliated with, sponsored by, or endorsed by any government, agency, community, manufacturer, or company, and any resemblance to real operations is for atmosphere, not accuracy.</p>
