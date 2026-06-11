@@ -285,7 +285,7 @@ ${frontAppbar('home')}
     <a class="card green cut fhome-prep" href="/prepare/#checklist">
       <div class="fhome-prep-tx">
         <p class="fhome-eyebrow">Prepare</p>
-        <span class="fhome-prep-h">15 mins to fire ready</span>
+        <span class="fhome-prep-h">Are you fire ready?</span>
         <span class="fhome-prep-sub">A quick wildfire-readiness checklist — six concrete actions.</span>
       </div>
       <span class="btn ghost fhome-prep-go">Open checklist →</span>

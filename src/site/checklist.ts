@@ -1,5 +1,5 @@
 /**
- * The interactive "15 mins to fire ready" wildfire-readiness checklist (the Prepare page's centrepiece).
+ * The interactive "Are you fire ready?" wildfire-readiness checklist (the Prepare page's centrepiece).
  *
  * Honest-window position: this is general preparedness, not an emergency tool. Every item is a quick,
  * concrete action from our own Field Notes research. The card is COLLAPSIBLE (the header row is the
@@ -109,7 +109,7 @@ export function mountChecklist(host: HTMLElement): void {
   head.innerHTML =
     `<div class="dhead-id fd-hero-main">` +
     `<p class="fd-hero-eyebrow">Prepare</p>` +
-    `<span class="fd-hero-head">15 mins to fire ready</span>` +
+    `<span class="fd-hero-head">Are you fire ready?</span>` +
     `<span class="fd-hero-sub">Get wildfire ready before fire season.</span>` +
     `</div>` +
     `<span class="chev" aria-hidden="true">${ic('chevron-down')}</span>`;

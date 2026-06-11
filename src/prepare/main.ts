@@ -5,7 +5,7 @@
  * shared front-door chrome (frontShell → the `.bmf-app.front` scroll shell + `.fhome-bar` appbar). No
  * bespoke layout: every surface is an existing brand cut-corner card. Light — no Three, no game bundle.
  *
- * Cards (all `.card cut`): the TOP card is the collapsible "15 mins to fire ready" readiness checklist
+ * Cards (all `.card cut`): the TOP card is the collapsible "Are you fire ready?" readiness checklist
  * (mountChecklist, reusing the `.daily` collapsible); below it, Field Notes — our own articles, as
  * mission-style poster cards (mountBlogCarousel into a `.fd-mgrid`).
  */
