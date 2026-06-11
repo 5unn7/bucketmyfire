@@ -258,9 +258,8 @@ ${frontAppbar('home')}
         <span class="fpb-live" id="fhome-pilots-live" aria-live="polite"><i class="fpb-dot"></i><b>—</b><span>Pilots Live</span></span>
       </div>
       <div class="fhome-tx fhome-play-tx">
-        <span class="fhome-play-ey">Real-time gameplay</span>
-        <span class="h-big fhome-play-h">Fight the Fire</span>
-        <span class="fhome-play-sub">Experience the glimpse of aerial firefighting.Fight along side your friends in real-time!</span>
+        <span class="h-big fhome-play-h">Open Skies</span>
+        <span class="fhome-play-sub">Fly helicopters and fight the fire.</span>
         <span class="btn primary fhome-play-go">${ic('play')}Fly now</span>
       </div>
     </button>
@@ -284,7 +283,6 @@ ${frontAppbar('home')}
          surface and the readiness tool has one home. -->
     <a class="card green cut fhome-prep" href="/prepare/#checklist">
       <div class="fhome-prep-tx">
-        <p class="fhome-eyebrow">Prepare</p>
         <span class="fhome-prep-h">Are you fire ready?</span>
         <span class="fhome-prep-sub">A quick wildfire-readiness checklist — six concrete actions.</span>
       </div>

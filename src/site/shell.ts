@@ -191,7 +191,7 @@ export function openContact(): void {
   const m = openModal({ title: 'Work with us', width: '440px' });
   m.body.innerHTML =
     `<form class="fd-cform" novalidate>` +
-    `<p class="fd-cform-lead">Let's build your digital solution.</p>` +
+    `<p class="fd-cform-lead">We build software, sites, and live-data tools. Like this one.</p>` +
     `<label class="fd-field"><span>Name</span><input type="text" name="name" autocomplete="name" maxlength="80" required></label>` +
     `<label class="fd-field"><span>Email</span><input type="email" name="email" autocomplete="email" inputmode="email" maxlength="254" required></label>` +
     `<label class="fd-field"><span>Phone <i>(optional)</i></span><input type="tel" name="phone" autocomplete="tel" inputmode="tel" maxlength="32"></label>` +
