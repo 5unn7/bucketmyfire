@@ -265,11 +265,11 @@ ${frontAppbar('home')}
       </div>
     </button>
 
-    <!-- Wear the fight — the BIG shop feature card. The real merch poster (Wearthefight.png) is the art,
-         cropped to the heli + firefighter so the poster's own baked "WEAR THE FIGHT" type sits below the
-         frame and never clashes with our overlaid copy + Shop CTA. -->
+    <!-- Wear the fight — the BIG shop feature card. The art is the dedicated card background
+         (cardsbg/wearthefightbg.webp): the real hoodie product shot floating over a misty boreal
+         ridge, framed so the print sits centre-right and our copy + Shop CTA own the left fade. -->
     <button class="card warm cut fhome-merch" data-act="shop" aria-label="Open the BMF Gear store">
-      <div class="fhome-merch-art"><img src="/images/shop/helidesigns/Wearthefight.png" alt="Wear the fight — a wildland firefighter and a Bell helicopter slinging a Bambi bucket over a forest fire" /></div>
+      <div class="fhome-merch-art"><img src="/images/cardsbg/wearthefightbg.webp" alt="Wear the fight — the black BMF hoodie, its back print a helicopter bucket-drop over a burning ridge, floating in a misty boreal forest" /></div>
       <div class="fhome-merch-fade"></div>
       <div class="fhome-tx fhome-merch-tx">
         <span class="fhome-merch-ey">${ic('shop')}BMF Gear</span>
@@ -536,7 +536,7 @@ function injectHomeBentoStyles(): void {
 .bmf-app.front .fhome-map-go { margin-left: auto; color: var(--accent); }
 .bmf-app.front .fhome-map-go svg { width: 18px; height: 18px; }
 
-/* BIG shop feature card — the merch poster as the art, our copy + Shop CTA bottom-left over a fade
+/* BIG shop feature card — the hoodie card background as the art, our copy + Shop CTA bottom-left over a fade
    (modelled on the play tile, warm register). A floor min-height on mobile; on desktop it runs the
    full width of the bottom row. The fades are art literals (same rgba(7,10,13) base as the
    other key-art fades in this file). */
@@ -544,7 +544,7 @@ function injectHomeBentoStyles(): void {
   cursor: pointer; min-height: 280px; padding: 24px 22px; text-align: left; margin-top: 0; }
 .bmf-app.front .fhome-merch:hover { transform: translateY(-2px); }
 .bmf-app.front .fhome-merch-art { position: absolute; inset: 0; z-index: 0; }
-.bmf-app.front .fhome-merch-art img { width: 100%; height: 100%; object-fit: cover; object-position: 64% 16%; display: block; }
+.bmf-app.front .fhome-merch-art img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 30%; display: block; }
 .bmf-app.front .fhome-merch-fade { position: absolute; inset: 0; z-index: 1; background:
   linear-gradient(90deg, rgba(7,10,13,0.94) 0%, rgba(7,10,13,0.74) 32%, rgba(7,10,13,0.18) 66%, transparent 100%),
   linear-gradient(0deg, rgba(7,10,13,0.9) 0%, rgba(7,10,13,0.34) 38%, transparent 68%); }

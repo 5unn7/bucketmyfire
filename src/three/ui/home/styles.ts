@@ -521,8 +521,8 @@ const CSS = `
    Burn cell so its base lines up with the Continue mission card (the "aligned" goal — see the desktop
    grid block below). On phone/tablet it flows directly under the daily slip; it's gated OUT only on the
    shortest viewports so the single-viewport no-scroll law still holds (CLAUDE.md). The whole card is ONE
-   tap target. GRADIENT GLASS: an almost-transparent red-tinted pane (faint fire/ember diagonal wash over
-   a backdrop blur) with a specular highlight that SWIPES across on a loop — built from tokens only. ===== */
+   tap target. The hoodie card-background art (.sb-art) fills the pane under a left fade; the gradient
+   glass tint + the specular highlight that SWIPES across on a loop ride over it — tokens only. ===== */
 .bmf-app.home .shop-sec{ display:none; } /* section label only rides the desktop dashboard; phone/tablet show the banner alone */
 .bmf-app .shopbanner{ position:relative; overflow:hidden; display:flex; width:100%; margin-top:11px; align-items:center; gap:13px; text-align:left; font:inherit; color:var(--text);
   cursor:pointer; -webkit-tap-highlight-color:transparent; transition:transform .14s ease, border-color .14s ease, box-shadow .22s ease; }
@@ -532,6 +532,15 @@ const CSS = `
 .bmf-app .shopbanner.card{ border-color:var(--stroke); backdrop-filter:var(--blur); -webkit-backdrop-filter:var(--blur);
   background:linear-gradient(135deg, var(--fire-16) 0%, var(--ember-10) 50%, transparent 92%);
   box-shadow:var(--shadow-card), inset 0 1px 0 var(--bevel-top); }
+/* Card background art — the "Wear the fight." hoodie product shot (cardsbg/wearthefightbg.webp) cover-
+   cropped behind the row, framed on the back print. A left-strong fade (the card backplate colour mixed
+   to transparent) keeps the icon + copy on the left at AA over the photo; the foreground spans ride
+   z-index:1 above it (the swipe streak stays on top at z-index:2). */
+.bmf-app .sb-art{ position:absolute; inset:0; z-index:0; pointer-events:none; }
+.bmf-app .sb-art img{ width:100%; height:100%; object-fit:cover; object-position:50% 35%; display:block; }
+.bmf-app .sb-art::after{ content:""; position:absolute; inset:0; background:
+  linear-gradient(90deg, var(--card-bg) 0%, color-mix(in srgb, var(--card-bg) 78%, transparent) 46%, color-mix(in srgb, var(--card-bg) 34%, transparent) 100%); }
+.bmf-app .sb-ic,.bmf-app .sb-copy,.bmf-app .sb-go{ position:relative; z-index:1; }
 /* Swipe reflection — a thin specular streak that sweeps left→right and rests off-frame; mix-blend screen
    so it only LIGHTENS the glass. Clipped by the .card.cut polygon + overflow:hidden, so it never spills. */
 .bmf-app .shopbanner::after{ content:""; position:absolute; inset:0; z-index:2; pointer-events:none; mix-blend-mode:screen;

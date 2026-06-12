@@ -130,6 +130,7 @@ export class HomeScreen {
        banner shows on phone/tablet too and drops only on the shortest viewports (styles.ts). -->
   <div class="sec shop-sec rise d4"><span class="tag">BMF Gear</span><span class="line"></span><span class="stamp">Coming soon</span></div>
   <button class="shopbanner card warm cut rise d4" data-act="shop" aria-label="Open the BMF Gear store">
+    <span class="sb-art" aria-hidden="true"><img src="/images/cardsbg/wearthefightbg.webp" alt="" loading="lazy" /></span>
     <span class="sb-ic">${ic('shop')}</span>
     <span class="sb-copy">
       <span class="sb-title">Wear the fight.</span>
