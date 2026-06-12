@@ -3,7 +3,7 @@
  * its heli pose over a Supabase Realtime **broadcast** channel keyed by the FFA session id; every peer
  * renders everyone else as a ghost (RemotePilots). This is PURE COSMETIC PRESENCE: no host, no shared
  * authority, no fire sync, no reconciliation — you fly your own local sim and just SEE the others. That
- * makes the whole thing tiny next to the old host-authoritative co-op plan (docs/COOP-PLAN.md).
+ * makes the whole thing tiny next to the old host-authoritative co-op plan (retired).
  *
  * This module is **number-only** (no Three / DOM) and is the ONLY place `@supabase/realtime-js` is
  * imported — and it is reached **only** via a dynamic `import()` from Game (when a free-for-all round is

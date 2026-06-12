@@ -25,6 +25,9 @@ scripts/.globe-*.mjs
 dogfood-chase.png
 .gstack/
 
+# Illustrator autosave temp files (brand/*.ai working files)
+brand/~ai-*.tmp
+
 # Raw asset masters — high-res sources kept locally to regenerate the optimized, shipped assets
 # (scripts/optimize-assets.mjs). Re-downloadable from public/textures/ATTRIBUTION.txt. Not shipped.
 model-src/

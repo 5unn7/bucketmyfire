@@ -22,12 +22,10 @@
   /* ---- screen routing map ---- */
   var NAV = {
     index: 'index.html', title: 'title.html', onboarding: 'onboarding.html',
-    dashboard: 'dashboard.html', dispatch: 'dispatch.html',
-    home: 'home.html', daily: 'daily.html', campaign: 'campaign.html',
+    dispatch: 'dispatch.html', home: 'home.html',
     briefing: 'briefing.html', debrief: 'debrief.html', maps: 'maps.html',
-    hangar: 'hangar.html', coop: 'coop.html', board: 'leaderboard.html',
+    hangar: 'hangar.html', board: 'leaderboard.html',
     leaderboard: 'leaderboard.html', settings: 'settings.html',
-    shop: 'store.html', store: 'store.html',
   };
 
   /* ---- shared icon set (24x24, stroke=currentColor) ---- */

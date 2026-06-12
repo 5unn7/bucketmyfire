@@ -49,7 +49,7 @@ const COLOR_RE = /colou?r|tint/i;
 // Blocks read ONCE at construction — a live tweak won't show until Reload.
 const RELOAD_BLOCKS = new Set([
   'WORLD3D', 'MAPGEO', 'TERRAIN', 'LAKE_SHAPE', 'STREAM', 'BIOMES', 'FOREST',
-  'COMMUNITIES', 'ROADS', 'STRUCTURES', 'BRIDGE', 'QUALITY', 'GODRAYS', 'FAUNA', 'TITLE',
+  'COMMUNITIES', 'ROADS', 'STRUCTURES', 'BRIDGE', 'QUALITY', 'GODRAYS', 'FAUNA',
 ]);
 
 const Z = '99999';

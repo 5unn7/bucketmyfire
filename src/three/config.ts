@@ -1762,40 +1762,6 @@ export const CAMERA = {
   kickCrash: 1.0, // impulse when the wreck detonates
 };
 
-// Title / attract screen — the home-screen 3D backdrop that renders BEHIND the menu (ui/title/
-// TitleScreen + menu/AttractScene). A lightweight, non-interactive scene: a gradient sky dome, a
-// gently rolling boreal floor, sun+hemi lighting, and a slow cinematic camera drift. Built once and
-// torn down the instant the player hits PLAY (the menu→mission jump is a full reload anyway), so it
-// never competes with the gameplay renderer. This block is the SINGLE source of its tuning — the
-// moving layers added in later phases (helicopter flyby, fire + smoke, drifting clouds, swaying
-// trees) extend it here rather than hard-coding values. Mobile-60: curated + low complexity, the
-// shared QualityTier caps DPR and gates shadows/post-fx exactly as in-game.
-export const TITLE = {
-  timeOfDay: 'golden', // SKY_PRESETS mood for the backdrop — the game's cinematic golden-hour default
-  // Camera — a composed, slightly elevated frame that looks out over the floor toward the low sun,
-  // sliding through a very slow sway+bob so the scene breathes without ever distracting from the menu.
-  camera: {
-    fov: 55, // vertical FOV (deg) — a touch tighter than the 60° chase cam for a posterish, composed frame
-    pos: { x: 12, y: 30, z: 108 }, // eye position (world units) — high enough to look down across a vista of rolling floor
-    target: { x: 0, y: 7, z: -48 }, // aim point tilts the lens DOWN (~8°) so the horizon sits low and the boreal floor reads as a vista; logo gets clear sky above
-    driftX: 9, // horizontal sway amplitude (units) of the idle orbit
-    driftY: 2.5, // vertical bob amplitude (units)
-    swayHz: 0.02, // sway frequency (cycles/sec) — ~50s per pass, hypnotically slow
-    bobHz: 0.014, // bob frequency (cycles/sec) — offset from sway so the motion never feels like a loop
-  },
-  // Rolling boreal floor — a single procedural plane, vertex-coloured by height (deep green hollows →
-  // lighter meadow rises, matching the BIOMES palette) and faded into the horizon by the preset fog.
-  ground: {
-    size: 2400, // floor extent (units) — runs well past the fog far-plane so no edge ever shows
-    segments: 100, // plane tessellation for the gentle roll (built once at load)
-    amplitude: 7, // vertical relief of the rolling hills (units) — low, shield-country relief
-    frequency: 0.012, // world→sine scale for the roll (lower = broader landforms)
-    colorLow: 0x2f5234, // deep boreal green in the hollows
-    colorHigh: 0x6f8f3f, // lighter meadow green on the rises
-  },
-  wind: { x: 0.35, z: 0.12 }, // gentle ambient wind fed to the shared uniform bus (drives foliage/smoke in later phases)
-} as const;
-
 // Free-for-all "Open Skies" — the endless, shared-map score race the planned co-op became. Everyone
 // flies the SAME daily-seeded Saskatchewan; the fires never stop coming; each pilot racks up a personal
 // score from the fires they knock down (no win, no lose — fly until you leave). This block is PACING
@@ -1914,7 +1880,7 @@ export const CONFIG_REGISTRY: Record<string, Record<string, unknown>> = {
   HELI_CLASSES, HEALTH, CRASH, BRIDGE,
   FIRE3D, STRUCTURES, STRUCT_FIRE, COMMUNITIES, SETTLEMENT3D, ROADS, SCORE, MISSIONS, FFA, PROVINCE, FAUNA, HELIPAD, TERRAIN_TEX, TREE_TEX,
   QUALITY, POSTFX, ENV, GODRAYS, GRADE, TOD_ARC, FIRELIGHT, EMBERS, AMBIENT_EMBERS,
-  WATER, CLOUDS, SPRAY, SMOKE, HAZE, AUDIO, CAMERA, TITLE, LIVEFIRE,
+  WATER, CLOUDS, SPRAY, SMOKE, HAZE, AUDIO, CAMERA, LIVEFIRE,
 };
 
 // A deep clone captured BEFORE overrides are applied — the panel's "reset to default" baseline.

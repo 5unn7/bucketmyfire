@@ -1,7 +1,7 @@
 # bucketmyfire — Remaining Phases (execution tracker)
 
 > Living checklist of what's **left** to turn the game into a business. Tick items as they land.
-> Full strategy: `docs/MASTER-PLAN.md` · audit findings: `docs/AUDIT.md` · plan: `docs/BUSINESS-PLAN.md`.
+> Audit findings: `docs/AUDIT-2026-06-05.md` · plan: `docs/BUSINESS-PLAN.md`.
 > Effort: `trivial` ≤1h · `small` ≤1 day · `medium` a few days · `large` 1–3 weeks part-time.
 > Owner: **C** = code/Claude-doable · **U** = you (manual/external account) · **C+U** = both.
 

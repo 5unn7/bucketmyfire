@@ -1,11 +1,11 @@
 # Open Skies — the free-for-all (supersedes the heavy co-op plan)
 
 > **Decision (2026-06-07):** the multiplayer mode pivots from the host-authoritative **co-op**
-> (`docs/COOP-PLAN.md`) to a lightweight **free-for-all**. People fly the **same map**, fires
-> **keep happening**, and each pilot builds a **personal score from the fires they douse**. The
-> hard, fragile parts of the co-op plan (deterministic cross-ISA fire re-step, host-loss
-> migration, drop-arbiter, shared win/lose) are **dropped**. `COOP-PLAN.md` is kept as the
-> reference for the road not taken.
+> plan to a lightweight **free-for-all**. People fly the **same map**, fires **keep happening**,
+> and each pilot builds a **personal score from the fires they douse**. The hard, fragile parts
+> of the co-op plan (deterministic cross-ISA fire re-step, host-loss migration, drop-arbiter,
+> shared win/lose) are **dropped**. (The retired co-op plan lives in git history as
+> `docs/COOP-PLAN.md`.)
 
 ## Why this is the right call
 

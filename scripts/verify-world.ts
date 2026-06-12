@@ -3,8 +3,8 @@
  * single source of ground/water truth and is meant to be deterministic from `WORLD3D.seed` (mulberry32),
  * so the same seed must grow a byte-identical world every time — on this machine and in CI. That
  * property is load-bearing twice over: it's what makes `verify:campaign` trustworthy (the gate tests
- * the same world the game ships), and it's a HARD prerequisite for co-op netcode (docs/COOP-PLAN.md —
- * peers must re-derive the identical map from a shared seed).
+ * the same world the game ships), and it's what lets Open Skies peers re-derive the identical map
+ * from a shared daily seed.
  *
  * We sample the locked World API (groundHeightAt / waterLevelAt / flightFloorAt / isOverWater / slopeAt
  * + placement.fuelAt) over a fixed (x,z) lattice and reduce to a rounded digest, then assert:
