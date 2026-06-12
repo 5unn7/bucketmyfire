@@ -21,7 +21,7 @@ import { signalFirstFrame } from '../../splashSignal';
 
 // Key-art background — a `public/` asset, referenced through BASE_URL so it resolves under any
 // deploy base (root or the /bucketmyfire/ project-pages path).
-const BG_URL = `${import.meta.env.BASE_URL}images/ui/home212-bg.webp`;
+const BG_URL = `${import.meta.env.BASE_URL}images/halloffame/home212-bg.webp`;
 
 export class TitleScreen {
   private readonly onPlay: () => void;

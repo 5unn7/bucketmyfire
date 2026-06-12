@@ -26,7 +26,9 @@ Leave these where they are; the engine loads them by path.
 images/
   maps/                 province card art (the map picker)        → e.g. Saskatchewan.webp
   missions/<region>/    mission poster art (campaign carousel)    → e.g. saskatchewan/FirstLight.webp
-  ui/                   site / home backgrounds + chrome          → e.g. home212-bg.webp
+  ui/                   site / home chrome
+  cardsbg/              front-door card background art            → e.g. map.webp
+  halloffame/           Hall of Fame + home/title key-art         → e.g. home212-bg.webp
   shop/                 shop / merch imagery
 ```
 

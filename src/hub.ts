@@ -231,13 +231,15 @@ ${frontAppbar('home')}
       </div>
     </section>
 
-    <!-- Map — opens the full live wildfire tracker (layer toggles + smoke scrubber + detail sheet). The
-         faint cyan cartographic grid (.fhome-map-grid) makes it read as a tactical map readout.
+    <!-- Map — opens the full live wildfire tracker (layer toggles + smoke scrubber + detail sheet). A
+         dark topographic contour render (.fhome-map-art) under the faint cyan cartographic grid
+         (.fhome-map-grid) makes it read as a tactical map readout.
          DOM-ordered BEFORE the play tile so the MOBILE single-column stack reads hero → map → gameplay
          (the live data leads into the live map, then the game). Desktop is unaffected: every tile has an
          explicit grid-area, so the bento layout ignores source order. -->
     <button class="card fhome-map" data-act="fires" aria-label="Open the live wildfire map">
       <span class="fd-glasstex" aria-hidden="true"></span>
+      <span class="fhome-map-art" aria-hidden="true"><img src="/images/cardsbg/map.webp" alt="" /></span>
       <span class="fhome-map-grid" aria-hidden="true"></span>
       <span class="fhome-map-ic">${ic('map')}</span>
       <span class="fhome-map-tx"><b>Live fire map</b><span>Reported fires, hotspots, fire weather &amp; smoke</span></span>
@@ -250,7 +252,7 @@ ${frontAppbar('home')}
          profile slot is populated by mountPilotBanner() (an invite line when first-run); the live count
          by hydratePilotsLive(). -->
     <button class="card warm cut fhome-play" data-act="coop" aria-label="Play Open Skies">
-      <div class="fhome-art"><img src="/images/ui/homescreen-bg.webp" alt="A Bell helicopter with a slung Bambi bucket dropping water on a wildfire over boreal lake country" /></div>
+      <div class="fhome-art"><img src="/images/halloffame/homescreen-bg.webp" alt="A Bell helicopter with a slung Bambi bucket dropping water on a wildfire over boreal lake country" /></div>
       <div class="fhome-art-fade"></div>
       <div class="fhome-play-banner">
         <div class="fpb-id" id="fhome-pilot"></div>
@@ -501,12 +503,21 @@ function injectHomeBentoStyles(): void {
 .bmf-app.front .fhome-play-go { margin-top: 18px; pointer-events: none; }
 
 /* Map entry — a tactical "map readout" tile (cool / instrument register, so it opts OUT of the warm
-   cardGlow glaze in cardGlow.ts). A FAINT cyan cartographic grid blooms from behind the map icon and
-   fades across the card; the grid + icon brighten on hover to make it pop. Every .card carries the
-   corner-cut clip-path, which also clips the grid child to the notch (no overflow needed) — and clips
-   any OUTER box-shadow, so the "pop" glow lives on the interior icon, not the card. */
+   cardGlow glaze in cardGlow.ts). A dark topographic contour render fills the card, the FAINT cyan
+   cartographic grid blooms over it from behind the map icon, and the grid + icon brighten on hover to
+   make it pop. Every .card carries the corner-cut clip-path, which also clips the art + grid children
+   to the notch (no overflow needed) — and clips any OUTER box-shadow, so the "pop" glow lives on the
+   interior icon, not the card. */
 .bmf-app.front .fhome-map { position: relative; isolation: isolate; display: flex; align-items: center; gap: 13px; cursor: pointer; text-align: left; width: 100%; padding: 16px 17px; }
-.bmf-app.front .fhome-map > :not(.fhome-map-grid):not(.fd-glasstex) { position: relative; z-index: 1; }
+.bmf-app.front .fhome-map > :not(.fhome-map-grid):not(.fhome-map-art):not(.fd-glasstex) { position: relative; z-index: 1; }
+/* The contour key-art under the grid. A left-edge scrim keeps the title/sub copy on contrast where it
+   sits; the art lifts slightly on hover with the grid. (Photographic scrims are art literals — same
+   rgba(7,10,13) base as the other card fades.) */
+.bmf-app.front .fhome-map-art { position: absolute; inset: 0; z-index: 0; pointer-events: none; opacity: .85; transition: opacity .26s ease; }
+.bmf-app.front .fhome-map-art img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 62%; display: block; }
+.bmf-app.front .fhome-map-art::after { content: ""; position: absolute; inset: 0;
+  background: linear-gradient(90deg, rgba(7,10,13,0.72) 0%, rgba(7,10,13,0.4) 46%, rgba(7,10,13,0.12) 100%); }
+.bmf-app.front .fhome-map:hover .fhome-map-art { opacity: 1; }
 .bmf-app.front .fhome-map-grid { position: absolute; inset: 0; z-index: 0; pointer-events: none;
   background:
     repeating-linear-gradient(90deg, var(--accent-fill) 0 1px, transparent 1px 19px),
