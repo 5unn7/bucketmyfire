@@ -239,6 +239,7 @@ ${frontAppbar('home')}
          (the live data leads into the live map, then the game). Desktop is unaffected: every tile has an
          explicit grid-area, so the bento layout ignores source order. -->
     <button class="card fhome-map" data-act="fires" aria-label="Open the live wildfire map">
+      <span class="fd-glasstex" aria-hidden="true"></span>
       <span class="fhome-map-grid" aria-hidden="true"></span>
       <span class="fhome-map-ic">${ic('map')}</span>
       <span class="fhome-map-tx"><b>Live fire map</b><span>Reported fires, hotspots, fire weather &amp; smoke</span></span>
@@ -517,7 +518,7 @@ function injectHomeBentoStyles(): void {
    corner-cut clip-path, which also clips the grid child to the notch (no overflow needed) — and clips
    any OUTER box-shadow, so the "pop" glow lives on the interior icon, not the card. */
 .bmf-app.front .fhome-map { position: relative; isolation: isolate; display: flex; align-items: center; gap: 13px; cursor: pointer; text-align: left; width: 100%; padding: 16px 17px; }
-.bmf-app.front .fhome-map > :not(.fhome-map-grid) { position: relative; z-index: 1; }
+.bmf-app.front .fhome-map > :not(.fhome-map-grid):not(.fd-glasstex) { position: relative; z-index: 1; }
 .bmf-app.front .fhome-map-grid { position: absolute; inset: 0; z-index: 0; pointer-events: none;
   background:
     repeating-linear-gradient(90deg, var(--accent-fill) 0 1px, transparent 1px 19px),

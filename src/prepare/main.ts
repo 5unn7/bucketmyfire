@@ -48,11 +48,10 @@ function prepareMarkup(): string {
 ${frontScene()}
 ${frontAppbar('prepare')}
 <div class="pad fhome">
-  <section class="card green cut rise" id="checklist"></section>
+  <section class="card green cut rise fd-glass" id="checklist"><span class="fd-glasstex" aria-hidden="true"></span></section>
 
   <section class="card cut">
     <div class="sec"><span class="tag">Field Notes</span><span class="line"></span></div>
-    <div class="mono" style="font-size:var(--fs-meta);color:var(--dim);margin:0 2px 13px">Our own research, written plainly — the home of Field Notes.</div>
     <div class="fd-mgrid" id="fd-prep-rail"></div>
     <a class="btn ghost sm" href="/blog/" style="margin-top:14px">Browse all Field Notes →</a>
   </section>

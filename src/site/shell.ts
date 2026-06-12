@@ -50,11 +50,41 @@ export function buildFooter(): string {
 
 /** Inject the shared stylesheet ONCE. Idempotent. Call after injectKitStyles() so the tokens resolve. */
 export function injectShellStyles(): void {
+  injectShellDefs();
   if (document.getElementById('fd-shell-css')) return;
   const s = document.createElement('style');
   s.id = 'fd-shell-css';
   s.textContent = SHELL_CSS;
   document.head.appendChild(s);
+}
+
+/** Inject the SVG filter <defs> the Field Notes poster texture references, ONCE. These are real
+ *  turbulence-displacement filters (referenced cross-browser only via a same-document `url(#id)`,
+ *  which is why they're inline DOM rather than a data-URI in CSS): `#fd-liquid-glass` warps the ember
+ *  streak into a flowing liquid ribbon (low frequency, big waves), `#fd-lens` ripples the glass sheen
+ *  into tiny refracting lenses (high frequency, small waves). Both rasterize ONCE — the layers that
+ *  use them never animate — so there's no per-frame filter cost. */
+function injectShellDefs(): void {
+  if (document.getElementById('fd-shell-defs')) return;
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.id = 'fd-shell-defs';
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('focusable', 'false');
+  svg.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden;pointer-events:none';
+  svg.innerHTML =
+    `<defs>` +
+    `<filter id="fd-liquid-glass" x="-30%" y="-30%" width="160%" height="160%" color-interpolation-filters="sRGB">` +
+    `<feTurbulence type="fractalNoise" baseFrequency="0.008 0.013" numOctaves="2" seed="7" result="n"/>` +
+    `<feDisplacementMap in="SourceGraphic" in2="n" scale="38" xChannelSelector="R" yChannelSelector="G"/>` +
+    `</filter>` +
+    `<filter id="fd-lens" x="-6%" y="-6%" width="112%" height="112%" color-interpolation-filters="sRGB">` +
+    // High frequency, sub-pixel scale: just enough jitter to set the 2px mosaic tiles off the grid
+    // like hand-laid glass tesserae, without dissolving them (a big scale would smear 2px to mush).
+    `<feTurbulence type="fractalNoise" baseFrequency="0.42 0.44" numOctaves="1" seed="3" result="n"/>` +
+    `<feDisplacementMap in="SourceGraphic" in2="n" scale="1.4" xChannelSelector="R" yChannelSelector="G"/>` +
+    `</filter>` +
+    `</defs>`;
+  (document.body || document.documentElement).appendChild(svg);
 }
 
 /** Mark the active nav/tab and fill the returning-pilot dossier pill + the settings popover. Safe to
@@ -480,10 +510,10 @@ const SHELL_CSS = `
    lives in page meta + the manifest), so a lifted scrim keeps the title + Read → legible at the base over a
    taller crop. Scoped here so the gameplay PICK posters (flyPicker.ts, image-forward) keep the base treatment. */
 .fd-mcard.fd-note .fd-m-scrim { background: linear-gradient(180deg, rgba(6,9,11,0.05) 0%, rgba(6,9,11,0.62) 50%, rgba(6,9,11,0.97) 100%); }
-/* Mobile: run the Field Notes posters TALLER than the base 3/4 — a true movie-poster crop (2/3) that gives
-   the art column room above the enriched body. Mobile-only + .fd-note-scoped (desktop + gameplay pick cards
-   keep --ar-poster). */
-@media (max-width: 759px) { .fd-mcard.fd-note { aspect-ratio: 2 / 3; } }
+/* Field Notes posters run a touch SHORTER than the shared poster token: 4/5 on desktop (vs --ar-poster
+   3/4), 3/4 on mobile (vs the old 2/3). Scoped to .fd-note so the gameplay PICK posters keep --ar-poster. */
+.fd-mcard.fd-note { aspect-ratio: 4 / 5; }
+@media (max-width: 759px) { .fd-mcard.fd-note { aspect-ratio: 3 / 4; } }
 .fd-mcard .fd-m-diff { display: inline-flex; gap: 3px; margin-top: 9px; }
 .fd-mcard .fd-m-diff i { width: 7px; height: 7px; border-radius: 1px; transform: rotate(45deg); background: var(--fire); box-shadow: 0 0 6px var(--ember-35); }
 .fd-mcard .fd-m-diff i.off { background: var(--recess); box-shadow: none; }
@@ -491,6 +521,78 @@ const SHELL_CSS = `
 .fd-mcard:hover .fd-m-art img { transform: scale(1.03); } .fd-mcard .fd-m-art img { transition: transform .3s ease; }
 .fd-mcard.locked { pointer-events: none; }
 .fd-mcard.locked .fd-m-art, .fd-mcard.locked .fd-m-body { filter: grayscale(.7); opacity: .72; }
+
+/* ── Liquified-ember + distorted-GLASS 2px-mosaic texture (the branded card finish). ─────────────
+   A liquified ember STREAK under a 2px glass-mosaic sheen. Two hosts share the SAME streak/mosaic
+   layers (single source, no drift):
+     • .fd-note .fd-m-art.proc — the Field Notes poster's dedicated art layer (carries its own
+       --px/--py twin-well base + an opaque --metal floor, since it IS the card background).
+     • .fd-glasstex — a standalone, self-contained layer dropped into ANY card (checklist, live-map
+       tile, …). It paints only the ember WELLS (transparent elsewhere) so the host card's own fill
+       shows through — a texture OVER the card, not a replacement. Mark the host .fd-glass (relative
+       + clipped + its real content lifted above the z:0 texture); the live-map tile already lifts its
+       own content, so it just gets the layer + a hover hook.
+   The SVG turbulence filters (#fd-liquid-glass / #fd-lens, injected once by injectShellDefs) do the
+   warping; every layer is STATIC so the filter rasterizes once — no per-frame cost. Only literals are
+   the neutral glass specular, same convention as .fd-m-scrim above. */
+.fd-mcard.fd-note .fd-m-art.proc {
+  /* A deeper twin-well brand base so the streak has a lit ember ground to flow over. */
+  background:
+    radial-gradient(120% 90% at var(--px, 70%) var(--py, 18%), var(--ember-22), transparent 60%),
+    radial-gradient(90% 120% at calc(var(--px, 70%) - 20%) 108%, var(--fire-12), transparent 58%),
+    var(--metal);
+}
+.fd-glasstex {
+  position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; border-radius: inherit;
+  /* WELLS ONLY (no --metal floor) — the host card's fill shows between them. */
+  background:
+    radial-gradient(120% 90% at 74% 10%, var(--ember-20), transparent 58%),
+    radial-gradient(96% 120% at 8% 110%, var(--fire-12), transparent 56%);
+}
+/* The host marker: clip the inset streak to the card + lift the card's real content above the texture. */
+.fd-glass { position: relative; overflow: hidden; isolation: isolate; }
+.fd-glass > :not(.fd-glasstex) { position: relative; z-index: 1; }
+
+/* The liquified gradient streak — a diagonal ember sweep the low-frequency filter pulls into a
+   flowing ribbon, then a soft mask fades it to one corner so it reads as a STREAK, not a wash. Inset
+   past the edge so the warp never reveals a transparent fringe inside the host's overflow:hidden. */
+.fd-mcard.fd-note .fd-m-art.proc::before,
+.fd-glasstex::before {
+  content: ""; position: absolute; inset: -26%; z-index: 0; pointer-events: none;
+  background:
+    conic-gradient(from 208deg at 32% 16%, transparent 0deg, var(--ember-40) 64deg,
+      var(--glow-80) 126deg, var(--ember-30) 188deg, transparent 286deg),
+    linear-gradient(116deg, transparent 32%, var(--fire-28) 50%, transparent 72%);
+  filter: url(#fd-liquid-glass) blur(6px);
+  mix-blend-mode: screen; opacity: .92;
+  -webkit-mask-image: linear-gradient(124deg, #000 30%, transparent 86%);
+          mask-image: linear-gradient(124deg, #000 30%, transparent 86%);
+  transition: opacity .3s ease;
+}
+/* The distorted-glass overlay — a 2px MOSAIC of glass tesserae: a faceted micro-glint tiled into
+   every 2px cell (the tile that catches light) over a 2px grout grid (the seams), which the lens
+   filter nudges off-grid so the tiles sit like hand-laid glass rather than a printed screen. Blended
+   soft-light so it refracts the ember beneath rather than tinting it. A larger soft sheen sits on top
+   un-tiled so the whole pane still reads as one sheet of glass. Static; opacity-only hover. */
+.fd-mcard.fd-note .fd-m-art.proc::after,
+.fd-glasstex::after {
+  content: ""; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(120% 90% at 28% 16%, rgba(255,255,255,0.10), transparent 52%),
+    radial-gradient(circle at 30% 30%, rgba(255,255,255,0.16) 0%, transparent 62%),
+    repeating-linear-gradient(0deg,  rgba(0,0,0,0.16) 0 .5px, transparent .5px 2px),
+    repeating-linear-gradient(90deg, rgba(0,0,0,0.16) 0 .5px, transparent .5px 2px);
+  background-size: auto, 2px 2px, 2px 2px, 2px 2px;
+  filter: url(#fd-lens);
+  mix-blend-mode: soft-light; opacity: .8;
+  transition: opacity .3s ease;
+}
+.fd-mcard.fd-note:hover .fd-m-art.proc::before,
+.fd-glass:hover .fd-glasstex::before,
+.fhome-map:hover .fd-glasstex::before { opacity: 1; }
+.fd-mcard.fd-note:hover .fd-m-art.proc::after,
+.fd-glass:hover .fd-glasstex::after,
+.fhome-map:hover .fd-glasstex::after { opacity: .9; }
 
 /* ── Interactive readiness checklist — the /prepare TOP card. Its collapsible header reuses the in-game
    .daily card verbatim (injectHomeStyles: .daily-head/.daily-body/.chev/.collapsed); the rules here are
