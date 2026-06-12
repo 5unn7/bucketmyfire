@@ -199,11 +199,10 @@ export function wmsUrl(base: string, layer: string, box: DrapeBox, opts: { time?
 
 // A Supabase edge function (`fwi-frame`) caches these PNGs server-side (reliable, CORS-clean, one fetch serves
 // everyone instead of per-visitor upstream hits). When true + Supabase configured, frames route through it;
-// else we hit CWFIS/GWIS DIRECTLY — same images. Held FALSE until the function is re-deployed with the
-// EPSG:3857 projection fix (the live deploy still builds 4326 images, which land misaligned on the flat map).
-// To re-enable the cache: `supabase functions deploy fwi-frame --no-verify-jwt --project-ref wnorrtfkfqrgipmggfwh`
-// (it now mirrors wmsUrl's 3857 math), then flip this back to true.
-const FWI_PROXY_DEPLOYED: boolean = false;
+// else we hit CWFIS/GWIS DIRECTLY — same images. Re-deployed 2026-06-11 as v2 with the EPSG:3857 projection
+// fix (it now mirrors wmsUrl's mercator math), smoke-tested serving 512×705 mercator PNGs, so the cache is
+// back on. Flip false to fall back to the direct upstream if the proxy ever regresses.
+const FWI_PROXY_DEPLOYED: boolean = true;
 
 /** The GetMap PNG URL for ONE FWI forecast day + source — the cached proxy when deployed + configured, else
  *  the direct CWFIS/GWIS upstream. `day` is yyyy-mm-dd (UTC); `width` sets the PNG width (height follows bbox). */
