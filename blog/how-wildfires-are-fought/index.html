@@ -29,8 +29,8 @@
   --menu:#ffc24a;--menu-soft:rgba(255,194,74,0.55);--menu-fill:rgba(255,194,74,0.12);
   --cta:linear-gradient(180deg, #ffd45e 0%, #efaa2b 100%);--cta-hi:linear-gradient(180deg, #ffdd76 0%, #f4b441 100%);--cta-ink:#3a2406;--cta-glow:rgba(239,170,43,0.42);
   --warn:#ff5d4d;--ok:#63d68a;--caution:#ffc861;--gold:#ffd66b;--silver:#cfe0ee;--bronze:#e6a268;
-  --text:rgba(255,255,255,0.94);--text-subtle:rgba(255,255,255,0.82);--ink:#0c1410;--dim:rgba(255,255,255,0.60);--faint:rgba(255,255,255,0.48);
-  --card-glass:rgba(16,24,32,0.60);--card-soft:rgba(16,24,32,0.42);--warm-glass:rgba(44,17,13,0.46);
+  --text:rgba(255,255,255,0.94);--text-subtle:rgba(255,255,255,0.76);--ink:#0c1410;--dim:rgba(255,255,255,0.60);--faint:rgba(255,255,255,0.48);
+  --bg:#0e1318;--card-glass:rgba(16,24,32,0.60);--card-soft:rgba(16,24,32,0.42);--warm-glass:rgba(44,17,13,0.46);
   --track:rgba(255,255,255,0.10);--recess:rgba(5,9,13,0.55);--field:rgba(8,13,18,0.60);--rowmine:rgba(103,232,255,0.14);
   --stroke:rgba(255,255,255,0.12);--stroke-strong:rgba(255,255,255,0.18);--warm-stroke:rgba(255,138,110,0.85);--hair:rgba(255,255,255,0.07);
   --shadow-card:0 8px 30px rgba(0,0,0,0.45);--shadow-card-rich:0 10px 36px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.13), inset 1px 0 0 rgba(255,255,255,0.05), inset 0 -1px 0 rgba(0,0,0,0.22);--bevel-top:rgba(255,255,255,0.14);--ember-glow:0 0 16px rgba(255,106,44,0.5);--blur:blur(12px) saturate(120%);
@@ -45,9 +45,9 @@
   --caution-12:rgba(255,200,97,0.12);--caution-50:rgba(255,200,97,0.5);
   --warn-10:rgba(255,93,77,0.1);--warn-16:rgba(255,93,77,0.16);--warn-18:rgba(255,93,77,0.18);--warn-22:rgba(255,93,77,0.22);--warn-50:rgba(255,93,77,0.5);
   --rank:#ffa033;--card-bg:#0a0e12;
-  --font:"JetBrains Mono Variable", ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;--mono:"JetBrains Mono Variable", ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  --font:"JetBrains Mono Variable", ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;--mono:"JetBrains Mono Variable", ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;--font-read:ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --fs-micro:8px;--fs-tag:9px;--fs-label:10px;--fs-meta:11px;--fs-sm:12px;--fs-body:13px;--fs-md:14px;--fs-lg:15px;--fs-xl:16px;--fs-title:18px;--fs-hero:20px;--fs-display:24px;--fs-banner:32px;--fs-mega:42px;
-  --fw-medium:500;--fw-semibold:600;--fw-bold:700;--fw-heavy:800;--fw-black:900;
+  --fw-medium:500;--fw-semibold:600;--fw-bold:700;--fw-heavy:800;--fw-black:800;
   --r-xs:2px;--r-sm:8px;--r-md:12px;--r-lg:10px;--r-xl:18px;--r-pill:99px;--r-round:50%;
   --ar-poster:3 / 4;
 }
@@ -60,7 +60,7 @@
   -webkit-backdrop-filter: blur(10px) saturate(120%); border-bottom: 1px solid var(--hair); }
 .fhome-brand { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); }
 .fhome-brand .bmk { width: 30px; height: 30px; flex: 0 0 auto; display: grid; place-items: center; }
-.fhome-brand .bmk .flame { width: auto; height: 28px; fill: url(#flameGrad); filter: drop-shadow(0 0 5px var(--glow-80)); }
+.fhome-brand .bmk .flame { width: auto; height: 28px; fill: url(#flameGrad); }
 .fhome-brand b { font-family: var(--mono); font-weight: var(--fw-heavy); font-size: 13px; letter-spacing: .16em; text-transform: uppercase; white-space: nowrap; }
 /* Keep the wordmark next to the mark at every width (the icon + wordmark IS the logo lockup); just
    tighten it on the narrowest phones so it never crowds the right-hand actions. */
@@ -90,7 +90,7 @@
    the same bottom line as the policy links (align-self bottom; the front door re-centres it). ─────── */
 .site-foot-brand { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; color: var(--text-subtle); margin: 0 0 0 auto; order: 3; align-self: end; }
 .site-foot-mark { width: 20px; height: 22px; flex: 0 0 auto; display: grid; place-items: center; }
-.site-foot-mark .flame { width: auto; height: 20px; fill: url(#flameGrad); filter: drop-shadow(0 0 4px var(--glow-80)); }
+.site-foot-mark .flame { width: auto; height: 20px; fill: url(#flameGrad); }
 .site-foot-brand b { font-family: var(--mono); font-weight: var(--fw-heavy); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; }
 .site-foot-brand:hover b { color: var(--ember-hi); }
 
@@ -144,7 +144,7 @@ html,body{margin:0;padding:0}
 body.fn{
   background:
     radial-gradient(130% 60% at 50% -8%, var(--ember-20) 0%, var(--ember-05) 30%, transparent 56%),
-    linear-gradient(180deg,#0a0d10 0%,#0b0e10 42%,#07090b 100%);
+    linear-gradient(180deg,#12171d 0%,#10151b 42%,var(--bg) 100%);
   background-attachment:fixed;
   color:var(--text);font-family:var(--font);line-height:1.6;
   -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
@@ -165,14 +165,17 @@ h1,h2,h3,h4{font-weight:800;letter-spacing:-0.01em;line-height:1.15;color:#fff}
   border-top-color:var(--stroke-strong);box-shadow:var(--shadow-card);aspect-ratio:1200/630;background:var(--card-bg);
   clip-path:polygon(18px 0,100% 0,100% 100%,0 100%,0 18px)}
 .fn-hero img{display:block;width:100%;height:100%;object-fit:cover}
-.fn-lede{font-size:var(--fs-xl);color:var(--text-subtle);max-width:60ch;line-height:1.55}
+.fn-lede{font-family:var(--font-read);font-size:var(--fs-xl);color:var(--text-subtle);max-width:60ch;line-height:1.55}
 .fn-takeaways{background:var(--card-soft);border:1px solid var(--stroke);border-left:3px solid var(--ember);
   border-radius:var(--r-md);padding:16px 20px;margin:0 0 30px}
 .fn-takeaways .fn-tk-h{font-size:var(--fs-meta);letter-spacing:0.14em;text-transform:uppercase;color:var(--menu);margin:0 0 10px}
-.fn-takeaways ul{margin:0;padding-left:20px}.fn-takeaways li{margin:6px 0;color:var(--text-subtle)}
-.fn-prose{font-size:var(--fs-xl);line-height:1.72}
-.fn-prose h2{font-size:clamp(21px,3vw,27px);margin:38px 0 12px;scroll-margin-top:72px}
-.fn-prose h3{font-size:clamp(17px,2.4vw,20px);margin:28px 0 10px;color:var(--text)}
+.fn-takeaways ul{margin:0;padding-left:20px}.fn-takeaways li{margin:6px 0;color:var(--text-subtle);font-family:var(--font-read)}
+/* Long-form READING: the article body relaxes to the readable system sans (--font-read). Mono is great
+   for headings / chips / numerals but punishing at paragraph length. Section headings stay mono so the
+   piece still reads as the cockpit brand — only the running paragraphs relax. */
+.fn-prose{font-size:var(--fs-xl);line-height:1.72;font-family:var(--font-read);color:var(--text-subtle)}
+.fn-prose h2{font-family:var(--mono);font-size:clamp(21px,3vw,27px);margin:38px 0 12px;scroll-margin-top:72px}
+.fn-prose h3{font-family:var(--mono);font-size:clamp(17px,2.4vw,20px);margin:28px 0 10px;color:var(--text)}
 .fn-prose p{margin:0 0 18px}
 .fn-prose ul,.fn-prose ol{margin:0 0 18px;padding-left:24px}
 .fn-prose li{margin:7px 0}
@@ -190,7 +193,7 @@ h1,h2,h3,h4{font-weight:800;letter-spacing:-0.01em;line-height:1.15;color:#fff}
 .fn-q summary::-webkit-details-marker{display:none}
 .fn-q summary::before{content:"+ ";color:var(--ember-hi)}
 .fn-q[open] summary::before{content:"– "}
-.fn-q>div{padding:0 0 16px;color:var(--text-subtle);line-height:1.6}
+.fn-q>div{padding:0 0 16px;color:var(--text-subtle);line-height:1.6;font-family:var(--font-read)}
 .fn-srcbox{margin:38px 0 0;background:var(--recess);border:1px solid var(--hair);border-radius:var(--r-md);padding:16px 20px}
 .fn-srcbox h2{font-size:var(--fs-meta);letter-spacing:0.14em;text-transform:uppercase;color:var(--dim);margin:0 0 10px}
 .fn-srcbox ul{margin:0;padding-left:18px}.fn-srcbox li{margin:6px 0;font-size:var(--fs-md)}
@@ -207,7 +210,7 @@ h1,h2,h3,h4{font-weight:800;letter-spacing:-0.01em;line-height:1.15;color:#fff}
 .fn-sec-line{flex:1;height:1px;background:linear-gradient(90deg,var(--gold-32),transparent)}
 .fn-sec-more{font-family:var(--mono);font-size:var(--fs-meta);letter-spacing:0.06em;color:var(--dim);white-space:nowrap;padding:8px 2px;min-height:44px;display:inline-flex;align-items:center}
 .fn-sec-more:hover{color:var(--ember-hi)}
-.fn-pillar-blurb{color:var(--dim);font-size:var(--fs-md);margin:0 0 16px;max-width:60ch}
+.fn-pillar-blurb{font-family:var(--font-read);color:var(--dim);font-size:var(--fs-md);margin:0 0 16px;max-width:60ch}
 
 /* ── Poster cards (mirrors the front-door .fd-mcard; warm "fight" register) ───────────── */
 .fn-grid{display:grid;gap:12px;grid-template-columns:1fr}
@@ -227,7 +230,7 @@ h1,h2,h3,h4{font-weight:800;letter-spacing:-0.01em;line-height:1.15;color:#fff}
 .fn-card-body{position:relative;z-index:2;padding:14px 15px 15px;display:flex;flex-direction:column}
 .fn-card-h{font-size:var(--fs-title);font-weight:var(--fw-black);color:#fff;line-height:1.1;letter-spacing:-0.01em;text-wrap:balance}
 .fn-foot{max-width:760px;margin:0 auto;padding:30px max(16px,env(safe-area-inset-left)) calc(40px + env(safe-area-inset-bottom));border-top:1px solid var(--hair);display:flex;flex-wrap:wrap;align-items:flex-end;column-gap:24px;row-gap:10px}
-.fn-disclaimer{order:1;flex:1 1 100%;color:var(--dim);font-size:var(--fs-sm);max-width:60ch;line-height:1.55;margin:0}
+.fn-disclaimer{order:1;flex:1 1 100%;color:var(--dim);font-size:var(--fs-sm);max-width:60ch;line-height:1.55;margin:0;font-family:var(--font-read)}
 .fn-foot-links{order:2;flex:0 1 auto;min-width:0;display:flex;flex-wrap:wrap;gap:8px 18px}
 .fn-foot-links a{font-family:var(--mono);font-size:var(--fs-meta);letter-spacing:0.1em;text-transform:uppercase;color:var(--dim)}
 .fn-foot-links a:hover{color:var(--ember-hi)}
