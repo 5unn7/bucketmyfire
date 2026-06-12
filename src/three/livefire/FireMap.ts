@@ -21,7 +21,7 @@ import 'leaflet/dist/leaflet.css';
 import { UI } from '../ui/theme';
 import { LIVEFIRE } from '../config';
 import { radiusMetersForHa } from './normalize';
-import { fwiFrameUrl, FWI_BOX, FWI_GLOBE_BOX, fwiForecastTime, GEOMET_WMS_URL, SMOKE_WMS_LAYER, SMOKE_WMS_SLD, isLiveFireEnabled } from './client';
+import { fwiFrameUrl, FWI_BOX, FWI_GLOBE_BOX, MERC_LAT_MAX, fwiForecastTime, GEOMET_WMS_URL, SMOKE_WMS_LAYER, SMOKE_WMS_SLD, isLiveFireEnabled } from './client';
 import type { Hotspot, FireSeverity, ReportedFire, BurnPolygon } from './types';
 import { STAGE_COLOR, SEV_COLOR } from './view';
 import type { FireLayer, FireMapHandlers, LiveMapView } from './view';
@@ -193,8 +193,11 @@ class FwiForecastLayer {
   constructor(private map: L.Map, opacity: number, fadeMs: number, private width: number) {
     this.pending = fwiForecastTime(); // a sensible default day so toggling FWI on is never blank
     const TRANSPARENT = 'data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw=='; // 1×1
-    const caBounds = L.latLngBounds([FWI_BOX.latMin, FWI_BOX.lonMin], [FWI_BOX.latMax, FWI_BOX.lonMax]);
-    const gBounds = L.latLngBounds([FWI_GLOBE_BOX.latMin, FWI_GLOBE_BOX.lonMin], [FWI_GLOBE_BOX.latMax, FWI_GLOBE_BOX.lonMax]);
+    // Clamp the overlay box latitude to the mercator limit so it matches the 3857 GetMap's actual extent
+    // (the global box's ±90 can't be drawn in mercator — its image stops at ±MERC_LAT_MAX, so must the box).
+    const cLat = (lat: number): number => Math.max(-MERC_LAT_MAX, Math.min(MERC_LAT_MAX, lat));
+    const caBounds = L.latLngBounds([cLat(FWI_BOX.latMin), FWI_BOX.lonMin], [cLat(FWI_BOX.latMax), FWI_BOX.lonMax]);
+    const gBounds = L.latLngBounds([cLat(FWI_GLOBE_BOX.latMin), FWI_GLOBE_BOX.lonMin], [cLat(FWI_GLOBE_BOX.latMax), FWI_GLOBE_BOX.lonMax]);
     const mkPane = (name: string): void => {
       this.map.createPane(name);
       const pane = this.map.getPane(name)!;
@@ -296,6 +299,11 @@ export class FireMap implements LiveMapView {
   private smoke: SmokeForecastLayer;
   private selected: L.CircleMarker | null = null;
   private selectedBase: { weight: number; color: string } | null = null; // the selected dot's pre-ring style
+  // Canvas-renderer guard: unlike the SVG renderer, a click on a canvas marker ALSO bubbles to the map's
+  // own `click` — so a marker tap would fire the bare-map deselect right after opening the detail, snapping
+  // it shut. A marker click sets this (synchronously, before the map click in the same DOM event); the map
+  // handler consumes it. Self-clears next tick so a genuine empty-map tap still deselects.
+  private justHitMarker = false;
   private handlers: FireMapHandlers;
   // Which layers are currently shown (default: the authoritative fires + their footprints + hotspots;
   // the FWI raster is opt-in so the map stays legible until the player asks for the danger field).
@@ -341,10 +349,12 @@ export class FireMap implements LiveMapView {
     this.hotspotLayer = L.layerGroup();
     this.applyVisibility();
 
-    // Tap EMPTY map → dismiss any active selection. Leaflet routes a click on an interactive marker to
-    // that marker (never here), so this only fires on the bare basemap: restore the ringed dot's style
-    // and ask the host to close the detail sheet.
+    // Tap EMPTY map → dismiss any active selection. With the CANVAS renderer a marker click also bubbles
+    // here (it doesn't with SVG), so honour the marker-hit guard: if a dot was just tapped, swallow this
+    // companion map click (it would instantly re-close the detail we just opened) and let it through only
+    // on a genuine bare-basemap tap.
     this.map.on('click', () => {
+      if (this.justHitMarker) { this.justHitMarker = false; return; }
       if (!this.selected) return;
       if (this.selectedBase) this.selected.setStyle(this.selectedBase);
       this.selected = null;
@@ -524,6 +534,11 @@ export class FireMap implements LiveMapView {
    *  (the two views must read identically). Restores the PREVIOUS dot's exact pre-selection style
    *  (hotspots and reported dots have different base weights/colours). */
   private highlight(m: L.CircleMarker): void {
+    // Every marker click funnels through here, so this is the one place to arm the canvas-renderer guard
+    // (see the map 'click' handler). Self-clear next tick: if the companion map click never comes, a later
+    // bare-map tap must still be able to deselect.
+    this.justHitMarker = true;
+    setTimeout(() => { this.justHitMarker = false; }, 0);
     if (this.selected && this.selectedBase) this.selected.setStyle(this.selectedBase);
     this.selectedBase = { weight: (m.options.weight as number) ?? 1, color: (m.options.color as string) ?? UI.text };
     this.selected = m;

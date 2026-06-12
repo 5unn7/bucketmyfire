@@ -163,19 +163,33 @@ export const GWIS_FWI_SLD = FWI_WMS_SLD.replace('public:fwi', GWIS_FWI_LAYER);
 // (one image morphs/warms; tiles can't). FWI rises/falls IN PLACE, so a temporal cross-dissolve is the honest
 // morph. These helpers build the per-day image URL for the two sources (Canada CWFIS + whole-planet GWIS).
 export type DrapeBox = { lonMin: number; latMin: number; lonMax: number; latMax: number };
-const boxSpan = (b: DrapeBox): { lon: number; lat: number } => ({ lon: b.lonMax - b.lonMin, lat: b.latMax - b.latMin });
 /** The two FWI GetMap windows: the CWFIS Canada box + the whole-planet GWIS box. */
 export const FWI_BOX: DrapeBox = { lonMin: -141, latMin: 40, lonMax: -50, latMax: 84 };
 export const FWI_GLOBE_BOX: DrapeBox = { lonMin: -180, latMin: -90, lonMax: 180, latMax: 90 };
 
-/** A single-image WMS GetMap URL (v1.1.1 → bbox is lon-first) over a lat/lon box. */
+// Web Mercator (EPSG:3857) — the slippy map's OWN projection. The FWI GetMap must be requested in 3857, not
+// 4326: a single equirectangular (4326) image stretched onto a mercator map drifts in latitude (worse toward
+// the poles), so the danger field slides off the basemap (the "fire weather not mapped to the flat map" bug).
+// Requesting 3857 makes the image match the map; the lat/lon overlay bounds — clamped to MERC_LAT_MAX, since
+// mercator can't reach the poles — then line up pixel-true. Consumers that place the image (FireMap's
+// FwiForecastLayer) must clamp their bounds to MERC_LAT_MAX too, so image extent and overlay box agree.
+export const MERC_LAT_MAX = 85.0511287798066;
+const mercX = (lon: number): number => (lon / 180) * 20037508.342789244;
+const mercY = (lat: number): number => {
+  const c = Math.max(-MERC_LAT_MAX, Math.min(MERC_LAT_MAX, lat));
+  return 6378137 * Math.log(Math.tan(Math.PI / 4 + (c * Math.PI) / 360));
+};
+
+/** A single-image WMS GetMap URL (v1.1.1, EPSG:3857) over a lat/lon box — see MERC_LAT_MAX above for why
+ *  mercator. The PNG height follows the box's MERCATOR aspect so the image isn't vertically squashed. */
 export function wmsUrl(base: string, layer: string, box: DrapeBox, opts: { time?: string; sld?: string; width: number }): string {
-  const span = boxSpan(box);
-  const h = Math.round((opts.width * span.lat) / span.lon);
+  const minX = mercX(box.lonMin), maxX = mercX(box.lonMax);
+  const minY = mercY(box.latMin), maxY = mercY(box.latMax);
+  const h = Math.round((opts.width * (maxY - minY)) / (maxX - minX));
   const p = new URLSearchParams({
     service: 'WMS', version: '1.1.1', request: 'GetMap', layers: layer, styles: '',
-    format: 'image/png', transparent: 'true', srs: 'EPSG:4326',
-    bbox: `${box.lonMin},${box.latMin},${box.lonMax},${box.latMax}`,
+    format: 'image/png', transparent: 'true', srs: 'EPSG:3857',
+    bbox: `${minX},${minY},${maxX},${maxY}`,
     width: String(opts.width), height: String(h),
   });
   if (opts.time) p.set('time', opts.time);
@@ -184,10 +198,12 @@ export function wmsUrl(base: string, layer: string, box: DrapeBox, opts: { time?
 }
 
 // A Supabase edge function (`fwi-frame`) caches these PNGs server-side (reliable, CORS-clean, one fetch serves
-// everyone instead of per-visitor upstream hits). DEPLOYED + smoke-tested 2026-06-11 (project wnorrtfkfqrgipmggfwh,
-// verify_jwt off → callable as a plain <img> src), so frames route through it when Supabase is configured. If
-// it's ever unconfigured (or you set this false), we fall back to hitting CWFIS/GWIS DIRECTLY — same images.
-const FWI_PROXY_DEPLOYED: boolean = true;
+// everyone instead of per-visitor upstream hits). When true + Supabase configured, frames route through it;
+// else we hit CWFIS/GWIS DIRECTLY — same images. Held FALSE until the function is re-deployed with the
+// EPSG:3857 projection fix (the live deploy still builds 4326 images, which land misaligned on the flat map).
+// To re-enable the cache: `supabase functions deploy fwi-frame --no-verify-jwt --project-ref wnorrtfkfqrgipmggfwh`
+// (it now mirrors wmsUrl's 3857 math), then flip this back to true.
+const FWI_PROXY_DEPLOYED: boolean = false;
 
 /** The GetMap PNG URL for ONE FWI forecast day + source — the cached proxy when deployed + configured, else
  *  the direct CWFIS/GWIS upstream. `day` is yyyy-mm-dd (UTC); `width` sets the PNG width (height follows bbox). */

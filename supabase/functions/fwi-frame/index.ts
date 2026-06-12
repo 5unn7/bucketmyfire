@@ -46,15 +46,26 @@ type Box = { lonMin: number; latMin: number; lonMax: number; latMax: number };
 const FWI_BOX: Box = { lonMin: -141, latMin: 40, lonMax: -50, latMax: 84 };
 const FWI_GLOBE_BOX: Box = { lonMin: -180, latMin: -90, lonMax: 180, latMax: 90 };
 
-/** Single-image WMS GetMap URL (v1.1.1 → bbox lon-first), height following the bbox aspect. */
+// Web Mercator (EPSG:3857) — the slippy map's projection. The GetMap must be requested in 3857 (not 4326) so
+// the single-image overlay aligns with the mercator basemap; a 4326 image drifts in latitude. Latitude is
+// clamped to the mercator limit. Mirrors src/three/livefire/client.ts — keep in lockstep.
+const MERC_LAT_MAX = 85.0511287798066;
+const mercX = (lon: number): number => (lon / 180) * 20037508.342789244;
+const mercY = (lat: number): number => {
+  const c = Math.max(-MERC_LAT_MAX, Math.min(MERC_LAT_MAX, lat));
+  return 6378137 * Math.log(Math.tan(Math.PI / 4 + (c * Math.PI) / 360));
+};
+
+/** Single-image WMS GetMap URL (v1.1.1, EPSG:3857 so it aligns with the flat map), height following the
+ *  mercator aspect of the box. */
 function wmsUrl(base: string, layer: string, sld: string, box: Box, day: string, width: number): string {
-  const lonSpan = box.lonMax - box.lonMin;
-  const latSpan = box.latMax - box.latMin;
-  const height = Math.round((width * latSpan) / lonSpan);
+  const minX = mercX(box.lonMin), maxX = mercX(box.lonMax);
+  const minY = mercY(box.latMin), maxY = mercY(box.latMax);
+  const height = Math.round((width * (maxY - minY)) / (maxX - minX));
   const p = new URLSearchParams({
     service: 'WMS', version: '1.1.1', request: 'GetMap', layers: layer, styles: '',
-    format: 'image/png', transparent: 'true', srs: 'EPSG:4326',
-    bbox: `${box.lonMin},${box.latMin},${box.lonMax},${box.latMax}`,
+    format: 'image/png', transparent: 'true', srs: 'EPSG:3857',
+    bbox: `${minX},${minY},${maxX},${maxY}`,
     width: String(width), height: String(height), time: day, sld_body: sld,
   });
   return `${base}?${p.toString()}`;

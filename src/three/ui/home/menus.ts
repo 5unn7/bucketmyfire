@@ -571,6 +571,7 @@ function pickProp(props: Record<string, unknown>, keys: string[]): string {
 function provDetailHtml(f: ReportedFire): string {
   const rows = [`<div class="frow"><span class="fk">Source</span><span class="fv">${esc((f.agency || '').toUpperCase())} provincial agency</span></div>`];
   if (f.fireId) rows.push(`<div class="frow"><span class="fk">Fire ID</span><span class="fv">${esc(f.fireId)}</span></div>`);
+  if (f.sizeHa >= 0) rows.push(`<div class="frow"><span class="fk">Size</span><span class="fv">${esc(LIVEFIRE_COPY.fireSize(f.sizeHa))}</span></div>`);
   for (const d of PROV_FIELDS) {
     const v = pickProp(f.props, d.keys);
     if (v) rows.push(`<div class="frow"><span class="fk">${d.label}</span><span class="fv">${esc(v)}</span></div>`);
@@ -595,7 +596,6 @@ function reportedDetailHtml(f: ReportedFire): string {
       <div class="grow" style="min-width:0;">
         <div class="fsheet-ttl">${title}</div>
         <div class="fsheet-stage"><span class="${stageClass(f.stage)}">${esc(stageLabel(f.stage))}</span></div>
-        <div class="s">${esc(LIVEFIRE_COPY.fireSize(f.sizeHa))}</div>
       </div>
       <button class="iconbtn" data-lf-close aria-label="Close detail">${ic('close')}</button>
     </div>
