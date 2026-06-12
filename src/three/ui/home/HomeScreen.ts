@@ -134,7 +134,7 @@ export class HomeScreen {
     <span class="sb-ic">${ic('shop')}</span>
     <span class="sb-copy">
       <span class="sb-title">Wear the fight.</span>
-      <span class="sb-sub">Crew-grade gear, printed on demand.</span>
+      <span class="sb-sub">Gear built around the fight &mdash; the first collection is in final prep.</span>
     </span>
     <span class="sb-go">${ic('chevron-right')}</span>
   </button>

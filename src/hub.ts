@@ -274,7 +274,7 @@ ${frontAppbar('home')}
       <div class="fhome-tx fhome-merch-tx">
         <span class="fhome-merch-ey">${ic('shop')}BMF Gear</span>
         <span class="h-big fhome-merch-h">Wear the fight.</span>
-        <span class="fhome-merch-sub">Tees &amp; hoodies, printed on demand.</span>
+        <span class="fhome-merch-sub">Gear built around the fight &mdash; the first collection is in final prep.</span>
         <span class="btn primary fhome-merch-go">Shop the collection</span>
       </div>
     </button>
