@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#05080b" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <title>The full story — The Fireline · Bucket My Fire</title>
+    <meta
+      name="description"
+      content="The full story behind one of the moments that forged Canada's wildfire fight — drawn from the public record, honouring the crews who held the line."
+    />
+    <link rel="canonical" href="https://bucketmyfire.com/fireline/story/" />
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="Bucket My Fire" />
+    <meta property="og:url" content="https://bucketmyfire.com/fireline/story/" />
+    <meta property="og:title" content="The full story — The Fireline · Bucket My Fire" />
+    <meta property="og:description" content="One of the moments that forged Canada's wildfire fight, told in full from the public record." />
+    <meta property="og:image" content="https://bucketmyfire.com/og-image.jpg" />
+
+    <!-- Critical paint: the same cockpit boot backdrop the Hall of Fame roll uses, so the first frame
+         is the ember-lit glass scene before src/halloffame/story.ts injects the real tokens + chrome.
+         This page SCROLLS (a reading page) — clip only the horizontal axis. -->
+    <style>
+      :root { --ember: #ff6a2c; }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; background: #05080b; color: rgba(255,255,255,0.94);
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        -webkit-font-smoothing: antialiased; overflow-x: clip; }
+      #fd-boot { position: fixed; inset: 0; z-index: 0; pointer-events: none; background:
+        radial-gradient(130% 60% at 50% -8%, rgba(255,106,44,0.2) 0%, rgba(255,106,44,0.05) 30%, transparent 56%),
+        radial-gradient(150% 90% at 50% 118%, rgba(255,120,40,0.1) 0%, transparent 52%),
+        linear-gradient(180deg, #0a0d10 0%, #0b0e10 42%, #07090b 100%);
+      }
+    </style>
+  </head>
+  <body>
+    <!-- No-JS fallback: the story is picked by ?ev=<id>, which needs JS — point readers at the full
+         crawlable roll on the Hall of Fame page instead. -->
+    <noscript>
+      <div style="position:relative;z-index:1;padding:28px 18px;max-width:680px;margin:0 auto;line-height:1.6">
+        <h1 style="color:#ff6a2c">The full story.</h1>
+        <p>This page tells one of the moments from Canada's wildfire history in full, and it needs
+          JavaScript to pick which one. The complete record reads fine without it:</p>
+        <p><a style="color:#ffc24a" href="/fireline/">The Fireline — the full record</a></p>
+        <p>
+          <a style="color:#ffc24a" href="/">Home</a> ·
+          <a style="color:#ffc24a" href="/campaign/">Campaign</a> ·
+          <a style="color:#ffc24a" href="/open-skies/">Open Skies</a>
+        </p>
+      </div>
+    </noscript>
+
+    <div id="fd-boot" aria-hidden="true"></div>
+    <!-- The story controller mounts the glass-cockpit reading page here (no Three, no game bundle). -->
+    <div id="game"></div>
+
+    <script type="module" src="/src/halloffame/story.ts"></script>
+  </body>
+</html>

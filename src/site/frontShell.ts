@@ -1,5 +1,5 @@
 /**
- * Shared FRONT-DOOR chrome for the public pages (`/`, `/campaign/`, `/hall-of-fame/`). The home front door
+ * Shared FRONT-DOOR chrome for the public pages (`/`, `/campaign/`, `/fireline/`). The home front door
  * (src/hub.ts) rebuilt itself onto the REAL in-game glass-cockpit components (injectHomeStyles → the
  * `.card`/`.cut`, `.scene`/`.embers`, `.sec`/`.tag`/`.line`, `.h-big`, `.eyebrow`, `.iconbtn`, `.brand`
  * vocabulary). This module lifts the bits the front door wraps AROUND those components — the scrolling

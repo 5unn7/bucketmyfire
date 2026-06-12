@@ -279,16 +279,16 @@ ${frontAppbar('home')}
       </div>
     </button>
 
-    <!-- Hall of Fame — a compact call-out to the tribute page: ten documented moments from Canada's
-         wildfire history and the crews behind them. The full visual journey lives on /hall-of-fame/;
+    <!-- The Fireline — a compact call-out to the tribute page: the documented moments from Canada's
+         wildfire history and the crews behind them. The full visual journey lives on /fireline/;
          this is the sharp hand-off, so the home stays the marketing surface. -->
-    <a class="card warm cut fhome-hof" href="/hall-of-fame/">
+    <a class="card warm cut fhome-hof" href="/fireline/">
       <div class="fhome-hof-tx">
-        <span class="fhome-hof-ey">Hall of Fame</span>
+        <span class="fhome-hof-ey">The Fireline</span>
         <span class="fhome-hof-h">The unsung warriors.</span>
-        <span class="fhome-hof-sub">Ten moments that forged Canada's wildfire fight — and the crews who held the line.</span>
+        <span class="fhome-hof-sub">The moments that forged Canada's wildfire fight — and the crews who held the line.</span>
       </div>
-      <span class="btn ghost fhome-hof-go">Enter the Hall →</span>
+      <span class="btn ghost fhome-hof-go">Walk the line →</span>
     </a>
   </div>
 
@@ -556,7 +556,7 @@ function injectHomeBentoStyles(): void {
 .bmf-app.front .fhome-merch-sub { margin-top: 9px; font-size: 14px; line-height: 1.45; color: var(--text-subtle); max-width: 34ch; text-shadow: 0 1px 8px rgba(0,0,0,0.7); }
 .bmf-app.front .fhome-merch-go { margin-top: 16px; pointer-events: none; }
 /* Hall of Fame tile — a compact warm call-out (eyebrow + headline + one line + ghost button) that
-   hands off to the tribute page at /hall-of-fame/. The page owns the full timeline; this is just
+   hands off to the tribute page at /fireline/. The page owns the full timeline; this is just
    the sharp hand-off, so the home stays the marketing surface. */
 .bmf-app.front .fhome-hof { display: flex; flex-direction: column; justify-content: center; gap: 13px; text-decoration: none; color: var(--text); padding: 18px 17px; }
 .bmf-app.front .fhome-hof:hover { transform: translateY(-2px); border-color: var(--warm-stroke); }

@@ -196,7 +196,7 @@ export default defineConfig({
       // Multi-page front door (clean URLs): the home (index.html → src/hub.ts), Open Skies — the shared
       // live shift (open-skies/index.html → src/openskies/main.ts), the Campaign/Solo picker
       // (campaign/index.html → src/campaign/main.ts), and the Hall of Fame tribute
-      // (hall-of-fame/index.html → src/halloffame/main.ts).
+      // (fireline/index.html → src/halloffame/main.ts).
       // Each is a light, crawlable static page that lazy-loads the ~1 MB game only on a play link. The
       // merch store is a standalone site at shop.bucketmyfire.com; the dev-only heli/icons previews are not
       // root-discovered, so they stay out of dist/.
@@ -204,7 +204,11 @@ export default defineConfig({
         main: path.resolve(ROOT, 'index.html'),
         'open-skies': path.resolve(ROOT, 'open-skies/index.html'),
         campaign: path.resolve(ROOT, 'campaign/index.html'),
-        'hall-of-fame': path.resolve(ROOT, 'hall-of-fame/index.html'),
+        // The Fireline tribute timeline (renamed from hall-of-fame 2026-06-12; a static redirect stub
+        // lives at public/hall-of-fame/ so the old live URL keeps working).
+        fireline: path.resolve(ROOT, 'fireline/index.html'),
+        // The per-moment full-story reader (one page, picked by ?ev=<id> against src/halloffame/events.ts).
+        'fireline-story': path.resolve(ROOT, 'fireline/story/index.html'),
       },
     },
   },

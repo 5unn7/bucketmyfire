@@ -17,7 +17,9 @@
 export const NAV = [
   { key: 'home', label: 'Home', href: '/' },
   { key: 'campaign', label: 'Campaign', href: '/campaign/' },
-  { key: 'halloffame', label: 'Hall of Fame', href: '/hall-of-fame/' },
+  // "The Fireline" — the tribute timeline (renamed from "Hall of Fame" 2026-06-12; the internal
+  // `halloffame` key survives so the FrontPage/ShellPage types + active-tab wiring don't churn).
+  { key: 'halloffame', label: 'Fireline', href: '/fireline/' },
   // Live wildfire map — a real anchor so it's reachable from EVERY page (the front door reads `?map` and
   // opens the tracker overlay; from a static sub-page it just loads home + opens it). Instant access.
   { key: 'map', label: 'Map', href: '/?map' },
@@ -110,7 +112,7 @@ export function tabbarHtml(active = '') {
     { key: 'map', label: 'Map', href: '/?map', icon: TAB.map },
     // The mobile tab wears the short word (the 12-char "Hall of Fame" wraps in a 5-col bar on small
     // phones); the desktop nav + the page itself carry the full "Hall of Fame" name.
-    { key: 'halloffame', label: 'Heroes', href: '/hall-of-fame/', icon: TAB.halloffame },
+    { key: 'halloffame', label: 'Fireline', href: '/fireline/', icon: TAB.halloffame },
     { key: 'shop', label: 'Shop', href: shop ? shop.href : '/', icon: TAB.shop },
   ];
   return (

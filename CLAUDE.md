@@ -15,8 +15,8 @@ system and ship from **one** static client-side build:
    Canada (agency-reported active fires, out-of-control count, area burned, satellite hotspots,
    fire weather) sourced from **CIFFC + CWFIS**, with a full Leaflet map overlay
    (`src/three/livefire/`). Keyless public feeds; an honest view, **not** an emergency tool.
-3. **Hall of Fame + merch** — a tribute page (`/hall-of-fame/` → `src/halloffame/main.ts`) honouring
-   Canada's wildland firefighters through ten documented historic moments, and a **"Wear the
+3. **The Fireline + merch** — a tribute page (`/fireline/` → `src/halloffame/main.ts`; renamed from "Hall of Fame" 2026-06-12, redirect stub at the old path) honouring
+   Canada's wildland firefighters through the documented historic moments (each with a full story page at /fireline/story/?ev=<id>), and a **"Wear the
    fight."** merch funnel to the standalone store at shop.bucketmyfire.com (a separate repo).
    (The old Prepare page + "Field Notes" blog/content engine were RETIRED 2026-06-11.)
 
@@ -120,25 +120,25 @@ palette). (`verify:content` retired with the Field Notes blog, 2026-06-11.) **`v
 `mockups/tokens.css` has drifted from `theme.ts` — regenerate with **`npm run gen:tokens`** and
 commit the result (it is generated; do not hand-edit it).
 
-## The site shell (front door + live-fire + Hall of Fame) — `src/hub.ts`, `src/site/`
+## The site shell (front door + live-fire + the Fireline) — `src/hub.ts`, `src/site/`
 
 The page that loads is **not** the game — it's a light, crawlable, content-first **front door**.
 Keep this layer Three-free: the ~1 MB game bundle must download **only** on a play deep-link.
 
 - **`src/hub.ts`** — the front-door controller `index.html` boots. A bare URL builds the
   glass-cockpit **marketing bento** (positioning hero over the *live* national fire data, an Open
-  Skies play tile, the Map card, the "Wear the fight." merch banner, and a Hall of Fame promo).
+  Skies play tile, the Map card, the "Wear the fight." merch banner, and a Fireline promo).
   It **reuses the in-game home's component system** (`injectKitStyles` /
   `injectHomeStyles` / `home/menus.ts` builders) so the front door and the in-game hub are one
   visual language. Any `GAME_PARAMS` (`?m`,`autostart`,`qa`,`ffa`,`province`,`daily`,`editor`,`dev`,
   `heliview`,`kit`,`tune`) hand straight off to `import('./three/main')`.
 - **Multi-page static site** (`vite.config.ts` `rollupOptions.input`): `index.html → src/hub.ts`,
   `campaign/index.html → src/campaign/main.ts`, `open-skies/index.html → src/openskies/main.ts`,
-  `hall-of-fame/index.html → src/halloffame/main.ts`. Plus the generated legal pages
+  `fireline/index.html → src/halloffame/main.ts`, `fireline/story/index.html → src/halloffame/story.ts`. Plus the generated legal pages
   (`public/privacy.html`, `public/terms.html`, via `npm run build:legal`). Each page is light +
   crawlable and lazy-loads the game only on a play link.
 - **`src/site/siteNav.mjs` is THE single source of site chrome** — appbar, mobile tab bar,
-  breadcrumb, footer brand, and the `NAV` list (Home · Campaign · Hall of Fame · Map · Shop).
+  breadcrumb, footer brand, and the `NAV` list (Home · Campaign · Fireline · Map · Shop).
   It is **zero-import plain ESM** so BOTH worlds consume it: the Vite-bundled
   TS front door (`src/site/{frontShell,shell}.ts`, `hub.ts`) imports it, and
   the **Node-run legal renderer** (`scripts/content/legal.mjs`) imports it at build time and inlines
@@ -149,7 +149,7 @@ Keep this layer Three-free: the ~1 MB game bundle must download **only** on a pl
   hydrates BOTH the front-door national-data grid (`hub.ts hydrateNational`) **and** the full Map
   overlay (`openLiveFires`). When both authoritative feeds are down it shows an **honest fallback**
   ("live data unavailable → official sources"), never "no fires".
-- **Hall of Fame (`hall-of-fame/` → `src/halloffame/main.ts`)** — the tribute page: ten documented
+- **The Fireline (`fireline/` → `src/halloffame/main.ts` + `story.ts`, data `events.ts`)** — the tribute page: eleven documented
   moments from Canada's wildfire history (1825 Miramichi → the 2023 record season) on an ember-spine
   timeline, honouring the crews/pilots/lookouts/dispatchers as a whole, closing with a "Fly with
   them" hand-off into Open Skies. **The backbone rule survives the blog it came from:** every fact
@@ -444,9 +444,9 @@ the **mission factory** (`missions/factory/`). The canonical record is in the sp
 **Beyond that — the product is now a wildfire *website* (the last few days, mostly uncommitted on `main`):**
 (1) **Living Province** — one open-world mode (`province/` + Open Skies / Solo), where the fires keep coming.
 (2) **Front door** — `index.html` boots `src/hub.ts`, a content-first marketing/live-data home that lazy-loads
-the game; a multi-page static site (Home/Campaign/Open Skies/Hall of Fame) shares one nav source
+the game; a multi-page static site (Home/Campaign/Open Skies/Fireline) shares one nav source
 (`src/site/siteNav.mjs`). (3) **Live wildfire tracker** — `src/three/livefire/` surfaces real CIFFC + CWFIS
-data on the front door and a Leaflet map. (4) **Hall of Fame** — `/hall-of-fame/`, the tribute timeline that
+data on the front door and a Leaflet map. (4) **The Fireline** — `/fireline/`, the tribute timeline that
 REPLACED the Prepare surface + the "Field Notes" blog/content engine (both retired 2026-06-11).
 (5) **"Wear the fight." merch funnel**
 to the standalone store at shop.bucketmyfire.com. These are tracked in `docs/FRONT-DOOR-PLAN.md`,

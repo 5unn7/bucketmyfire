@@ -1,6 +1,6 @@
 /**
- * The shared SITE SHELL for the public pages (Home `/`, Campaign `/campaign/`, Hall of Fame
- * `/hall-of-fame/`).
+ * The shared SITE SHELL for the public pages (Home `/`, Campaign `/campaign/`, the Fireline
+ * `/fireline/`).
  *
  * The front-door pages are hand-authored static HTML (crawlable, instant paint) that each boot a
  * light controller. This module is the ONE place their common chrome + styling lives, so the appbar,
