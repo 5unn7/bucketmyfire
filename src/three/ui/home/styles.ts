@@ -177,12 +177,12 @@ const CSS = `
   animation:bmf-sheet-right .2s cubic-bezier(.2,.7,.3,1); }
 .bmf-app .firesheet[hidden]{ display:none; }
 @keyframes bmf-sheet-right{ from{ transform:translateX(101%); } to{ transform:translateX(0); } }
-/* FIRE-DETAIL variant — a BOTTOM sheet, not the right drawer. A tapped fire's big name + stage chip + the
-   fact chips need full width to lay out on one clean row; cramped into the 380px right column they wrap and
-   misalign. So the detail opens from the bottom (full map width) while the Layers / Sources sheets KEEP the
-   right drawer. Toggled by the .bottom class in menus.ts (showReported/showHotspot add it; the layers +
-   ledger views remove it). Anchored bottom: top:auto + bottom:0 + a capped height with the base inner scroll. */
-.bmf-app .firesheet.bottom{ top:auto; left:0; right:0; bottom:0; width:auto; max-height:64%;
+/* FIRE-DETAIL variant — responsive. On a PHONE it's a BOTTOM sheet (thumb-reach, full width for the big
+   name + chips) covering up to 75% of the map. On TABLET/DESKTOP (≥760px, the site-chrome handoff) it
+   opens from the RIGHT as a 45%-wide full-height drawer — wider than the 380px Layers drawer because the
+   fire record (chips + history chart + field groups) needs the room. Toggled by the .bottom class in
+   menus.ts (showReported/showHotspot add it; the layers + ledger views remove it). */
+.bmf-app .firesheet.bottom{ top:auto; left:0; right:0; bottom:0; width:auto; max-height:75%; max-height:75dvh;
   border-left:0; border-top:1px solid var(--warm-stroke); border-radius:var(--r-xl) var(--r-xl) 0 0;
   padding:0 16px calc(16px + env(safe-area-inset-bottom)); animation:bmf-sheet-up .22s cubic-bezier(.2,.7,.3,1); }
 /* Standard "drag from bottom" grab pill (the right drawer has none — its close button is the dismiss). Purely
@@ -191,6 +191,12 @@ const CSS = `
 .bmf-app .firesheet.bottom::before{ content:''; display:block; width:38px; height:4px; margin:9px auto 1px;
   border-radius:var(--r-pill); background:var(--hair); }
 @keyframes bmf-sheet-up{ from{ transform:translateY(101%); } to{ transform:translateY(0); } }
+@media (min-width:760px){
+  .bmf-app .firesheet.bottom{ top:0; left:auto; right:0; bottom:0; width:45%; max-height:none;
+    border-top:0; border-left:1px solid var(--warm-stroke); border-radius:var(--r-xl) 0 0 var(--r-xl);
+    padding:0 16px 16px; animation:bmf-sheet-right .2s cubic-bezier(.2,.7,.3,1); }
+  .bmf-app .firesheet.bottom::before{ display:none; } /* grab pill is a bottom-sheet affordance only */
+}
 @media (prefers-reduced-motion:reduce){ .bmf-app .firesheet, .bmf-app .firesheet.bottom{ animation:none; } }
 /* Branded scrollbar — warm ember thumb (the "fight" register), floating on a clear track, pill-capped. */
 .bmf-app .firesheet{ scrollbar-width:thin; scrollbar-color:var(--ember-50) transparent; }

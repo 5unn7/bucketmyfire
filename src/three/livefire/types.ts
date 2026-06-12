@@ -125,6 +125,27 @@ export interface FireHistoryPoint {
   observedAt: number; // when our ingest recorded it, epoch ms
 }
 
+/** One day of satellite heat detections near a reported fire, from the WHOLE-SEASON CWFIS archive layer
+ *  (`public:hotspots` — multi-year, 17M+ rows) rather than the last-24h slice the map plots. `day` is the
+ *  UTC date (YYYY-MM-DD); `count` is raw detections that day (multiple satellites/passes each count). */
+export interface FireActivityDay {
+  day: string;
+  count: number;
+}
+
+/** A fire's satellite ACTIVITY record — the pre-tracking history the agency feeds can't give us (CIFFC
+ *  carries no discovery date and our snapshot backend only reaches back to when its ingest began). Heat
+ *  detections within ~10 km of the reported location, this season, grouped per UTC day. `firstAt` is the
+ *  oldest in-season detection seen — the honest "burning since at least" anchor. `clipped` = the row cap
+ *  was hit before reaching pre-season data, so the true start may be even earlier than `firstAt`. */
+export interface FireActivity {
+  firstAt: number; // epoch ms of the oldest in-season detection (>0 — null activity instead of 0)
+  lastAt: number; // epoch ms of the newest detection
+  total: number; // total in-season detections
+  days: FireActivityDay[]; // ascending by day; only days with ≥1 detection
+  clipped: boolean;
+}
+
 /** The national summary panel (CIFFC `/v1/dashboard/summary`) — the "Current fires / Year-to-date"
  *  numbers. `ytdOut` is derived (total − active). `prepLevel` is the national preparedness level 1–5. */
 export interface NationalSummary {

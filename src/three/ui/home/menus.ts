@@ -28,7 +28,7 @@ import { railNav } from './rail';
 import { DEFS, FLAME, ic } from './icons';
 import { openStore } from '../storeLink';
 import { validateCallsign, MAX_CALLSIGN } from '../callsign';
-import { fetchActiveFires, fetchSummary, fetchReportedFires, fetchBurnPerimeters, fetchFwiMeta, fetchFireHistory, fwiForecastTime, getRegionPref, setRegionPref, isLiveFireEnabled } from '../../livefire/client';
+import { fetchActiveFires, fetchSummary, fetchReportedFires, fetchBurnPerimeters, fetchFwiMeta, fetchFireHistory, fetchFireActivity, fwiForecastTime, getRegionPref, setRegionPref, isLiveFireEnabled } from '../../livefire/client';
 import {
   LIVEFIRE_COPY, severityClass, severityLabel, stageClass, stageLabel, relTime,
   freshnessLine, statusDotClass, publishedWhen, LIVEFIRE_SOURCES, NOT_FOR_EMERGENCY, SK_OFFICIAL,
@@ -37,7 +37,7 @@ import {
 import { FIELD_GROUPS, REPORTED_FIELD_GROUPS, type FieldGroup } from '../../livefire/fields';
 import { filterReportedRegion, filterRegionHotspots, regionValue, parseRegion, regionOptions, deriveRegionStats, countryLabel, COUNTRIES, smokeForecastFrames, forecastLeadLabel } from '../../livefire/normalize';
 import { LIVEFIRE } from '../../config';
-import type { Hotspot, ReportedFire, ReportedFeed, FireHistoryPoint, NationalSummary, BurnFeed, FeedMeta, LiveFireFeed, CountryFilter, RegionFilter, RegionStats } from '../../livefire/types';
+import type { Hotspot, ReportedFire, ReportedFeed, FireHistoryPoint, FireActivity, NationalSummary, BurnFeed, FeedMeta, LiveFireFeed, CountryFilter, RegionFilter, RegionStats } from '../../livefire/types';
 import type { LiveMapView, FireLayer } from '../../livefire/view';
 import { esc } from '../../../site/siteNav.mjs';
 
@@ -605,88 +605,138 @@ function reportedDetailHtml(f: ReportedFire): string {
     <p class="alertnote">${esc(NOT_FOR_EMERGENCY)}</p>`;
 }
 
-/** Stage-of-control → the CSS token var the sparkline's end dot is coloured by (mirrors FireMap's
- *  STAGE_COLOR; consumes the injected `.bmf-app` tokens, never a literal hex). */
-const STAGE_VAR: Record<string, string> = {
-  OC: 'var(--warn)', BH: 'var(--caution)', UC: 'var(--ok)', OUT: 'var(--faint)', UNK: 'var(--caution)',
-};
-
-/** Human duration for a millisecond span (history x-axis label) — minutes → hours → days. */
-function fmtSpan(ms: number): string {
-  const min = ms / 60000;
-  if (min < 90) return `${Math.max(1, Math.round(min))} min`;
-  const hr = min / 60;
-  if (hr < 36) return `${Math.round(hr)} h`;
-  return `${Math.round(hr / 24)} days`;
+/** Short absolute day for the fire timeline — "Jun 9". UTC, NOT the viewer's zone: the activity bars
+ *  bucket by UTC day, so a local-zone label drifts a day off the data west of Greenwich (a Jun 2 00:00Z
+ *  bucket read "Jun 1" in Saskatchewan while the row beside it said "Jun 2"). */
+function fmtDay(ms: number): string {
+  return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
 }
 
 /**
- * The TRACKED-HISTORY block for a reported fire — the thing the browser-only feed could never show:
- * the same fire's size + stage observed over time, served by the ingestion backend (fetchFireHistory).
- * Renders an inline size-over-time sparkline + a "grew/shrank by X over N days" line + the stage path.
- * Returns '' when there's nothing worth charting (<2 sized points AND no stage change) so the panel is
- * unchanged for fires we've only seen once. Pure + token-only (reuses .fgroup/.frow + injected vars).
+ * The FIRE-TIMELINE block for a reported fire — two honest sources on ONE time axis:
+ *   • bars  — satellite heat detections per day from the whole-season CWFIS archive (fetchFireActivity),
+ *             the fire's real activity curve back to its FIRST in-season detection (usually days/weeks
+ *             before we ever tracked it — the agency feeds carry no discovery date at all);
+ *   • line  — the agency's reported size over the window OUR snapshot backend has tracked it
+ *             (fetchFireHistory), drawn STEP-AFTER: an estimate HOLDS until the next sitrep revises it
+ *             (a slope would fabricate continuous growth — the BORDER-fire "grew 1,810 ha over 26 h" lesson).
+ * The change row is anchored "since <first sitrep date>" (never an implied growth RATE), the satellite row
+ * is "since at least" by construction, and the already-burned baseline is stated outright. Either source
+ * may be null (unavailable) — the block renders what it has and returns '' only when both are empty.
  */
-function fireHistoryHtml(points: FireHistoryPoint[], f: ReportedFire): string {
-  const sized = points.filter((p) => p.sizeHa >= 0);
+function fireHistoryHtml(points: FireHistoryPoint[] | null, activity: FireActivity | null, f: ReportedFire): string {
+  // Time axis = the SOURCE's report time (sitrep date), NOT our poll time. `observedAt` is just when
+  // the ingest cron happened to run (every 10 min), so using it reported "grew X over 31 min" on EVERY
+  // fire at once — that 31 min was the gap between two cron runs, not the fire's real growth interval.
+  // Fall back to `observedAt` only for a snapshot with no source date; sorting by sitrep time keeps the
+  // step chart monotonic even when a later poll carries a backward-revised sitrep date.
+  const tOf = (p: FireHistoryPoint): number => p.reportedAt || p.observedAt;
+  const sized = (points ?? []).filter((p) => p.sizeHa >= 0).sort((a, b) => tOf(a) - tOf(b));
   const stages: string[] = [];
-  for (const p of points) if (!stages.length || stages[stages.length - 1] !== p.stage) stages.push(p.stage);
-  const haveSpark = sized.length >= 2 && sized.some((p) => p.sizeHa > 0);
+  for (const p of points ?? []) if (!stages.length || stages[stages.length - 1] !== p.stage) stages.push(p.stage);
+  // ONE sized snapshot still draws (a flat step at the current reported size, from its sitrep date) —
+  // against the activity bars that places WHEN the size was last reported on the fire's timeline. The
+  // change row needs two points to compare, so it stays gated on sized.length ≥ 2 below.
+  const haveSpark = sized.length >= 1 && sized.some((p) => p.sizeHa > 0);
   const haveStagePath = stages.length >= 2;
-  if (!points.length) return ''; // backend answered but no snapshot for this fire yet → stay silent
+  if (!points?.length && !activity) return ''; // nothing from either source → stay silent
+
+  // One shared domain: first in-season satellite detection → freshest report, whichever sides exist.
+  const DAY = 86_400_000;
+  const dayStart = (day: string): number => Date.parse(`${day}T00:00:00Z`);
+  let t0 = haveSpark ? tOf(sized[0]) : Infinity;
+  let t1 = haveSpark ? tOf(sized[sized.length - 1]) : -Infinity;
+  if (activity) {
+    t0 = Math.min(t0, dayStart(activity.days[0].day));
+    t1 = Math.max(t1, dayStart(activity.days[activity.days.length - 1].day) + DAY);
+  }
+  const haveChart = Number.isFinite(t0) && t1 > t0;
 
   let spark = '';
   let changeRow = '';
-  if (haveSpark) {
+  if (haveChart) {
     const W = 252, H = 46, padX = 2, padY = 4;
-    // Time axis = the SOURCE's report time (sitrep date), NOT our poll time. `observedAt` is just when
-    // the ingest cron happened to run (every 10 min), so using it reported "grew X over 31 min" on EVERY
-    // fire at once — that 31 min was the gap between two cron runs, not the fire's real growth interval.
-    // Fall back to `observedAt` only for a snapshot with no source date; min/max is robust to a backward
-    // sitrep revision (a later poll carrying an earlier reported date).
-    const tOf = (p: FireHistoryPoint): number => p.reportedAt || p.observedAt;
-    const ts = sized.map(tOf);
-    const t0 = Math.min(...ts), t1 = Math.max(...ts);
     const span = Math.max(1, t1 - t0);
-    const maxHa = Math.max(...sized.map((p) => p.sizeHa), 1);
-    const coords = sized.map((p) => {
-      const x = padX + ((tOf(p) - t0) / span) * (W - 2 * padX);
-      const y = H - padY - (p.sizeHa / maxHa) * (H - 2 * padY);
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    });
-    const line = coords.join(' ');
-    const [lastX, lastY] = coords[coords.length - 1].split(',');
-    const baseY = (H - padY).toFixed(1);
-    const area = `${padX.toFixed(1)},${baseY} ${line} ${lastX},${baseY}`;
+    const xOf = (t: number): number => padX + ((t - t0) / span) * (W - 2 * padX);
+    // Satellite-activity bars (drawn first → behind the size line): one per UTC day, height ∝ detections.
+    let bars = '';
+    if (activity) {
+      const maxCount = Math.max(...activity.days.map((d) => d.count), 1);
+      bars = activity.days.map((d) => {
+        const x = xOf(dayStart(d.day));
+        const w = Math.max(0.8, xOf(dayStart(d.day) + DAY) - x);
+        const h = Math.max(1.4, (d.count / maxCount) * (H - 2 * padY) * 0.9);
+        return `<rect x="${x.toFixed(1)}" y="${(H - padY - h).toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="var(--hair)"/>`;
+      }).join('');
+    }
+    // STEP-AFTER line: each reported size holds flat until the next sitrep revises it. We only KNOW
+    // the size at the report moments — a straight slope between them would claim continuous measured
+    // growth (a 429→2,000 revision one sitrep-hour apart is a re-estimate, not 1,571 ha/h of spread).
+    // The final step runs to the domain edge: that size IS the current reported size.
+    let stepLine = '';
+    if (haveSpark) {
+      const maxHa = Math.max(...sized.map((p) => p.sizeHa), 1);
+      const yOf = (ha: number): string => (H - padY - (ha / maxHa) * (H - 2 * padY)).toFixed(1);
+      const pts: string[] = [];
+      let prevY = '';
+      for (const p of sized) {
+        const x = xOf(tOf(p)).toFixed(1), y = yOf(p.sizeHa);
+        if (prevY) pts.push(`${x},${prevY}`);
+        pts.push(`${x},${y}`);
+        prevY = y;
+      }
+      pts.push(`${(W - padX).toFixed(1)},${prevY}`);
+      const line = pts.join(' ');
+      const baseY = (H - padY).toFixed(1);
+      const area = `${xOf(tOf(sized[0])).toFixed(1)},${baseY} ${line} ${(W - padX).toFixed(1)},${baseY}`;
+      stepLine =
+        `<polygon points="${area}" fill="var(--ember-12)" stroke="none"/>` +
+        `<polyline points="${line}" fill="none" stroke="var(--ember)" stroke-width="1.6" ` +
+        `stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`;
+    }
+    const d0 = fmtDay(t0), d1 = fmtDay(t1 - 1);
     spark =
       `<svg viewBox="0 0 ${W} ${H}" width="100%" height="46" preserveAspectRatio="none" role="img" ` +
-      `aria-label="Fire size over time" style="display:block;margin-top:8px;overflow:visible;">` +
-      `<polygon points="${area}" fill="var(--ember-12)" stroke="none"/>` +
-      `<polyline points="${line}" fill="none" stroke="var(--ember)" stroke-width="1.6" ` +
-      `stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>` +
-      `<circle cx="${lastX}" cy="${lastY}" r="2.6" fill="${STAGE_VAR[f.stage] ?? 'var(--ember)'}"/></svg>`;
-    const delta = f.sizeHa - sized[0].sizeHa;
+      `aria-label="Satellite detections per day and reported fire size over the fire's timeline" ` +
+      `style="display:block;margin-top:8px;overflow:visible;">${bars}${stepLine}</svg>` +
+      `<div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:var(--fs-micro);color:var(--faint);margin-bottom:2px;">` +
+      `<span>${esc(d0 === d1 ? '' : d0)}</span><span>${esc(d1)}</span></div>`;
+  }
+  if (sized.length >= 2) {
+    const last = f.sizeHa >= 0 ? f.sizeHa : sized[sized.length - 1].sizeHa;
+    const delta = last - sized[0].sizeHa;
     const arrow = delta > 1 ? '▲' : delta < -1 ? '▼' : '•';
     const verb = delta > 1 ? 'grew' : delta < -1 ? 'shrank' : 'held';
-    const mag = Math.abs(delta) >= 1 ? `${esc(LIVEFIRE_COPY.fireSize(Math.abs(delta)))} ` : '';
-    // Only name the interval when the source actually reported one (>2 min of real sitrep span). Two
-    // snapshots sharing a sitrep date give a ~0 span — say "grew X" without inventing a tiny window.
-    const over = span > 120_000 ? ` over ${esc(fmtSpan(span))}` : '';
-    changeRow = `<div class="frow"><span class="fk">Change</span><span class="fv">${arrow} ${verb} ${mag}${over}</span></div>`;
+    const mag = Math.abs(delta) >= 1 ? ` ${esc(LIVEFIRE_COPY.fireSize(Math.abs(delta)))}` : '';
+    // Anchored to the first sitrep DATE, never phrased as a rate — the reported-size change since we
+    // began tracking, which is all this is.
+    changeRow = `<div class="frow"><span class="fk">Reported change</span><span class="fv">${arrow} ${verb}${mag} since ${esc(fmtDay(tOf(sized[0])))}</span></div>`;
   }
 
-  const firstSeen = points.length ? points[0].observedAt : 0;
-  const seenRow = firstSeen ? `<div class="frow"><span class="fk">First tracked</span><span class="fv">${esc(relTime(firstSeen))}</span></div>` : '';
+  // The fire's age FLOOR from the season's satellite record — "since at least" by construction (an early
+  // smoulder can predate the first satellite pass, and a capped fetch means we never reached season start).
+  const sinceRow = activity
+    ? `<div class="frow"><span class="fk">Satellite heat</span><span class="fv">since ${activity.clipped ? 'before ' : ''}${esc(fmtDay(activity.firstAt))} · ${activity.total.toLocaleString()} detections</span></div>`
+    : '';
+  // The already-burned baseline: what the agency said the fire was when tracking began — anything
+  // before that is unknown to our snapshots, and the row + note say so instead of implying zero.
+  const first = sized[0];
+  const seenRow = first
+    ? `<div class="frow"><span class="fk">First tracked</span><span class="fv">${esc(first.sizeHa > 0 ? `${fmtDay(tOf(first))} · already ${LIVEFIRE_COPY.fireSize(first.sizeHa)}` : fmtDay(tOf(first)))}</span></div>`
+    : points?.length && points[0].observedAt
+      ? `<div class="frow"><span class="fk">First tracked</span><span class="fv">${esc(relTime(points[0].observedAt))}</span></div>`
+      : '';
   const stageRow = haveStagePath
     ? `<div class="frow"><span class="fk">Stage path</span><span class="fv">${esc(stages.map((s) => stageLabel(s as ReportedFire['stage'])).join(' → '))}</span></div>`
     : '';
-  // Nothing to chart yet (a single observation, or steady since first seen): say so plainly instead of
-  // dropping the whole block — the fire IS being tracked, it just hasn't moved. Reads "young", not "broken".
-  const quietRow = !haveSpark && !haveStagePath
-    ? `<div class="frow"><span class="fk">Change</span><span class="fv" style="color:var(--faint)">No changes recorded yet</span></div>`
+  // Nothing charted and nothing moved: say so plainly instead of dropping the whole block — the fire IS
+  // being tracked, it just hasn't moved. Reads "young", not "broken".
+  const quietRow = !haveChart && !haveStagePath
+    ? `<div class="frow"><span class="fk">Reported change</span><span class="fv" style="color:var(--faint)">No changes recorded yet</span></div>`
     : '';
+  const note = `<p class="alertnote" style="margin-top:6px;">${activity ? 'Bars: satellite heat detections within ~10 km, per day — nearby fires can overlap. ' : ''}Sizes are agency estimates, revised at each report${activity ? '' : ' — the fire may have been burning before tracking began'}.</p>`;
 
-  return `<div class="fgroup"><div class="fgh">Tracked history</div>${spark}${changeRow}${stageRow}${quietRow}${seenRow}</div>`;
+  return `<div class="fgroup"><div class="fgh">Fire timeline</div>${spark}${changeRow}${sinceRow}${stageRow}${quietRow}${seenRow}${note}</div>`;
 }
 
 /** The region firestats ticker — ONE compact line rendered from the honest `RegionStats` POJO. Lead =
@@ -898,17 +948,19 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
     sheetEl.hidden = false;
     sheetEl.scrollTop = 0;
     wireClose();
-    // Enrich with the fire's tracked history from the ingestion backend. Best-effort + async. `source`
-    // routes provincial fires to their own snapshot table. A NULL result = backend unavailable → leave the
-    // panel untouched (unchanged offline); an answered result (even a "no changes yet" block) is painted.
+    // Enrich with the fire's timeline — BOTH sources in parallel, one paint: the tracked size/stage
+    // history from our ingestion backend (null = backend unavailable) and the season's satellite
+    // activity near the fire from the CWFIS archive (null = unavailable or nothing in-season, and the
+    // only public record that predates our tracking). Best-effort: whatever answered gets rendered.
     const token = ++detailToken;
-    if (f.fireId) {
-      void fetchFireHistory(f.fireId, f.source).then((points) => {
-        if (closed || token !== detailToken || points === null) return;
-        const host = sheetEl.querySelector<HTMLElement>('[data-lf-hist]');
-        if (host) host.innerHTML = fireHistoryHtml(points, f);
-      });
-    }
+    void Promise.all([
+      f.fireId ? fetchFireHistory(f.fireId, f.source) : Promise.resolve(null),
+      fetchFireActivity(f.lat, f.lon),
+    ]).then(([points, activity]) => {
+      if (closed || token !== detailToken || (points === null && activity === null)) return;
+      const host = sheetEl.querySelector<HTMLElement>('[data-lf-hist]');
+      if (host) host.innerHTML = fireHistoryHtml(points, activity, f);
+    });
   };
   const showHotspot = (h: Hotspot): void => {
     sheetEl.classList.add('bottom'); // detail = bottom sheet (the Layers / Sources sheets stay on the right)
@@ -917,6 +969,16 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
     sheetEl.scrollTop = 0;
     wireClose();
   };
+  // QA hook (mirrors main.ts's gated `window.__game`): the dots render to CANVAS, so a headless run
+  // can't click a specific fire — this opens the detail sheet by (partial) fire id instead. DEV/?qa only.
+  if (import.meta.env.DEV || new URLSearchParams(location.search).has('qa')) {
+    (window as unknown as Record<string, unknown>).__lfShow = (idPart: string): string | null => {
+      const q = idPart.toUpperCase();
+      const f = [...reportedFeed.fires, ...reportedFeed.out].find((r) => r.fireId.toUpperCase().includes(q));
+      if (f) showReported(f);
+      return f ? f.fireId : null;
+    };
+  }
   // The SOURCE LEDGER — the trust hero. Every layer, its live/cached/down status, its SOURCE publish time,
   // and a link to the authoritative origin, plus the "not an emergency tool" line. This is what lets the
   // honest window show fragile data honestly: a dead feed reads "unavailable", never a silent blank.

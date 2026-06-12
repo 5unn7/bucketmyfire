@@ -12,6 +12,7 @@
 import type {
   Hotspot, FireSeverity, LiveFireFeed, SourceStatus, FeedMeta, Country, CountryFilter,
   FireStage, ReportedFire, ReportedFeed, BurnPolygon, BurnFeed, NationalSummary, RegionFilter, RegionStats,
+  FireActivity,
 } from './types';
 
 /** What the fetch layer hands the pure normalizers: the fetch-level outcome (status/fromCache/fetchedAt).
@@ -514,3 +515,39 @@ export function parseBurnPolygons(geojson: unknown): BurnPolygon[] {
   return out;
 }
 
+
+// ── Per-fire satellite ACTIVITY (the whole-season hotspot archive) ────────────────────────────────
+
+/**
+ * Derive a fire's satellite-activity record from a CWFIS `public:hotspots` ARCHIVE response (slim rows —
+ * `propertyName=rep_date`, newest-first, bbox'd to ~10 km around the reported location). This is the
+ * pre-tracking history nothing agency-side can give us: detections group per UTC day from the fire's
+ * first in-season satellite pass, so the detail panel can show "burning since at least <date>" + a real
+ * daily-activity timeline. The archive is MULTI-YEAR — `seasonStart` fences off prior fires at the same
+ * spot. `cap` is the request's row limit: when every fetched row is still in-season at the cap, the true
+ * start may be older than the oldest row we saw → `clipped` (the UI keeps the "at least" honest). Returns
+ * null when nothing in-season (no activity ≠ a zero record). Pure + defensive (no Date.now(), no throw).
+ */
+export function deriveFireActivity(geojson: unknown, seasonStart: number, cap: number): FireActivity | null {
+  const fc = geojson as { features?: unknown };
+  const feats = Array.isArray(fc?.features) ? fc.features : [];
+  const byDay = new Map<string, number>();
+  let firstAt = 0, lastAt = 0, total = 0, preSeason = false;
+  for (const f of feats) {
+    const p = (f as { properties?: Record<string, unknown> })?.properties ?? {};
+    const at = parseMs(p.rep_date);
+    if (!at) continue;
+    if (at < seasonStart) { preSeason = true; continue; }
+    const day = new Date(at).toISOString().slice(0, 10);
+    byDay.set(day, (byDay.get(day) ?? 0) + 1);
+    if (!firstAt || at < firstAt) firstAt = at;
+    if (at > lastAt) lastAt = at;
+    total++;
+  }
+  if (!total) return null;
+  const days = [...byDay.entries()].map(([day, count]) => ({ day, count })).sort((a, b) => (a.day < b.day ? -1 : 1));
+  // Hit the row cap without ever reaching a pre-season row → the season's record continues past what we
+  // fetched (newest-first), so the oldest row we hold is a FLOOR on the fire's age, not its start.
+  const clipped = feats.length >= cap && !preSeason;
+  return { firstAt, lastAt, total, days, clipped };
+}

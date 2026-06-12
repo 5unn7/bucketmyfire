@@ -13,9 +13,9 @@
  */
 import type {
   LiveFireFeed, CountryFilter, ReportedFeed, ReportedFire, FireStage, Country, FireHistoryPoint,
-  NationalSummary, BurnFeed, FeedMeta, SourceStatus, RegionFilter,
+  NationalSummary, BurnFeed, FeedMeta, SourceStatus, RegionFilter, FireActivity,
 } from './types';
-import { normalizeFeed, normalizeReported, normalizeSummary, normalizeBurn, parseFwiIssueDate, countryOf, isActiveStage, parseRegion, regionValue } from './normalize';
+import { normalizeFeed, normalizeReported, normalizeSummary, normalizeBurn, parseFwiIssueDate, countryOf, isActiveStage, parseRegion, regionValue, deriveFireActivity } from './normalize';
 // The ingestion backend lives in the SAME Supabase project as the leaderboard; reuse its rest accessors
 // (the cloud-save module reuses them the same way) rather than re-reading the env vars here.
 import { isConfigured as supabaseConfigured, restBase, restHeaders } from '../leaderboard/client';
@@ -528,6 +528,40 @@ export async function fetchFireHistory(fireId: string, source?: string): Promise
       reportedAt: r.reported_at ? Date.parse(r.reported_at) || 0 : 0,
       observedAt: Date.parse(r.observed_at) || 0,
     }));
+  } catch {
+    return null;
+  } finally {
+    t.done();
+  }
+}
+
+// The WHOLE-SEASON hotspot archive (`public:hotspots`, multi-year, 17M+ rows) — same GeoServer as the
+// last-24h layer, keyless + CORS-`*`. Queried per-fire with a tight bbox; `propertyName=rep_date` slims
+// each row to just the detection time (~130 B/row) and `sortBy=rep_date D` makes the row cap clip the
+// OLDEST data first (so what survives is always the most recent activity). NOTE the bbox axis order:
+// with the URN CRS form GeoServer wants lat,lon — a lon,lat box silently matches nothing.
+const HOTSPOT_ARCHIVE_SOURCE =
+  'https://cwfis.cfs.nrcan.gc.ca/geoserver/public/ows?service=WFS&version=2.0.0&request=GetFeature' +
+  '&typeNames=public:hotspots&outputFormat=application/json&srsName=EPSG:4326' +
+  '&propertyName=rep_date&sortBy=rep_date+D';
+const ACTIVITY_ROW_CAP = 3000; // ≈ 400 KB worst case; `clipped` keeps the UI honest when a mega-fire hits it
+const ACTIVITY_BOX_KM = 10; // half-width of the search box around the reported location
+
+/** A fire's satellite ACTIVITY this season — heat detections within ~10 km of the reported location,
+ *  from the whole-season CWFIS archive (the agency feeds carry no discovery date and our snapshot
+ *  backend only reaches back to when its ingest began — this is the only public per-fire record that
+ *  predates both). Null = source unavailable or nothing detected in-season (the panel omits the block). */
+export async function fetchFireActivity(lat: number, lon: number, now: number = Date.now()): Promise<FireActivity | null> {
+  if (!isLiveFireEnabled() || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  const dLat = ACTIVITY_BOX_KM / 111;
+  const dLon = dLat / Math.max(0.2, Math.cos((lat * Math.PI) / 180));
+  const bbox = `${(lat - dLat).toFixed(4)},${(lon - dLon).toFixed(4)},${(lat + dLat).toFixed(4)},${(lon + dLon).toFixed(4)},urn:ogc:def:crs:EPSG::4326`;
+  const url = `${HOTSPOT_ARCHIVE_SOURCE}&count=${ACTIVITY_ROW_CAP}&bbox=${encodeURIComponent(bbox)}`;
+  const t = withTimeout(12000);
+  try {
+    const res = await fetch(url, { signal: t.signal, headers: { Accept: 'application/json' } });
+    if (!res.ok) return null;
+    return deriveFireActivity(await res.json(), Date.UTC(new Date(now).getUTCFullYear(), 0, 1), ACTIVITY_ROW_CAP);
   } catch {
     return null;
   } finally {

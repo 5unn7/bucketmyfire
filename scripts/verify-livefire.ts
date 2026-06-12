@@ -16,6 +16,7 @@ import {
   stageOf, isActiveStage, radiusMetersForHa, filterReportedCountry, parseFwiIssueDate, parseMs, smokeForecastFrames,
   forecastLeadLabel,
   parseRegion, regionValue, regionLabel, filterReportedRegion, filterRegionHotspots, regionOptions, deriveRegionStats,
+  deriveFireActivity,
 } from '../src/three/livefire/normalize';
 
 let pass = 0;
@@ -215,6 +216,23 @@ ok('forecastLeadLabel: frame 0 is "Now"', forecastLeadLabel(0) === 'Now' && fore
 ok('forecastLeadLabel: hours within a day', forecastLeadLabel(1) === '+1 h' && forecastLeadLabel(6) === '+6 h' && forecastLeadLabel(23) === '+23 h');
 ok('forecastLeadLabel: rolls past a day', forecastLeadLabel(24) === '+1 d' && forecastLeadLabel(26) === '+1 d 2 h' && forecastLeadLabel(48) === '+2 d');
 ok('forecastLeadLabel: junk → "Now" (never NaN)', forecastLeadLabel(NaN) === 'Now' && forecastLeadLabel(Infinity) === 'Now');
+
+// ════════════ Per-fire satellite activity (the whole-season hotspot archive → daily timeline) ════════════
+// Shape mirrors the slim production query (propertyName=rep_date): features carrying ONLY rep_date.
+const actFc = (dates: string[]): unknown => ({ type: 'FeatureCollection', features: dates.map((d) => ({ type: 'Feature', properties: { rep_date: d } })) });
+const SEASON = Date.parse('2026-01-01T00:00:00Z');
+const act = deriveFireActivity(actFc([
+  '2026-06-10T04:00:00', '2026-06-09T18:30:00', '2026-06-09T03:00:00', '2026-06-02T19:45:00', // newest-first, like the source
+  '2022-08-24T12:00:00', // a PRIOR fire at the same spot — must be fenced off by seasonStart
+]), SEASON, 3000);
+ok('deriveFireActivity groups in-season detections per UTC day', act !== null && act.days.length === 3 && act.total === 4, JSON.stringify(act?.days));
+ok('deriveFireActivity days ascend + multi-pass days count', act?.days[0].day === '2026-06-02' && act?.days[1].day === '2026-06-09' && act?.days[1].count === 2);
+ok('deriveFireActivity firstAt = oldest IN-SEASON detection (prior-year fire excluded)', act?.firstAt === parseMs('2026-06-02T19:45:00') && act?.lastAt === parseMs('2026-06-10T04:00:00'));
+ok('deriveFireActivity: a pre-season row present → NOT clipped (we reached past the season start)', act?.clipped === false);
+const actCapped = deriveFireActivity(actFc(['2026-06-10T04:00:00', '2026-06-09T18:30:00']), SEASON, 2);
+ok('deriveFireActivity: row cap hit with everything in-season → clipped (true start may be older)', actCapped?.clipped === true);
+ok('deriveFireActivity: nothing in-season → null (no activity ≠ a zero record)', deriveFireActivity(actFc(['2022-08-24T12:00:00']), SEASON, 3000) === null);
+ok('deriveFireActivity defensive (junk/empty → null, no throw)', deriveFireActivity(null, SEASON, 3000) === null && deriveFireActivity({}, SEASON, 3000) === null && deriveFireActivity(actFc([]), SEASON, 3000) === null);
 
 // ── Report ──
 console.log(`\nverify:livefire — ${pass} passed, ${fail} failed`);

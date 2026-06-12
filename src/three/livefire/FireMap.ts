@@ -305,9 +305,10 @@ export class FireMap implements LiveMapView {
   // handler consumes it. Self-clears next tick so a genuine empty-map tap still deselects.
   private justHitMarker = false;
   private handlers: FireMapHandlers;
-  // Which layers are currently shown (default: the authoritative fires + their footprints + hotspots;
-  // the FWI raster is opt-in so the map stays legible until the player asks for the danger field).
-  private visible: Record<FireLayer, boolean> = { reported: true, out: false, perimeters: true, hotspots: true, fwi: false, smoke: false };
+  // Which layers are currently shown (default: the authoritative fires — including the season's OUT
+  // fires, the honest "what already burned" context — + their footprints + hotspots; the FWI raster is
+  // opt-in so the map stays legible until the player asks for the danger field).
+  private visible: Record<FireLayer, boolean> = { reported: true, out: true, perimeters: true, hotspots: true, fwi: false, smoke: false };
 
   constructor(container: HTMLElement, handlers: FireMapHandlers) {
     this.handlers = handlers;
