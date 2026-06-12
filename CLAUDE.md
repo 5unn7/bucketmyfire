@@ -15,9 +15,10 @@ system and ship from **one** static client-side build:
    Canada (agency-reported active fires, out-of-control count, area burned, satellite hotspots,
    fire weather) sourced from **CIFFC + CWFIS**, with a full Leaflet map overlay
    (`src/three/livefire/`). Keyless public feeds; an honest view, **not** an emergency tool.
-3. **"Field Notes" + merch** — an SEO/AEO/GEO content blog (`content/*.md` → pre-rendered
-   `/blog/`) and a **"Wear the fight."** merch funnel to the standalone store at
-   shop.bucketmyfire.com (a separate repo).
+3. **Hall of Fame + merch** — a tribute page (`/hall-of-fame/` → `src/halloffame/main.ts`) honouring
+   Canada's wildland firefighters through ten documented historic moments, and a **"Wear the
+   fight."** merch funnel to the standalone store at shop.bucketmyfire.com (a separate repo).
+   (The old Prepare page + "Field Notes" blog/content engine were RETIRED 2026-06-11.)
 
 Art is **procedural-first** (geometry + GLSL + runtime textures), with a **few licensed
 downloaded assets** swapped in behind procedural fallbacks: the glTF helicopters under
@@ -63,7 +64,7 @@ a bucket that swings and lags) — all holding 60fps on mobile browsers.
 > them: **`bmf-verify`** (headless verification — there's no test runner), **`bmf-tune`** (balance
 > values in `config.ts`), **`bmf-asset`** (procedural mesh / pooled VFX / shader / model),
 > **`bmf-ui`** (the DOM HUD/menus/front-door glass-cockpit UI), **`bmf-map`** (per-region maps under
-> `maps/<region>/`), **`bmf-content`** (a Field Notes blog article / the content engine),
+> `maps/<region>/`),
 > **`bmf-art`** (on-brand image-generation prompts), and **`bmf-mission`** (mission *scenario* data —
 > the `MissionDef` shape, the factory archetypes, and the completability oracle the Living Province uses).
 
@@ -71,15 +72,13 @@ a bucket that swings and lags) — all holding 60fps on mobile browsers.
 
 ```bash
 npm run dev        # Vite dev server on :5173, exposed on LAN (test on a real phone)
-npm run build      # tsc --noEmit type-gate, then vite build → dist/ (multi-page static site + /blog/)
+npm run build      # tsc --noEmit type-gate, then vite build → dist/ (multi-page static site)
 npm run typecheck  # tsc --noEmit only
 npm run preview    # serve the production build locally
 npm run verify:campaign  # esbuild-bundle the pure sims → Node; prove every mission is completable
-npm run verify     # full pure-Node gate suite (see the list below — 12 gates now)
+npm run verify     # full pure-Node gate suite (see the list below — 11 gates now)
 npm run verify:all # the above + verify:render (the only headless gate; catches broken shaders)
-npm run build:content    # render content/*.md → dist/blog/ (also runs inside vite build via a plugin)
 npm run build:legal      # regenerate public/privacy.html + public/terms.html
-npm run gen:blog-images  # generate blog hero/OG images (scripts/gen-blog-images.mjs, sharp)
 npm run gen:tokens # regenerate mockups/tokens.css FROM theme.ts — run after ANY token change
 npm run verify:tokens    # CI check: mockups/tokens.css is in sync with theme.ts (red ⇒ run gen:tokens)
 npm run lint       # eslint over src/
@@ -111,38 +110,38 @@ Three escalating levels (use the cheapest that catches your bug class):
    `scripts/shot.mjs` is a full screenshot example. The **`bmf-verify`** skill documents the
    "MCP Playwright browser is locked" workaround (vite preview + temp `playwright-core`).
 
-The full pure-Node gate is **`npm run verify`** — now **12** gates: campaign · crash · voice ·
-feel · world · coach · **province** · **livefire** · ui · **contrast** · **content** · tokens.
+The full pure-Node gate is **`npm run verify`** — now **11** gates: campaign · crash · voice ·
+feel · world · coach · **province** · **livefire** · ui · **contrast** · tokens.
 **`npm run verify:all`** adds the headless render/shader smoke (`verify:render`). All are wired
 into `deploy.yml`, so a red gate blocks the deploy. New since the old list:
 **`verify:province`** (the open-world dispatch mode stays winnable), **`verify:livefire`** (the
 CIFFC/CWFIS feed normalizers parse the real shapes), **`verify:contrast`** (WCAG-AA on the token
-palette), **`verify:content`** (every blog article's external links are on the official-sources
-allowlist + the Markdown/JSON-LD render is well-formed). **`verify:tokens`** fails when
+palette). (`verify:content` retired with the Field Notes blog, 2026-06-11.) **`verify:tokens`** fails when
 `mockups/tokens.css` has drifted from `theme.ts` — regenerate with **`npm run gen:tokens`** and
 commit the result (it is generated; do not hand-edit it).
 
-## The site shell (front door + content + live-fire) — `src/hub.ts`, `src/site/`, `content/`
+## The site shell (front door + live-fire + Hall of Fame) — `src/hub.ts`, `src/site/`
 
 The page that loads is **not** the game — it's a light, crawlable, content-first **front door**.
 Keep this layer Three-free: the ~1 MB game bundle must download **only** on a play deep-link.
 
 - **`src/hub.ts`** — the front-door controller `index.html` boots. A bare URL builds the
   glass-cockpit **marketing bento** (positioning hero over the *live* national fire data, an Open
-  Skies play tile, the Map card, the "Wear the fight." merch banner, a Prepare promo, and a Field
-  Notes carousel). It **reuses the in-game home's component system** (`injectKitStyles` /
+  Skies play tile, the Map card, the "Wear the fight." merch banner, and a Hall of Fame promo).
+  It **reuses the in-game home's component system** (`injectKitStyles` /
   `injectHomeStyles` / `home/menus.ts` builders) so the front door and the in-game hub are one
   visual language. Any `GAME_PARAMS` (`?m`,`autostart`,`qa`,`ffa`,`province`,`daily`,`editor`,`dev`,
   `heliview`,`kit`,`tune`) hand straight off to `import('./three/main')`.
 - **Multi-page static site** (`vite.config.ts` `rollupOptions.input`): `index.html → src/hub.ts`,
-  `campaign/index.html → src/campaign/main.ts`, `prepare/index.html → src/prepare/main.ts`. Plus the
-  rendered **`/blog/`** tree and the generated legal pages (`public/privacy.html`,
-  `public/terms.html`). Each page is light + crawlable and lazy-loads the game only on a play link.
+  `campaign/index.html → src/campaign/main.ts`, `open-skies/index.html → src/openskies/main.ts`,
+  `hall-of-fame/index.html → src/halloffame/main.ts`. Plus the generated legal pages
+  (`public/privacy.html`, `public/terms.html`, via `npm run build:legal`). Each page is light +
+  crawlable and lazy-loads the game only on a play link.
 - **`src/site/siteNav.mjs` is THE single source of site chrome** — appbar, mobile tab bar,
-  breadcrumb, footer brand, and the `NAV` list (Home · Campaign · Prepare · Map · Shop; Field Notes
-  nests *under* Prepare). It is **zero-import plain ESM** so BOTH worlds consume it: the Vite-bundled
-  TS front door (`src/site/{frontShell,shell,blogCarousel,checklist}.ts`, `hub.ts`) imports it, and
-  the **Node-run blog/legal renderers** (`scripts/content/*.mjs`) import it at build time and inline
+  breadcrumb, footer brand, and the `NAV` list (Home · Campaign · Hall of Fame · Map · Shop).
+  It is **zero-import plain ESM** so BOTH worlds consume it: the Vite-bundled
+  TS front door (`src/site/{frontShell,shell}.ts`, `hub.ts`) imports it, and
+  the **Node-run legal renderer** (`scripts/content/legal.mjs`) imports it at build time and inlines
   its CSS. Add a nav item **here** — nowhere else — or the two worlds drift.
 - **Live-fire (`src/three/livefire/`)** — the CIFFC + CWFIS data layer (keyless, CORS-`*` public
   feeds): `client.ts` (fetch), `normalize.ts` (parse to POJOs), `fields.ts`/`types.ts`/`strings.ts`,
@@ -150,13 +149,15 @@ Keep this layer Three-free: the ~1 MB game bundle must download **only** on a pl
   hydrates BOTH the front-door national-data grid (`hub.ts hydrateNational`) **and** the full Map
   overlay (`openLiveFires`). When both authoritative feeds are down it shows an **honest fallback**
   ("live data unavailable → official sources"), never "no fires".
-- **Content engine / "Field Notes" blog** — articles are Markdown in `content/<slug>.md`, rendered
-  at build to pre-rendered static HTML under `/blog/<slug>/` (Article + FAQ + HowTo JSON-LD, OG card,
-  sitemap) by `scripts/content/` (`render`/`template`/`markdown`/`art`/`legal`.mjs), via the
-  `renderContent` Vite plugin (`closeBundle`) with a dev mirror (`serveBlogInDev`); standalone =
-  `npm run build:content`. **The backbone rule** (the E-E-A-T / GEO moat, gated by
-  `verify:content`): every external link must be on **`content/sources.allowlist.json`** —
-  official-government / provincial / recognized-authority sources only. See the `bmf-content` skill.
+- **Hall of Fame (`hall-of-fame/` → `src/halloffame/main.ts`)** — the tribute page: ten documented
+  moments from Canada's wildfire history (1825 Miramichi → the 2023 record season) on an ember-spine
+  timeline, honouring the crews/pilots/lookouts/dispatchers as a whole, closing with a "Fly with
+  them" hand-off into Open Skies. **The backbone rule survives the blog it came from:** every fact
+  on this page is drawn from the public record (NRCan, CIFFC, Public Safety Canada, provincial
+  governments, CBC archives) — keep figures conservative ("~", "more than") and NEVER invent people
+  or deeds. (The Prepare page, readiness checklist, Field Notes blog and its content engine were
+  retired 2026-06-11; `scripts/content/legal.mjs` survives as the legal-page generator, and the
+  static `public/sitemap.xml` replaced the blog-generated one.)
 
 ## Architecture (the live 3D build, `src/three/`)
 
@@ -443,12 +444,13 @@ the **mission factory** (`missions/factory/`). The canonical record is in the sp
 **Beyond that — the product is now a wildfire *website* (the last few days, mostly uncommitted on `main`):**
 (1) **Living Province** — one open-world mode (`province/` + Open Skies / Solo), where the fires keep coming.
 (2) **Front door** — `index.html` boots `src/hub.ts`, a content-first marketing/live-data home that lazy-loads
-the game; a multi-page static site (Home/Campaign/Prepare/Field Notes) shares one nav source
+the game; a multi-page static site (Home/Campaign/Open Skies/Hall of Fame) shares one nav source
 (`src/site/siteNav.mjs`). (3) **Live wildfire tracker** — `src/three/livefire/` surfaces real CIFFC + CWFIS
-data on the front door and a Leaflet map. (4) **"Field Notes" content engine** — `content/*.md` →
-pre-rendered SEO/AEO `/blog/`, gated by an official-sources allowlist. (5) **"Wear the fight." merch funnel**
+data on the front door and a Leaflet map. (4) **Hall of Fame** — `/hall-of-fame/`, the tribute timeline that
+REPLACED the Prepare surface + the "Field Notes" blog/content engine (both retired 2026-06-11).
+(5) **"Wear the fight." merch funnel**
 to the standalone store at shop.bucketmyfire.com. These are tracked in `docs/FRONT-DOOR-PLAN.md`,
-`docs/CONTENT-STRATEGY.md`, `docs/FREE-FOR-ALL.md`, `docs/livefire-honest-window-design.md`, and the
+`docs/FREE-FOR-ALL.md`, `docs/livefire-honest-window-design.md`, and the
 `MEMORY.md` auto-memory index.
 (Live Playwright visual passes remain "pending" — the MCP browser was repeatedly locked; see the
 **`bmf-verify`** skill for how to verify live anyway.)
@@ -476,7 +478,6 @@ Project skills (bucketmyfire-specific — see "Project-specific skills" above):
 - Balance/tune a gameplay or visual value in `config.ts` → invoke /bmf-tune
 - Build/refine the DOM HUD / menus / front-door UI → invoke /bmf-ui
 - Add/polish a per-region map under `maps/<region>/` → invoke /bmf-map
-- Write/manage a Field Notes blog article (`content/`) → invoke /bmf-content
 - Write an on-brand image-generation prompt → invoke /bmf-art
 - Add a procedural mesh / pooled VFX / shader / model → invoke /bmf-asset
 - Author/edit a mission *scenario* (the `MissionDef` machinery the province uses) → invoke /bmf-mission

@@ -1,7 +1,7 @@
 import { defineConfig, type Plugin } from 'vite';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 // Project root (where index.html lives) — resolved for the build input.
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -172,91 +172,6 @@ function injectStructuredData(): Plugin {
   };
 }
 
-/**
- * "Field Notes" blog: render content/*.md into dist/blog/<slug>/ (pre-rendered static HTML with
- * Article/FAQ/HowTo JSON-LD) + the blog index + pillar hubs + OG cards, and regenerate dist/sitemap.xml
- * (home + every blog URL). Runs at closeBundle so it writes alongside the finished bundle. The render
- * module is dependency-free Markdown + pure templates (scripts/content/), and reuses the GENERATED
- * mockups/tokens.css so the blog shares the app's design tokens. Standalone equivalent: npm run build:content.
- */
-function renderContent(): Plugin {
-  return {
-    name: 'bmf-content',
-    apply: 'build',
-    async closeBundle() {
-      const mod = await import(pathToFileURL(path.resolve(ROOT, 'scripts/content/render.mjs')).href);
-      const res = await mod.buildContent({ root: ROOT, outDir: path.resolve(ROOT, 'dist'), log: () => {} });
-      console.log(`[bmf-content] rendered ${res.count} Field Notes article(s) into dist/blog/ + sitemap.xml`);
-    },
-  };
-}
-
-/**
- * Dev mirror of renderContent(): the blog is only emitted at BUILD (closeBundle), so under `vite` dev
- * `/blog/index.json` (the Field Notes manifest the home + Prepare carousels fetch) and `/blog/<slug>/`
- * (the articles) don't exist — the rail shows its empty-feed fallback. This renders the blog into a
- * cache dir on server start and serves `/blog/*` (+ the regenerated `/sitemap.xml`) from it, rebuilding
- * when a `content/` article changes. So Field Notes look the same in dev as in prod (a template/CSS edit
- * needs a dev restart — it's a module reload, not a data change). Build is untouched.
- */
-function serveBlogInDev(): Plugin {
-  const CT: Record<string, string> = {
-    '.html': 'text/html; charset=utf-8', '.json': 'application/json; charset=utf-8', '.xml': 'application/xml; charset=utf-8',
-    '.png': 'image/png', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.css': 'text/css; charset=utf-8',
-  };
-  return {
-    name: 'bmf-content-dev',
-    apply: 'serve',
-    async configureServer(server) {
-      const outDir = path.resolve(ROOT, 'node_modules/.cache/bmf-blog-dev');
-      const mod = await import(pathToFileURL(path.resolve(ROOT, 'scripts/content/render.mjs')).href);
-      let building: Promise<unknown> | null = null;
-      const build = (): Promise<unknown> => {
-        building = mod.buildContent({ root: ROOT, outDir, log: () => {} }).catch((e: unknown) => {
-          server.config.logger.error('[bmf-content-dev] ' + (e instanceof Error ? e.message : String(e)));
-        });
-        return building;
-      };
-      await build();
-      const onChange = (f: string): void => {
-        const n = f.replace(/\\/g, '/');
-        if (n.includes('/content/') && n.endsWith('.md')) void build();
-      };
-      server.watcher.add(path.resolve(ROOT, 'content'));
-      server.watcher.on('change', onChange);
-      server.watcher.on('add', onChange);
-
-      server.middlewares.use((req, res, next) => {
-        const url = (req.url || '').split('?')[0];
-        if (url !== '/blog' && !url.startsWith('/blog/') && url !== '/sitemap.xml') return next();
-        void (async () => {
-          if (building) await building;
-          // /sitemap.xml is at outDir root; everything else is the literal /blog/... path under outDir.
-          let fp = path.join(outDir, decodeURIComponent(url));
-          try {
-            let st = fs.statSync(fp);
-            if (st.isDirectory()) {
-              fp = path.join(fp, 'index.html');
-              st = fs.statSync(fp);
-            }
-          } catch {
-            try {
-              const alt = path.join(outDir, decodeURIComponent(url), 'index.html');
-              fs.statSync(alt);
-              fp = alt;
-            } catch {
-              return next();
-            }
-          }
-          res.setHeader('Content-Type', CT[path.extname(fp).toLowerCase()] ?? 'application/octet-stream');
-          res.setHeader('Cache-Control', 'no-cache');
-          fs.createReadStream(fp).pipe(res);
-        })();
-      });
-    },
-  };
-}
-
 // The cold-start ember splash is no longer injected statically into index.html. The front door
 // (index.html → src/hub.ts) is content-first and must paint its editorial hero INSTANTLY, with no
 // full-screen loader over it. The splash now belongs to the game transition: `src/hub.ts` shows it
@@ -268,7 +183,7 @@ function serveBlogInDev(): Plugin {
 // lazy module the front door imports on demand (so the heavy bundle never blocks first paint).
 export default defineConfig({
   base: './',
-  plugins: [cacheModelsInDev(), injectStructuredData(), renderContent(), serveBlogInDev()],
+  plugins: [cacheModelsInDev(), injectStructuredData()],
   server: {
     host: true, // expose on LAN so you can test on a real phone
     port: 5173,
@@ -280,7 +195,8 @@ export default defineConfig({
     rollupOptions: {
       // Multi-page front door (clean URLs): the home (index.html → src/hub.ts), Open Skies — the shared
       // live shift (open-skies/index.html → src/openskies/main.ts), the Campaign/Solo picker
-      // (campaign/index.html → src/campaign/main.ts), and Prepare (prepare/index.html → src/prepare/main.ts).
+      // (campaign/index.html → src/campaign/main.ts), and the Hall of Fame tribute
+      // (hall-of-fame/index.html → src/halloffame/main.ts).
       // Each is a light, crawlable static page that lazy-loads the ~1 MB game only on a play link. The
       // merch store is a standalone site at shop.bucketmyfire.com; the dev-only heli/icons previews are not
       // root-discovered, so they stay out of dist/.
@@ -288,7 +204,7 @@ export default defineConfig({
         main: path.resolve(ROOT, 'index.html'),
         'open-skies': path.resolve(ROOT, 'open-skies/index.html'),
         campaign: path.resolve(ROOT, 'campaign/index.html'),
-        prepare: path.resolve(ROOT, 'prepare/index.html'),
+        'hall-of-fame': path.resolve(ROOT, 'hall-of-fame/index.html'),
       },
     },
   },

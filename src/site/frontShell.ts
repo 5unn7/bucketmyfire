@@ -1,5 +1,5 @@
 /**
- * Shared FRONT-DOOR chrome for the public pages (`/`, `/prepare/`, `/campaign/`). The home front door
+ * Shared FRONT-DOOR chrome for the public pages (`/`, `/campaign/`, `/hall-of-fame/`). The home front door
  * (src/hub.ts) rebuilt itself onto the REAL in-game glass-cockpit components (injectHomeStyles → the
  * `.card`/`.cut`, `.scene`/`.embers`, `.sec`/`.tag`/`.line`, `.h-big`, `.eyebrow`, `.iconbtn`, `.brand`
  * vocabulary). This module lifts the bits the front door wraps AROUND those components — the scrolling
@@ -22,7 +22,7 @@ import { appbarHtml, injectNavStyles } from './siteNav.mjs';
 
 // 'open-skies' is a real front-door PAGE but NOT a top-level nav item, so passing it marks no nav tab
 // active (no NAV key matches) — exactly right for a page that lives off the Home flow, not in the bar.
-export type FrontPage = 'home' | 'campaign' | 'prepare' | 'open-skies';
+export type FrontPage = 'home' | 'campaign' | 'halloffame' | 'open-skies';
 
 /** The ambient backdrop + ember field (positioned `fixed` by injectFrontShell). Spawn the motes with
  *  `spawnFrontEmbers` after the markup is in the DOM. */

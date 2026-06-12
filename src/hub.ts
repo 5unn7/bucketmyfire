@@ -8,8 +8,8 @@
  *     toggles + smoke scrubber + detail sheet (`openLiveFires`), the F1 leaderboard (`openBoard`), the
  *     settings panel (`openSettings`), and the Open Skies / Solo / Shop modes (`navigateRail`).
  * The front door composes those into the marketing bento (positioning hero, live national-data grid,
- * OPEN SKIES, Map, Wear the fight, Prepare) and adds the sitemap nav. Pure DOM, Three-free: the ~1 MB
- * game bundle downloads ONLY when a play link (?ffa / ?province / …) is followed.
+ * OPEN SKIES, Map, Wear the fight, Hall of Fame) and adds the sitemap nav. Pure DOM, Three-free: the
+ * ~1 MB game bundle downloads ONLY when a play link (?ffa / ?province / …) is followed.
  */
 import { injectFonts } from './three/ui/fonts';
 import { injectKitStyles } from './three/ui/components/base';
@@ -23,7 +23,6 @@ import { provinceSessionId } from './three/province/buildProvince';
 import { injectShellStyles, tabbarMarkup, buildFooter } from './site/shell';
 import { brandNavHtml, tabbarHtml } from './site/siteNav.mjs';
 import { injectFrontShell, frontScene, frontAppbar, spawnFrontEmbers, wireFrontAppbar } from './site/frontShell';
-import { mountBlogCarousel } from './site/blogCarousel';
 import { SPLASH_CSS, SPINNER_MARKUP, SPLASH_ATTRS } from './three/ui/spinner';
 import { fetchSummary, fetchReportedFires, fetchActiveFires } from './three/livefire/client';
 import { filterReportedCountry, filterCountry } from './three/livefire/normalize';
@@ -97,9 +96,9 @@ function buildFrontDoor(): void {
   injectFonts();
   injectKitStyles();
   injectHomeStyles(); // the REAL component vocabulary (.card/.cut/.helmet/.sheen/.shopbanner/.badge/.btn)
-  injectShellStyles(); // shared chrome the home borrows: .fd-foot footer, .fd-tabbar mobile tab bar, the corner-cut .fd-mcard notes cards
-  injectFrontShell(); // the SHARED front-door chrome (.bmf-app.front scroll shell + .fhome-bar appbar + scene/embers) — the same module Campaign + Prepare use, so the three front pages can't drift
-  injectHomeBentoStyles(); // the home-ONLY bento grid + hero/play/ticker/map/merch/prep LAYOUT, scoped .bmf-app.front
+  injectShellStyles(); // shared chrome the home borrows: .fd-foot footer, .fd-tabbar mobile tab bar, the corner-cut .fd-mcard poster cards
+  injectFrontShell(); // the SHARED front-door chrome (.bmf-app.front scroll shell + .fhome-bar appbar + scene/embers) — the same module Campaign + Hall of Fame use, so the front pages can't drift
+  injectHomeBentoStyles(); // the home-ONLY bento grid + hero/play/ticker/map/merch/hof LAYOUT, scoped .bmf-app.front
   setMenuCatalog([]); // the Board reads this (campaign retired → empty; the board keys off live ids)
 
   const game = document.getElementById('game');
@@ -111,7 +110,7 @@ function buildFrontDoor(): void {
   game.appendChild(app);
   document.getElementById('fd-boot')?.remove();
 
-  spawnFrontEmbers(app, 13); // the ambient ember field (same helper Campaign + Prepare use)
+  spawnFrontEmbers(app, 13); // the ambient ember field (same helper Campaign + Hall of Fame use)
   wireFrontAppbar(app); // trophy → leaderboard, gear → settings (the appbar's two icon buttons)
   mountPilotBanner(app); // returning-pilot identity → the Open Skies card's top overlay banner (the dossier's new home)
   setPilotsLive(-1); // neutral "Open Skies live" until the realtime tally lands (no fabricated number)
@@ -119,7 +118,6 @@ function buildFrontDoor(): void {
   wire(app); // the bento data-act surfaces (Open Skies · Map · Shop)
   attachCardGlow(app); // faint cursor spotlight + floating glazing rim on the glass bento tiles
   void hydrateNational();
-  void mountCarousel(app);
   if (params.has('map')) openMap(); // deep link from the nav's "Map" item (works from any page → /?map)
 }
 
@@ -279,20 +277,17 @@ ${frontAppbar('home')}
       </div>
     </button>
 
-    <!-- Prepare — a compact secondary call-out, NOT the full checklist (that interactive card lives on
-         /prepare/). A one-line promo + a ghost button hand off to it, so the home stays the marketing
-         surface and the readiness tool has one home. -->
-    <a class="card green cut fhome-prep" href="/prepare/#checklist">
-      <div class="fhome-prep-tx">
-        <span class="fhome-prep-h">Are you fire ready?</span>
-        <span class="fhome-prep-sub">A quick wildfire-readiness checklist — six concrete actions.</span>
+    <!-- Hall of Fame — a compact call-out to the tribute page: ten documented moments from Canada's
+         wildfire history and the crews behind them. The full visual journey lives on /hall-of-fame/;
+         this is the sharp hand-off, so the home stays the marketing surface. -->
+    <a class="card warm cut fhome-hof" href="/hall-of-fame/">
+      <div class="fhome-hof-tx">
+        <span class="fhome-hof-ey">Hall of Fame</span>
+        <span class="fhome-hof-h">The unsung warriors.</span>
+        <span class="fhome-hof-sub">Ten moments that forged Canada's wildfire fight — and the crews who held the line.</span>
       </div>
-      <span class="btn ghost fhome-prep-go">Open checklist →</span>
+      <span class="btn ghost fhome-hof-go">Enter the Hall →</span>
     </a>
-    <section class="card fhome-notes">
-      <div class="sec"><span class="tag">Field Notes</span><span class="line"></span></div>
-      <div class="fd-rail" id="fd-notes-rail"></div>
-    </section>
   </div>
 
   ${buildFooter()}
@@ -301,7 +296,7 @@ ${tabbarMarkup('home')}`;
 }
 
 /** Wire the bento data-act surfaces (all REUSE the built in-game builders). The appbar's board/settings
- *  buttons are wired separately by `wireFrontAppbar` (shared with Campaign + Prepare). */
+ *  buttons are wired separately by `wireFrontAppbar` (shared with Campaign + Hall of Fame). */
 function wire(app: HTMLElement): void {
   app.querySelectorAll<HTMLElement>('[data-act]').forEach((el) => {
     el.addEventListener('click', (e) => {
@@ -310,7 +305,7 @@ function wire(app: HTMLElement): void {
       switch (el.dataset.act) {
         case 'coop':
           // Open Skies is its own front-door PAGE now (open-skies/index.html → src/openskies/main.ts), built
-          // in the same .fd-card system as Campaign/Prepare — not an in-game overlay bolted under site chrome.
+          // in the same .fd-card system as Campaign — not an in-game overlay bolted under site chrome.
           location.assign('/open-skies/');
           return;
         case 'fires':
@@ -323,15 +318,10 @@ function wire(app: HTMLElement): void {
 }
 
 /** Open the live-fire tracker as a FRONT-DOOR page: the merged top bar carries the logo + wordmark +
- *  sitemap nav (Map active), and the bottom tab bar marks Map too — so it reads like Home/Campaign/Prepare,
+ *  sitemap nav (Map active), and the bottom tab bar marks Map too — so it reads like Home/Campaign,
  *  reachable from the nav on every page. Shared by the home 'Map' bento card AND the `/?map` deep link. */
 function openMap(): void {
   openLiveFires(tabbarHtml('map'), brandNavHtml('map'));
-}
-
-async function mountCarousel(app: HTMLElement): Promise<void> {
-  const rail = app.querySelector<HTMLElement>('#fd-notes-rail');
-  if (rail) await mountBlogCarousel(rail);
 }
 
 // ── Live national-data grid ─────────────────────────────────────────────────────────────────────────
@@ -398,7 +388,7 @@ function paintNational(summary: NationalSummary | null, feed: ReportedFeed | nul
 
 // ── Home-ONLY bento LAYOUT (the shared front-door chrome — scroll shell + appbar + scene/embers + the
 //    `.pad.fhome` column + `.fhome-eyebrow` — now comes from injectFrontShell, the same module Campaign
-//    and Prepare use. This is just the home's bento grid + its data-hero/play/map/merch/prep tiles,
+//    and Hall of Fame use. This is just the home's bento grid + its data-hero/play/map/merch/hof tiles,
 //    scoped `.bmf-app.front` so it never touches the in-game hub layout). ──
 
 function injectHomeBentoStyles(): void {
@@ -413,25 +403,23 @@ function injectHomeBentoStyles(): void {
 .bmf-app.front .fhome-grid { display: grid; gap: 12px; grid-template-columns: 1fr; }
 .bmf-app.front .fhome-grid > * { min-width: 0; }
 @media (min-width: 880px) {
-  /* STRETCHED to a balanced two-column bento (was 2fr/1fr): the data hero keeps a hair more room than
-     the play tile, the map/merch + prep/notes rows read as even halves. This is the whole "stretch the
-     layout" pass — same cards, same tokens, just spread to fill the band like the reference. */
-  /* Row 1 = hero | gameplay (kept ABOVE THE FOLD). Row 2 = map | checklist. Row 3 = the BIG shop
-     feature card | Field Notes. (Checklist + shop SWAPPED: shop drops into the large bottom-left slot.) */
-  .bmf-app.front .fhome-grid { grid-template-columns: 1.04fr 1fr; grid-template-areas: "hero play" "map prep" "merch notes"; align-items: stretch; }
+  /* A balanced two-column bento: the data hero keeps a hair more room than the play tile, the
+     map/hof row reads as even halves. Same cards, same tokens, spread to fill the band. */
+  /* Row 1 = hero | gameplay (kept ABOVE THE FOLD). Row 2 = map | Hall of Fame. Row 3 = the BIG shop
+     feature card across the full width (the poster art breathes at full bleed). */
+  .bmf-app.front .fhome-grid { grid-template-columns: 1.04fr 1fr; grid-template-areas: "hero play" "map hof" "merch merch"; align-items: stretch; }
   .bmf-app.front .fhome-hero { grid-area: hero; }
   .bmf-app.front .fhome-play { grid-area: play; }
   .bmf-app.front .fhome-map { grid-area: map; }
   .bmf-app.front .fhome-merch { grid-area: merch; }
-  .bmf-app.front .fhome-prep { grid-area: prep; }
-  .bmf-app.front .fhome-notes { grid-area: notes; }
+  .bmf-app.front .fhome-hof { grid-area: hof; }
   /* NOTE: the desktop VISUAL overrides (play aspect, hero height, headline size, one-row stats) live in a
      media block at the END of this stylesheet — they must come AFTER the base .fhome-play/.fhome-hero
      rules below or those (later, equal-specificity) would clobber them. */
 }
 
-/* The ThreeTown aerial key-art fills the WHOLE front door as a fixed cinematic background. Home ONLY — Campaign/Prepare
-   don't emit .fhome-bg, so the shared frontShell .scene is untouched. It sits above .scene (z-0, painted
+/* The ThreeTown aerial key-art fills the WHOLE front door as a fixed cinematic background. Home ONLY — the
+   other front pages don't emit .fhome-bg, so the shared frontShell .scene is untouched. It sits above .scene (z-0, painted
    later) and under .embers (z-1) + the content (z-2), so the embers drift over the photo and the bento
    floats above it. The scrim (::after) buys the BARE hero data its contrast now that it sits on the page
    instead of inside a card: it darkens the lower-left where the live figure + cards sit, leaving the
@@ -538,8 +526,8 @@ function injectHomeBentoStyles(): void {
 .bmf-app.front .fhome-map-go svg { width: 18px; height: 18px; }
 
 /* BIG shop feature card — the merch poster as the art, our copy + Shop CTA bottom-left over a fade
-   (modelled on the play tile, warm register). A floor min-height on mobile; on desktop it stretches to
-   the bottom row beside the Field Notes. The fades are art literals (same rgba(7,10,13) base as the
+   (modelled on the play tile, warm register). A floor min-height on mobile; on desktop it runs the
+   full width of the bottom row. The fades are art literals (same rgba(7,10,13) base as the
    other key-art fades in this file). */
 .bmf-app.front .fhome-merch { position: relative; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end;
   cursor: pointer; min-height: 280px; padding: 24px 22px; text-align: left; margin-top: 0; }
@@ -556,22 +544,16 @@ function injectHomeBentoStyles(): void {
 .bmf-app.front .fhome-merch-h { margin-top: 9px; font-size: clamp(26px, 3vw, 40px); text-shadow: 0 2px 14px rgba(0,0,0,0.6); }
 .bmf-app.front .fhome-merch-sub { margin-top: 9px; font-size: 14px; line-height: 1.45; color: var(--text-subtle); max-width: 34ch; text-shadow: 0 1px 8px rgba(0,0,0,0.7); }
 .bmf-app.front .fhome-merch-go { margin-top: 16px; pointer-events: none; }
-/* Prep tile — a compact secondary call-out (one-line promo + ghost button) that links to the full
-   readiness checklist on /prepare/. The interactive card is NOT duplicated here; this is just the
-   sharp hand-off, so the home stays marketing and Prepare owns the tool. */
-.bmf-app.front .fhome-prep { display: flex; flex-direction: column; justify-content: center; gap: 13px; text-decoration: none; color: var(--text); padding: 18px 17px; }
-.bmf-app.front .fhome-prep:hover { transform: translateY(-2px); border-color: var(--warm-stroke); }
-.bmf-app.front .fhome-prep-tx { display: flex; flex-direction: column; gap: 5px; }
-.bmf-app.front .fhome-prep-h { font-size: var(--fs-lg); font-weight: var(--fw-bold); color: #fff; line-height: 1.12; }
-.bmf-app.front .fhome-prep-sub { font-size: 13px; line-height: 1.45; color: var(--text-subtle); max-width: 40ch; }
-.bmf-app.front .fhome-prep-go { align-self: flex-start; pointer-events: none; }
-.bmf-app.front .fhome-notes { display: flex; flex-direction: column; padding: 14px 17px; }
-.bmf-app.front .fhome-notes .fd-rail { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; padding-bottom: 4px; scrollbar-width: none; }
-.bmf-app.front .fhome-notes .fd-rail::-webkit-scrollbar { display: none; }
-.bmf-app.front .fhome-notes .fd-mcard { scroll-snap-align: start; flex: 0 0 78%; max-width: 320px; }
-/* Three across the (now half-width) notes column — matching the reference's 3-up Field Notes row.
-   Beyond three, the rail still scroll-snaps (harmless). */
-@media (min-width: 760px) { .bmf-app.front .fhome-notes .fd-mcard { flex: 0 0 31%; max-width: none; } }
+/* Hall of Fame tile — a compact warm call-out (eyebrow + headline + one line + ghost button) that
+   hands off to the tribute page at /hall-of-fame/. The page owns the full timeline; this is just
+   the sharp hand-off, so the home stays the marketing surface. */
+.bmf-app.front .fhome-hof { display: flex; flex-direction: column; justify-content: center; gap: 13px; text-decoration: none; color: var(--text); padding: 18px 17px; }
+.bmf-app.front .fhome-hof:hover { transform: translateY(-2px); border-color: var(--warm-stroke); }
+.bmf-app.front .fhome-hof-tx { display: flex; flex-direction: column; gap: 5px; }
+.bmf-app.front .fhome-hof-ey { font-family: var(--mono); font-size: 10.5px; letter-spacing: .26em; text-transform: uppercase; color: var(--menu); font-weight: var(--fw-bold); }
+.bmf-app.front .fhome-hof-h { font-size: var(--fs-lg); font-weight: var(--fw-bold); color: #fff; line-height: 1.12; }
+.bmf-app.front .fhome-hof-sub { font-size: 13px; line-height: 1.45; color: var(--text-subtle); max-width: 44ch; }
+.bmf-app.front .fhome-hof-go { align-self: flex-start; pointer-events: none; }
 
 /* Home hero (mobile + desktop): more breathing room above it, and the live data pulled DOWN so it sits close to the
    next card (the play tile) instead of floating high over the art with empty space below. */

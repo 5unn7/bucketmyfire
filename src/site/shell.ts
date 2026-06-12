@@ -1,15 +1,16 @@
 /**
- * The shared SITE SHELL for the public pages (Home `/`, Campaign `/campaign/`, Prepare `/prepare/`).
+ * The shared SITE SHELL for the public pages (Home `/`, Campaign `/campaign/`, Hall of Fame
+ * `/hall-of-fame/`).
  *
- * The three front-door pages are hand-authored static HTML (crawlable, instant paint) that each boot a
+ * The front-door pages are hand-authored static HTML (crawlable, instant paint) that each boot a
  * light controller. This module is the ONE place their common chrome + styling lives, so the appbar,
  * nav, footer, mobile tab bar, and the whole glass-cockpit card vocabulary can't drift across pages:
  *
  *   - `injectShellStyles()` — the shared stylesheet (reads the kit's real theme.ts `var(--*)` tokens
  *     from `injectKitStyles()`, so it's one visual language with the in-game home). Covers the appbar +
- *     nav, the `.fd-card` bento system, section headers, the national-data grid, the readouts, the
- *     Prepare cards, mission cards, the Field Notes carousel, the checklist, the live-map overlay +
- *     fire-detail sheet, the footer (safety disclaimer + policy links), and the mobile bottom tab bar.
+ *     nav, the `.fd-card` bento system, section headers, the national-data grid, the readouts,
+ *     mission/poster cards, the live-map overlay + fire-detail sheet, the footer (safety disclaimer +
+ *     policy links), and the mobile bottom tab bar.
  *   - `hydrateChrome({active})` — marks the active nav/tab item and fills the returning-pilot dossier
  *     pill + the settings gear popover. Reads only localStorage + the Three-free rank ladder.
  *
@@ -24,7 +25,7 @@ import { submitContact, submitLead } from '../three/leaderboard/client';
 import { openModal } from '../three/ui/components/Modal';
 import { tabbarHtml, footerBrandHtml } from './siteNav.mjs';
 
-export type ShellPage = 'home' | 'campaign' | 'prepare';
+export type ShellPage = 'home' | 'campaign' | 'halloffame';
 
 /** The mobile bottom tab bar — the shared tab bar (siteNav). Kept as a thin re-export so the front-door
  *  controllers + the live-fire overlay call one name; the markup + `.fd-tabbar` CSS live in siteNav. */
@@ -58,7 +59,7 @@ export function injectShellStyles(): void {
   document.head.appendChild(s);
 }
 
-/** Inject the SVG filter <defs> the Field Notes poster texture references, ONCE. These are real
+/** Inject the SVG filter <defs> the liquified-glass card texture (.fd-glasstex) references, ONCE. These are real
  *  turbulence-displacement filters (referenced cross-browser only via a same-document `url(#id)`,
  *  which is why they're inline DOM rather than a data-URI in CSS): `#fd-liquid-glass` warps the ember
  *  streak into a flowing liquid ribbon (low frequency, big waves), `#fd-lens` ripples the glass sheen
@@ -476,15 +477,7 @@ const SHELL_CSS = `
 .fd-bar-live.is-cached { color: var(--caution); }
 .fd-bar-live.is-down { color: var(--warn); }
 
-/* ── Field Notes (our own articles) reuse the mission card (.fd-mcard). ────────── */
-/* In a rail they scroll-snap; in a .fd-mgrid they tile like the campaign showcase. */
-.fd-rail { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch;
-  padding-bottom: 4px; scrollbar-width: thin; }
-.fd-rail::-webkit-scrollbar { height: 6px; } .fd-rail::-webkit-scrollbar-thumb { background: var(--hair); border-radius: 99px; }
-.fd-rail .fd-mcard { flex: 0 0 78%; max-width: 340px; scroll-snap-align: start; }
-@media (min-width: 760px) { .fd-rail .fd-mcard { flex-basis: 300px; } }
-
-/* ── Mission cards (the /campaign showcase). ──────────────────────────────────── */
+/* ── Mission/poster cards (the /campaign showcase + the gameplay pick posters). ── */
 .fd-mgrid { display: grid; gap: 12px; grid-template-columns: 1fr; }
 @media (min-width: 620px) { .fd-mgrid { grid-template-columns: repeat(2, 1fr); } }
 @media (min-width: 980px) { .fd-mgrid { grid-template-columns: repeat(4, 1fr); } }
@@ -502,18 +495,10 @@ const SHELL_CSS = `
 .fd-mcard .fd-m-top { position: absolute; top: 12px; left: 12px; right: 12px; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .fd-mcard .fd-m-no { font-family: var(--mono); font-size: var(--fs-micro); letter-spacing: .16em; text-transform: uppercase; color: var(--menu); }
 .fd-mcard .fd-m-body { position: relative; z-index: 2; padding: 14px 14px 15px; }
-/* Field Notes cards stack the chip above the title in the body (missions keep theirs in .fd-m-top). */
+/* A card may stack the chip above the title in the body (missions keep theirs in .fd-m-top). */
 .fd-mcard .fd-m-body .fd-m-no { display: block; margin-bottom: 6px; }
 .fd-mcard .fd-m-name { font-size: var(--fs-title); font-weight: var(--fw-black); color: #fff; line-height: 1.08; }
 .fd-mcard .fd-m-tag { margin-top: 5px; font-size: var(--fs-sm); line-height: 1.4; color: var(--text-subtle); }
-/* Field Notes variant (.fd-note): the article posters are title-forward (no body subtext — the description
-   lives in page meta + the manifest), so a lifted scrim keeps the title + Read → legible at the base over a
-   taller crop. Scoped here so the gameplay PICK posters (flyPicker.ts, image-forward) keep the base treatment. */
-.fd-mcard.fd-note .fd-m-scrim { background: linear-gradient(180deg, rgba(6,9,11,0.05) 0%, rgba(6,9,11,0.62) 50%, rgba(6,9,11,0.97) 100%); }
-/* Field Notes posters run a touch SHORTER than the shared poster token: 4/5 on desktop (vs --ar-poster
-   3/4), 3/4 on mobile (vs the old 2/3). Scoped to .fd-note so the gameplay PICK posters keep --ar-poster. */
-.fd-mcard.fd-note { aspect-ratio: 4 / 5; }
-@media (max-width: 759px) { .fd-mcard.fd-note { aspect-ratio: 3 / 4; } }
 .fd-mcard .fd-m-diff { display: inline-flex; gap: 3px; margin-top: 9px; }
 .fd-mcard .fd-m-diff i { width: 7px; height: 7px; border-radius: 1px; transform: rotate(45deg); background: var(--fire); box-shadow: 0 0 6px var(--ember-35); }
 .fd-mcard .fd-m-diff i.off { background: var(--recess); box-shadow: none; }
@@ -523,25 +508,15 @@ const SHELL_CSS = `
 .fd-mcard.locked .fd-m-art, .fd-mcard.locked .fd-m-body { filter: grayscale(.7); opacity: .72; }
 
 /* ── Liquified-ember + distorted-GLASS 2px-mosaic texture (the branded card finish). ─────────────
-   A liquified ember STREAK under a 2px glass-mosaic sheen. Two hosts share the SAME streak/mosaic
-   layers (single source, no drift):
-     • .fd-note .fd-m-art.proc — the Field Notes poster's dedicated art layer (carries its own
-       --px/--py twin-well base + an opaque --metal floor, since it IS the card background).
-     • .fd-glasstex — a standalone, self-contained layer dropped into ANY card (checklist, live-map
-       tile, …). It paints only the ember WELLS (transparent elsewhere) so the host card's own fill
-       shows through — a texture OVER the card, not a replacement. Mark the host .fd-glass (relative
+   A liquified ember STREAK under a 2px glass-mosaic sheen, as one standalone layer:
+     • .fd-glasstex — a self-contained layer dropped into ANY card (live-map tile, hero cards, …).
+       It paints only the ember WELLS (transparent elsewhere) so the host card's own fill shows
+       through — a texture OVER the card, not a replacement. Mark the host .fd-glass (relative
        + clipped + its real content lifted above the z:0 texture); the live-map tile already lifts its
        own content, so it just gets the layer + a hover hook.
    The SVG turbulence filters (#fd-liquid-glass / #fd-lens, injected once by injectShellDefs) do the
    warping; every layer is STATIC so the filter rasterizes once — no per-frame cost. Only literals are
    the neutral glass specular, same convention as .fd-m-scrim above. */
-.fd-mcard.fd-note .fd-m-art.proc {
-  /* A deeper twin-well brand base so the streak has a lit ember ground to flow over. */
-  background:
-    radial-gradient(120% 90% at var(--px, 70%) var(--py, 18%), var(--ember-22), transparent 60%),
-    radial-gradient(90% 120% at calc(var(--px, 70%) - 20%) 108%, var(--fire-12), transparent 58%),
-    var(--metal);
-}
 .fd-glasstex {
   position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; border-radius: inherit;
   /* WELLS ONLY (no --metal floor) — the host card's fill shows between them. */
@@ -556,7 +531,6 @@ const SHELL_CSS = `
 /* The liquified gradient streak — a diagonal ember sweep the low-frequency filter pulls into a
    flowing ribbon, then a soft mask fades it to one corner so it reads as a STREAK, not a wash. Inset
    past the edge so the warp never reveals a transparent fringe inside the host's overflow:hidden. */
-.fd-mcard.fd-note .fd-m-art.proc::before,
 .fd-glasstex::before {
   content: ""; position: absolute; inset: -26%; z-index: 0; pointer-events: none;
   background:
@@ -574,7 +548,6 @@ const SHELL_CSS = `
    filter nudges off-grid so the tiles sit like hand-laid glass rather than a printed screen. Blended
    soft-light so it refracts the ember beneath rather than tinting it. A larger soft sheen sits on top
    un-tiled so the whole pane still reads as one sheet of glass. Static; opacity-only hover. */
-.fd-mcard.fd-note .fd-m-art.proc::after,
 .fd-glasstex::after {
   content: ""; position: absolute; inset: 0; z-index: 0; pointer-events: none;
   background:
@@ -587,46 +560,10 @@ const SHELL_CSS = `
   mix-blend-mode: soft-light; opacity: .8;
   transition: opacity .3s ease;
 }
-.fd-mcard.fd-note:hover .fd-m-art.proc::before,
 .fd-glass:hover .fd-glasstex::before,
 .fhome-map:hover .fd-glasstex::before { opacity: 1; }
-.fd-mcard.fd-note:hover .fd-m-art.proc::after,
 .fd-glass:hover .fd-glasstex::after,
 .fhome-map:hover .fd-glasstex::after { opacity: .9; }
-
-/* ── Interactive readiness checklist — the /prepare TOP card. Its collapsible header reuses the in-game
-   .daily card verbatim (injectHomeStyles: .daily-head/.daily-body/.chev/.collapsed); the rules here are
-   only the list's OWN widgets — the readiness progress BAR + the check rows. ─── */
-/* The "loading bar": a full-width stretched track that fills green as items are checked, with a mono % at
-   the end. Always visible (sits OUTSIDE the collapsible body) so the readiness state reads even when closed. */
-.fd-progress { --p: 0; display: flex; align-items: center; gap: 11px; margin-top: 15px; }
-/* NOTE: distinct from the sticky .fd-bar appbar above (which carries min-height:56px) — this readiness
-   track uses its OWN .fd-pbar names so the appbar rule can't cascade in and inflate it. */
-.fd-pbar { position: relative; flex: 1 1 auto; height: 4px; border-radius: 999px; background: var(--recess); border: 1px solid var(--hair); overflow: hidden; }
-.fd-pbar-fill { position: absolute; left: 0; top: 0; bottom: 0; width: calc(var(--p) * 1%); min-width: 0; border-radius: inherit;
-  background: linear-gradient(90deg, var(--ok-50) 0%, var(--ok) 100%); transition: width .32s cubic-bezier(.4,0,.2,1); }
-.fd-pbar-n { flex: 0 0 auto; font-family: var(--mono); font-size: var(--fs-sm); font-weight: var(--fw-bold); color: var(--ok); letter-spacing: .02em; min-width: 38px; text-align: right; }
-.bmf-app .daily.collapsed .fd-progress { margin-top: 11px; }
-.fd-check-list { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
-.fd-item { display: flex; align-items: flex-start; gap: 12px; padding: 13px 14px; border-radius: var(--r-md);
-  background: var(--bezel); border: 1px solid var(--hair); cursor: pointer; transition: border-color .14s, background .14s; }
-.fd-item:hover { border-color: var(--warm-stroke); }
-.fd-item.done { background: var(--ok-12); border-color: var(--ok-50); }
-.fd-box { flex: 0 0 auto; width: 24px; height: 24px; margin-top: 1px; border-radius: var(--r-sm); border: 1.5px solid var(--stroke-strong);
-  display: grid; place-items: center; background: var(--recess); }
-.fd-item.done .fd-box { background: var(--ok); border-color: var(--ok); }
-.fd-box svg { width: 15px; height: 15px; fill: var(--ink); opacity: 0; }
-.fd-item.done .fd-box svg { opacity: 1; }
-/* Title OVER body, never inline — each is block so the bold action heads the row and the prose sits
-   beneath it. (Was inline → "Clear the house" ran straight into "Move firewood…".) */
-.fd-item-txt { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.fd-item-h { display: block; font-size: var(--fs-md); font-weight: var(--fw-bold); color: var(--text); line-height: 1.25; letter-spacing: .005em; }
-.fd-item.done .fd-item-h { text-decoration: line-through; text-decoration-color: var(--ok-50); color: var(--text-subtle); }
-.fd-item-b { display: block; font-size: var(--fs-sm); line-height: 1.5; color: var(--dim); text-align: justify; text-justify: inter-word; hyphens: auto; }
-/* Checked → the line collapses to its TITLE only: the body prose hides and the row tightens, so a
-   completed checklist reads as a clean stack of struck-through headings. */
-.fd-item.done .fd-item-b { display: none; }
-.fd-item.done { padding-top: 10px; padding-bottom: 10px; }
 
 /* ── Live-map overlay + fire-detail sheet (the Map button surface). ───────────── */
 .fd-map-over { position: fixed; inset: 0; z-index: 80; display: flex; flex-direction: column; background: rgba(5,8,11,0.96);

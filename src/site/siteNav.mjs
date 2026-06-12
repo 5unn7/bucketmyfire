@@ -5,7 +5,7 @@
  * It is plain ESM with ZERO imports (no Three, no TS, no DOM at module scope) so BOTH worlds can use it:
  *   - the Vite-bundled TypeScript front door (`src/site/frontShell.ts`, `src/site/shell.ts`, `hub.ts`)
  *     imports `./siteNav.mjs` (types via the sibling `siteNav.d.mts`); and
- *   - the Node-run blog/legal renderer (`scripts/content/*.mjs`) imports `../../src/site/siteNav.mjs`
+ *   - the Node-run legal renderer (`scripts/content/legal.mjs`) imports `../../src/site/siteNav.mjs`
  *     at build time and inlines `navCss`.
  *
  * Markup is token-driven (`var(--*)` from theme.ts → mockups/tokens.css), warm "fight" register
@@ -13,12 +13,11 @@
  * front door (which already injects the home `DEFS`) must include `NAV_DEFS` once in its body.
  */
 
-/** The four-item top-level sitemap (real anchors — crawlable, middle-clickable). Field Notes is a
- *  sub-section of Prepare, not a top-level item, so it is reachable from the Prepare page, not the bar. */
+/** The top-level sitemap (real anchors — crawlable, middle-clickable). */
 export const NAV = [
   { key: 'home', label: 'Home', href: '/' },
   { key: 'campaign', label: 'Campaign', href: '/campaign/' },
-  { key: 'prepare', label: 'Prepare', href: '/prepare/' },
+  { key: 'halloffame', label: 'Hall of Fame', href: '/hall-of-fame/' },
   // Live wildfire map — a real anchor so it's reachable from EVERY page (the front door reads `?map` and
   // opens the tracker overlay; from a static sub-page it just loads home + opens it). Instant access.
   { key: 'map', label: 'Map', href: '/?map' },
@@ -52,8 +51,8 @@ const TAB = {
   home: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg>`,
   // Campaign = the mission ladder → a planted-objective flag (Lucide `flag`).
   campaign: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22V4"/></svg>`,
-  // Prepare = the wildfire-readiness checklist (Lucide `clipboard-check`).
-  prepare: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg>`,
+  // Hall of Fame = the honour-roll medal (Lucide `award`).
+  halloffame: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>`,
   // Map = the brand flame, chevron dropped (mirrors icons.ts FLAME_ONLY). Filled (not stroked)
   // via `.fd-tab .flame` in navCss; viewBox cropped to frame the flames in the 22px tab box.
   map: `<svg class="flame" viewBox="-0.3 -7.7 144 144" aria-hidden="true"><path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/><path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/></svg>`,
@@ -69,7 +68,7 @@ const SETTINGS = ic('<path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy=
 
 /**
  * The sticky top appbar — brand mark + sitemap nav + a right-hand action slot. `active` marks the
- * current top-level item (Field Notes pages pass `'prepare'`). `actions`:
+ * current top-level item. `actions`:
  *   - 'app'  → the front door's leaderboard + settings icon buttons (wired by wireFrontAppbar; needs the
  *              game's home styles for `.iconbtn`). Use ONLY where the game bundle is present.
  *   - 'play' → a single "Fight the fire" CTA. Use on static pages (blog, legal) with no game bundle.
@@ -109,7 +108,9 @@ export function tabbarHtml(active = '') {
     { key: 'home', label: 'Home', href: '/', icon: TAB.home },
     { key: 'campaign', label: 'Campaign', href: '/campaign/', icon: TAB.campaign },
     { key: 'map', label: 'Map', href: '/?map', icon: TAB.map },
-    { key: 'prepare', label: 'Prepare', href: '/prepare/', icon: TAB.prepare },
+    // The mobile tab wears the short word (the 12-char "Hall of Fame" wraps in a 5-col bar on small
+    // phones); the desktop nav + the page itself carry the full "Hall of Fame" name.
+    { key: 'halloffame', label: 'Heroes', href: '/hall-of-fame/', icon: TAB.halloffame },
     { key: 'shop', label: 'Shop', href: shop ? shop.href : '/', icon: TAB.shop },
   ];
   return (
@@ -144,7 +145,7 @@ export function breadcrumbHtml(trail) {
 }
 
 /** Inject the shared nav stylesheet ONCE (client only; idempotent). Call after the kit/token vars are
- *  in scope. The blog/legal renderers inline `navCss` directly instead of calling this. */
+ *  in scope. The legal renderer inlines `navCss` directly instead of calling this. */
 export function injectNavStyles() {
   if (typeof document === 'undefined') return;
   if (document.getElementById('site-nav-css')) return;
@@ -155,8 +156,8 @@ export function injectNavStyles() {
 }
 
 /** The appbar + mobile tab bar + breadcrumb CSS (token-driven, de-scoped so it works on the front-door
- *  app shell AND the static blog/legal pages). The front door injects it (injectNavStyles); the blog +
- *  legal renderers inline it. One definition → no drift. */
+ *  app shell AND the static legal pages). The front door injects it (injectNavStyles); the legal
+ *  renderer inlines it. One definition → no drift. */
 export const navCss = `
 /* ── Sticky top appbar ───────────────────────────────────────────────────────── */
 .fhome-bar { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 10px; min-height: 56px;

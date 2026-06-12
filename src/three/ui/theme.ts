@@ -135,7 +135,7 @@ export const UI = {
   // swap fallback. (`font`/`fontMono` are distinct keys for consumer clarity but resolve identically.)
   font: MONO_FAMILY,
   fontMono: MONO_FAMILY,
-  // The ONE exception to all-mono: long-form READING prose (the Field Notes blog body; legal pages).
+  // The ONE exception to all-mono: long-form READING prose (the legal pages).
   // Mono is punishing at paragraph length, so running body copy uses a neutral system sans — highly
   // readable, zero payload (no webfont, always-available). Headings / chips / numerals / code in that
   // prose stay mono so the surface still reads as the cockpit brand; only the paragraphs relax. Consumed
@@ -281,11 +281,11 @@ export const R = {
 
 // Aspect-ratio scale — `aspect-ratio` strings, emitted by tokens.ts as `--ar-*`. One value of record
 // for a recurring card SHAPE, the same way `R` is the one source for a radius. A POSTER/art card —
-// any card carrying key-art (the Field Notes `.fd-mcard` rail, the Maps/Hangar `.artcard` carousel,
+// any card carrying key-art (the `.fd-mcard` poster cards, the Maps/Hangar `.artcard` carousel,
 // the mockup `.poster`) — is PORTRAIT: on a phone a wide key-art card flattens into a letterbox and
 // throws the poster read away, so it locks taller-than-wide everywhere (DESIGN.md → Spacing & Layout).
 export const AR = {
-  poster: '3 / 4', // portrait poster/art card — Field Notes rail, Maps/Hangar carousel, mockup posters
+  poster: '3 / 4', // portrait poster/art card — .fd-mcard posters, Maps/Hangar carousel, mockup posters
 };
 
 // --- DOM helpers ------------------------------------------------------------
