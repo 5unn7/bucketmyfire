@@ -15,11 +15,13 @@ _Plan — 2026-06-11._
 > AbortController timeout, returns it with `Cache-Control public max-age=21600 s-maxage=86400` + CORS `*`,
 > tiny in-isolate LRU; no table/cron/Storage/secret). Deploy note added to `supabase/schema.sql`.
 >
-> **PENDING — DEPLOY ONLY (outward-facing, your go-ahead):** the layer runs against **direct CWFIS/GWIS**
-> today because `fwiFrameUrl`'s proxy branch is gated behind `const FWI_PROXY_DEPLOYED = false` in `client.ts`
-> (prod IS Supabase-configured, so without this gate the not-yet-deployed function would 404 the FWI layer).
-> To switch frames onto the cache: `supabase functions deploy fwi-frame --no-verify-jwt --project-ref <ref>`,
-> smoke-test the curl in schema.sql, then flip `FWI_PROXY_DEPLOYED = true` and rebuild.
+> **DONE — DEPLOYED + LIVE (2026-06-11, commit `8fe7dda`).** `fwi-frame` is deployed to project
+> `wnorrtfkfqrgipmggfwh` (`verify_jwt` off, ACTIVE v1) and `FWI_PROXY_DEPLOYED = true`, so frames now route
+> through the cache (`<base>/functions/v1/fwi-frame`). Smoke-tested live: bad `src` → 400,
+> `?src=cwfis&day=<tomorrow>&w=512` → 200 `image/png` (29.7 KB), `OPTIONS` → ACAO `*`. Deployed via the
+> Supabase MCP `deploy_edge_function` tool (the `supabase` CLI isn't installed locally). Falls back to direct
+> CWFIS/GWIS if Supabase is ever unconfigured. **Nothing left to do** — the whole plan has shipped (local
+> commits on `main`, not pushed).
 
 ## Context
 
