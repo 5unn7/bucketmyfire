@@ -17,7 +17,7 @@ import { esc } from './siteNav.mjs';
  *  IMAGE-FORWARD poster: the art is the hero, the copy is a tight tagline kicker + the name + a glanceable
  *  meta strip (an aircraft's spec meters, or a map's scale) — no paragraph of body text. `badge` is the
  *  status pill; `locked` dims it; a `href` flies the round, a `pick` value advances a multi-step wizard. */
-export function pickCard(item: CatalogItem, badge: string, opts: { locked?: boolean; href?: string; pick?: string }): string {
+export function pickCard(item: CatalogItem, badge: string, opts: { locked?: boolean; href?: string; pick?: string; wallet?: number }): string {
   const art = item.imageUrl
     ? `<div class="fd-m-art"><img src="${item.imageUrl}" alt="" loading="lazy" /></div>`
     : `<div class="fd-m-art proc"></div>`;
@@ -32,15 +32,18 @@ export function pickCard(item: CatalogItem, badge: string, opts: { locked?: bool
       : '';
   // A locked MAP (carries stats) is an UPCOMING region → offer a "Notify me" email capture instead of a
   // dead "Soon" card; the host page wires [data-notify-map] to the Notify modal. A locked HELI (carries a
-  // points `cost`) shows its career-points unlock PRICE — the same gate + copy as the in-game Hangar's
-  // "Unlock · N pts", but informational here (this front-door picker can't transact; the footer note says
-  // where points come from).
+  // points `cost`) gets the SAME buy path as the in-game Hangar: an affordable wallet renders a live
+  // "Unlock · N pts" button (the host page wires [data-buy-heli] → buyHeli + re-render), a shortfall the
+  // dimmed "Need N pts" gate. Pass the pre-read wallet in `opts` so a whole grid costs one storage read.
+  const affordable = !!item.cost && (opts.wallet ?? 0) >= item.cost;
   const cta = !opts.locked
     ? `<span class="fd-m-go">${opts.href ? 'Fly' : 'Choose'} →</span>`
     : item.stats
       ? `<button type="button" class="btn secondary block fd-m-notify" data-notify-map="${esc(item.id)}">${ic('bell')}Notify me</button>`
       : item.cost
-        ? `<span class="fd-m-unlock">${ic('spark')}Unlock · ${item.cost.toLocaleString()} pts</span>`
+        ? affordable
+          ? `<button type="button" class="btn primary block fd-m-buy" data-buy-heli="${esc(item.id)}">${ic('spark')}Unlock · ${item.cost.toLocaleString()} pts</button>`
+          : `<button type="button" class="btn ghost block is-disabled fd-m-buy">${ic('spark')}Need ${item.cost.toLocaleString()} pts</button>`
         : '';
   const inner =
     art +
@@ -55,7 +58,13 @@ export function pickCard(item: CatalogItem, badge: string, opts: { locked?: bool
   // A map's art is a 3D terrain SLAB on transparency (built to FLOAT, not fill) → flag it (.fd-map) so the
   // CSS shows the WHOLE slab over a spotlight (contain), not a cover-crop. Helis stay full-bleed key art.
   const cls = `fd-mcard fd-card${item.stats ? ' fd-map' : ''}`;
-  if (opts.locked) return `<div class="${cls} locked" aria-disabled="true">${inner}</div>`;
+  // A locked card hosting a LIVE action (a map's Notify me, an affordable heli's Unlock) must not be
+  // aria-disabled — that marks the working button inside it disabled for assistive tech (and blocks
+  // automated clicks). Only a card with nothing actionable stays fully inert.
+  if (opts.locked) {
+    const inert = item.stats || affordable ? '' : ' aria-disabled="true"';
+    return `<div class="${cls} locked"${inert}>${inner}</div>`;
+  }
   if (opts.href) return `<a class="${cls}" href="${opts.href}" aria-label="Fly ${esc(item.name)}">${inner}</a>`;
   return `<button class="${cls}" data-pick="${esc(opts.pick ?? '')}" aria-label="Choose ${esc(item.name)}">${inner}</button>`;
 }
@@ -162,13 +171,14 @@ export function injectFlyPickerStyles(): void {
 .bmf-app.front .fly-strip .fd-mcard.fd-map.locked .fd-m-body { filter: none; opacity: 1; }
 .bmf-app.front .fly-strip .fd-mcard.locked .fd-m-notify { pointer-events: auto; }
 .bmf-app.front .fly-strip .fd-m-notify { margin-top: 13px; }
-/* Locked AIRCRAFT surface their career-points unlock PRICE. Keep the locked heli BODY crisp (like locked
-   maps) so the price + specs stay readable — only the art dims to signal "not flyable yet". The price uses
-   the same warm wallet language as .pts-bal everywhere (text = --menu, the ◇ spark = --ember-hi). */
+/* Locked AIRCRAFT carry the SAME buy path as the in-game Hangar: a live "Unlock · N pts" button when the
+   wallet covers it, the dimmed "Need N pts" gate when it doesn't. Keep the locked heli BODY crisp (like
+   locked maps) so the price + specs stay readable — only the art dims to signal "not flyable yet" — and
+   re-enable pointer events on the live buy button since the locked card itself is inert. */
 .bmf-app.front .fly-strip .fd-mcard.locked:not(.fd-map) .fd-m-body { filter: none; opacity: 1; }
-.bmf-app.front .fly-strip .fd-m-unlock { display: inline-flex; align-items: center; gap: 5px; margin-top: 12px;
-  font-family: var(--mono); font-size: var(--fs-meta); font-weight: var(--fw-bold); letter-spacing: .03em; color: var(--menu); }
-.bmf-app.front .fly-strip .fd-m-unlock svg { width: 14px; height: 14px; color: var(--ember-hi); flex: none; }
+.bmf-app.front .fly-strip .fd-mcard.locked .fd-m-buy[data-buy-heli] { pointer-events: auto; }
+.bmf-app.front .fly-strip .fd-m-buy { margin-top: 12px; }
+.bmf-app.front .fly-strip .fd-m-buy svg { width: 14px; height: 14px; flex: none; }
 `;
   document.head.appendChild(s);
 }

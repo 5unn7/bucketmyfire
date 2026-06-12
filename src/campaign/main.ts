@@ -14,12 +14,12 @@
 import { injectFonts } from '../three/ui/fonts';
 import { injectKitStyles } from '../three/ui/components/base';
 import { injectHomeStyles } from '../three/ui/home/styles';
-import { DEFS } from '../three/ui/home/icons';
+import { DEFS, ic } from '../three/ui/home/icons';
 import { injectShellStyles, applyMotionPref, buildFooter, tabbarMarkup, openNotify } from '../site/shell';
 import { esc } from '../site/siteNav.mjs';
 import { injectFrontShell, frontScene, frontAppbar, spawnFrontEmbers, wireFrontAppbar } from '../site/frontShell';
 import { pickCard, wireFlyPicker, injectFlyPickerStyles } from '../site/flyPicker';
-import { MAPS, HELIS, isHeliUnlocked, firstAvailable } from '../three/ui/profile';
+import { MAPS, HELIS, isHeliUnlocked, firstAvailable, availablePoints, buyHeli } from '../three/ui/profile';
 
 applyMotionPref();
 injectFonts();
@@ -99,25 +99,36 @@ function renderMaps(app: HTMLElement): void {
 function renderHelis(app: HTMLElement): void {
   const wizard = app.querySelector<HTMLElement>('#fd-wizard');
   if (!wizard) return;
-  const cleared = 0; // the linear campaign retired → unlocks come from points purchases only
+  // Gate on the REAL progress defaults (not a hard-coded 0) so the display agrees with buyHeli: a
+  // pilot whose legacy campaign clears already earned an airframe sees it Ready, never a dead buy.
+  const wallet = availablePoints(); // pre-read once for the whole grid + the balance chip
   const cards = HELIS.map((h) => {
-    const unlocked = isHeliUnlocked(h, cleared);
+    const unlocked = isHeliUnlocked(h);
     const launch = `/?province=1&region=${encodeURIComponent(mapId)}&solo=1&heli=${encodeURIComponent(h.id)}`;
     return unlocked
       ? pickCard(h, `<span class="badge ok">Ready</span>`, { href: launch })
-      : pickCard(h, `<span class="badge locked">Locked</span>`, { locked: true });
+      : pickCard(h, `<span class="badge locked">Locked</span>`, { locked: true, wallet });
   }).join('');
   const mapName = MAPS.find((m) => m.id === mapId)?.name ?? '';
   wizard.innerHTML =
     `<div class="fcamp-whead"><button class="fcamp-back" id="fd-back">← Maps</button>` +
-    `<h2>Choose your aircraft</h2><span class="fcamp-step">${esc(mapName)}</span></div>` +
+    `<h2>Choose your aircraft</h2><span class="fcamp-step">${esc(mapName)}</span>` +
+    `<span class="pts-bal">${ic('spark')}<b>${wallet.toLocaleString()}</b><span>pts</span></span></div>` +
     `<div class="fly-strip">${cards}</div>` +
     `<div class="fly-dots" aria-hidden="true"></div>` +
-    `<p class="fcamp-note">Locked aircraft unlock with career points earned in Open Skies and solo flights.</p>`;
+    `<p class="fcamp-note">Locked aircraft unlock with career points earned in Open Skies and solo flights — earn enough and unlock them right here.</p>`;
   wizard.querySelector('#fd-back')?.addEventListener('click', () => {
     renderMaps(app);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   });
+  // Live unlock: spend the wallet right here (buyHeli enforces the whole gate — a blocked buy is a
+  // no-op), then re-render so the card flips to Ready and the balance chip drains.
+  wizard.querySelectorAll<HTMLButtonElement>('[data-buy-heli]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const h = HELIS.find((x) => x.id === b.dataset.buyHeli);
+      if (h && buyHeli(h).ok) renderHelis(app);
+    }),
+  );
   wireFlyPicker(wizard);
 }
 
@@ -136,7 +147,9 @@ function injectCampaignStyles(): void {
    the pick cards ride higher up the screen and their full detail clears the fold without scrolling. */
 .bmf-app.front .fcamp-whead h2 { font-family: var(--mono); font-size: var(--fs-sm); font-weight: var(--fw-bold);
   letter-spacing: .2em; text-transform: uppercase; color: var(--menu); }
-.bmf-app.front .fcamp-step { font-family: var(--mono); font-size: var(--fs-meta); letter-spacing: .08em; text-transform: uppercase; color: var(--dim); margin-left: auto; }
+/* The step name rides inline after the heading; the .pts-bal balance chip (margin-left:auto from the
+   home styles) anchors the row's right edge — don't double up the auto margin or the space splits. */
+.bmf-app.front .fcamp-step { font-family: var(--mono); font-size: var(--fs-meta); letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
 .bmf-app.front .fcamp-back { appearance: none; background: none; border: 0; padding: 0 4px 0 0; cursor: pointer; font: inherit;
   font-family: var(--mono); font-size: var(--fs-meta); letter-spacing: .06em; text-transform: uppercase; color: var(--ember-hi); min-height: 36px; display: inline-flex; align-items: center; }
 .bmf-app.front .fcamp-back:hover { color: var(--menu); }

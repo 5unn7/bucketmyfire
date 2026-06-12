@@ -14,12 +14,12 @@
 import { injectFonts } from '../three/ui/fonts';
 import { injectKitStyles } from '../three/ui/components/base';
 import { injectHomeStyles } from '../three/ui/home/styles';
-import { DEFS } from '../three/ui/home/icons';
+import { DEFS, ic } from '../three/ui/home/icons';
 import { injectShellStyles, applyMotionPref, buildFooter } from '../site/shell';
 import { injectFrontShell, frontScene, frontAppbar, spawnFrontEmbers, wireFrontAppbar } from '../site/frontShell';
 import { tabbarHtml } from '../site/siteNav.mjs';
 import { pickCard, wireFlyPicker, injectFlyPickerStyles } from '../site/flyPicker';
-import { HELIS, isHeliUnlocked } from '../three/ui/profile';
+import { HELIS, isHeliUnlocked, availablePoints, buyHeli } from '../three/ui/profile';
 
 applyMotionPref();
 injectFonts();
@@ -69,20 +69,31 @@ ${tabbarHtml('open-skies')}`;
 function renderHelis(app: HTMLElement): void {
   const host = app.querySelector<HTMLElement>('#fd-picker');
   if (!host) return;
-  const cleared = 0; // the linear campaign retired → unlocks come from points purchases only
+  // Gate on the REAL progress defaults (not a hard-coded 0) so the display agrees with buyHeli: a
+  // pilot whose legacy campaign clears already earned an airframe sees it Ready, never a dead buy.
+  const wallet = availablePoints(); // pre-read once for the whole grid + the balance chip
   const cards = HELIS.map((h) => {
-    const unlocked = isHeliUnlocked(h, cleared);
+    const unlocked = isHeliUnlocked(h);
     // Shared launch: no region (the canonical province for everyone) and no solo flag (shared board + ghosts).
     const launch = `/?province=1&heli=${encodeURIComponent(h.id)}`;
     return unlocked
       ? pickCard(h, `<span class="badge ok">Ready</span>`, { href: launch })
-      : pickCard(h, `<span class="badge locked">Locked</span>`, { locked: true });
+      : pickCard(h, `<span class="badge locked">Locked</span>`, { locked: true, wallet });
   }).join('');
   host.innerHTML =
-    `<div class="sec"><span class="tag">Your aircraft</span><span class="line"></span></div>` +
+    `<div class="sec"><span class="tag">Your aircraft</span><span class="line"></span>` +
+    `<span class="pts-bal">${ic('spark')}<b>${wallet.toLocaleString()}</b><span>pts</span></span></div>` +
     `<div class="fly-strip">${cards}</div>` +
     `<div class="fly-dots" aria-hidden="true"></div>` +
-    `<p class="osk-note">Locked aircraft unlock with career points earned in Open Skies and solo flights.</p>`;
+    `<p class="osk-note">Locked aircraft unlock with career points earned in Open Skies and solo flights — earn enough and unlock them right here.</p>`;
+  // Live unlock: spend the wallet right here (buyHeli enforces the whole gate — a blocked buy is a
+  // no-op), then re-render so the card flips to Ready and the balance chip drains.
+  host.querySelectorAll<HTMLButtonElement>('[data-buy-heli]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const h = HELIS.find((x) => x.id === b.dataset.buyHeli);
+      if (h && buyHeli(h).ok) renderHelis(app);
+    }),
+  );
   wireFlyPicker(host);
 }
 
