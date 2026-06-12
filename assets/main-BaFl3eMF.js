@@ -1,5 +1,5 @@
-const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./main-6VbHvLhR.js","./frontShell-98g2TKKh.js"])))=>i.map(i=>d[i]);
-import{_ as x,i as T,b as L,c as A,d as C,e as I,D as z,s as F,w as O,m as B,r as R,n as P,p as l,q as H,u as M,g as N,h as _,j,t as $,v as G,x as W,y as D,z as q,A as Y,B as U,C as V,L as K,E as X,F as h,G as Z,I as J,J as u}from"./frontShell-98g2TKKh.js";const Q=".artcard, .fhome-hero, .fhome-play, .shopbanner, .crt, .fhome-map";function ee(e){const t=Array.from(e.querySelectorAll(".card")).filter(a=>!a.matches(Q));if(!t.length)return()=>{};for(const a of t)a.classList.add("cardfx");const o=a=>{if(a.pointerType==="touch")return;const i=a.target?.closest?.(".cardfx");if(!i)return;const r=i.getBoundingClientRect();if(!r.width||!r.height)return;const s=(a.clientX-r.left)/r.width*100,n=(a.clientY-r.top)/r.height*100;i.style.setProperty("--mx",s.toFixed(1)+"%"),i.style.setProperty("--my",n.toFixed(1)+"%");const p=Math.round(Math.atan2(n-50,s-50)*180/Math.PI+90);i.style.setProperty("--rim-ang",p+"deg")};return e.addEventListener("pointermove",o,{passive:!0}),()=>e.removeEventListener("pointermove",o)}const te="radial-gradient(130% 100% at 50% 78%, #2a120b 0%, #150a07 46%, #090605 100%)",ae=["--dx:-4px;--by:-2px;left:38%;width:5px;height:5px;animation-delay:0s;animation-duration:1.9s","--dx:5px;--by:3px;left:44%;width:3px;height:3px;animation-delay:0.3s;animation-duration:2.3s","--dx:-7px;--by:5px;left:48%;width:6px;height:6px;animation-delay:0.6s;animation-duration:1.7s","--dx:4px;--by:1px;left:52%;width:4px;height:4px;animation-delay:0.9s;animation-duration:2.05s","--dx:-5px;--by:-3px;left:56%;width:5px;height:5px;animation-delay:1.15s;animation-duration:1.8s","--dx:8px;--by:4px;left:62%;width:3px;height:3px;animation-delay:0.45s;animation-duration:2.4s","--dx:-2px;--by:0px;left:41%;width:4px;height:4px;animation-delay:1.4s;animation-duration:2.15s","--dx:6px;--by:-4px;left:59%;width:6px;height:6px;animation-delay:0.75s;animation-duration:1.6s","--dx:1px;--by:2px;left:50%;width:7px;height:7px;animation-delay:1.55s;animation-duration:1.95s","--dx:-6px;--by:6px;left:46%;width:4px;height:4px;animation-delay:1.25s;animation-duration:2.1s"],oe=`<div class="bmf-spin" aria-hidden="true">
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./main-D_NmPpVA.js","./frontShell-yt3q_Qq7.js"])))=>i.map(i=>d[i]);
+import{_ as x,i as T,b as L,c as A,d as C,e as z,D as I,s as F,w as O,r as B,u as R,v as P,n as f,k as M,x as H,g as N,h as _,j,t as $,y as D,z as G,A as W,B as q,C as Y,E as U,F as K,L as V,G as X,I as h,J as Z,K as J,N as u}from"./frontShell-yt3q_Qq7.js";const Q=".artcard, .fhome-hero, .fhome-play, .shopbanner, .crt, .fhome-map";function ee(e){const t=Array.from(e.querySelectorAll(".card")).filter(a=>!a.matches(Q));if(!t.length)return()=>{};for(const a of t)a.classList.add("cardfx");const o=a=>{if(a.pointerType==="touch")return;const i=a.target?.closest?.(".cardfx");if(!i)return;const r=i.getBoundingClientRect();if(!r.width||!r.height)return;const s=(a.clientX-r.left)/r.width*100,n=(a.clientY-r.top)/r.height*100;i.style.setProperty("--mx",s.toFixed(1)+"%"),i.style.setProperty("--my",n.toFixed(1)+"%");const p=Math.round(Math.atan2(n-50,s-50)*180/Math.PI+90);i.style.setProperty("--rim-ang",p+"deg")};return e.addEventListener("pointermove",o,{passive:!0}),()=>e.removeEventListener("pointermove",o)}const te="radial-gradient(130% 100% at 50% 78%, #2a120b 0%, #150a07 46%, #090605 100%)",ae=["--dx:-4px;--by:-2px;left:38%;width:5px;height:5px;animation-delay:0s;animation-duration:1.9s","--dx:5px;--by:3px;left:44%;width:3px;height:3px;animation-delay:0.3s;animation-duration:2.3s","--dx:-7px;--by:5px;left:48%;width:6px;height:6px;animation-delay:0.6s;animation-duration:1.7s","--dx:4px;--by:1px;left:52%;width:4px;height:4px;animation-delay:0.9s;animation-duration:2.05s","--dx:-5px;--by:-3px;left:56%;width:5px;height:5px;animation-delay:1.15s;animation-duration:1.8s","--dx:8px;--by:4px;left:62%;width:3px;height:3px;animation-delay:0.45s;animation-duration:2.4s","--dx:-2px;--by:0px;left:41%;width:4px;height:4px;animation-delay:1.4s;animation-duration:2.15s","--dx:6px;--by:-4px;left:59%;width:6px;height:6px;animation-delay:0.75s;animation-duration:1.6s","--dx:1px;--by:2px;left:50%;width:7px;height:7px;animation-delay:1.55s;animation-duration:1.95s","--dx:-6px;--by:6px;left:46%;width:4px;height:4px;animation-delay:1.25s;animation-duration:2.1s"],oe=`<div class="bmf-spin" aria-hidden="true">
   ${ae.map(e=>`<span class="spark" style="${e}"></span>`).join(`
   `)}
   <svg class="mark" viewBox="0 0 149.7 184.72">
@@ -48,7 +48,7 @@ import{_ as x,i as T,b as L,c as A,d as C,e as I,D as z,s as F,w as O,m as B,r a
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased;
 }
 #bmf-splash.bmf-hide { opacity: 0; pointer-events: none; }
-${ie}`,f=new URLSearchParams(location.search),se=["m","autostart","qa","ffa","province","daily","editor","dev","heliview","kit","tune"],pe=se.some(e=>f.has(e));pe?queueMicrotask(le):he();let g=!1;function le(){if(g)return;g=!0,document.body.classList.add("bmf-playing");const e=document.getElementById("game");e&&(e.innerHTML=""),document.getElementById("fd-boot")?.remove(),!f.has("qa")&&!f.has("autostart")&&fe(),x(()=>import("./main-6VbHvLhR.js").then(t=>t.a7),__vite__mapDeps([0,1]),import.meta.url)}function fe(){if(document.getElementById("bmf-splash"))return;if(!document.getElementById("bmf-splash-css")){const n=document.createElement("style");n.id="bmf-splash-css",n.textContent=re,document.head.appendChild(n)}const e=document.createElement("div");for(const[n,p]of Object.entries(ne))e.setAttribute(n,p);e.innerHTML=oe,document.body.appendChild(e);const t=1100,o=performance.now();let a=!1,i=0;const r=()=>{a||(a=!0,i&&clearTimeout(i),e.classList.add("bmf-hide"),setTimeout(()=>e.remove(),550))},s=()=>{if(a||i)return;const n=t-(performance.now()-o);n<=0?r():i=window.setTimeout(r,n)};window.addEventListener("bmf:ready",s),setTimeout(r,12e3)}function he(){T(),L(),A(),C(),I(),ke();const e=document.getElementById("game");if(!e)return;const t=document.createElement("div");t.className="bmf-app front",t.innerHTML=z+ge(),e.innerHTML="",e.appendChild(t),document.getElementById("fd-boot")?.remove(),F(t,13),O(t),me(t),v(-1),be(),xe(t),ee(t),ue(),f.has("map")&&y()}function me(e){const t=e.querySelector("#fhome-pilot");if(!t)return;const o=B();if(!o?.name){t.classList.add("is-new"),t.innerHTML='<span class="fpb-cs">New pilot</span><span class="fpb-meta"><span class="fpb-hint">Fly to earn your rank</span></span>';return}const a=R(P());t.innerHTML=`<span class="fpb-cs"></span><span class="fpb-meta"><span class="rank" style="--rk:${a.color}"><i></i>${a.name}</span><span class="fpb-pts pts-ic mono">${l("spark")}<b>${H().toLocaleString("en-US")}</b> pts</span></span>`;const i=t.querySelector(".fpb-cs");i&&(i.textContent=o.name.toUpperCase())}function v(e){const t=document.getElementById("fhome-pilots-live");if(!t)return;const o=t.querySelector("b"),a=t.querySelector("span");e>=1?(o&&(o.textContent=e.toLocaleString("en-US")),a&&(a.textContent=e===1?"Pilot live":"Pilots live")):(o&&(o.textContent=""),a&&(a.textContent="Open Skies live"))}const de=6e3,ce=4e3;async function be(){let e;try{e=await x(()=>import("./openSkies-BkVayIv8.js"),[],import.meta.url)}catch{return}if(!e.openSkiesConfigured())return;const t=e.connectOpenSkies(M(new Date),{id:"fd-listener",name:"",heli:""},de);if(!t)return;const o=()=>v(t.remotes().length),a=window.setTimeout(o,1400),i=window.setInterval(o,ce);window.addEventListener("pagehide",()=>{window.clearTimeout(a),window.clearInterval(i),t.close()},{once:!0})}function ge(){return`
+${ie}`,l=new URLSearchParams(location.search),se=["m","autostart","qa","ffa","province","daily","editor","dev","heliview","kit","tune"],pe=se.some(e=>l.has(e));pe?queueMicrotask(fe):he();let g=!1;function fe(){if(g)return;g=!0,document.body.classList.add("bmf-playing");const e=document.getElementById("game");e&&(e.innerHTML=""),document.getElementById("fd-boot")?.remove(),!l.has("qa")&&!l.has("autostart")&&le(),x(()=>import("./main-D_NmPpVA.js").then(t=>t.a7),__vite__mapDeps([0,1]),import.meta.url)}function le(){if(document.getElementById("bmf-splash"))return;if(!document.getElementById("bmf-splash-css")){const n=document.createElement("style");n.id="bmf-splash-css",n.textContent=re,document.head.appendChild(n)}const e=document.createElement("div");for(const[n,p]of Object.entries(ne))e.setAttribute(n,p);e.innerHTML=oe,document.body.appendChild(e);const t=1100,o=performance.now();let a=!1,i=0;const r=()=>{a||(a=!0,i&&clearTimeout(i),e.classList.add("bmf-hide"),setTimeout(()=>e.remove(),550))},s=()=>{if(a||i)return;const n=t-(performance.now()-o);n<=0?r():i=window.setTimeout(r,n)};window.addEventListener("bmf:ready",s),setTimeout(r,12e3)}function he(){T(),L(),A(),C(),z(),ke();const e=document.getElementById("game");if(!e)return;const t=document.createElement("div");t.className="bmf-app front",t.innerHTML=I+ge(),e.innerHTML="",e.appendChild(t),document.getElementById("fd-boot")?.remove(),F(t,13),O(t),me(t),v(-1),be(),xe(t),ee(t),ue(),l.has("map")&&y()}function me(e){const t=e.querySelector("#fhome-pilot");if(!t)return;const o=B();if(!o?.name){t.classList.add("is-new"),t.innerHTML='<span class="fpb-cs">New pilot</span><span class="fpb-meta"><span class="fpb-hint">Fly to earn your rank</span></span>';return}const a=R(P());t.innerHTML=`<span class="fpb-cs"></span><span class="fpb-meta"><span class="rank" style="--rk:${a.color}"><i></i>${a.name}</span><span class="fpb-pts pts-ic mono">${f("spark")}<b>${M().toLocaleString("en-US")}</b> pts</span></span>`;const i=t.querySelector(".fpb-cs");i&&(i.textContent=o.name.toUpperCase())}function v(e){const t=document.getElementById("fhome-pilots-live");if(!t)return;const o=t.querySelector("b"),a=t.querySelector("span");e>=1?(o&&(o.textContent=e.toLocaleString("en-US")),a&&(a.textContent=e===1?"Pilot live":"Pilots live")):(o&&(o.textContent=""),a&&(a.textContent="Open Skies live"))}const de=6e3,ce=4e3;async function be(){let e;try{e=await x(()=>import("./openSkies-BkVayIv8.js"),[],import.meta.url)}catch{return}if(!e.openSkiesConfigured())return;const t=e.connectOpenSkies(H(new Date),{id:"fd-listener",name:"",heli:""},de);if(!t)return;const o=()=>v(t.remotes().length),a=window.setTimeout(o,1400),i=window.setInterval(o,ce);window.addEventListener("pagehide",()=>{window.clearTimeout(a),window.clearInterval(i),t.close()},{once:!0})}function ge(){return`
 ${N()}
 <div class="fhome-bg" aria-hidden="true"><img src="/images/missions/saskatchewan/ThreeTown.webp" alt="" /></div>
 ${_("home")}
@@ -80,17 +80,19 @@ ${_("home")}
       </div>
     </section>
 
-    <!-- Map — opens the full live wildfire tracker (layer toggles + smoke scrubber + detail sheet). The
-         faint cyan cartographic grid (.fhome-map-grid) makes it read as a tactical map readout.
+    <!-- Map — opens the full live wildfire tracker (layer toggles + smoke scrubber + detail sheet). A
+         dark topographic contour render (.fhome-map-art) under the faint cyan cartographic grid
+         (.fhome-map-grid) makes it read as a tactical map readout.
          DOM-ordered BEFORE the play tile so the MOBILE single-column stack reads hero → map → gameplay
          (the live data leads into the live map, then the game). Desktop is unaffected: every tile has an
          explicit grid-area, so the bento layout ignores source order. -->
     <button class="card fhome-map" data-act="fires" aria-label="Open the live wildfire map">
       <span class="fd-glasstex" aria-hidden="true"></span>
+      <span class="fhome-map-art" aria-hidden="true"><img src="/images/cardsbg/map.webp" alt="" /></span>
       <span class="fhome-map-grid" aria-hidden="true"></span>
-      <span class="fhome-map-ic">${l("map")}</span>
+      <span class="fhome-map-ic">${f("map")}</span>
       <span class="fhome-map-tx"><b>Live fire map</b><span>Reported fires, hotspots, fire weather &amp; smoke</span></span>
-      <span class="fhome-map-go">${l("chevron-right")}</span>
+      <span class="fhome-map-go">${f("chevron-right")}</span>
     </button>
 
     <!-- OPEN SKIES — the play CTA over the live-fire key-art. A top OVERLAY banner carries the slimmed
@@ -99,7 +101,7 @@ ${_("home")}
          profile slot is populated by mountPilotBanner() (an invite line when first-run); the live count
          by hydratePilotsLive(). -->
     <button class="card warm cut fhome-play" data-act="coop" aria-label="Play Open Skies">
-      <div class="fhome-art"><img src="/images/ui/homescreen-bg.webp" alt="A Bell helicopter with a slung Bambi bucket dropping water on a wildfire over boreal lake country" /></div>
+      <div class="fhome-art"><img src="/images/halloffame/homescreen-bg.webp" alt="A Bell helicopter with a slung Bambi bucket dropping water on a wildfire over boreal lake country" /></div>
       <div class="fhome-art-fade"></div>
       <div class="fhome-play-banner">
         <div class="fpb-id" id="fhome-pilot"></div>
@@ -108,40 +110,40 @@ ${_("home")}
       <div class="fhome-tx fhome-play-tx">
         <span class="h-big fhome-play-h">Open Skies</span>
         <span class="fhome-play-sub">Fly helicopters and fight the fire.</span>
-        <span class="btn primary fhome-play-go">${l("play")}Fly now</span>
+        <span class="btn primary fhome-play-go">${f("play")}Fly now</span>
       </div>
     </button>
 
-    <!-- Wear the fight — the BIG shop feature card. The real merch poster (Wearthefight.png) is the art,
-         cropped to the heli + firefighter so the poster's own baked "WEAR THE FIGHT" type sits below the
-         frame and never clashes with our overlaid copy + Shop CTA. -->
+    <!-- Wear the fight — the BIG shop feature card. The art is the dedicated card background
+         (cardsbg/wearthefightbg.webp): the real hoodie product shot floating over a misty boreal
+         ridge, framed so the print sits centre-right and our copy + Shop CTA own the left fade. -->
     <button class="card warm cut fhome-merch" data-act="shop" aria-label="Open the BMF Gear store">
-      <div class="fhome-merch-art"><img src="/images/shop/helidesigns/Wearthefight.png" alt="Wear the fight — a wildland firefighter and a Bell helicopter slinging a Bambi bucket over a forest fire" /></div>
+      <div class="fhome-merch-art"><img src="/images/cardsbg/wearthefightbg.webp" alt="Wear the fight — the black BMF hoodie, its back print a helicopter bucket-drop over a burning ridge, floating in a misty boreal forest" /></div>
       <div class="fhome-merch-fade"></div>
       <div class="fhome-tx fhome-merch-tx">
-        <span class="fhome-merch-ey">${l("shop")}BMF Gear</span>
+        <span class="fhome-merch-ey">${f("shop")}BMF Gear</span>
         <span class="h-big fhome-merch-h">Wear the fight.</span>
         <span class="fhome-merch-sub">Tees &amp; hoodies, printed on demand.</span>
         <span class="btn primary fhome-merch-go">Shop the collection</span>
       </div>
     </button>
 
-    <!-- Hall of Fame — a compact call-out to the tribute page: ten documented moments from Canada's
-         wildfire history and the crews behind them. The full visual journey lives on /hall-of-fame/;
+    <!-- The Fireline — a compact call-out to the tribute page: the documented moments from Canada's
+         wildfire history and the crews behind them. The full visual journey lives on /fireline/;
          this is the sharp hand-off, so the home stays the marketing surface. -->
-    <a class="card warm cut fhome-hof" href="/hall-of-fame/">
+    <a class="card warm cut fhome-hof" href="/fireline/">
       <div class="fhome-hof-tx">
-        <span class="fhome-hof-ey">Hall of Fame</span>
+        <span class="fhome-hof-ey">The Fireline</span>
         <span class="fhome-hof-h">The unsung warriors.</span>
-        <span class="fhome-hof-sub">Ten moments that forged Canada's wildfire fight — and the crews who held the line.</span>
+        <span class="fhome-hof-sub">The moments that forged Canada's wildfire fight — and the crews who held the line.</span>
       </div>
-      <span class="btn ghost fhome-hof-go">Enter the Hall →</span>
+      <span class="btn ghost fhome-hof-go">Walk the line →</span>
     </a>
   </div>
 
   ${j()}
 </div>
-${$("home")}`}function xe(e){e.querySelectorAll("[data-act]").forEach(t=>{t.addEventListener("click",o=>{switch(o.preventDefault(),o.stopPropagation(),t.dataset.act){case"coop":location.assign("/open-skies/");return;case"fires":return y();case"shop":return G("shop")}})})}function y(){W(q("map"),D("map"))}async function ue(){const[e,t,o]=await Promise.all([Y().catch(()=>null),U().catch(()=>null),V().catch(()=>null)]);we(e,t,o)}function ve(e,t){return t&&t.meta.status==="live"?{n:u(t.fires,"CA").length,pub:t.meta.publishedAt}:e&&e.meta.status==="live"?{n:e.activeFires,pub:e.meta.publishedAt}:{n:-1,pub:0}}function ye(e){return!e||e.meta.status!=="live"?-1:u(e.fires,"CA").filter(t=>t.stage==="OC").length}function we(e,t,o){const a=(S,E)=>{const b=document.getElementById(S);b&&(b.textContent=E)},i=document.getElementById("fd-fresh"),r=document.getElementById("fhome-live"),s=document.getElementById("fhome-fallback"),n=document.getElementById("fd-live"),p=!!e&&e.meta.status==="live",w=!!t&&t.meta.status==="live";if(!p&&!w){r&&(r.hidden=!0),s&&(s.hidden=!1),n&&(n.hidden=!0),i&&(i.innerHTML=`Live data unavailable · <a href="${K.summary.url}" target="_blank" rel="noopener">official sources →</a>`);return}r&&(r.hidden=!1),s&&(s.hidden=!0),n&&(n.hidden=!1);const{n:m,pub:k}=ve(e,t),d=ye(t),c=o&&o.meta.status==="live"?X(o.hotspots,"CA").length:-1;a("ro-active",m>=0?h(m):"—"),a("ro-oc",d>=0?h(d):"—"),a("ro-hot",c>=0?h(c):"—"),a("ro-area",p&&e.areaBurnedHa>0?Z(e.areaBurnedHa):"—"),a("ro-prep",p&&e.prepLevel>0?`L${e.prepLevel}`:"—"),i&&(i.textContent=`${J(k)} · CIFFC + CWFIS`)}function ke(){if(document.getElementById("fd-bento-css"))return;const e=document.createElement("style");e.id="fd-bento-css",e.textContent=`
+${$("home")}`}function xe(e){e.querySelectorAll("[data-act]").forEach(t=>{t.addEventListener("click",o=>{switch(o.preventDefault(),o.stopPropagation(),t.dataset.act){case"coop":location.assign("/open-skies/");return;case"fires":return y();case"shop":return D("shop")}})})}function y(){G(q("map"),W("map"))}async function ue(){const[e,t,o]=await Promise.all([Y().catch(()=>null),U().catch(()=>null),K().catch(()=>null)]);we(e,t,o)}function ve(e,t){return t&&t.meta.status==="live"?{n:u(t.fires,"CA").length,pub:t.meta.publishedAt}:e&&e.meta.status==="live"?{n:e.activeFires,pub:e.meta.publishedAt}:{n:-1,pub:0}}function ye(e){return!e||e.meta.status!=="live"?-1:u(e.fires,"CA").filter(t=>t.stage==="OC").length}function we(e,t,o){const a=(S,E)=>{const b=document.getElementById(S);b&&(b.textContent=E)},i=document.getElementById("fd-fresh"),r=document.getElementById("fhome-live"),s=document.getElementById("fhome-fallback"),n=document.getElementById("fd-live"),p=!!e&&e.meta.status==="live",w=!!t&&t.meta.status==="live";if(!p&&!w){r&&(r.hidden=!0),s&&(s.hidden=!1),n&&(n.hidden=!0),i&&(i.innerHTML=`Live data unavailable · <a href="${V.summary.url}" target="_blank" rel="noopener">official sources →</a>`);return}r&&(r.hidden=!1),s&&(s.hidden=!0),n&&(n.hidden=!1);const{n:m,pub:k}=ve(e,t),d=ye(t),c=o&&o.meta.status==="live"?X(o.hotspots,"CA").length:-1;a("ro-active",m>=0?h(m):"—"),a("ro-oc",d>=0?h(d):"—"),a("ro-hot",c>=0?h(c):"—"),a("ro-area",p&&e.areaBurnedHa>0?Z(e.areaBurnedHa):"—"),a("ro-prep",p&&e.prepLevel>0?`L${e.prepLevel}`:"—"),i&&(i.textContent=`${J(k)} · CIFFC + CWFIS`)}function ke(){if(document.getElementById("fd-bento-css"))return;const e=document.createElement("style");e.id="fd-bento-css",e.textContent=`
 /* Bento grid. Grid items default to min-width:auto, so a nowrap child (the ticker line) or a
    horizontal scroller (the notes rail) would force the single 1fr column wider than the phone
    viewport and overflow the page. min-width:0 lets every card shrink to the column, and the
@@ -247,12 +249,21 @@ ${$("home")}`}function xe(e){e.querySelectorAll("[data-act]").forEach(t=>{t.addE
 .bmf-app.front .fhome-play-go { margin-top: 18px; pointer-events: none; }
 
 /* Map entry — a tactical "map readout" tile (cool / instrument register, so it opts OUT of the warm
-   cardGlow glaze in cardGlow.ts). A FAINT cyan cartographic grid blooms from behind the map icon and
-   fades across the card; the grid + icon brighten on hover to make it pop. Every .card carries the
-   corner-cut clip-path, which also clips the grid child to the notch (no overflow needed) — and clips
-   any OUTER box-shadow, so the "pop" glow lives on the interior icon, not the card. */
+   cardGlow glaze in cardGlow.ts). A dark topographic contour render fills the card, the FAINT cyan
+   cartographic grid blooms over it from behind the map icon, and the grid + icon brighten on hover to
+   make it pop. Every .card carries the corner-cut clip-path, which also clips the art + grid children
+   to the notch (no overflow needed) — and clips any OUTER box-shadow, so the "pop" glow lives on the
+   interior icon, not the card. */
 .bmf-app.front .fhome-map { position: relative; isolation: isolate; display: flex; align-items: center; gap: 13px; cursor: pointer; text-align: left; width: 100%; padding: 16px 17px; }
-.bmf-app.front .fhome-map > :not(.fhome-map-grid):not(.fd-glasstex) { position: relative; z-index: 1; }
+.bmf-app.front .fhome-map > :not(.fhome-map-grid):not(.fhome-map-art):not(.fd-glasstex) { position: relative; z-index: 1; }
+/* The contour key-art under the grid. A left-edge scrim keeps the title/sub copy on contrast where it
+   sits; the art lifts slightly on hover with the grid. (Photographic scrims are art literals — same
+   rgba(7,10,13) base as the other card fades.) */
+.bmf-app.front .fhome-map-art { position: absolute; inset: 0; z-index: 0; pointer-events: none; opacity: .85; transition: opacity .26s ease; }
+.bmf-app.front .fhome-map-art img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 62%; display: block; }
+.bmf-app.front .fhome-map-art::after { content: ""; position: absolute; inset: 0;
+  background: linear-gradient(90deg, rgba(7,10,13,0.72) 0%, rgba(7,10,13,0.4) 46%, rgba(7,10,13,0.12) 100%); }
+.bmf-app.front .fhome-map:hover .fhome-map-art { opacity: 1; }
 .bmf-app.front .fhome-map-grid { position: absolute; inset: 0; z-index: 0; pointer-events: none;
   background:
     repeating-linear-gradient(90deg, var(--accent-fill) 0 1px, transparent 1px 19px),
@@ -271,7 +282,7 @@ ${$("home")}`}function xe(e){e.querySelectorAll("[data-act]").forEach(t=>{t.addE
 .bmf-app.front .fhome-map-go { margin-left: auto; color: var(--accent); }
 .bmf-app.front .fhome-map-go svg { width: 18px; height: 18px; }
 
-/* BIG shop feature card — the merch poster as the art, our copy + Shop CTA bottom-left over a fade
+/* BIG shop feature card — the hoodie card background as the art, our copy + Shop CTA bottom-left over a fade
    (modelled on the play tile, warm register). A floor min-height on mobile; on desktop it runs the
    full width of the bottom row. The fades are art literals (same rgba(7,10,13) base as the
    other key-art fades in this file). */
@@ -279,7 +290,7 @@ ${$("home")}`}function xe(e){e.querySelectorAll("[data-act]").forEach(t=>{t.addE
   cursor: pointer; min-height: 280px; padding: 24px 22px; text-align: left; margin-top: 0; }
 .bmf-app.front .fhome-merch:hover { transform: translateY(-2px); }
 .bmf-app.front .fhome-merch-art { position: absolute; inset: 0; z-index: 0; }
-.bmf-app.front .fhome-merch-art img { width: 100%; height: 100%; object-fit: cover; object-position: 64% 16%; display: block; }
+.bmf-app.front .fhome-merch-art img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 30%; display: block; }
 .bmf-app.front .fhome-merch-fade { position: absolute; inset: 0; z-index: 1; background:
   linear-gradient(90deg, rgba(7,10,13,0.94) 0%, rgba(7,10,13,0.74) 32%, rgba(7,10,13,0.18) 66%, transparent 100%),
   linear-gradient(0deg, rgba(7,10,13,0.9) 0%, rgba(7,10,13,0.34) 38%, transparent 68%); }
@@ -291,7 +302,7 @@ ${$("home")}`}function xe(e){e.querySelectorAll("[data-act]").forEach(t=>{t.addE
 .bmf-app.front .fhome-merch-sub { margin-top: 9px; font-size: 14px; line-height: 1.45; color: var(--text-subtle); max-width: 34ch; text-shadow: 0 1px 8px rgba(0,0,0,0.7); }
 .bmf-app.front .fhome-merch-go { margin-top: 16px; pointer-events: none; }
 /* Hall of Fame tile — a compact warm call-out (eyebrow + headline + one line + ghost button) that
-   hands off to the tribute page at /hall-of-fame/. The page owns the full timeline; this is just
+   hands off to the tribute page at /fireline/. The page owns the full timeline; this is just
    the sharp hand-off, so the home stays the marketing surface. */
 .bmf-app.front .fhome-hof { display: flex; flex-direction: column; justify-content: center; gap: 13px; text-decoration: none; color: var(--text); padding: 18px 17px; }
 .bmf-app.front .fhome-hof:hover { transform: translateY(-2px); border-color: var(--warm-stroke); }
