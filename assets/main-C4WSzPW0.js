@@ -1,13 +1,13 @@
-const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./main-DSPL1Mwb.js","./frontShell-BMJ5seWN.js"])))=>i.map(i=>d[i]);
-import{_ as x,i as T,b as L,c as A,d as C,e as I,D as z,s as F,w as O,m as B,r as P,n as R,p as l,q as M,u as N,g as H,h as _,j,t as $,v as D,x as W,y as G,z as q,A as Y,B as U,C as V,L as K,E as X,F as h,G as Z,I as J,J as u}from"./frontShell-BMJ5seWN.js";import{m as Q}from"./blogCarousel-BMN_1FGV.js";const ee=".artcard, .fhome-hero, .fhome-play, .shopbanner, .crt, .fhome-map";function te(e){const t=Array.from(e.querySelectorAll(".card")).filter(a=>!a.matches(ee));if(!t.length)return()=>{};for(const a of t)a.classList.add("cardfx");const o=a=>{if(a.pointerType==="touch")return;const i=a.target?.closest?.(".cardfx");if(!i)return;const r=i.getBoundingClientRect();if(!r.width||!r.height)return;const s=(a.clientX-r.left)/r.width*100,n=(a.clientY-r.top)/r.height*100;i.style.setProperty("--mx",s.toFixed(1)+"%"),i.style.setProperty("--my",n.toFixed(1)+"%");const p=Math.round(Math.atan2(n-50,s-50)*180/Math.PI+90);i.style.setProperty("--rim-ang",p+"deg")};return e.addEventListener("pointermove",o,{passive:!0}),()=>e.removeEventListener("pointermove",o)}const ae="radial-gradient(130% 100% at 50% 78%, #2a120b 0%, #150a07 46%, #090605 100%)",oe=["--dx:-4px;--by:-2px;left:38%;width:5px;height:5px;animation-delay:0s;animation-duration:1.9s","--dx:5px;--by:3px;left:44%;width:3px;height:3px;animation-delay:0.3s;animation-duration:2.3s","--dx:-7px;--by:5px;left:48%;width:6px;height:6px;animation-delay:0.6s;animation-duration:1.7s","--dx:4px;--by:1px;left:52%;width:4px;height:4px;animation-delay:0.9s;animation-duration:2.05s","--dx:-5px;--by:-3px;left:56%;width:5px;height:5px;animation-delay:1.15s;animation-duration:1.8s","--dx:8px;--by:4px;left:62%;width:3px;height:3px;animation-delay:0.45s;animation-duration:2.4s","--dx:-2px;--by:0px;left:41%;width:4px;height:4px;animation-delay:1.4s;animation-duration:2.15s","--dx:6px;--by:-4px;left:59%;width:6px;height:6px;animation-delay:0.75s;animation-duration:1.6s","--dx:1px;--by:2px;left:50%;width:7px;height:7px;animation-delay:1.55s;animation-duration:1.95s","--dx:-6px;--by:6px;left:46%;width:4px;height:4px;animation-delay:1.25s;animation-duration:2.1s"],ie=`<div class="bmf-spin" aria-hidden="true">
-  ${oe.map(e=>`<span class="spark" style="${e}"></span>`).join(`
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./main-6VbHvLhR.js","./frontShell-98g2TKKh.js"])))=>i.map(i=>d[i]);
+import{_ as x,i as T,b as L,c as A,d as C,e as I,D as z,s as F,w as O,m as B,r as R,n as P,p as l,q as H,u as M,g as N,h as _,j,t as $,v as G,x as W,y as D,z as q,A as Y,B as U,C as V,L as K,E as X,F as h,G as Z,I as J,J as u}from"./frontShell-98g2TKKh.js";const Q=".artcard, .fhome-hero, .fhome-play, .shopbanner, .crt, .fhome-map";function ee(e){const t=Array.from(e.querySelectorAll(".card")).filter(a=>!a.matches(Q));if(!t.length)return()=>{};for(const a of t)a.classList.add("cardfx");const o=a=>{if(a.pointerType==="touch")return;const i=a.target?.closest?.(".cardfx");if(!i)return;const r=i.getBoundingClientRect();if(!r.width||!r.height)return;const s=(a.clientX-r.left)/r.width*100,n=(a.clientY-r.top)/r.height*100;i.style.setProperty("--mx",s.toFixed(1)+"%"),i.style.setProperty("--my",n.toFixed(1)+"%");const p=Math.round(Math.atan2(n-50,s-50)*180/Math.PI+90);i.style.setProperty("--rim-ang",p+"deg")};return e.addEventListener("pointermove",o,{passive:!0}),()=>e.removeEventListener("pointermove",o)}const te="radial-gradient(130% 100% at 50% 78%, #2a120b 0%, #150a07 46%, #090605 100%)",ae=["--dx:-4px;--by:-2px;left:38%;width:5px;height:5px;animation-delay:0s;animation-duration:1.9s","--dx:5px;--by:3px;left:44%;width:3px;height:3px;animation-delay:0.3s;animation-duration:2.3s","--dx:-7px;--by:5px;left:48%;width:6px;height:6px;animation-delay:0.6s;animation-duration:1.7s","--dx:4px;--by:1px;left:52%;width:4px;height:4px;animation-delay:0.9s;animation-duration:2.05s","--dx:-5px;--by:-3px;left:56%;width:5px;height:5px;animation-delay:1.15s;animation-duration:1.8s","--dx:8px;--by:4px;left:62%;width:3px;height:3px;animation-delay:0.45s;animation-duration:2.4s","--dx:-2px;--by:0px;left:41%;width:4px;height:4px;animation-delay:1.4s;animation-duration:2.15s","--dx:6px;--by:-4px;left:59%;width:6px;height:6px;animation-delay:0.75s;animation-duration:1.6s","--dx:1px;--by:2px;left:50%;width:7px;height:7px;animation-delay:1.55s;animation-duration:1.95s","--dx:-6px;--by:6px;left:46%;width:4px;height:4px;animation-delay:1.25s;animation-duration:2.1s"],oe=`<div class="bmf-spin" aria-hidden="true">
+  ${ae.map(e=>`<span class="spark" style="${e}"></span>`).join(`
   `)}
   <svg class="mark" viewBox="0 0 149.7 184.72">
     <path class="f1" d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/>
     <path class="f2" d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/>
     <polygon class="chev" points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/>
   </svg>
-</div>`,ne=`
+</div>`,ie=`
 .bmf-spin { position: relative; width: 96px; height: 122px; display: grid; place-items: center; }
 .bmf-spin .mark { width: 58px; fill: #ff7a2f; z-index: 1; animation: bmf-spin-glow 0.5s ease-in-out infinite alternate, bmf-spin-flicker 0.13s steps(2, end) infinite; }
 .bmf-spin .mark path, .bmf-spin .mark polygon { transform-box: fill-box; }
@@ -40,16 +40,16 @@ import{_ as x,i as T,b as L,c as A,d as C,e as I,D as z,s as F,w as O,m as B,r a
 @media (prefers-reduced-motion: reduce) {
   .bmf-spin .mark { animation: bmf-spin-glow 2.6s ease-in-out infinite alternate !important; }
   .bmf-spin .spark { display: block; animation-duration: 3.2s !important; animation-iteration-count: infinite !important; }
-}`,re={id:"bmf-splash",role:"status","aria-label":"Loading Bucket My Fire"},se=`#bmf-splash {
+}`,ne={id:"bmf-splash",role:"status","aria-label":"Loading Bucket My Fire"},re=`#bmf-splash {
   position: fixed; inset: 0; z-index: 9999; display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 20px;
-  background: ${ae};
+  background: ${te};
   color: #f4ead9; transition: opacity 0.5s ease;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased;
 }
 #bmf-splash.bmf-hide { opacity: 0; pointer-events: none; }
-${ne}`,f=new URLSearchParams(location.search),pe=["m","autostart","qa","ffa","province","daily","editor","dev","heliview","kit","tune"],le=pe.some(e=>f.has(e));le?queueMicrotask(fe):me();let g=!1;function fe(){if(g)return;g=!0,document.body.classList.add("bmf-playing");const e=document.getElementById("game");e&&(e.innerHTML=""),document.getElementById("fd-boot")?.remove(),!f.has("qa")&&!f.has("autostart")&&he(),x(()=>import("./main-DSPL1Mwb.js").then(t=>t.a7),__vite__mapDeps([0,1]),import.meta.url)}function he(){if(document.getElementById("bmf-splash"))return;if(!document.getElementById("bmf-splash-css")){const n=document.createElement("style");n.id="bmf-splash-css",n.textContent=se,document.head.appendChild(n)}const e=document.createElement("div");for(const[n,p]of Object.entries(re))e.setAttribute(n,p);e.innerHTML=ie,document.body.appendChild(e);const t=1100,o=performance.now();let a=!1,i=0;const r=()=>{a||(a=!0,i&&clearTimeout(i),e.classList.add("bmf-hide"),setTimeout(()=>e.remove(),550))},s=()=>{if(a||i)return;const n=t-(performance.now()-o);n<=0?r():i=window.setTimeout(r,n)};window.addEventListener("bmf:ready",s),setTimeout(r,12e3)}function me(){T(),L(),A(),C(),I(),Ee();const e=document.getElementById("game");if(!e)return;const t=document.createElement("div");t.className="bmf-app front",t.innerHTML=z+xe(),e.innerHTML="",e.appendChild(t),document.getElementById("fd-boot")?.remove(),F(t,13),O(t),ce(t),v(-1),ge(),ue(t),te(t),ye(),ve(t),f.has("map")&&y()}function ce(e){const t=e.querySelector("#fhome-pilot");if(!t)return;const o=B();if(!o?.name){t.classList.add("is-new"),t.innerHTML='<span class="fpb-cs">New pilot</span><span class="fpb-meta"><span class="fpb-hint">Fly to earn your rank</span></span>';return}const a=P(R());t.innerHTML=`<span class="fpb-cs"></span><span class="fpb-meta"><span class="rank" style="--rk:${a.color}"><i></i>${a.name}</span><span class="fpb-pts pts-ic mono">${l("spark")}<b>${M().toLocaleString("en-US")}</b> pts</span></span>`;const i=t.querySelector(".fpb-cs");i&&(i.textContent=o.name.toUpperCase())}function v(e){const t=document.getElementById("fhome-pilots-live");if(!t)return;const o=t.querySelector("b"),a=t.querySelector("span");e>=1?(o&&(o.textContent=e.toLocaleString("en-US")),a&&(a.textContent=e===1?"Pilot live":"Pilots live")):(o&&(o.textContent=""),a&&(a.textContent="Open Skies live"))}const de=6e3,be=4e3;async function ge(){let e;try{e=await x(()=>import("./openSkies-BkVayIv8.js"),[],import.meta.url)}catch{return}if(!e.openSkiesConfigured())return;const t=e.connectOpenSkies(N(new Date),{id:"fd-listener",name:"",heli:""},de);if(!t)return;const o=()=>v(t.remotes().length),a=window.setTimeout(o,1400),i=window.setInterval(o,be);window.addEventListener("pagehide",()=>{window.clearTimeout(a),window.clearInterval(i),t.close()},{once:!0})}function xe(){return`
-${H()}
+${ie}`,f=new URLSearchParams(location.search),se=["m","autostart","qa","ffa","province","daily","editor","dev","heliview","kit","tune"],pe=se.some(e=>f.has(e));pe?queueMicrotask(le):he();let g=!1;function le(){if(g)return;g=!0,document.body.classList.add("bmf-playing");const e=document.getElementById("game");e&&(e.innerHTML=""),document.getElementById("fd-boot")?.remove(),!f.has("qa")&&!f.has("autostart")&&fe(),x(()=>import("./main-6VbHvLhR.js").then(t=>t.a7),__vite__mapDeps([0,1]),import.meta.url)}function fe(){if(document.getElementById("bmf-splash"))return;if(!document.getElementById("bmf-splash-css")){const n=document.createElement("style");n.id="bmf-splash-css",n.textContent=re,document.head.appendChild(n)}const e=document.createElement("div");for(const[n,p]of Object.entries(ne))e.setAttribute(n,p);e.innerHTML=oe,document.body.appendChild(e);const t=1100,o=performance.now();let a=!1,i=0;const r=()=>{a||(a=!0,i&&clearTimeout(i),e.classList.add("bmf-hide"),setTimeout(()=>e.remove(),550))},s=()=>{if(a||i)return;const n=t-(performance.now()-o);n<=0?r():i=window.setTimeout(r,n)};window.addEventListener("bmf:ready",s),setTimeout(r,12e3)}function he(){T(),L(),A(),C(),I(),ke();const e=document.getElementById("game");if(!e)return;const t=document.createElement("div");t.className="bmf-app front",t.innerHTML=z+ge(),e.innerHTML="",e.appendChild(t),document.getElementById("fd-boot")?.remove(),F(t,13),O(t),me(t),v(-1),be(),xe(t),ee(t),ue(),f.has("map")&&y()}function me(e){const t=e.querySelector("#fhome-pilot");if(!t)return;const o=B();if(!o?.name){t.classList.add("is-new"),t.innerHTML='<span class="fpb-cs">New pilot</span><span class="fpb-meta"><span class="fpb-hint">Fly to earn your rank</span></span>';return}const a=R(P());t.innerHTML=`<span class="fpb-cs"></span><span class="fpb-meta"><span class="rank" style="--rk:${a.color}"><i></i>${a.name}</span><span class="fpb-pts pts-ic mono">${l("spark")}<b>${H().toLocaleString("en-US")}</b> pts</span></span>`;const i=t.querySelector(".fpb-cs");i&&(i.textContent=o.name.toUpperCase())}function v(e){const t=document.getElementById("fhome-pilots-live");if(!t)return;const o=t.querySelector("b"),a=t.querySelector("span");e>=1?(o&&(o.textContent=e.toLocaleString("en-US")),a&&(a.textContent=e===1?"Pilot live":"Pilots live")):(o&&(o.textContent=""),a&&(a.textContent="Open Skies live"))}const de=6e3,ce=4e3;async function be(){let e;try{e=await x(()=>import("./openSkies-BkVayIv8.js"),[],import.meta.url)}catch{return}if(!e.openSkiesConfigured())return;const t=e.connectOpenSkies(M(new Date),{id:"fd-listener",name:"",heli:""},de);if(!t)return;const o=()=>v(t.remotes().length),a=window.setTimeout(o,1400),i=window.setInterval(o,ce);window.addEventListener("pagehide",()=>{window.clearTimeout(a),window.clearInterval(i),t.close()},{once:!0})}function ge(){return`
+${N()}
 <div class="fhome-bg" aria-hidden="true"><img src="/images/missions/saskatchewan/ThreeTown.webp" alt="" /></div>
 ${_("home")}
 
@@ -126,25 +126,22 @@ ${_("home")}
       </div>
     </button>
 
-    <!-- Prepare — a compact secondary call-out, NOT the full checklist (that interactive card lives on
-         /prepare/). A one-line promo + a ghost button hand off to it, so the home stays the marketing
-         surface and the readiness tool has one home. -->
-    <a class="card green cut fhome-prep" href="/prepare/#checklist">
-      <div class="fhome-prep-tx">
-        <span class="fhome-prep-h">Are you fire ready?</span>
-        <span class="fhome-prep-sub">A quick wildfire-readiness checklist — six concrete actions.</span>
+    <!-- Hall of Fame — a compact call-out to the tribute page: ten documented moments from Canada's
+         wildfire history and the crews behind them. The full visual journey lives on /hall-of-fame/;
+         this is the sharp hand-off, so the home stays the marketing surface. -->
+    <a class="card warm cut fhome-hof" href="/hall-of-fame/">
+      <div class="fhome-hof-tx">
+        <span class="fhome-hof-ey">Hall of Fame</span>
+        <span class="fhome-hof-h">The unsung warriors.</span>
+        <span class="fhome-hof-sub">Ten moments that forged Canada's wildfire fight — and the crews who held the line.</span>
       </div>
-      <span class="btn ghost fhome-prep-go">Open checklist →</span>
+      <span class="btn ghost fhome-hof-go">Enter the Hall →</span>
     </a>
-    <section class="card fhome-notes">
-      <div class="sec"><span class="tag">Field Notes</span><span class="line"></span></div>
-      <div class="fd-rail" id="fd-notes-rail"></div>
-    </section>
   </div>
 
   ${j()}
 </div>
-${$("home")}`}function ue(e){e.querySelectorAll("[data-act]").forEach(t=>{t.addEventListener("click",o=>{switch(o.preventDefault(),o.stopPropagation(),t.dataset.act){case"coop":location.assign("/open-skies/");return;case"fires":return y();case"shop":return D("shop")}})})}function y(){W(q("map"),G("map"))}async function ve(e){const t=e.querySelector("#fd-notes-rail");t&&await Q(t)}async function ye(){const[e,t,o]=await Promise.all([Y().catch(()=>null),U().catch(()=>null),V().catch(()=>null)]);Se(e,t,o)}function we(e,t){return t&&t.meta.status==="live"?{n:u(t.fires,"CA").length,pub:t.meta.publishedAt}:e&&e.meta.status==="live"?{n:e.activeFires,pub:e.meta.publishedAt}:{n:-1,pub:0}}function ke(e){return!e||e.meta.status!=="live"?-1:u(e.fires,"CA").filter(t=>t.stage==="OC").length}function Se(e,t,o){const a=(S,E)=>{const b=document.getElementById(S);b&&(b.textContent=E)},i=document.getElementById("fd-fresh"),r=document.getElementById("fhome-live"),s=document.getElementById("fhome-fallback"),n=document.getElementById("fd-live"),p=!!e&&e.meta.status==="live",w=!!t&&t.meta.status==="live";if(!p&&!w){r&&(r.hidden=!0),s&&(s.hidden=!1),n&&(n.hidden=!0),i&&(i.innerHTML=`Live data unavailable · <a href="${K.summary.url}" target="_blank" rel="noopener">official sources →</a>`);return}r&&(r.hidden=!1),s&&(s.hidden=!0),n&&(n.hidden=!1);const{n:m,pub:k}=we(e,t),c=ke(t),d=o&&o.meta.status==="live"?X(o.hotspots,"CA").length:-1;a("ro-active",m>=0?h(m):"—"),a("ro-oc",c>=0?h(c):"—"),a("ro-hot",d>=0?h(d):"—"),a("ro-area",p&&e.areaBurnedHa>0?Z(e.areaBurnedHa):"—"),a("ro-prep",p&&e.prepLevel>0?`L${e.prepLevel}`:"—"),i&&(i.textContent=`${J(k)} · CIFFC + CWFIS`)}function Ee(){if(document.getElementById("fd-bento-css"))return;const e=document.createElement("style");e.id="fd-bento-css",e.textContent=`
+${$("home")}`}function xe(e){e.querySelectorAll("[data-act]").forEach(t=>{t.addEventListener("click",o=>{switch(o.preventDefault(),o.stopPropagation(),t.dataset.act){case"coop":location.assign("/open-skies/");return;case"fires":return y();case"shop":return G("shop")}})})}function y(){W(q("map"),D("map"))}async function ue(){const[e,t,o]=await Promise.all([Y().catch(()=>null),U().catch(()=>null),V().catch(()=>null)]);we(e,t,o)}function ve(e,t){return t&&t.meta.status==="live"?{n:u(t.fires,"CA").length,pub:t.meta.publishedAt}:e&&e.meta.status==="live"?{n:e.activeFires,pub:e.meta.publishedAt}:{n:-1,pub:0}}function ye(e){return!e||e.meta.status!=="live"?-1:u(e.fires,"CA").filter(t=>t.stage==="OC").length}function we(e,t,o){const a=(S,E)=>{const b=document.getElementById(S);b&&(b.textContent=E)},i=document.getElementById("fd-fresh"),r=document.getElementById("fhome-live"),s=document.getElementById("fhome-fallback"),n=document.getElementById("fd-live"),p=!!e&&e.meta.status==="live",w=!!t&&t.meta.status==="live";if(!p&&!w){r&&(r.hidden=!0),s&&(s.hidden=!1),n&&(n.hidden=!0),i&&(i.innerHTML=`Live data unavailable · <a href="${K.summary.url}" target="_blank" rel="noopener">official sources →</a>`);return}r&&(r.hidden=!1),s&&(s.hidden=!0),n&&(n.hidden=!1);const{n:m,pub:k}=ve(e,t),d=ye(t),c=o&&o.meta.status==="live"?X(o.hotspots,"CA").length:-1;a("ro-active",m>=0?h(m):"—"),a("ro-oc",d>=0?h(d):"—"),a("ro-hot",c>=0?h(c):"—"),a("ro-area",p&&e.areaBurnedHa>0?Z(e.areaBurnedHa):"—"),a("ro-prep",p&&e.prepLevel>0?`L${e.prepLevel}`:"—"),i&&(i.textContent=`${J(k)} · CIFFC + CWFIS`)}function ke(){if(document.getElementById("fd-bento-css"))return;const e=document.createElement("style");e.id="fd-bento-css",e.textContent=`
 /* Bento grid. Grid items default to min-width:auto, so a nowrap child (the ticker line) or a
    horizontal scroller (the notes rail) would force the single 1fr column wider than the phone
    viewport and overflow the page. min-width:0 lets every card shrink to the column, and the
@@ -152,25 +149,23 @@ ${$("home")}`}function ue(e){e.querySelectorAll("[data-act]").forEach(t=>{t.addE
 .bmf-app.front .fhome-grid { display: grid; gap: 12px; grid-template-columns: 1fr; }
 .bmf-app.front .fhome-grid > * { min-width: 0; }
 @media (min-width: 880px) {
-  /* STRETCHED to a balanced two-column bento (was 2fr/1fr): the data hero keeps a hair more room than
-     the play tile, the map/merch + prep/notes rows read as even halves. This is the whole "stretch the
-     layout" pass — same cards, same tokens, just spread to fill the band like the reference. */
-  /* Row 1 = hero | gameplay (kept ABOVE THE FOLD). Row 2 = map | checklist. Row 3 = the BIG shop
-     feature card | Field Notes. (Checklist + shop SWAPPED: shop drops into the large bottom-left slot.) */
-  .bmf-app.front .fhome-grid { grid-template-columns: 1.04fr 1fr; grid-template-areas: "hero play" "map prep" "merch notes"; align-items: stretch; }
+  /* A balanced two-column bento: the data hero keeps a hair more room than the play tile, the
+     map/hof row reads as even halves. Same cards, same tokens, spread to fill the band. */
+  /* Row 1 = hero | gameplay (kept ABOVE THE FOLD). Row 2 = map | Hall of Fame. Row 3 = the BIG shop
+     feature card across the full width (the poster art breathes at full bleed). */
+  .bmf-app.front .fhome-grid { grid-template-columns: 1.04fr 1fr; grid-template-areas: "hero play" "map hof" "merch merch"; align-items: stretch; }
   .bmf-app.front .fhome-hero { grid-area: hero; }
   .bmf-app.front .fhome-play { grid-area: play; }
   .bmf-app.front .fhome-map { grid-area: map; }
   .bmf-app.front .fhome-merch { grid-area: merch; }
-  .bmf-app.front .fhome-prep { grid-area: prep; }
-  .bmf-app.front .fhome-notes { grid-area: notes; }
+  .bmf-app.front .fhome-hof { grid-area: hof; }
   /* NOTE: the desktop VISUAL overrides (play aspect, hero height, headline size, one-row stats) live in a
      media block at the END of this stylesheet — they must come AFTER the base .fhome-play/.fhome-hero
      rules below or those (later, equal-specificity) would clobber them. */
 }
 
-/* The ThreeTown aerial key-art fills the WHOLE front door as a fixed cinematic background. Home ONLY — Campaign/Prepare
-   don't emit .fhome-bg, so the shared frontShell .scene is untouched. It sits above .scene (z-0, painted
+/* The ThreeTown aerial key-art fills the WHOLE front door as a fixed cinematic background. Home ONLY — the
+   other front pages don't emit .fhome-bg, so the shared frontShell .scene is untouched. It sits above .scene (z-0, painted
    later) and under .embers (z-1) + the content (z-2), so the embers drift over the photo and the bento
    floats above it. The scrim (::after) buys the BARE hero data its contrast now that it sits on the page
    instead of inside a card: it darkens the lower-left where the live figure + cards sit, leaving the
@@ -277,8 +272,8 @@ ${$("home")}`}function ue(e){e.querySelectorAll("[data-act]").forEach(t=>{t.addE
 .bmf-app.front .fhome-map-go svg { width: 18px; height: 18px; }
 
 /* BIG shop feature card — the merch poster as the art, our copy + Shop CTA bottom-left over a fade
-   (modelled on the play tile, warm register). A floor min-height on mobile; on desktop it stretches to
-   the bottom row beside the Field Notes. The fades are art literals (same rgba(7,10,13) base as the
+   (modelled on the play tile, warm register). A floor min-height on mobile; on desktop it runs the
+   full width of the bottom row. The fades are art literals (same rgba(7,10,13) base as the
    other key-art fades in this file). */
 .bmf-app.front .fhome-merch { position: relative; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end;
   cursor: pointer; min-height: 280px; padding: 24px 22px; text-align: left; margin-top: 0; }
@@ -295,22 +290,16 @@ ${$("home")}`}function ue(e){e.querySelectorAll("[data-act]").forEach(t=>{t.addE
 .bmf-app.front .fhome-merch-h { margin-top: 9px; font-size: clamp(26px, 3vw, 40px); text-shadow: 0 2px 14px rgba(0,0,0,0.6); }
 .bmf-app.front .fhome-merch-sub { margin-top: 9px; font-size: 14px; line-height: 1.45; color: var(--text-subtle); max-width: 34ch; text-shadow: 0 1px 8px rgba(0,0,0,0.7); }
 .bmf-app.front .fhome-merch-go { margin-top: 16px; pointer-events: none; }
-/* Prep tile — a compact secondary call-out (one-line promo + ghost button) that links to the full
-   readiness checklist on /prepare/. The interactive card is NOT duplicated here; this is just the
-   sharp hand-off, so the home stays marketing and Prepare owns the tool. */
-.bmf-app.front .fhome-prep { display: flex; flex-direction: column; justify-content: center; gap: 13px; text-decoration: none; color: var(--text); padding: 18px 17px; }
-.bmf-app.front .fhome-prep:hover { transform: translateY(-2px); border-color: var(--warm-stroke); }
-.bmf-app.front .fhome-prep-tx { display: flex; flex-direction: column; gap: 5px; }
-.bmf-app.front .fhome-prep-h { font-size: var(--fs-lg); font-weight: var(--fw-bold); color: #fff; line-height: 1.12; }
-.bmf-app.front .fhome-prep-sub { font-size: 13px; line-height: 1.45; color: var(--text-subtle); max-width: 40ch; }
-.bmf-app.front .fhome-prep-go { align-self: flex-start; pointer-events: none; }
-.bmf-app.front .fhome-notes { display: flex; flex-direction: column; padding: 14px 17px; }
-.bmf-app.front .fhome-notes .fd-rail { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; padding-bottom: 4px; scrollbar-width: none; }
-.bmf-app.front .fhome-notes .fd-rail::-webkit-scrollbar { display: none; }
-.bmf-app.front .fhome-notes .fd-mcard { scroll-snap-align: start; flex: 0 0 78%; max-width: 320px; }
-/* Three across the (now half-width) notes column — matching the reference's 3-up Field Notes row.
-   Beyond three, the rail still scroll-snaps (harmless). */
-@media (min-width: 760px) { .bmf-app.front .fhome-notes .fd-mcard { flex: 0 0 31%; max-width: none; } }
+/* Hall of Fame tile — a compact warm call-out (eyebrow + headline + one line + ghost button) that
+   hands off to the tribute page at /hall-of-fame/. The page owns the full timeline; this is just
+   the sharp hand-off, so the home stays the marketing surface. */
+.bmf-app.front .fhome-hof { display: flex; flex-direction: column; justify-content: center; gap: 13px; text-decoration: none; color: var(--text); padding: 18px 17px; }
+.bmf-app.front .fhome-hof:hover { transform: translateY(-2px); border-color: var(--warm-stroke); }
+.bmf-app.front .fhome-hof-tx { display: flex; flex-direction: column; gap: 5px; }
+.bmf-app.front .fhome-hof-ey { font-family: var(--mono); font-size: 10.5px; letter-spacing: .26em; text-transform: uppercase; color: var(--menu); font-weight: var(--fw-bold); }
+.bmf-app.front .fhome-hof-h { font-size: var(--fs-lg); font-weight: var(--fw-bold); color: #fff; line-height: 1.12; }
+.bmf-app.front .fhome-hof-sub { font-size: 13px; line-height: 1.45; color: var(--text-subtle); max-width: 44ch; }
+.bmf-app.front .fhome-hof-go { align-self: flex-start; pointer-events: none; }
 
 /* Home hero (mobile + desktop): more breathing room above it, and the live data pulled DOWN so it sits close to the
    next card (the play tile) instead of floating high over the art with empty space below. */
@@ -329,4 +318,4 @@ ${$("home")}`}function ue(e){e.querySelectorAll("[data-act]").forEach(t=>{t.addE
   /* The 4 supporting stats spread into ONE row across the wider hero (they still wrap 2×2 on a phone). */
   .bmf-app.front .fhome-hero .fhome-stat { min-width: 0; }
 }
-`,document.head.appendChild(e)}export{ae as L,ie as S,te as a,ne as b};
+`,document.head.appendChild(e)}export{te as L,oe as S,ee as a,ie as b};

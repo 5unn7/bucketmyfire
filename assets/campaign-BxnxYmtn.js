@@ -1,4 +1,4 @@
-import{a as h,i as u,b as y,c as v,d as g,e as b,f as k,D as w,s as S,w as x,g as E,h as M,j,t as z,M as d,o as C,H as F,k as L,l as H}from"./frontShell-BMJ5seWN.js";import{i as $,p as n,w as p}from"./flyPicker-D3KFCGga.js";h();u();y();v();g();b();$();P();let r=k(d).id;const c=document.getElementById("game");if(c){const e=document.createElement("div");e.className="bmf-app front",e.innerHTML=w+I(),c.innerHTML="",c.appendChild(e),document.getElementById("fd-boot")?.remove(),S(e,13),x(e),l(e)}function I(){return`
+import{a as h,i as u,b as y,c as v,d as g,e as b,f as k,D as w,s as S,w as x,g as E,h as M,j,t as z,M as d,o as C,H as F,k as L,l as H}from"./frontShell-98g2TKKh.js";import{i as $,p as n,w as p}from"./flyPicker-oZv8ZpAG.js";h();u();y();v();g();b();$();P();let r=k(d).id;const c=document.getElementById("game");if(c){const e=document.createElement("div");e.className="bmf-app front",e.innerHTML=w+I(),c.innerHTML="",c.appendChild(e),document.getElementById("fd-boot")?.remove(),S(e,13),x(e),l(e)}function I(){return`
 ${E()}
 ${M("campaign")}
 <div class="pad fhome">
