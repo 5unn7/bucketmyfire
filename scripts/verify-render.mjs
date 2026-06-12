@@ -79,18 +79,19 @@ const ROUTES = [
     },
   },
   {
-    // The live-fire tracker's DEFAULT view is the procedural Three.js globe (FireGlobe) — its own family
-    // of GLSL (earth/atmosphere/forecast-drape/marker-glow). It's a LAZY chunk built only when the map
-    // opens, so the game routes never compile it; this route does (FireGlobe's ctor renderer.compile()s
-    // them up front). Catches a broken globe shader that tsc/vite build sail past. Live tile/data fetches
-    // are allowlisted (headless BENIGN_RE) so a CI network sandbox can't false-fail it.
-    name: 'live-fire globe (?map)',
+    // The live-fire tracker is the flat Leaflet map (FireMap) — a LAZY chunk built only when the map
+    // opens (the game routes never pull it). No GLSL here (the 3D globe was retired), so this route is a
+    // boot/render smoke: the Leaflet container must mount cleanly. Live tile/data fetches are allowlisted
+    // (headless BENIGN_RE) so a CI network sandbox (no CARTO/CWFIS reachable) can't false-fail it.
+    name: 'live-fire map (?map)',
     url: `${BASE}/?map`,
-    ready: () => !!document.querySelector('[data-lf-map] canvas'),
-    settle: 2500, // ctor compile + a few breath frames; any late program link surfaces in the console
+    // L.map(container) adds `leaflet-container` to the SAME element (the [data-lf-map] slot), not a child —
+    // so this is a compound selector, not a descendant one.
+    ready: () => !!document.querySelector('[data-lf-map].leaflet-container'),
+    settle: 2000, // let Leaflet init + the first data paint settle; any boot error surfaces in the console
     check: async (page) => {
-      const ok = await page.evaluate(() => !!document.querySelector('[data-lf-map] canvas'));
-      return ok ? [] : ['live-fire map rendered no canvas (globe failed to boot)'];
+      const ok = await page.evaluate(() => !!document.querySelector('[data-lf-map].leaflet-container'));
+      return ok ? [] : ['live-fire map rendered no Leaflet container (map failed to boot)'];
     },
   },
   {

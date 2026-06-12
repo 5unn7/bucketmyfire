@@ -594,9 +594,9 @@ function reportedDetailHtml(f: ReportedFire): string {
   return `<div class="fsheet-head">
       <div class="grow" style="min-width:0;">
         <div class="fsheet-ttl">${title}</div>
+        <div class="fsheet-stage"><span class="${stageClass(f.stage)}">${esc(stageLabel(f.stage))}</span></div>
         <div class="s">${esc(LIVEFIRE_COPY.fireSize(f.sizeHa))}</div>
       </div>
-      <span class="${stageClass(f.stage)}">${esc(stageLabel(f.stage))}</span>
       <button class="iconbtn" data-lf-close aria-label="Close detail">${ic('close')}</button>
     </div>
     ${chips}
@@ -856,10 +856,10 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
   const smokeMeta: FeedMeta = { status: isLiveFireEnabled() ? 'live' : 'disabled', fromCache: false, publishedAt: 0, fetchedAt: 0 };
   const smokeFrames = smokeForecastFrames(Date.now(), LIVEFIRE.smokeForecastHours);
   let smokeIdx = 0;
-  const FWI_FC_DAYS = 7; // a week of continuous model fire-weather forecast (well within the NAEFS range)
-  const FWI_FRAME_MS = 1200; // day-step playback pace (calmer than the hourly smoke step)
-  const fwiFrames = Array.from({ length: FWI_FC_DAYS }, (_, i) => new Date(Date.now() + (i + 1) * 86_400_000).toISOString().slice(0, 10));
+  // A week of continuous model fire-weather forecast (today+1 … +N, UTC days); span + pace are config tokens.
+  const fwiFrames = Array.from({ length: LIVEFIRE.fwiForecastDays }, (_, i) => new Date(Date.now() + (i + 1) * 86_400_000).toISOString().slice(0, 10));
   let fwiIdx = 0;
+  let fwiPreloaded = false; // warm all day-images once, the first time FWI takes the scrubber (Play = instant)
   let forecastMode: 'none' | 'smoke' | 'fwi' = 'none';
   let forecastPlaying = false;
   let region: RegionFilter = getRegionPref(); // country + optional Canadian province; defaults to Canada
@@ -957,6 +957,7 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
       </div>`;
   };
   const showLedger = (): void => {
+    sheetEl.classList.remove('bottom'); // the Sources ledger is a right-drawer sheet (reached from Layers)
     sheetEl.innerHTML = ledgerHtml();
     sheetEl.hidden = false;
     sheetEl.scrollTop = 0;
@@ -1001,7 +1002,7 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
     forecastPlaying = true;
     playBtn.innerHTML = ic('pause');
     playBtn.setAttribute('aria-label', 'Pause forecast');
-    const stepMs = forecastMode === 'fwi' ? FWI_FRAME_MS : LIVEFIRE.smokeFrameMs;
+    const stepMs = forecastMode === 'fwi' ? LIVEFIRE.fwiFrameMs : LIVEFIRE.smokeFrameMs;
     smokeTimer = window.setInterval(() => {
       if (closed) return stopForecast();
       fcSetIdx((fcIdx() + 1) % fcFrames().length);
@@ -1013,6 +1014,8 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
     stopForecast();
     forecastMode = mode;
     if (mode === 'none') { scrubEl.hidden = true; return; }
+    // FWI just took the scrubber → warm all day-frames once so the morph + Play never stall on a per-day fetch.
+    if (mode === 'fwi' && !fwiPreloaded) { fwiPreloaded = true; map?.preloadFwi?.(fwiFrames); }
     const fs = fcFrames();
     rangeEl.max = String(Math.max(0, fs.length - 1));
     railAEl.textContent = mode === 'fwi' ? '+1 d' : 'Now';
@@ -1093,6 +1096,7 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
   // layer row already carries its own swatch + label + hint, so the toggles ARE the legend — no separate
   // legend block. The footer link drops into the source ledger (the honest-window provenance, kept reachable).
   const showLayers = (): void => {
+    sheetEl.classList.remove('bottom'); // Layers stays the right drawer (only the fire detail opens bottom)
     sheetEl.innerHTML = layersHtml();
     sheetEl.hidden = false;
     sheetEl.scrollTop = 0;
@@ -1219,10 +1223,9 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
     applyForecastFrame();
   });
 
-  // Build the map view once the overlay is painted + sized; both views are lazy chunks (load on open
-  // only). The DEFAULT is the 3D globe (the brand view); `?flat=1` opts into the Leaflet slippy map,
-  // and a globe that can't construct (no WebGL / blocked context) falls back to Leaflet rather than
-  // dying. If the overlay was dismissed before a chunk resolved, bail — never operate a detached map.
+  // Build the map view once the overlay is painted + sized. The tracker is the flat Leaflet slippy map
+  // (a lazy chunk, loaded only when the map opens) — the 3D globe was retired (nice look, but more
+  // complex + cluttered than productive). If the overlay was dismissed before the chunk resolved, bail.
   requestAnimationFrame(() => {
     if (closed) return;
     const handlers = {
@@ -1235,10 +1238,8 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
       // detail; a Layers/Sources sheet has no selection behind it, so the view never fires this then).
       onDeselect: () => { if (!sheetEl.querySelector('[data-lf-layer]') && !sheetEl.querySelector('[data-lf-sources]')) sheetEl.hidden = true; },
     };
-    const buildFlat = (): Promise<LiveMapView> => import('../../livefire/FireMap').then((m) => new m.FireMap(mapEl, handlers));
-    const buildGlobe = (): Promise<LiveMapView> => import('../../livefire/FireGlobe').then((m) => new m.FireGlobe(mapEl, handlers));
-    const wantFlat = new URLSearchParams(location.search).has('flat');
-    (wantFlat ? buildFlat() : buildGlobe().catch(buildFlat))
+    import('../../livefire/FireMap')
+      .then((m) => new m.FireMap(mapEl, handlers) as LiveMapView)
       .then((view) => {
         if (closed) {
           view.dispose(); // resolved after dismissal — tear straight back down

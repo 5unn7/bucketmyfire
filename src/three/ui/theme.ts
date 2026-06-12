@@ -224,24 +224,6 @@ export const BOARD = {
   team: ['#ff6a2c', '#ffc24a', '#ff8f5c', '#ffd66b', '#63d68a', '#56c4ee', '#74d0bf', '#9a8cff', '#ff7aa8', '#f4a13b'],
 };
 
-// --- Live-fire GLOBE ramp (FireGlobe.ts + globe/basemap.ts) ---------------------------------------
-// The 3D tracker globe's earth palette — the COOL instrument register (the globe is the instrument;
-// the fire DATA on it is the warm register, drawn with UI.warn/caution/ok/ember like the flat map).
-// Consumed TS-side only (canvas paint + GLSL uniforms), like BOARD — not emitted as CSS vars.
-export const GLOBE = {
-  ocean: '#070d14', // deep ink-navy ocean — the recessed instrument well the continents sit in
-  oceanHi: '#0c1520', // subtle centre-lift for the ocean's radial sheen (kept barely-there)
-  land: '#1a2733', // landmass fill — lifted cool slate, clearly figure against the ocean ground
-  landHi: '#223240', // faint top-of-globe land lift (the painter's vertical sheen on land)
-  coast: 'rgba(158,205,224,0.34)', // coastline vector stroke — crisp at any zoom (drawn as 3D lines)
-  border: 'rgba(158,205,224,0.14)', // international boundaries — context, quieter than coasts
-  province: 'rgba(158,205,224,0.50)', // Canadian province lines — emphasized (where the data lives) but in the
-  // cool NEUTRAL family, NOT the cyan accent: the lines aren't interactive, and cyan = actionable only.
-  graticule: 'rgba(158,205,224,0.20)', // 15° lat/lon grid, shader-drawn (multiplied well below coast)
-  atmosphere: UI.accent, // rim-glow + limb fresnel — the one live colour, referenced (never hand-mirrored)
-  night: '#04070b', // the globe's dark-side vignette floor (never pure black — keeps the sphere round)
-};
-
 // Score-grade → colour, keyed by `ScoreGrade` ('S' | 'A' | 'B' | 'C' | 'D'). One map so the debrief
 // grade letter, a badge, and any grade chip all paint the same colour per rank instead of each module
 // re-deciding "what colour is an A". Typed loosely (Record<string,string>) to avoid a UI→missions

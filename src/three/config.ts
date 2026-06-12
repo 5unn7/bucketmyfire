@@ -1871,9 +1871,8 @@ export const PROVINCE = {
   onboardMaxWaitSec: 35, // emit the NEXT teaching call by this long after the last even if unanswered (no soft-lock)
 } as const;
 
-// --- Live wildfire tracker (the home-screen "honest window" — real CWFIS/CIFFC/ECCC data on the 3D
-//     globe, with the flat Leaflet map behind ?flat=1). Look/feel knobs only; the data sources +
-//     freshness live in src/three/livefire/. ---------------------------------------------------------
+// --- Live wildfire tracker (the home-screen "honest window" — real CWFIS/CIFFC/ECCC data on the flat
+//     Leaflet map). Look/feel knobs only; the data sources + freshness live in src/three/livefire/. ----
 export const LIVEFIRE = {
   // Fire-Weather-Index WMS raster opacity. The danger field is a full-bleed orange wash, so keep it LOW
   // enough that the basemap (towns, lakes, the fire dots) stays legible underneath. Was 0.42 (washed the
@@ -1893,38 +1892,14 @@ export const LIVEFIRE = {
   // this SHORT — a long fade shows BOTH adjacent frames at once (a ghosty double-plume); 140ms reads as a
   // clean dissolve between fully-loaded frames.
   smokeFadeMs: 140,
-  // ── The 3D globe view (FireGlobe — the tracker's DEFAULT; `?flat=1` keeps the Leaflet map) ──────
-  globe: {
-    fov: 38, // long-lens perspective — a calmer sphere, less fisheye distortion at the limb
-    minDist: 1.0025, // closest camera (earth radii): ~16 km up, town scale — raster tiles carry the
-    // real geography down here (the procedural earth is the far view; see tileStartDist below)
-    maxDist: 3.1, // farthest — the whole earth in frame with a little margin
-    tileStartDist: 1.75, // raster basemap tiles (CARTO dark — the flat map's tiles) start fading in here…
-    tileFullDist: 1.5, // …and are fully opaque by here; the procedural coast/border lines fade out in lockstep
-    tileMaxZ: 17, // deepest slippy zoom level fetched (street scale; CARTO serves to 20)
-    tileLift: 1.5, // brightness lift on the CARTO dark tiles — raw they read murky against the
-    // instrument globe; lifted (+ a slight cool cast in the tile shader) they sit in the ink world
-    // while lakes/roads/labels stay readable
-    idleSpinDegSec: 1.2, // attract drift while loading, until the first touch OR the first data framing
-    // (fitTo) lands — a framed view must HOLD its frame. Suppressed under prefers-reduced-motion.
-    dotPx: 15, // reported-fire BEAD diameter (px) — a small, crisp, always-visible mark + tap target
-    bloomK: 12, // "ground light" world-size factor: each fire's additive glow is sized in WORLD space
-    // (÷ view depth), so it SHRINKS when you zoom out (a continent of fires stops blobbing) and SPREADS
-    // when you zoom in — light pooling on the ground, the way the game's fire point-lights read.
-    bloomMinPx: 5, // floor (px) so a far-zoom ground light never shrinks away to nothing
-    bloomMaxPx: 100, // ceil (px) so a close-zoom ground light can't swallow the screen
-    pulsePeriodS: 0.42, // out-of-control "breath" period (s) — a slow live-coal swell
-    pulseSwell: 0.50, // how much an out-of-control ground light swells (size) + brightens at the breath peak
-    alertPx: 22, // alert pin diameter (px) — the boldest mark on the globe
-    outPx: 7, // extinguished-fire dot diameter (px) — small, dim, subordinate
-    rasterW: 2048, // forecast-drape GetMap width (px); height follows the bbox aspect. 1024 read ~10 km/px
-    // (mushy FWI class edges at province zoom vs the flat map's tiles); 2048 halves that and stays one
-    // PNG within GeoServer's default GetMap cap.
-    fwiOpacity: 0.85, // global dimmer ON TOP of the FWI SLD's own per-stop opacity (calm→hot 0.16→0.84,
-    // see FWI_WMS_SLD) — so the danger ramp reads roughly as authored; its OWN token, never a hidden multiplier
-    inertiaDamp: 3.2, // drag-release spin decay (1/s) — higher stops sooner
-    fitLerp: 4.5, // framing-animation approach rate (1/s) — higher snaps harder
-  },
+  // Fire-Weather-Index forecast MORPH (the day-scrubber on the flat map crossfades day-to-day instead of
+  // strobing; see livefire/FireMap FwiForecastLayer + client fwiFrameUrl). Each day is one GetMap PNG/source.
+  fwiForecastDays: 7, // span of the daily FWI scrubber/morph (a week of continuous model forecast)
+  fwiFrameMs: 1200, // playback dwell per day when Play is pressed (calmer than the hourly smoke step)
+  fwiFadeMs: 1150, // crossfade/morph dissolve (ms) — ALMOST the full dwell so Play is a CONTINUOUS (video-like)
+  // linear morph with no static hold between days, not a settle-then-dissolve step (a touch under fwiFrameMs so
+  // each fade still completes before the next starts). The daily FWI field dissolves in place (no plume drift).
+  fwiProxyWidth: 2048, // GetMap PNG width handed to fwiFrameUrl (height follows the bbox aspect)
 } as const;
 
 // --- Live tuning registry (dev tooling) -------------------------------------

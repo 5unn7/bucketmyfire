@@ -731,3 +731,17 @@ grant select on public.provincial_fire_snapshots to anon;
 --       headers := jsonb_build_object('Content-Type','application/json'),
 --       body := '{}'::jsonb, timeout_milliseconds := 60000);
 --   $cron$);
+
+-- ===========================================================================
+-- fwi-frame — read-only PUBLIC caching proxy for the FWI forecast frames.
+-- ===========================================================================
+-- NO table, NO cron, NO Storage, NO secret. It just proxies PUBLIC government FWI imagery (CWFIS Canada +
+-- GWIS global) one GetMap PNG per day per source, with long cache headers, so the flat-map day-scrubber's
+-- morph + preload are reliable + CORS-clean and one fetch warms the cache for everyone. The client
+-- (src/three/livefire/client.ts fwiFrameUrl) routes here only when FWI_PROXY_DEPLOYED is flipped true; until
+-- then (and whenever Supabase is unconfigured) it hits CWFIS/GWIS directly, so the map works regardless.
+--
+-- Deploy (public, no JWT — it returns only public imagery and writes nothing):
+--   supabase functions deploy fwi-frame --no-verify-jwt --project-ref <PROJECT_REF>
+-- Then flip FWI_PROXY_DEPLOYED = true in src/three/livefire/client.ts and rebuild.
+-- Smoke:  curl 'https://<PROJECT_REF>.supabase.co/functions/v1/fwi-frame?src=cwfis&day=<yyyy-mm-dd>&w=512' -o f.png

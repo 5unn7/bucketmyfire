@@ -13,15 +13,15 @@
  * `preferCanvas` keeps a thousand-plus markers smooth on mobile. Tiles degrade gracefully — if CARTO
  * is unreachable the dark background + dots still read.
  *
- * No longer the default view: the tracker opens the 3D `FireGlobe` (same `LiveMapView` contract in
- * `view.ts`); this flat map stays reachable via `?flat=1` and as the no-WebGL fallback.
+ * THE tracker view: the tracker opens this flat map directly (the `LiveMapView` contract in `view.ts`).
+ * The 3D `FireGlobe` it once shared the contract with was retired (more complex + cluttered than useful).
  */
 import * as L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { UI } from '../ui/theme';
 import { LIVEFIRE } from '../config';
 import { radiusMetersForHa } from './normalize';
-import { FWI_WMS_URL, FWI_WMS_LAYER, FWI_WMS_SLD, GWIS_FWI_WMS_URL, GWIS_FWI_LAYER, GWIS_FWI_SLD, fwiForecastTime, GEOMET_WMS_URL, SMOKE_WMS_LAYER, SMOKE_WMS_SLD, isLiveFireEnabled } from './client';
+import { fwiFrameUrl, FWI_BOX, FWI_GLOBE_BOX, fwiForecastTime, GEOMET_WMS_URL, SMOKE_WMS_LAYER, SMOKE_WMS_SLD, isLiveFireEnabled } from './client';
 import type { Hotspot, FireSeverity, ReportedFire, BurnPolygon } from './types';
 import { STAGE_COLOR, SEV_COLOR } from './view';
 import type { FireLayer, FireMapHandlers, LiveMapView } from './view';
@@ -169,14 +169,130 @@ class SmokeForecastLayer {
   }
 }
 
+/**
+ * The Fire-Weather-Index forecast, MORPHED (not strobed) — the FWI counterpart of SmokeForecastLayer.
+ *
+ * The naive single-tiled-WMS-with-TIME approach blanks the danger field every day-step (Leaflet drops the
+ * old tiles the instant the param changes). This double-buffers it with single-image overlays: two panes
+ * (`fwiA`/`fwiB`), each holding a GLOBAL GWIS overlay (drawn under) + a CANADA CWFIS overlay (on top).
+ * `showFrame()` points the BACK pane's two images at the next day, waits for BOTH to settle, then crossfades
+ * the panes (back up, front down). FWI rises/falls IN PLACE (it doesn't translate like a smoke plume), so a
+ * temporal cross-dissolve is the honest morph — no warping. A request token makes a fast scrub always land on
+ * the latest day; each day is ONE preloadable GetMap PNG per source (client `fwiFrameUrl`).
+ */
+class FwiForecastLayer {
+  private aG: L.ImageOverlay; private aC: L.ImageOverlay; // buffer A: global wash (under) + Canada grid (over)
+  private bG: L.ImageOverlay; private bC: L.ImageOverlay; // buffer B
+  private frontIsA = false; // which pane is currently lit; flips on each committed crossfade
+  private frame: string | null = null; // the day currently shown (front pane), null when hidden/blank
+  private pending: string; // latest requested day (re-applied on show; wins a fast scrub)
+  private shown = false;
+  private token = 0; // bumped per request — a stale buffer load that fires late checks this and bails
+  private onState?: (loading: boolean) => void;
+
+  constructor(private map: L.Map, opacity: number, fadeMs: number, private width: number) {
+    this.pending = fwiForecastTime(); // a sensible default day so toggling FWI on is never blank
+    const TRANSPARENT = 'data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw=='; // 1×1
+    const caBounds = L.latLngBounds([FWI_BOX.latMin, FWI_BOX.lonMin], [FWI_BOX.latMax, FWI_BOX.lonMax]);
+    const gBounds = L.latLngBounds([FWI_GLOBE_BOX.latMin, FWI_GLOBE_BOX.lonMin], [FWI_GLOBE_BOX.latMax, FWI_GLOBE_BOX.lonMax]);
+    const mkPane = (name: string): void => {
+      this.map.createPane(name);
+      const pane = this.map.getPane(name)!;
+      pane.style.zIndex = '210'; // under smoke (250) + the canvas dots (overlayPane 400), over the basemap (200)
+      pane.style.opacity = '0'; // start dark; the crossfade drives this 0↔1
+      // LINEAR (constant-rate), not ease: an ease curve slows at both ends, so chained day-steps read as
+      // discrete "settle → morph → settle" pulses; a linear dissolve filling ~the whole dwell chains into one
+      // continuous, video-like flow when Play runs (fwiFadeMs ≈ fwiFrameMs leaves no static hold between days).
+      pane.style.transition = `opacity ${fadeMs}ms linear`;
+      pane.style.pointerEvents = 'none'; // never swallow a tap meant for a fire dot above
+    };
+    mkPane('fwiA'); mkPane('fwiB');
+    // Each overlay starts on a 1×1 transparent placeholder (no broken-image flash); showFrame swaps the real
+    // URL in. Add GLOBAL first so the finer CANADA grid sits ON TOP within each pane (the old 210<220 z-order).
+    const mk = (pane: string, bounds: L.LatLngBounds): L.ImageOverlay =>
+      L.imageOverlay(TRANSPARENT, bounds, { opacity, pane, interactive: false } as L.ImageOverlayOptions);
+    this.aG = mk('fwiA', gBounds); this.aC = mk('fwiA', caBounds);
+    this.bG = mk('fwiB', gBounds); this.bC = mk('fwiB', caBounds);
+  }
+
+  /** Wire a loading callback (true while a day's images are in flight) so the scrubber can show a buffering hint. */
+  setOnState(cb: (loading: boolean) => void): void {
+    this.onState = cb;
+  }
+
+  private pair(front: boolean): [L.ImageOverlay, L.ImageOverlay] {
+    return (front ? this.frontIsA : !this.frontIsA) ? [this.aG, this.aC] : [this.bG, this.bC];
+  }
+  private pane(front: boolean): HTMLElement {
+    return this.map.getPane((front ? this.frontIsA : !this.frontIsA) ? 'fwiA' : 'fwiB')!;
+  }
+
+  /** Show/hide the whole forecast layer. Both buffers join/leave together; the pending day is (re)applied on
+   *  show so it's never blank when revealed. */
+  setVisible(on: boolean): void {
+    if (on === this.shown) {
+      if (on) this.showFrame(this.pending); // idempotent re-show keeps the current day
+      return;
+    }
+    this.shown = on;
+    const all = [this.aG, this.aC, this.bG, this.bC];
+    if (on) {
+      for (const o of all) o.addTo(this.map);
+      this.showFrame(this.pending);
+    } else {
+      for (const o of all) this.map.removeLayer(o);
+      this.pane(true).style.opacity = '0';
+      this.pane(false).style.opacity = '0';
+      this.frame = null;
+      this.onState?.(false);
+    }
+  }
+
+  /** Point the layer at one forecast DAY (yyyy-mm-dd UTC); crossfades to it once BOTH source images settle.
+   *  When hidden it's just remembered (applied on the next show). */
+  showFrame(day: string): void {
+    this.pending = day;
+    if (!this.shown || day === this.frame) return;
+    const [bg, bc] = this.pair(false);
+    const backPane = this.pane(false);
+    const myToken = ++this.token;
+    this.onState?.(true);
+    let settled = 0;
+    const done = (): void => {
+      if (myToken !== this.token || !this.shown) return; // a newer day superseded this one — abandon it
+      if (++settled < 2) return; // wait for BOTH overlays (Canada grid + global wash)
+      backPane.style.opacity = '1'; // crossfade the new day up…
+      this.pane(true).style.opacity = '0'; // …and the old day out (transition rides each pane)
+      this.frontIsA = !this.frontIsA; // the back pane is now the front
+      this.frame = day;
+      this.onState?.(false);
+    };
+    // Count both LOAD and ERROR as "settled": a GWIS gap/outage (a future/empty day, a dropped request) must
+    // still let the Canada grid morph — the errored overlay just keeps/clears its image. Never throws (honest
+    // degrade, no loop-death). `off()` first clears any stale handlers from a superseded scrub step.
+    bg.off('load').off('error'); bc.off('load').off('error');
+    bg.once('load', done); bg.once('error', done);
+    bc.once('load', done); bc.once('error', done);
+    bg.setUrl(fwiFrameUrl('gwis', day, this.width));
+    bc.setUrl(fwiFrameUrl('cwfis', day, this.width));
+  }
+
+  /** Warm every day's images (both sources) into the HTTP cache so pressing Play never stalls. */
+  preload(days: string[]): void {
+    for (const day of days) {
+      new Image().src = fwiFrameUrl('gwis', day, this.width);
+      new Image().src = fwiFrameUrl('cwfis', day, this.width);
+    }
+  }
+}
+
 export class FireMap implements LiveMapView {
   private map: L.Map;
   private hotspotLayer: L.LayerGroup;
   private reportedLayer: L.LayerGroup;
   private outLayer: L.LayerGroup;
   private perimLayer: L.LayerGroup;
-  private fwiLayer: L.TileLayer.WMS;
-  private fwiGlobalLayer: L.TileLayer.WMS; // GWIS worldwide FWI — beneath the CWFIS Canada raster
+  private fwi: FwiForecastLayer; // double-buffered FWI day-morph (Canada CWFIS + global GWIS), crossfaded
   private smoke: SmokeForecastLayer;
   private selected: L.CircleMarker | null = null;
   private selectedBase: { weight: number; color: string } | null = null; // the selected dot's pre-ring style
@@ -198,35 +314,12 @@ export class FireMap implements LiveMapView {
     this.map.setView([58, -100], 4); // rough Canada centre; fitTo() refits to the live data
     L.tileLayer(CARTO_DARK, { subdomains: 'abcd', maxZoom: 19 }).addTo(this.map);
 
-    // The Fire Weather Index raster (WMS tiles → tilePane, so it renders UNDER the canvas dots). TIME = a
-    // near-term FORECAST day so the layer is the CONTINUOUS model grid (full coverage), not the patchy
-    // station-interpolated analysis. (See fwiForecastTime; honestly labeled a forecast in the UI.)
-    this.fwiLayer = L.tileLayer.wms(FWI_WMS_URL, {
-      layers: FWI_WMS_LAYER,
-      styles: '', // empty — the brand SLD below supplies the warm danger ramp (not the default classed blue→red)
-      sld_body: FWI_WMS_SLD, // same continuous ramp the globe uses → 24-bit output (no 4-bit dither), on-brand colours
-      format: 'image/png',
-      transparent: true,
-      opacity: LIVEFIRE.fwiOpacity, // low tint, not a paint — keep the map legible underneath (config.ts)
-      time: fwiForecastTime(),
-      crossOrigin: true,
-      zIndex: 220, // ABOVE the global wash → CWFIS's finer national grid wins over Canada
-    } as L.WMSOptions);
-
-    // GWIS GLOBAL Fire Weather Index (EC JRC) — the SAME danger field worldwide. Drawn with a LOWER
-    // zIndex so the higher-resolution CWFIS raster above wins where they overlap; toggled together with
-    // `fwi`. Keyless + CORS-`*`; a future/empty day yields blank tiles that degrade silently.
-    this.fwiGlobalLayer = L.tileLayer.wms(GWIS_FWI_WMS_URL, {
-      layers: GWIS_FWI_LAYER,
-      styles: '',
-      sld_body: GWIS_FWI_SLD,
-      format: 'image/png',
-      transparent: true,
-      opacity: LIVEFIRE.fwiOpacity,
-      time: fwiForecastTime(),
-      crossOrigin: true,
-      zIndex: 210,
-    } as L.WMSOptions);
+    // The Fire Weather Index forecast — a double-buffered DAY-MORPH (Canada CWFIS grid over the global GWIS
+    // wash), each day a single GetMap image that crossfades into the next instead of strobing per WMS-TIME
+    // step. Renders beneath the smoke + the canvas dots (its panes sit at z 210). setFwiTime() drives the day;
+    // honestly labeled a forecast in the UI. (Was two tiled WMS layers whose TIME param blanked on each step.)
+    this.fwi = new FwiForecastLayer(this.map, LIVEFIRE.fwiOpacity, LIVEFIRE.fwiFadeMs, LIVEFIRE.fwiProxyWidth);
+    if (handlers.onSmokeLoad) this.fwi.setOnState(handlers.onSmokeLoad); // shares the scrubber's buffering hint
 
     // The surface-smoke FORECAST raster (ECCC GeoMet FireWork) — double-buffered so the hourly animation
     // crossfades instead of strobing. setSmokeTime() drives the frame; tiles 404 gracefully past the run.
@@ -376,11 +469,15 @@ export class FireMap implements LiveMapView {
     this.smoke.showFrame(iso);
   }
 
-  /** Point the Fire-Weather-Index raster at one forecast DAY (yyyy-mm-dd) — updates the WMS TIME param so
-   *  the day-scrubber can step the continuous forecast grid forward (each day is its own model run). */
+  /** Point the Fire-Weather-Index forecast at one DAY (yyyy-mm-dd) — crossfades to it once the day's images
+   *  load (no blank strobe). The day-scrubber steps the continuous model grid; each day is its own run. */
   setFwiTime(iso: string): void {
-    this.fwiLayer.setParams({ time: iso } as unknown as L.WMSParams);
-    this.fwiGlobalLayer.setParams({ time: iso } as unknown as L.WMSParams);
+    this.fwi.showFrame(iso);
+  }
+
+  /** Warm every FWI forecast-day image up front so pressing Play morphs without per-step stalls. */
+  preloadFwi(days: string[]): void {
+    this.fwi.preload(days);
   }
 
   isVisible(layer: FireLayer): boolean {
@@ -394,10 +491,9 @@ export class FireMap implements LiveMapView {
       if (on && !has) lyr.addTo(this.map);
       else if (!on && has) this.map.removeLayer(lyr);
     };
-    // The FWI raster is a live CWFIS feed, so the kill-switch must stop it too (the JSON feeds gate in
-    // the client; this layer is constructed directly, so gate it here — never hit CWFIS when disabled).
-    sync(this.fwiLayer, this.visible.fwi && isLiveFireEnabled());
-    sync(this.fwiGlobalLayer, this.visible.fwi && isLiveFireEnabled()); // GWIS worldwide wash, beneath CWFIS
+    // The FWI forecast is a live CWFIS/GWIS feed, so the kill-switch must stop it too. Its own double-buffered
+    // manager (image-overlay panes), not a single Leaflet layer — drive it directly, like smoke.
+    this.fwi.setVisible(this.visible.fwi && isLiveFireEnabled());
     // Smoke is its own double-buffered manager (two panes), not a single Leaflet layer — drive it directly.
     this.smoke.setVisible(this.visible.smoke && isLiveFireEnabled());
     sync(this.perimLayer, this.visible.perimeters);

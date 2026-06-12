@@ -79,14 +79,6 @@ const CSS = `
    the header rows above it. */
 .bmf-app .firemapwrap{ position:relative; flex:1 1 auto; min-height:0; display:flex; }
 .bmf-app .firemap{ flex:1 1 auto; min-height:0; width:100%; }
-/* 3D globe view (FireGlobe, the default) — the canvas fills the map slot; a soft cool radial behind
-   the sphere gives it depth without a starfield. Drag-to-rotate cursors; touch-action off so the
-   globe owns the gesture (the page never scrolls anyway). */
-.bmf-app .firemap.fglobe{ position:relative; overflow:hidden;
-  background:radial-gradient(85% 85% at 50% 46%, var(--card-glass) 0%, transparent 62%); }
-.bmf-app .fglobe-canvas{ position:absolute; inset:0; width:100%; height:100%; display:block;
-  touch-action:none; cursor:grab; }
-.bmf-app .fglobe-canvas.grabbing{ cursor:grabbing; }
 
 /* Floating map controls — Layers + Sources as icon buttons pinned to the map's top-right corner
    (Leaflet's zoom owns top-left). A stronger fill + card shadow lifts them off the dark tiles; the
@@ -188,7 +180,7 @@ const CSS = `
 /* FIRE-DETAIL variant — a BOTTOM sheet, not the right drawer. A tapped fire's big name + stage chip + the
    fact chips need full width to lay out on one clean row; cramped into the 380px right column they wrap and
    misalign. So the detail opens from the bottom (full map width) while the Layers / Sources sheets KEEP the
-   right drawer. Toggled by the `bottom` class in menus.ts (showReported/showHotspot add it; the layers +
+   right drawer. Toggled by the .bottom class in menus.ts (showReported/showHotspot add it; the layers +
    ledger views remove it). Anchored bottom: top:auto + bottom:0 + a capped height with the base inner scroll. */
 .bmf-app .firesheet.bottom{ top:auto; left:0; right:0; bottom:0; width:auto; max-height:64%;
   border-left:0; border-top:1px solid var(--warm-stroke); border-radius:var(--r-xl) var(--r-xl) 0 0;
@@ -218,6 +210,9 @@ const CSS = `
 .bmf-app .fsheet-ttl{ font-family:var(--mono); font-size:var(--fs-lg); font-weight:var(--fw-heavy); letter-spacing:.01em; line-height:1.18; color:var(--text); }
 .bmf-app .fsheet-head .s{ font-size:var(--fs-meta); color:var(--dim); margin-top:3px; line-height:1.3; }
 .bmf-app .fsheet-head .iconbtn{ flex:0 0 auto; margin-top:-1px; }
+/* Stage-of-control pill drops BELOW the title on its own line, so the fire name reads full-width
+   (single line on mobile) instead of sharing the header row with the badge. */
+.bmf-app .fsheet-head .fsheet-stage{ margin-top:8px; }
 /* At-a-glance fact chips under the detail header — kind · jurisdiction · freshness. Ghost pills wrap to a
    second row in the narrow drawer; tighter tracking than the brand chips keeps the labels readable. */
 .bmf-app .chiprow{ display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }

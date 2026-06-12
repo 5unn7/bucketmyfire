@@ -1,16 +1,13 @@
 /**
  * The live wildfire tracker's VIEW CONTRACT — the seam between the tracker page (openLiveFires in
  * ui/home/menus.ts: layer sheet, forecast scrubber, detail sheets, source ledger) and whatever
- * actually draws the map. Two interchangeable views implement it:
+ * actually draws the map. `FireMap` (the flat Leaflet slippy map) is the one implementation — the
+ * 3D `FireGlobe` was retired (nice look, but more complex + cluttered than productive). The contract
+ * stays as a thin seam so the page never imports Leaflet directly (and a second view could return).
  *
- *   • FireGlobe — the DEFAULT: a procedural Three.js globe (the brand view; lazy ~three chunk)
- *   • FireMap   — the flat Leaflet slippy map (the original; kept behind `?flat=1` + as the
- *                 fallback when WebGL is unavailable)
- *
- * No Three, no Leaflet, no DOM — importing this never pulls a map engine into the page bundle
- * (the only value imports are the theme tokens, which every page already carries). The tracker
- * page only ever talks to `LiveMapView`; everything else (data fetch, honesty model, layer state)
- * is identical whichever view is mounted.
+ * No Leaflet, no DOM — importing this never pulls a map engine into the page bundle (the only value
+ * imports are the theme tokens, which every page already carries). The tracker page only ever talks
+ * to `LiveMapView`; everything else (data fetch, honesty model, layer state) lives outside the view.
  */
 import { UI } from '../ui/theme';
 import type { Hotspot, ReportedFire, BurnPolygon, FireSeverity, FireStage } from './types';
@@ -70,4 +67,6 @@ export interface LiveMapView {
   /** Re-measure the container (it's mounted hidden-then-shown). */
   invalidate(): void;
   dispose(): void;
+  /** Optional: warm all FWI forecast-day images up front so pressing Play morphs without per-step stalls. */
+  preloadFwi?(days: string[]): void;
 }

@@ -156,6 +156,50 @@ export const GWIS_FWI_LAYER = 'ecmwf.fwi';
 // The brand ramp re-pointed at the GWIS layer name (an SLD's NamedLayer Name must match the layer it styles).
 export const GWIS_FWI_SLD = FWI_WMS_SLD.replace('public:fwi', GWIS_FWI_LAYER);
 
+// ── FWI forecast FRAMES (the flat-map day-scrubber morph) ───────────────────────────────────────────
+// The map animates the Fire-Weather-Index forecast by stepping a day-scrubber. Driving a TILED WMS layer's
+// TIME param per step STROBES — Leaflet drops the old tiles the instant the param changes and blanks the
+// danger field until the new tiles load. A single GetMap IMAGE per day instead crossfades + preloads cleanly
+// (one image morphs/warms; tiles can't). FWI rises/falls IN PLACE, so a temporal cross-dissolve is the honest
+// morph. These helpers build the per-day image URL for the two sources (Canada CWFIS + whole-planet GWIS).
+export type DrapeBox = { lonMin: number; latMin: number; lonMax: number; latMax: number };
+const boxSpan = (b: DrapeBox): { lon: number; lat: number } => ({ lon: b.lonMax - b.lonMin, lat: b.latMax - b.latMin });
+/** The two FWI GetMap windows: the CWFIS Canada box + the whole-planet GWIS box. */
+export const FWI_BOX: DrapeBox = { lonMin: -141, latMin: 40, lonMax: -50, latMax: 84 };
+export const FWI_GLOBE_BOX: DrapeBox = { lonMin: -180, latMin: -90, lonMax: 180, latMax: 90 };
+
+/** A single-image WMS GetMap URL (v1.1.1 → bbox is lon-first) over a lat/lon box. */
+export function wmsUrl(base: string, layer: string, box: DrapeBox, opts: { time?: string; sld?: string; width: number }): string {
+  const span = boxSpan(box);
+  const h = Math.round((opts.width * span.lat) / span.lon);
+  const p = new URLSearchParams({
+    service: 'WMS', version: '1.1.1', request: 'GetMap', layers: layer, styles: '',
+    format: 'image/png', transparent: 'true', srs: 'EPSG:4326',
+    bbox: `${box.lonMin},${box.latMin},${box.lonMax},${box.latMax}`,
+    width: String(opts.width), height: String(h),
+  });
+  if (opts.time) p.set('time', opts.time);
+  if (opts.sld) p.set('sld_body', opts.sld);
+  return `${base}?${p.toString()}`;
+}
+
+// A Supabase edge function (`fwi-frame`) can cache these PNGs server-side (reliable, CORS-clean, one fetch
+// serves everyone instead of per-visitor upstream hits). It is OFF until that function is deployed — flip
+// this to `true` once `supabase functions deploy fwi-frame --no-verify-jwt` is live. Until then (and whenever
+// Supabase is unconfigured) we hit CWFIS/GWIS DIRECTLY, so the morph + preload work immediately, no server.
+const FWI_PROXY_DEPLOYED: boolean = false;
+
+/** The GetMap PNG URL for ONE FWI forecast day + source — the cached proxy when deployed + configured, else
+ *  the direct CWFIS/GWIS upstream. `day` is yyyy-mm-dd (UTC); `width` sets the PNG width (height follows bbox). */
+export function fwiFrameUrl(src: 'cwfis' | 'gwis', day: string, width: number): string {
+  if (FWI_PROXY_DEPLOYED && supabaseConfigured()) {
+    return `${restBase()}/functions/v1/fwi-frame?src=${src}&day=${day}&w=${width}`;
+  }
+  return src === 'cwfis'
+    ? wmsUrl(FWI_WMS_URL, FWI_WMS_LAYER, FWI_BOX, { time: day, sld: FWI_WMS_SLD, width })
+    : wmsUrl(GWIS_FWI_WMS_URL, GWIS_FWI_LAYER, FWI_GLOBE_BOX, { time: day, sld: GWIS_FWI_SLD, width });
+}
+
 /** Source attribution shown in the tracker UI. */
 export const LIVEFIRE_CREDIT = 'Sources: CWFIS (NRCan) · CIFFC · ECCC · GWIS (EC JRC)';
 
