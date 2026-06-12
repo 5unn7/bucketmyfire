@@ -183,11 +183,11 @@ export function wmsUrl(base: string, layer: string, box: DrapeBox, opts: { time?
   return `${base}?${p.toString()}`;
 }
 
-// A Supabase edge function (`fwi-frame`) can cache these PNGs server-side (reliable, CORS-clean, one fetch
-// serves everyone instead of per-visitor upstream hits). It is OFF until that function is deployed — flip
-// this to `true` once `supabase functions deploy fwi-frame --no-verify-jwt` is live. Until then (and whenever
-// Supabase is unconfigured) we hit CWFIS/GWIS DIRECTLY, so the morph + preload work immediately, no server.
-const FWI_PROXY_DEPLOYED: boolean = false;
+// A Supabase edge function (`fwi-frame`) caches these PNGs server-side (reliable, CORS-clean, one fetch serves
+// everyone instead of per-visitor upstream hits). DEPLOYED + smoke-tested 2026-06-11 (project wnorrtfkfqrgipmggfwh,
+// verify_jwt off → callable as a plain <img> src), so frames route through it when Supabase is configured. If
+// it's ever unconfigured (or you set this false), we fall back to hitting CWFIS/GWIS DIRECTLY — same images.
+const FWI_PROXY_DEPLOYED: boolean = true;
 
 /** The GetMap PNG URL for ONE FWI forecast day + source — the cached proxy when deployed + configured, else
  *  the direct CWFIS/GWIS upstream. `day` is yyyy-mm-dd (UTC); `width` sets the PNG width (height follows bbox). */
