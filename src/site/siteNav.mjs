@@ -23,12 +23,9 @@ export const NAV = [
   // Live wildfire map — a real anchor so it's reachable from EVERY page (the front door reads `?map` and
   // opens the tracker overlay; from a static sub-page it just loads home + opens it). Instant access.
   { key: 'map', label: 'Map', href: '/?map' },
-  {
-    key: 'shop',
-    label: 'Shop',
-    href: 'https://shop.bucketmyfire.com/?utm_source=bucketmyfire&utm_medium=frontdoor&utm_campaign=nav',
-    external: true,
-  },
+  // Shop = the same-domain coming-soon page for now (the standalone storefront at shop.bucketmyfire.com
+  // isn't resolving yet) — flip this back to the external URL once the shop domain is live.
+  { key: 'shop', label: 'Shop', href: '/shop/' },
 ];
 
 /** Escape a string for safe interpolation into HTML — the ONE escaper of record for both worlds
@@ -92,7 +89,8 @@ export function brandNavHtml(active = '') {
 
 export function appbarHtml({ active = '', actions = 'app' } = {}) {
   const shopItem = NAV.find((n) => n.key === 'shop');
-  const shopLink = shopItem ? `<a class="fhome-shop" href="${shopItem.href}">Shop</a>` : '';
+  const shopCur = active === 'shop' ? ' aria-current="page"' : '';
+  const shopLink = shopItem ? `<a class="fhome-shop" href="${shopItem.href}"${shopCur}>Shop</a>` : '';
   const right =
     actions === 'app'
       ? `<button class="iconbtn" data-front="board" type="button" aria-label="Leaderboard">${TROPHY}</button>` +

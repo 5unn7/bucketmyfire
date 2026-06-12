@@ -23,9 +23,9 @@ import { careerScore, rankFor, nextRankProgress } from '../three/missions/rank';
 import { fmtInt } from '../three/livefire/strings';
 import { submitContact, submitLead } from '../three/leaderboard/client';
 import { openModal } from '../three/ui/components/Modal';
-import { tabbarHtml, footerBrandHtml } from './siteNav.mjs';
+import { tabbarHtml, footerBrandHtml, esc } from './siteNav.mjs';
 
-export type ShellPage = 'home' | 'campaign' | 'halloffame';
+export type ShellPage = 'home' | 'campaign' | 'halloffame' | 'shop';
 
 /** The mobile bottom tab bar — the shared tab bar (siteNav). Kept as a thin re-export so the front-door
  *  controllers + the live-fire overlay call one name; the markup + `.fd-tabbar` CSS live in siteNav. */
@@ -272,6 +272,16 @@ export function openContact(): void {
   });
 }
 
+/** The copy slots of a notify-me lead-capture modal (the markup + submit flow are shared below). */
+interface LeadModalCopy {
+  title: string;
+  lead: string;
+  noteLabel: string;
+  notePlaceholder: string;
+  /** The `leads.source` tag this signup files under (server-side it's clamped to 24 chars). */
+  tag: string;
+}
+
 /**
  * "Under Production" capture for an UPCOMING (not-yet-live) map — the SAME front-door modal as the contact
  * form (the shared kit `openModal` shell + the `.fd-cform`/`.fd-field` chrome). Two fields: a required
@@ -280,12 +290,35 @@ export function openContact(): void {
  * feature note rides along in the `leads.note` column. Honest: a failed signup says so and never throws.
  */
 export function openNotify(mapId: string): void {
-  const m = openModal({ title: 'Under Production', width: '440px' });
+  openLeadModal({
+    title: 'Under Production',
+    lead: "Leave your mail and some cool things you'd like to see that we can build.",
+    noteLabel: 'Feature request',
+    notePlaceholder: "Maps, aircraft, modes you'd love to fly…",
+    tag: `notify:${mapId}`,
+  });
+}
+
+/** The shop coming-soon "Notify me" capture (`/shop/`) — same shared lead modal, tagged `notify:shop`
+ *  so the store waitlist files separately from the upcoming-map lists. */
+export function openShopNotify(): void {
+  openLeadModal({
+    title: 'Coming soon',
+    lead: "BMF gear is in final prep. Leave your email and you'll be first through the doors.",
+    noteLabel: 'What would you wear?',
+    notePlaceholder: 'Tees, hoodies, caps, patches — the designs you want…',
+    tag: 'notify:shop',
+  });
+}
+
+/** The shared notify-me modal body + submit flow behind openNotify/openShopNotify. */
+function openLeadModal(copy: LeadModalCopy): void {
+  const m = openModal({ title: copy.title, width: '440px' });
   m.body.innerHTML =
     `<form class="fd-cform" novalidate>` +
-    `<p class="fd-cform-lead">Leave your mail and some cool things you'd like to see that we can build.</p>` +
+    `<p class="fd-cform-lead">${esc(copy.lead)}</p>` +
     `<label class="fd-field"><span>Email</span><input type="email" name="email" autocomplete="email" inputmode="email" maxlength="254" required></label>` +
-    `<label class="fd-field"><span>Feature request <i>(optional)</i></span><textarea name="feature" rows="3" maxlength="2000" placeholder="Maps, aircraft, modes you'd love to fly…"></textarea></label>` +
+    `<label class="fd-field"><span>${esc(copy.noteLabel)} <i>(optional)</i></span><textarea name="feature" rows="3" maxlength="2000" placeholder="${esc(copy.notePlaceholder)}"></textarea></label>` +
     `<p class="fd-cform-msg" role="status" aria-live="polite"></p>` +
     `<button class="btn primary fd-cform-go" type="submit">Notify me</button>` +
     `</form>`;
@@ -308,9 +341,9 @@ export function openNotify(mapId: string): void {
     go.disabled = true;
     go.textContent = 'Signing up…';
     const callsign = savedCallsign() || undefined;
-    // Email → the waitlist (tagged by which upcoming map drew them); the feature note rides along in the
+    // Email → the waitlist (tagged by which surface drew them); the optional note rides along in the
     // leads.note column, and the saved callsign links a signup to a board pilot.
-    void submitLead(email, `notify:${mapId}`, callsign, feature || undefined).then((ok) => {
+    void submitLead(email, copy.tag, callsign, feature || undefined).then((ok) => {
       if (ok) {
         form.innerHTML =
           `<p class="fd-cform-msg ok">You're on the list — thanks, we'll keep you posted.</p>` +

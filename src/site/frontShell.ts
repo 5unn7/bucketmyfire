@@ -22,7 +22,7 @@ import { appbarHtml, injectNavStyles } from './siteNav.mjs';
 
 // 'open-skies' is a real front-door PAGE but NOT a top-level nav item, so passing it marks no nav tab
 // active (no NAV key matches) — exactly right for a page that lives off the Home flow, not in the bar.
-export type FrontPage = 'home' | 'campaign' | 'halloffame' | 'open-skies';
+export type FrontPage = 'home' | 'campaign' | 'halloffame' | 'open-skies' | 'shop';
 
 /** The ambient backdrop + ember field (positioned `fixed` by injectFrontShell). Spawn the motes with
  *  `spawnFrontEmbers` after the markup is in the DOM. */

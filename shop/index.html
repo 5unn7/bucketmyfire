@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#05080b" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <title>Shop — Wear the Fight · Bucket My Fire</title>
+    <meta
+      name="description"
+      content="Wear the fight. BMF gear — cause-driven apparel honouring the crews who hold the line — is in final prep. Leave your email and be first through the doors."
+    />
+    <link rel="canonical" href="https://bucketmyfire.com/shop/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Bucket My Fire" />
+    <meta property="og:url" content="https://bucketmyfire.com/shop/" />
+    <meta property="og:title" content="Shop — Wear the Fight · Bucket My Fire" />
+    <meta property="og:description" content="BMF gear is in final prep. Leave your email and be first through the doors." />
+    <meta property="og:image" content="https://bucketmyfire.com/og-image.jpg" />
+
+    <!-- Critical paint: the cockpit backdrop + the one token the boot scene needs, so the FIRST frame is
+         the ember-lit glass scene before src/shop/main.ts injects the REAL theme.ts tokens + the in-game
+         component vocabulary (injectHomeStyles) + the front-door chrome (frontShell). Same boot-backdrop
+         pattern index.html / campaign/index.html use. This page SCROLLS (a marketing content page), so
+         the body clips only the horizontal axis — never the vertical. -->
+    <style>
+      :root { --ember: #ff6a2c; }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; background: #05080b; color: rgba(255,255,255,0.94);
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        -webkit-font-smoothing: antialiased; overflow-x: clip; }
+      #fd-boot { position: fixed; inset: 0; z-index: 0; pointer-events: none; background:
+        radial-gradient(130% 60% at 50% -8%, rgba(255,106,44,0.2) 0%, rgba(255,106,44,0.05) 30%, transparent 56%),
+        radial-gradient(150% 90% at 50% 118%, rgba(255,120,40,0.1) 0%, transparent 52%),
+        linear-gradient(180deg, #0a0d10 0%, #0b0e10 42%, #07090b 100%); }
+    </style>
+  </head>
+  <body>
+    <!-- Crawlable / no-JS fallback: the lead + the sitemap. The notify-me capture needs JavaScript. -->
+    <noscript>
+      <div style="position:relative;z-index:1;padding:28px 18px;max-width:680px;margin:0 auto;line-height:1.6">
+        <h1 style="color:#ff6a2c">Wear the fight.</h1>
+        <p>BMF gear — cause-driven apparel honouring the crews who hold the line — is in final prep.
+          The notify-me signup needs JavaScript; please enable it and reload.</p>
+        <p>
+          <a style="color:#ffc24a" href="/">Home</a> ·
+          <a style="color:#ffc24a" href="/campaign/">Campaign</a> ·
+          <a style="color:#ffc24a" href="/fireline/">The Fireline</a>
+        </p>
+      </div>
+    </noscript>
+
+    <div id="fd-boot" aria-hidden="true"></div>
+    <!-- The shop controller mounts the glass-cockpit coming-soon page here (no Three, no game bundle). -->
+    <div id="game"></div>
+
+    <script type="module" src="/src/shop/main.ts"></script>
+  </body>
+</html>

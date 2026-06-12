@@ -198,12 +198,15 @@ export default defineConfig({
       // (campaign/index.html → src/campaign/main.ts), and the Hall of Fame tribute
       // (fireline/index.html → src/halloffame/main.ts).
       // Each is a light, crawlable static page that lazy-loads the ~1 MB game only on a play link. The
-      // merch store is a standalone site at shop.bucketmyfire.com; the dev-only heli/icons previews are not
-      // root-discovered, so they stay out of dist/.
+      // merch store will be a standalone site at shop.bucketmyfire.com — until that domain is live,
+      // /shop/ is the same-domain coming-soon page (notify-me capture). The dev-only heli/icons previews
+      // are not root-discovered, so they stay out of dist/.
       input: {
         main: path.resolve(ROOT, 'index.html'),
         'open-skies': path.resolve(ROOT, 'open-skies/index.html'),
         campaign: path.resolve(ROOT, 'campaign/index.html'),
+        // The merch coming-soon page (notify-me waitlist) — same domain until shop.bucketmyfire.com works.
+        shop: path.resolve(ROOT, 'shop/index.html'),
         // The Fireline tribute timeline (renamed from hall-of-fame 2026-06-12; a static redirect stub
         // lives at public/hall-of-fame/ so the old live URL keeps working).
         fireline: path.resolve(ROOT, 'fireline/index.html'),
