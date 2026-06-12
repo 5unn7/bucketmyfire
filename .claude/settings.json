@@ -19,7 +19,17 @@
       "WebFetch(domain:saskatchewan.ca)",
       "WebFetch(domain:www.publicsafety.gc.ca)",
       "Bash(curl -sL -A \"Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36 \\(KHTML, like Gecko\\) Chrome/120.0 Safari/537.36\" \"https://www.saskatchewan.ca/residents/environment-public-health-and-safety/wildfire-in-saskatchewan/wildfire-operations\")",
-      "Read(//c/Users/Sunny/AppData/Local/Temp/**)"
+      "Read(//c/Users/Sunny/AppData/Local/Temp/**)",
+      "Read(//w/Marakana Corp/Companies/Ecommerce/bucketmyfire-store/apps/storefront/**)",
+      "Read(//w/Marakana Corp/Companies/Ecommerce/bucketmyfire-store/apps/backend/src/modules/printful/**)",
+      "Bash(ls -la \"w:/Marakana Corp/Companies/Ecommerce/bucketmyfire-store\")",
+      "Read(//w/Marakana Corp/Companies/Ecommerce/bucketmyfire-store/**)",
+      "Bash(ls -la \"w:/Marakana Corp/Companies/Ecommerce/bucketmyfire-store/apps\")",
+      "Read(//w/Marakana Corp/Companies/Ecommerce/bucketmyfire-store/apps/**)",
+      "Read(//w/Marakana Corp/Companies/Ecommerce/bucketmyfire-store/apps/backend/src/api/hooks/printful/**)",
+      "PowerShell(npm run typecheck)",
+      "PowerShell(npm run build 2>&1)",
+      "PowerShell(Test-Path \"w:\\\\Marakana Corp\\\\Companies\\\\bucketmyfire\\\\node_modules\\\\@fontsource-variable\\\\saira\"; Select-String -Path \"w:\\\\Marakana Corp\\\\Companies\\\\bucketmyfire\\\\package-lock.json\" -Pattern \"fontsource-variable/saira\" -Quiet; \\(Get-Item \"w:\\\\Marakana Corp\\\\Companies\\\\bucketmyfire\\\\package-lock.json\"\\).LastWriteTime)"
     ]
   },
   "hooks": {

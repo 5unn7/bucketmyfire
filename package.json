@@ -27,6 +27,7 @@
     "verify:all": "npm run verify && npm run verify:render",
     "lint": "eslint \"src/**/*.ts\"",
     "format": "prettier --write \"src/**/*.{ts,html,css}\"",
+    "meshy": "node scripts/meshy.mjs",
     "optimize:assets": "node scripts/optimize-assets.mjs",
     "bake:heightmap": "node scripts/bake-heightmap.mjs"
   },
