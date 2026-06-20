@@ -104,10 +104,15 @@ class Leaderboard {
   private readonly myClient: string;
   private active: Board2;
   private reqToken = 0; // guards against a slow fetch overwriting a newer tab
+  // The PREVIOUS-visit rank snapshot, frozen at OPEN. Movement (▲▼) diffs against this for the whole
+  // session, so a manual refresh can't reset the baseline to "now" (which is why arrows used to stick
+  // on NEW). The next visit's baseline is what we write back as we render — see applyMovement.
+  private readonly prevSnaps: Snaps;
 
   constructor(initialMissionId?: string) {
     this.myName = (loadProfile()?.name ?? '').trim();
     this.myClient = getClientId();
+    this.prevSnaps = loadSnaps();
     // Open on Today's board when launched from a province stand-down; otherwise the All-Time ladder.
     this.active = initialMissionId && isProvinceId(initialMissionId) ? 'today' : 'allTime';
 
@@ -308,7 +313,9 @@ class Leaderboard {
     });
     setBlur(table);
     table.appendChild(this.columnHeader('REP'));
-    ranked.forEach((r, i) => table.appendChild(this.row(r, i, leader)));
+    // Each row shows the interval to the pilot DIRECTLY AHEAD (F1 "interval" column), so pass the
+    // preceding row's score; the leader (i === 0) has no one ahead.
+    ranked.forEach((r, i) => table.appendChild(this.row(r, i, i > 0 ? ranked[i - 1].num : null)));
     frag.appendChild(table);
 
     frag.appendChild(this.caption(ranked.length, total));
@@ -332,12 +339,17 @@ class Leaderboard {
    * real, personal "what changed since you last looked".
    */
   private applyMovement(ranked: Ranked[]): void {
-    const store = loadSnaps();
-    const prev = store[this.snapKey()] ?? null;
+    // Diff against the baseline frozen at OPEN (prevSnaps) — NOT a freshly-read store. Reading the store
+    // here re-read the snapshot the constructor's own first load had just written, so the second load of
+    // a session (any refresh) compared the board to itself and every row flattened back to NEW.
+    const prev = this.prevSnaps[this.snapKey()] ?? null;
     for (const r of ranked) {
       const was = prev ? prev[r.key] : undefined;
       r.delta = typeof was === 'number' ? was - r.rank : null;
     }
+    // Persist the current ranks as the baseline for the NEXT visit (merged into a fresh store so other
+    // boards aren't clobbered). prevSnaps stays frozen, so movement keeps diffing against last visit.
+    const store = loadSnaps();
     const next: Record<string, number> = {};
     for (const r of ranked) next[r.key] = r.rank;
     store[this.snapKey()] = next;
@@ -486,7 +498,7 @@ class Leaderboard {
     return h;
   }
 
-  private row(r: Ranked, i: number, leader: number): HTMLDivElement {
+  private row(r: Ranked, i: number, aheadNum: number | null): HTMLDivElement {
     const podium = r.rank <= 3;
     const medal = medalColor(r.rank);
     const team = teamColor(r.key);
@@ -547,8 +559,8 @@ class Leaderboard {
     if (r.tier || r.sub) who.appendChild(subLine(r.tier, r.sub));
     el.appendChild(who);
 
-    // Right — the score over the gap-to-leader interval.
-    el.appendChild(scoreCell(r.value, r.rank === 1 ? null : leader - r.num, r.mine));
+    // Right — the score over the interval to the pilot directly ahead.
+    el.appendChild(scoreCell(r.value, aheadNum === null ? null : aheadNum - r.num, r.mine));
     return el;
   }
 
@@ -760,7 +772,8 @@ function movementCell(delta: number | null): HTMLDivElement {
   return cell;
 }
 
-/** The right cell: the score (mono, big) over the gap-to-leader interval ("+12,400" / "LEADER"). */
+/** The right cell: the score (mono, big) over the interval to the pilot ahead, shown as a deficit
+ *  ("-12,400" / "EVEN" / "LEADER") so it reads as ground-to-make-up, never as points gained. */
 function scoreCell(value: string, gap: number | null, mine: boolean): HTMLDivElement {
   const cell = div({ width: COL.right, flex: 'none', textAlign: 'right' });
   cell.appendChild(
@@ -772,7 +785,7 @@ function scoreCell(value: string, gap: number | null, mine: boolean): HTMLDivEle
   cell.appendChild(
     div(
       { fontFamily: MONO, fontSize: FS.tag, fontWeight: FW.bold, color: gap === null ? UI.menu : UI.faint, marginTop: '3px', letterSpacing: '0.4px' },
-      gap === null ? 'LEADER' : `+${Math.round(gap).toLocaleString()}`,
+      gap === null ? 'LEADER' : gap <= 0 ? 'EVEN' : `-${Math.round(gap).toLocaleString()}`,
     ),
   );
   return cell;
