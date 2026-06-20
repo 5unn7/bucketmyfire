@@ -6,12 +6,12 @@
  * so they teach without nagging. Keep them tight (≈≤9 words), primal, and true to the sim — never filler.
  */
 export const FLIGHT_TIPS: readonly string[] = [
-  'Drop on the head — that’s where the fire runs.',
+  'Drop on the head. That’s where the fire runs.',
   'Wind carries your water. Aim upwind of the flames.',
   'Drop low. Height and wind scatter the load.',
   'Skim low over a lake to fill the bucket.',
   'A full bucket flies heavy. Climb early, bank wide.',
-  'Fly smooth — a swinging bucket throws water wide.',
+  'Fly smooth. A swinging bucket throws water wide.',
   'Land into the wind. A headwind holds you steady.',
   'Mind your height. Clip the trees and you go down.',
   'Big fires re-flare. Keep hitting until they’re cold.',

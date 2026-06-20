@@ -83,6 +83,17 @@ const CSS = `
    the header rows above it. */
 .bmf-app .firemapwrap{ position:relative; flex:1 1 auto; min-height:0; display:flex; }
 .bmf-app .firemap{ flex:1 1 auto; min-height:0; width:100%; }
+/* Honest "feeds down" banner — a centred frosted readout shown ONLY when every source is unreachable, so a
+   blank light basemap can't read as "no fires". Deep glass (it floats over the bright map) + a warm lip. */
+.bmf-app .firedown{ position:absolute; z-index:700; left:50%; top:50%; transform:translate(-50%,-50%);
+  display:flex; flex-direction:column; align-items:center; gap:6px; text-align:center; max-width:min(340px,82%);
+  padding:16px 18px; border-radius:var(--r-md); background:var(--card-glass-deep); border:1px solid var(--warm-stroke);
+  box-shadow:var(--shadow-card); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); }
+.bmf-app .firedown[hidden]{ display:none; }
+.bmf-app .firedown b{ font-family:var(--mono); font-size:var(--fs-md); color:var(--text); letter-spacing:.02em; }
+.bmf-app .firedown span{ font-size:var(--fs-sm); color:var(--text-subtle); line-height:1.5; }
+.bmf-app .firedown a{ margin-top:4px; font-family:var(--mono); font-size:var(--fs-micro); letter-spacing:.06em;
+  text-transform:uppercase; color:var(--ember-hi); text-decoration:none; }
 
 /* Floating map controls — Layers + Sources as icon buttons pinned to the map's top-right corner
    (Leaflet's zoom owns top-left). A stronger fill + card shadow lifts them off the dark tiles; the

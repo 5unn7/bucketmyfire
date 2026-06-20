@@ -240,7 +240,7 @@ export class TitleScreen {
       transition: 'transform 0.14s ease, box-shadow 0.22s ease',
     });
     b.type = 'button';
-    b.setAttribute('aria-label', 'Play — start pre-flight');
+    b.setAttribute('aria-label', 'Play, start pre-flight');
     b.append(el('span', { fontSize: '0.78em', transform: 'translateY(1px)' }, '▶'), el('span', {}, 'PLAY'));
     b.addEventListener('pointerenter', () => {
       b.style.transform = 'translateY(-2px) scale(1.02)';

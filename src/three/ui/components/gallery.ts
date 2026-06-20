@@ -57,7 +57,7 @@ export function mountKitGallery(host: HTMLElement): void {
 
   col.appendChild(el('h1', { margin: '0 0 4px', fontSize: FS.banner, fontWeight: FW.black, letterSpacing: '0.02em' }, 'Component kit'));
   col.appendChild(
-    div({ fontSize: FS.sm, color: UI.dim, marginBottom: '30px' }, 'src/three/ui/components — the layer between theme.ts tokens and the screens. ?kit'),
+    div({ fontSize: FS.sm, color: UI.dim, marginBottom: '30px' }, 'src/three/ui/components: the layer between theme.ts tokens and the screens. ?kit'),
   );
 
   // Buttons — every variant × register.

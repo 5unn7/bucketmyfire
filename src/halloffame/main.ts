@@ -81,7 +81,7 @@ ${frontAppbar('halloffame')}
       <div class="fd-hero-main">
         <p class="fd-hero-eyebrow">The Fireline</p>
         <h1 class="fd-hero-head">The unsung warriors.</h1>
-        <p class="fd-hero-sub">Canada's wildfire story, told through the people who answered it — the crews on the
+        <p class="fd-hero-sub">Canada's wildfire story, told through the people who answered it: the crews on the
           ground, the pilots overhead, the lookouts and dispatchers behind every save.</p>
       </div>
     </div>
@@ -89,7 +89,7 @@ ${frontAppbar('halloffame')}
 
   <section class="card warm cut hof-trib">
     <div class="sec"><span class="tag">To the crews</span><span class="line"></span></div>
-    <p class="hof-trib-h">Thank you to every wildland firefighter, pilot, lookout and dispatcher — past and present.</p>
+    <p class="hof-trib-h">Thank you to every wildland firefighter, pilot, lookout and dispatcher, past and present.</p>
     <p class="hof-trib-sub">The fires keep coming. The line holds because people hold it.</p>
   </section>
 

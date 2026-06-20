@@ -54,7 +54,7 @@ ${frontAppbar('open-skies')}
     <div class="fd-hero-main">
       <p class="fd-hero-eyebrow">Open Skies · Live</p>
       <h1 class="fd-hero-head">Everyone flies the same fire.</h1>
-      <p class="fd-hero-sub">One live province, every pilot in it. Dispatch calls as fires break out. Get to each one before it reaches the towns.</p>
+      <p class="fd-hero-sub">One live province, every pilot in it. Dispatch the fires before they reach the towns.</p>
     </div>
     <div class="fd-hero-trail"><span class="badge ok">Live</span></div>
   </header>
@@ -85,7 +85,7 @@ function renderHelis(app: HTMLElement): void {
     `<span class="pts-bal">${ic('spark')}<b>${wallet.toLocaleString()}</b><span>pts</span></span></div>` +
     `<div class="fly-strip">${cards}</div>` +
     `<div class="fly-dots" aria-hidden="true"></div>` +
-    `<p class="osk-note">Locked aircraft unlock with career points earned in Open Skies and solo flights — earn enough and unlock them right here.</p>`;
+    `<p class="osk-note">Locked aircraft unlock with career points earned in Open Skies and solo flights. Earn enough to unlock them.</p>`;
   // Live unlock: spend the wallet right here (buyHeli enforces the whole gate — a blocked buy is a
   // no-op), then re-render so the card flips to Ready and the balance chip drains.
   host.querySelectorAll<HTMLButtonElement>('[data-buy-heli]').forEach((b) =>

@@ -71,12 +71,12 @@ export function injectKitStyles(): void {
   .btn.sm{ padding:11px 15px; min-height:44px; font-size:var(--fs-sm); }
   .btn.lg{ padding:16px 26px; min-height:54px; font-size:var(--fs-lg); }
   /* fight (warm) — the default register */
-  .btn.primary{ background:var(--cta); color:var(--cta-ink); box-shadow:0 1px 0 rgba(255,255,255,0.5) inset, 0 -2px 0 rgba(0,0,0,0.18) inset, 0 8px 20px var(--cta-glow); }
+  .btn.primary{ background:var(--cta); color:var(--cta-ink); box-shadow:0 1px 0 var(--bevel-hi) inset, 0 -2px 0 var(--bevel-lo) inset, 0 8px 20px var(--cta-glow); }
   .btn.primary svg{ fill:var(--cta-ink); } .btn.primary:hover{ background:var(--cta-hi); transform:translateY(-2px); }
-  .btn.ember{ color:var(--ember-hi); background:linear-gradient(180deg, var(--fire-16), var(--fire-06)); border-color:var(--warm-stroke); box-shadow:inset 0 1px 0 rgba(255,255,255,0.06), 0 4px 14px var(--ember-14); }
+  .btn.ember{ color:var(--ember-hi); background:linear-gradient(180deg, var(--fire-16), var(--fire-06)); border-color:var(--warm-stroke); box-shadow:inset 0 1px 0 var(--bevel-edge), 0 4px 14px var(--ember-14); }
   .btn.ember svg{ fill:var(--ember-hi); } .btn.ember:hover{ background:linear-gradient(180deg, var(--fire-28), var(--fire-12)); transform:translateY(-1px); }
-  .btn.secondary{ background:var(--warm-glass); color:var(--text); border-color:var(--warm-stroke); box-shadow:inset 0 1px 0 rgba(255,255,255,0.06); }
-  .btn.secondary svg{ fill:var(--ember-hi); } .btn.secondary:hover{ background:rgba(60,24,18,0.6); transform:translateY(-2px); }
+  .btn.secondary{ background:var(--warm-glass); color:var(--text); border-color:var(--warm-stroke); box-shadow:inset 0 1px 0 var(--bevel-edge); }
+  .btn.secondary svg{ fill:var(--ember-hi); } .btn.secondary:hover{ background:var(--warm-glass-hi); transform:translateY(-2px); }
   .btn.ghost{ background:transparent; color:var(--dim); border-color:var(--stroke); } .btn.ghost:hover{ color:var(--text); border-color:var(--stroke-strong); }
   .btn.danger{ color:var(--warn); background:var(--warn-10); border-color:var(--warn-50); font-family:var(--mono); letter-spacing:.1em; } .btn.danger:hover{ background:var(--warn-18); }
   /* cockpit (cyan instrument) — token-only, no new literals */

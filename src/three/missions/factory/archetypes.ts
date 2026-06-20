@@ -70,8 +70,8 @@ const extinguish: Archetype = {
       difficulty: clampDiff(1 + intensity * 4),
       flavor: {
         kind: 'extinguish',
-        brief: "Clear every fire across the bush. Fast, clean drops score highest — fill from the lakes and knock them down.",
-        tagline: 'Clear the bush — every fire, fastest line.',
+        brief: "Clear every fire across the bush. Fast, clean drops score highest. Fill from the lakes and knock them down.",
+        tagline: 'Clear the bush: every fire, fastest line.',
       },
     };
   },
@@ -99,7 +99,7 @@ const mopUp: Archetype = {
       difficulty: clampDiff(2 + intensity * 2),
       flavor: {
         kind: 'mop-up',
-        brief: "The front's through — now the black. Grid it, find every smouldering hotspot, and drown it cold before a holdover re-flares. Mind your fuel.",
+        brief: "The front's through. Now the black. Grid it, find every smouldering hotspot, and drown it cold before a holdover re-flares. Mind your fuel.",
         tagline: "Mop up the black before it wakes.",
       },
     };
@@ -132,7 +132,7 @@ const holdTheLine: Archetype = {
       difficulty: clampDiff(3 + intensity * 2),
       flavor: {
         kind: 'hold-the-line',
-        brief: "Heavy wind, a front on the move. Crews are minutes out — keep this fire off the community until they land. You win by ENDURING, not by clearing it.",
+        brief: "Heavy wind, a front on the move. Crews are minutes out. Keep this fire off the community until they land. You win by ENDURING, not by clearing it.",
         tagline: 'Hold the front off the town till the crews land.',
       },
     };

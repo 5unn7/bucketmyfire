@@ -174,13 +174,13 @@ export class CrewTransport {
   hint(): string | null {
     if (this._delivered >= this._total) return null;
     if (this.active >= 0) {
-      if (this.zones[this.active].lowHover) return 'Hold it low and steady — mind the treeline';
-      if (this.zones[this.active].hover) return 'Hold the hover steady — crew on the line';
-      return this._carrying ? 'Crew disembarking — hold it on the deck' : 'Crew boarding — hold it on the deck';
+      if (this.zones[this.active].lowHover) return 'Hold it low and steady. Mind the treeline';
+      if (this.zones[this.active].hover) return 'Hold the hover steady. Crew on the line';
+      return this._carrying ? 'Crew disembarking. Hold it on the deck' : 'Crew boarding. Hold it on the deck';
     }
     // nav hint toward next low-hover spot (no crew carry state)
     const nextLH = this.zones.find((z, i) => z.lowHover && z.single && !(this.done[i] || this.lost[i]));
-    if (nextLH) return `Drop into ${nextLH.label} — settle low and hold it steady, off the trees`;
+    if (nextLH) return `Drop into ${nextLH.label}. Settle low and hold it steady, off the trees`;
     if (this._carrying) {
       const tgt = this.zones.find((z, i) => z.role === 'unload' && !(z.single && (this.done[i] || this.lost[i])));
       if (!tgt) return null;

@@ -53,18 +53,18 @@ ${frontAppbar('shop')}
     <div class="fd-hero-main">
       <p class="fd-hero-eyebrow">BMF Gear · Coming soon</p>
       <h1 class="fd-hero-head">Wear the fight.</h1>
-      <p class="fd-hero-sub">Gear built around the fight — for the pilots, the crews, and everyone
-        watching the line hold. The first collection is in final prep.</p>
+      <p class="fd-hero-sub">Gear built around the fight, for the pilots and crews holding the line.
+        First collection in final prep.</p>
     </div>
   </header>
 
-  <section class="card warm cut fshop-poster rise" aria-label="Wear the fight — the first BMF gear collection, coming soon">
-    <div class="fshop-art"><img src="/images/cardsbg/wearthefightbg.webp" alt="Wear the fight — the black BMF hoodie, its back print a helicopter bucket-drop over a burning ridge, floating in a misty boreal forest" /></div>
+  <section class="card warm cut fshop-poster rise" aria-label="Wear the fight: the first BMF gear collection, coming soon">
+    <div class="fshop-art"><img src="/images/cardsbg/wearthefightbg.webp" alt="Wear the fight: the black BMF hoodie, its back print a helicopter bucket-drop over a burning ridge, floating in a misty boreal forest" /></div>
     <div class="fshop-scrim"></div>
     <div class="fshop-body">
       <span class="fshop-ey">${ic('shop')}First collection</span>
       <h2 class="fshop-h">The doors open soon.</h2>
-      <p class="fshop-sub">Leave your email and you'll be the first one through — one message when the
+      <p class="fshop-sub">Leave your email and you'll be the first one through. One message when the
         gear drops, nothing else.</p>
       <button class="btn primary fshop-go" type="button" data-notify-shop>Notify me</button>
     </div>

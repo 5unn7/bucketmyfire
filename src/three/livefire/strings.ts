@@ -46,8 +46,8 @@ export const LIVEFIRE_COPY = {
     out: 'Fires reported out (extinguished) this year',
     hotspots: 'Raw satellite heat detections, last 24 hours',
     perimeters: 'Satellite-mapped burn footprints',
-    fwi: 'Fire Weather Index — worldwide forecast (CWFIS over Canada, GWIS globally)',
-    smoke: 'Surface-smoke forecast (ECCC FireWork) — drag the timeline to see it move',
+    fwi: 'Fire Weather Index: worldwide forecast (CWFIS over Canada, GWIS globally)',
+    smoke: 'Surface-smoke forecast (ECCC FireWork). Drag the timeline to see it move',
   },
   // National summary stat-strip labels (the CIFFC "Current fires / Year-to-date" panel).
   stat: { today: 'Reported today', active: 'Active', out: 'Out', total: 'Total', area: 'Area burned', prep: 'Prep level' },
@@ -161,7 +161,7 @@ export function publishedWhen(ms: number, now: number = Date.now()): string {
  *  "Unavailable — couldn’t reach the source" / "Turned off". This is what makes the screen honest. */
 export function freshnessLine(meta: FeedMeta): string {
   if (meta.status === 'disabled') return 'Turned off';
-  if (meta.status === 'unavailable') return 'Unavailable — couldn’t reach the source';
+  if (meta.status === 'unavailable') return 'Unavailable: couldn’t reach the source';
   return `${meta.fromCache ? 'Cached' : 'Live'} · ${publishedWhen(meta.publishedAt)}`;
 }
 
@@ -193,7 +193,7 @@ export const LIVEFIRE_SOURCES: Record<'reported' | 'hotspots' | 'perimeters' | '
   perimeters: { label: 'Burn area', what: 'Satellite-mapped fire footprints — CWFIS M3', url: 'https://cwfis.cfs.nrcan.gc.ca' },
   fwi: { label: 'Fire weather', what: 'Fire Weather Index FORECAST — CWFIS over Canada, GWIS (EC JRC) worldwide', url: 'https://gwis.jrc.ec.europa.eu' },
   smoke: { label: 'Smoke forecast', what: 'Surface PM2.5 wildfire-smoke FORECAST — ECCC FireWork', url: 'https://eccc-msc.github.io/open-data/msc-data/nwp_raqdps-fw/readme_raqdps-fw_en/' },
-  summary: { label: 'National totals', what: 'Year-to-date national summary — CIFFC', url: 'https://ciffc.net' },
+  summary: { label: 'National totals', what: 'Year-to-date national summary, CIFFC', url: 'https://ciffc.net' },
 };
 
 /** A smoke scrubber frame's valid time, in the viewer's local zone: "Mon 6 PM". */
@@ -218,6 +218,6 @@ export function fwiFreshness(meta: FeedMeta, dayLabel: string): string {
 }
 
 /** The standing honesty line — this is a window onto real data, NOT an emergency tool. */
-export const NOT_FOR_EMERGENCY = 'A window onto real data — not an emergency tool. Always follow official sources and local authorities.';
+export const NOT_FOR_EMERGENCY = 'A window onto real data, not an emergency tool. Always follow official sources and local authorities.';
 /** Where to go for the authoritative Saskatchewan picture (SPSA's own live feed isn't browser-fetchable). */
 export const SK_OFFICIAL = { label: 'Saskatchewan (SPSA) active fire map', url: 'https://gisappl.saskatchewan.ca/Html5Ext/?viewer=wfmpublic' };

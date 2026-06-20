@@ -734,7 +734,7 @@ function fireHistoryHtml(points: FireHistoryPoint[] | null, activity: FireActivi
   const quietRow = !haveChart && !haveStagePath
     ? `<div class="frow"><span class="fk">Reported change</span><span class="fv" style="color:var(--faint)">No changes recorded yet</span></div>`
     : '';
-  const note = `<p class="alertnote" style="margin-top:6px;">${activity ? 'Bars: satellite heat detections within ~10 km, per day — nearby fires can overlap. ' : ''}Sizes are agency estimates, revised at each report${activity ? '' : ' — the fire may have been burning before tracking began'}.</p>`;
+  const note = `<p class="alertnote" style="margin-top:6px;">${activity ? 'Bars: satellite heat detections within ~10 km, per day; nearby fires can overlap. ' : ''}Sizes are agency estimates, revised at each report${activity ? '' : '; the fire may have been burning before tracking began'}.</p>`;
 
   return `<div class="fgroup"><div class="fgh">Fire timeline</div>${spark}${changeRow}${sinceRow}${stageRow}${quietRow}${seenRow}${note}</div>`;
 }
@@ -846,6 +846,13 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
     <div class="firestats" data-lf-stats>${statStrip}</div>
     <div class="firemapwrap">
       <div class="firemap" data-lf-map></div>
+      <!-- Honest "feeds down" banner: shown ONLY when BOTH authoritative sources (CIFFC reported + national
+           summary) are unreachable, so a blank basemap never reads as "no fires". Toggled after each load. -->
+      <div class="firedown" data-lf-down hidden role="status">
+        <b>${esc(C.offlineTitle)}</b>
+        <span>${esc(C.offlineBody)}</span>
+        <a href="${LIVEFIRE_SOURCES.summary.url}" target="_blank" rel="noopener">Official sources ↗</a>
+      </div>
       <div class="firefloat">
         <button class="fmbtn" data-lf-layers aria-label="${esc(C.layersBtn)}" title="${esc(C.layersBtn)}">${ic('layers')}<span class="fmn" data-lf-layern></span></button>
         <button class="fmbtn" data-lf-firewx aria-pressed="false" aria-label="${esc(C.fireWxBtn)}" title="${esc(C.fireWxBtn)}">${ic('fire')}</button>
@@ -883,6 +890,7 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
 
   const tickerEl = root.querySelector<HTMLElement>('[data-lf-ticker]')!;
   const mapEl = root.querySelector<HTMLElement>('[data-lf-map]')!;
+  const downEl = root.querySelector<HTMLElement>('[data-lf-down]')!;
   const sheetEl = root.querySelector<HTMLElement>('[data-lf-sheet]')!;
   const refreshBtn = root.querySelector<HTMLButtonElement>('[data-lf-refresh]')!;
   const layersBtn = root.querySelector<HTMLButtonElement>('[data-lf-layers]')!;
@@ -1022,7 +1030,7 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
         <button class="iconbtn" data-lf-close aria-label="Close">${ic('close')}</button>
       </div>
       <div class="ledger">${rowHtml}
-        <a class="lrow link" href="${SK_OFFICIAL.url}" target="_blank" rel="noopener"><i class="sdot link"></i><span class="grow" style="min-width:0;"><span class="lname">${esc(SK_OFFICIAL.label)}</span><span class="lwhat">Saskatchewan's official viewer — opens in a new tab</span></span><span class="lfresh">official ↗</span></a>
+        <a class="lrow link" href="${SK_OFFICIAL.url}" target="_blank" rel="noopener"><i class="sdot link"></i><span class="grow" style="min-width:0;"><span class="lname">${esc(SK_OFFICIAL.label)}</span><span class="lwhat">Saskatchewan's official viewer, opens in a new tab</span></span><span class="lfresh">official ↗</span></a>
         <div class="lnote">${esc(NOT_FOR_EMERGENCY)}</div>
       </div>`;
   };
@@ -1263,6 +1271,10 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
         rebuildRegionOptions(); // the feed just told us which provinces actually have fires
         paintStats();
         paint(!force); // first load (force=false) frames the data; a refresh (force=true) keeps the view
+        // EVERY source unreachable → advertise it ON the map so a blank basemap never reads as "no fires".
+        // (All three down = a real connectivity/source failure, region-agnostic — US/MX still have hotspots.)
+        const allDown = reportedFeed.meta.status !== 'live' && hsFeed.meta.status !== 'live' && (!summary || summary.meta.status !== 'live');
+        downEl.hidden = !allDown;
       })
       .finally(() => {
         if (!closed) refreshBtn.disabled = false;
@@ -1343,8 +1355,8 @@ function openCredits(host: HTMLElement): void {
     glyph: ic('shield'),
     body:
       `<div class="credits">` +
-      `<p class="mtext"><b>Active fire data</b><br><a href="https://ciffc.net" target="_blank" rel="noopener">CIFFC</a> — Canadian Interagency Forest Fire Centre · CWFIS — <a href="https://cwfis.cfs.nrcan.gc.ca" target="_blank" rel="noopener">Canadian Wildland Fire Information System</a>, Natural Resources Canada</p>` +
-      `<p class="mtext"><b>Globe outlines</b><br><a href="https://www.naturalearthdata.com" target="_blank" rel="noopener">Natural Earth</a> (public domain) — drawn procedurally, no basemap imagery</p>` +
+      `<p class="mtext"><b>Active fire data</b><br><a href="https://ciffc.net" target="_blank" rel="noopener">CIFFC</a>: Canadian Interagency Forest Fire Centre · CWFIS: <a href="https://cwfis.cfs.nrcan.gc.ca" target="_blank" rel="noopener">Canadian Wildland Fire Information System</a>, Natural Resources Canada</p>` +
+      `<p class="mtext"><b>Globe outlines</b><br><a href="https://www.naturalearthdata.com" target="_blank" rel="noopener">Natural Earth</a> (public domain), drawn procedurally, no basemap imagery</p>` +
       `<p class="mtext"><b>Map engines</b><br><a href="https://threejs.org" target="_blank" rel="noopener">Three.js</a> (globe) · <a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a> (flat view)</p>` +
       `<p class="mtext"><b>Basemap tiles</b> (globe close-up &amp; flat view)<br>© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors · © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a></p>` +
       `<p class="mtext"><b>Icons</b><br>Lucide (MIT)</p>` +

@@ -216,8 +216,9 @@ ${frontAppbar('home')}
           <span class="fhome-fresh" id="fd-fresh">CIFFC + CWFIS</span>
         </div>
         <h1 class="fhome-eyebrow fhome-hero-kick">Wildfires across Canada<br>Right now</h1>
-        <!-- The live figure — hydrated by paintNational(). -->
-        <div id="fhome-live">
+        <!-- The live figure — hydrated by paintNational(). Boots in .is-loading so the placeholder
+             dashes read as "loading", not "zero"; paintNational drops the class once data resolves. -->
+        <div id="fhome-live" class="is-loading">
           <div class="fhome-fig"><b id="ro-active">—</b><span>active fires</span></div>
           <div class="fhome-stats">
             <span class="fhome-stat hot"><b id="ro-oc">—</b><span>out of control</span></span>
@@ -268,14 +269,14 @@ ${frontAppbar('home')}
     <!-- Wear the fight — the BIG shop feature card. The art is the dedicated card background
          (cardsbg/wearthefightbg.webp): the real hoodie product shot floating over a misty boreal
          ridge, framed so the print sits centre-right and our copy + Shop CTA own the left fade. -->
-    <button class="card warm cut fhome-merch" data-act="shop" aria-label="Open the BMF Gear store">
-      <div class="fhome-merch-art"><img src="/images/cardsbg/wearthefightbg.webp" alt="Wear the fight — the black BMF hoodie, its back print a helicopter bucket-drop over a burning ridge, floating in a misty boreal forest" /></div>
+    <button class="card warm cut fhome-merch" data-act="shop" aria-label="Get notified when BMF Gear drops">
+      <div class="fhome-merch-art"><img src="/images/cardsbg/wearthefightbg.webp" alt="Wear the fight: the black BMF hoodie, its back print a helicopter bucket-drop over a burning ridge, floating in a misty boreal forest" /></div>
       <div class="fhome-merch-fade"></div>
       <div class="fhome-tx fhome-merch-tx">
         <span class="fhome-merch-ey">${ic('shop')}BMF Gear</span>
         <span class="h-big fhome-merch-h">Wear the fight.</span>
-        <span class="fhome-merch-sub">Gear built around the fight &mdash; the first collection is in final prep.</span>
-        <span class="btn primary fhome-merch-go">Shop the collection</span>
+        <span class="fhome-merch-sub">Gear built around the fight. The first collection is in final prep.</span>
+        <span class="btn primary fhome-merch-go">Get notified</span>
       </div>
     </button>
 
@@ -286,7 +287,7 @@ ${frontAppbar('home')}
       <div class="fhome-hof-tx">
         <span class="fhome-hof-ey">The Fireline</span>
         <span class="fhome-hof-h">The unsung warriors.</span>
-        <span class="fhome-hof-sub">The moments that forged Canada's wildfire fight — and the crews who held the line.</span>
+        <span class="fhome-hof-sub">The moments that forged Canada's wildfire fight, and the crews who held the line.</span>
       </div>
       <span class="btn ghost fhome-hof-go">Walk the line →</span>
     </a>
@@ -360,6 +361,9 @@ function paintNational(summary: NationalSummary | null, feed: ReportedFeed | nul
   const badge = document.getElementById('fd-live');
   const summaryOk = !!summary && summary.meta.status === 'live';
   const feedOk = !!feed && feed.meta.status === 'live';
+
+  // Data has resolved (live OR both-down) — drop the boot skeleton either way so the dashes stop pulsing.
+  if (live) live.classList.remove('is-loading');
 
   // Both authoritative feeds down → the live figure is replaced by the honest fallback (NOT "no fires"),
   // and the freshness line points at the official sources. (The hotspot feed alone can't anchor the hero.)
@@ -458,6 +462,12 @@ function injectHomeBentoStyles(): void {
 .bmf-app.front .fhome-fresh { font-family: var(--mono); font-size: var(--fs-micro); letter-spacing: .04em; color: var(--faint); }
 .bmf-app.front .fhome-fresh a { color: var(--ember-hi); text-decoration: none; }
 .bmf-app.front .fhome-hero-kick { margin: 18px 0 0; max-width: 22ch; }
+/* Boot skeleton — while the national feed is in flight the placeholder dashes PULSE so they read as
+   "loading", not "zero / unknown". paintNational() removes .is-loading the moment data resolves
+   (live or both-feeds-down). Reduced-motion gets a static dimmed state instead of the pulse. */
+@keyframes fdLivePulse { 0%, 100% { opacity: .9; } 50% { opacity: .32; } }
+.bmf-app.front #fhome-live.is-loading b { color: var(--faint); animation: fdLivePulse 1.1s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .bmf-app.front #fhome-live.is-loading b { animation: none; opacity: .5; } }
 /* The live figure — the hero number leads, its unit label sits beside it on the baseline. */
 .bmf-app.front .fhome-fig { display: flex; align-items: flex-end; gap: 12px; margin-top: 10px; }
 .bmf-app.front .fhome-fig b { font-family: var(--mono); font-weight: var(--fw-black); font-size: clamp(52px, 9vw, 104px); line-height: .88; color: #fff; letter-spacing: -0.02em; text-shadow: 0 2px 18px rgba(0,0,0,0.6); }

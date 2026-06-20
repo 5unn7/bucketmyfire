@@ -9,7 +9,7 @@ import type { Register } from './base';
 
 export interface FieldOpts {
   label?: string;
-  optional?: boolean; // appends "— optional" to the label
+  optional?: boolean; // appends "(optional)" to the label
   icon?: string; // leading glyph / emoji
   type?: string; // input type, default 'text'
   placeholder?: string;
@@ -38,7 +38,7 @@ export function makeField(opts: FieldOpts = {}): FieldHandle {
       { fontSize: FS.label, letterSpacing: '0.18em', textTransform: 'uppercase', color: accent, opacity: '0.9', fontWeight: FW.semibold, margin: '0 2px 10px' },
       opts.label,
     );
-    if (opts.optional) lab.appendChild(el('span', { color: UI.dim, fontWeight: FW.medium, textTransform: 'none', letterSpacing: '0' }, ' — optional'));
+    if (opts.optional) lab.appendChild(el('span', { color: UI.dim, fontWeight: FW.medium, textTransform: 'none', letterSpacing: '0' }, ' (optional)'));
     root.appendChild(lab);
   }
 

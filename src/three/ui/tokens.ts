@@ -18,10 +18,10 @@ export function tokenDecls(): string {
     `--cta:${UI.cta};--cta-hi:${UI.ctaHi};--cta-ink:${UI.ctaInk};--cta-glow:${UI.ctaGlow};`,
     `--warn:${UI.warn};--ok:${UI.ok};--caution:${UI.caution};--gold:${UI.gold};--silver:${UI.silver};--bronze:${UI.bronze};`,
     `--text:${UI.text};--text-subtle:${UI.textSubtle};--ink:${UI.ink};--dim:${UI.dim};--faint:${UI.faint};`,
-    `--bg:${UI.bg};--card-glass:${UI.cardGlass};--card-glass-deep:${UI.cardGlassDeep};--card-soft:${UI.cardSoft};--warm-glass:${UI.warmGlass};`,
+    `--bg:${UI.bg};--card-glass:${UI.cardGlass};--card-glass-deep:${UI.cardGlassDeep};--card-soft:${UI.cardSoft};--warm-glass:${UI.warmGlass};--warm-glass-hi:${UI.warmGlassHi};`,
     `--track:${UI.track};--recess:${UI.recess};--field:${UI.field};--rowmine:${UI.rowMine};`,
     `--stroke:${UI.stroke};--stroke-strong:${UI.strokeStrong};--warm-stroke:${UI.warmStroke};--hair:${UI.hair};`,
-    `--shadow-card:${UI.shadowCard};--shadow-card-rich:${UI.shadowCardRich};--bevel-top:${UI.bevelTop};--ember-glow:${UI.emberGlow};--blur:${UI.blur};`,
+    `--shadow-card:${UI.shadowCard};--shadow-card-rich:${UI.shadowCardRich};--bevel-top:${UI.bevelTop};--bevel-hi:${UI.bevelHi};--bevel-lo:${UI.bevelLo};--bevel-edge:${UI.bevelEdge};--ember-glow:${UI.emberGlow};--blur:${UI.blur};`,
     `--card-gradient:${UI.cardGradient};--card-gradient-fight:${UI.cardGradientFight};`,
     `--accent:${UI.accent};--accent-hi:${UI.accentHi};--accent-soft:${UI.accentSoft};--accent-fill:${UI.accentFill};--glow:${UI.glow};`,
     // In-flight HUD instrument tokens — the cockpit-only values HUD.ts / Input.ts used to hard-type inline

@@ -22,7 +22,7 @@ function legalShell({ title, slug, crumb, updated, css, body }) {
     <meta name="robots" content="index,follow" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <title>${title} — Bucket My Fire</title>
+    <title>${title} · Bucket My Fire</title>
     <link rel="canonical" href="${BASE_URL}/${slug}.html" />
     <style>${css}</style>
   </head>
@@ -62,18 +62,18 @@ const PRIVACY_BODY = `        <div class="fn-takeaways"><strong>The short versio
 
         <h2>What we collect</h2>
         <ul>
-          <li><strong>Callsign</strong> — the name you choose. It is shown <strong>publicly</strong> on the global leaderboard. Please don't use your real name or anything private if you want to stay anonymous.</li>
-          <li><strong>Email (optional)</strong> — only if you turn on cloud save. Your email is hashed (SHA-256) <em>on your device</em> before it is sent; we store only that hash, never the plain email, and we never send you marketing. It is used solely to save and restore your progress across devices.</li>
-          <li><strong>Gameplay data</strong> — scores, mission results and best times, linked to your callsign so the leaderboard works.</li>
-          <li><strong>Crash diagnostics</strong> — if the game errors, we may receive a technical error message and your browser type/version (user-agent), with no name, email, or other personal identifier attached, so we can fix bugs.</li>
-          <li><strong>On-device storage</strong> — your progress and settings are kept in your browser's local storage, on your device. Clearing your browser data removes them.</li>
-          <li><strong>Aggregate analytics</strong> — privacy-first, <em>cookieless</em> visitor counts via Cloudflare Web Analytics. No cookies, no cross-site tracking, no individual profiles.</li>
+          <li><strong>Callsign</strong>: the name you choose. It is shown <strong>publicly</strong> on the global leaderboard. Please don't use your real name or anything private if you want to stay anonymous.</li>
+          <li><strong>Email (optional)</strong>: only if you turn on cloud save. Your email is hashed (SHA-256) <em>on your device</em> before it is sent; we store only that hash, never the plain email, and we never send you marketing. It is used solely to save and restore your progress across devices.</li>
+          <li><strong>Gameplay data</strong>: scores, mission results and best times, linked to your callsign so the leaderboard works.</li>
+          <li><strong>Crash diagnostics</strong>: if the game errors, we may receive a technical error message and your browser type/version (user-agent), with no name, email, or other personal identifier attached, so we can fix bugs.</li>
+          <li><strong>On-device storage</strong>: your progress and settings are kept in your browser's local storage, on your device. Clearing your browser data removes them.</li>
+          <li><strong>Aggregate analytics</strong>: privacy-first, <em>cookieless</em> visitor counts via Cloudflare Web Analytics. No cookies, no cross-site tracking, no individual profiles.</li>
         </ul>
 
         <h2>What we do NOT collect</h2>
         <ul>
           <li>No passwords.</li>
-          <li>No payment information. If you buy merchandise, the purchase is handled entirely by a third-party store with its own privacy policy — we never see your card details.</li>
+          <li>No payment information. If you buy merchandise, the purchase is handled entirely by a third-party store with its own privacy policy. We never see your card details.</li>
           <li>No precise location, no advertising or tracking cookies, and we never sell your data.</li>
         </ul>
 
@@ -92,7 +92,7 @@ const PRIVACY_BODY = `        <div class="fn-takeaways"><strong>The short versio
 const TERMS_BODY = `        <p>By playing Bucket My Fire ("the game") you agree to these Terms. If you don't agree, please don't use the game.</p>
 
         <h2>The game</h2>
-        <p>Bucket My Fire is provided free of charge, "as is," for personal entertainment. We may change, suspend, or discontinue any part of it — including the leaderboard and cloud save — at any time, and features may be reset or removed.</p>
+        <p>Bucket My Fire is provided free of charge, "as is," for personal entertainment. We may change, suspend, or discontinue any part of it (including the leaderboard and cloud save) at any time, and features may be reset or removed.</p>
 
         <h2>Your licence to play</h2>
         <p>We grant you a personal, non-commercial, revocable licence to play the game in your browser. You may not copy, resell, redistribute, reverse-engineer, scrape, or clone the game or its assets, or use it to build a competing product.</p>
@@ -104,7 +104,7 @@ const TERMS_BODY = `        <p>By playing Bucket My Fire ("the game") you agree 
         </ul>
 
         <h2>Merchandise</h2>
-        <p>Merchandise is sold through our shop at <a href="https://shop.bucketmyfire.com/">shop.bucketmyfire.com</a>, which operates under its own policies. For anything related to a merchandise purchase — pricing, payment, shipping, returns, refunds, and exchanges — please refer to the shop's policies, which govern that order.</p>
+        <p>Merchandise is sold through our shop at <a href="https://shop.bucketmyfire.com/">shop.bucketmyfire.com</a>, which operates under its own policies. For anything related to a merchandise purchase (pricing, payment, shipping, returns, refunds, and exchanges), please refer to the shop's policies, which govern that order.</p>
 
         <h2>Intellectual property &amp; fictional setting</h2>
         <p>"Bucket My Fire," its name, art, and code are owned by the operator. All other product names, trademarks, place names, and brands belong to their respective owners and are used for descriptive or setting purposes only. The game is a work of fiction: it is not affiliated with, sponsored by, or endorsed by any government, agency, community, manufacturer, or company, and any resemblance to real operations is for atmosphere, not accuracy.</p>
@@ -162,11 +162,11 @@ export function legalPages(css) {
   return [
     {
       file: 'privacy.html',
-      html: legalShell({ title: 'Privacy Policy', slug: 'privacy', crumb: 'Privacy', updated: '4 June 2026', css, body: PRIVACY_BODY }),
+      html: legalShell({ title: 'Privacy Policy', slug: 'privacy', crumb: 'Privacy', updated: '20 June 2026', css, body: PRIVACY_BODY }),
     },
     {
       file: 'terms.html',
-      html: legalShell({ title: 'Terms of Use', slug: 'terms', crumb: 'Terms', updated: '4 June 2026', css, body: TERMS_BODY }),
+      html: legalShell({ title: 'Terms of Use', slug: 'terms', crumb: 'Terms', updated: '20 June 2026', css, body: TERMS_BODY }),
     },
   ];
 }

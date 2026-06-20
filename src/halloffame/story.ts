@@ -32,7 +32,7 @@ if (!ev) {
 function mount(e: HofEvent): void {
   const game = document.getElementById('game');
   if (!game) return;
-  document.title = `${e.year} — ${e.title} · The Fireline · Bucket My Fire`;
+  document.title = `${e.year}: ${e.title} · The Fireline · Bucket My Fire`;
   const app = document.createElement('div');
   app.className = 'bmf-app front';
   app.innerHTML = DEFS + storyMarkup(e);
@@ -102,6 +102,16 @@ ${frontAppbar('halloffame')}
     </div>
   </section>
 
+  <!-- The hand-off: the tribute closes on the fight itself. The reader steps from history into the cockpit. -->
+  <section class="card warm cut hst-flywith">
+    <div class="hst-flywith-tx">
+      <span class="hst-flywith-ey">Carry it forward</span>
+      <h2 class="hst-flywith-h">Now fly with them.</h2>
+      <p class="hst-flywith-sub">Take the controls over the same country they fought for.</p>
+    </div>
+    <a class="btn primary hst-flywith-go" href="/open-skies/">Fly Open Skies →</a>
+  </section>
+
   <nav class="hst-navrow" aria-label="More moments">
     ${prev ? navCardHtml(prev, 'prev') : '<span class="hst-nav ghost" aria-hidden="true"></span>'}
     ${next ? navCardHtml(next, 'next') : '<span class="hst-nav ghost" aria-hidden="true"></span>'}
@@ -159,6 +169,15 @@ function injectStoryStyles(): void {
 .bmf-app.front .hst-fact b { font-family: var(--mono); font-weight: var(--fw-black); font-size: var(--fs-title);
   color: var(--ember-hi); line-height: 1.05; }
 .bmf-app.front .hst-fact span { font-size: var(--fs-micro); line-height: 1.35; color: var(--dim); }
+
+/* Fly-with-them hand-off — the warm close that steps the reader from history into the cockpit. */
+.bmf-app.front .hst-flywith { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; justify-content: space-between; }
+.bmf-app.front .hst-flywith-tx { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.bmf-app.front .hst-flywith-ey { font-family: var(--mono); font-size: var(--fs-label); letter-spacing: .26em;
+  text-transform: uppercase; color: var(--menu); font-weight: var(--fw-bold); }
+.bmf-app.front .hst-flywith-h { margin: 0; font-size: var(--fs-title); font-weight: var(--fw-black); color: #fff; line-height: 1.1; }
+.bmf-app.front .hst-flywith-sub { margin: 0; font-size: var(--fs-sm); color: var(--text-subtle); }
+.bmf-app.front .hst-flywith-go { flex: 0 0 auto; }
 
 /* Prev / next — two quiet instrument cards continuing the journey. */
 .bmf-app.front .hst-navrow { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }

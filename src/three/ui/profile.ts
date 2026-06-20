@@ -88,7 +88,7 @@ export const HELIS: CatalogItem[] = [
     id: 'bell-205a1',
     name: 'Bell 205A-1',
     tagline: 'The trainer',
-    blurb: 'Single-engine Huey in firefighting livery. The forgiving one: stable and easy to place — but the slowest, with the smallest bucket (half the Black Hawk). Learn the slung-bucket feel here.',
+    blurb: 'Single-engine Huey in firefighting livery. The forgiving one: stable and easy to place, but the slowest, with the smallest bucket (half the Black Hawk). Learn the slung-bucket feel here.',
     available: true,
     accent: '#c4232c',
     glyph: '🚁',
@@ -104,7 +104,7 @@ export const HELIS: CatalogItem[] = [
     id: 'bell-212',
     name: 'Bell 212',
     tagline: 'Twin-engine medium',
-    blurb: 'The Twin-Pac sister of the Huey — more power, a bigger belly, and a tougher airframe. A balanced step up from the 205: faster and carries more, still steady in the gusts off the lakes.',
+    blurb: 'The Twin-Pac sister of the Huey: more power, a bigger belly, and a tougher airframe. A balanced step up from the 205: faster and carries more, still steady in the gusts off the lakes.',
     available: true,
     unlockAfter: 2, // earned at Mission 3 — the first real wall (Hold the Line)
     cost: 5000, // …or buy it early with career points (the spend-to-unlock path)
@@ -121,8 +121,8 @@ export const HELIS: CatalogItem[] = [
   {
     id: 'uh-60',
     name: 'UH-60 Black Hawk',
-    tagline: 'Supreme — a handful',
-    blurb: 'A big four-blade utility ship: the fastest, biggest tank (double the 205), and toughest airframe. But heavy and twitchy down low — all that momentum overshoots, so it takes a confident hand. Supreme range and payload for an experienced pilot.',
+    tagline: 'Supreme, a handful',
+    blurb: 'A big four-blade utility ship: the fastest, biggest tank (double the 205), and toughest airframe. But heavy and twitchy down low; all that momentum overshoots, so it takes a confident hand. Supreme range and payload for an experienced pilot.',
     available: true,
     unlockAfter: 5, // unlocks from Mission 6 (Three Towns, the set-piece) through After Burn + the finale
     cost: 15000, // …or buy it early with career points (a steep but reachable shortcut to the top ship)

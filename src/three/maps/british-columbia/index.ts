@@ -6,7 +6,7 @@ const card: MapCard = {
   id: 'british-columbia',
   name: 'British Columbia',
   tagline: 'Interior fire country',
-  blurb: 'Steep Interior valleys and deep cold lakes — the Cariboo, Thompson, and Okanagan. The wind funnels through the passes and runs fire uphill fast.',
+  blurb: 'Steep Interior valleys and deep cold lakes: the Cariboo, Thompson, and Okanagan. The wind funnels through the passes and runs fire uphill fast.',
   available: false,
   accent: '#4f86a8',
   glyph: '🏔️',

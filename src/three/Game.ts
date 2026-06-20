@@ -1388,7 +1388,7 @@ export class Game {
         // line (a fresh top-up), so each genuine low-fuel run gets one call, not a per-frame spam.
         if (this.fuelSim.low && !this.rtbWarned && !refueling) {
           this.rtbWarned = true;
-          this.hud.pushComms('warning', 'Water-1, fuel low — set down at the nearest base to refuel.', 'warn');
+          this.hud.pushComms('warning', 'Water-1, fuel low. Set down at the nearest base to refuel.', 'warn');
           this.audio.playSquelch('warn');
         } else if (!this.fuelSim.low) {
           this.rtbWarned = false;
@@ -1396,7 +1396,7 @@ export class Game {
         // Persistent low-fuel caption: an unmissable centred warning HELD while airborne below the reserve,
         // and cleared the instant you refuel back above the line (or shut down). It shares the GPWS caption
         // slot but yields to a crash hazard, which takes priority — see the setAlert combine below.
-        this.lowFuelAlert = this.fuelSim.low && !this.fuelSim.starved && !refueling ? 'LOW FUEL — RTB' : null;
+        this.lowFuelAlert = this.fuelSim.low && !this.fuelSim.starved && !refueling ? 'LOW FUEL: RTB' : null;
         // Dry tank is now a UNIVERSAL loss: run the tank empty on ANY fuel mission and the mission is over
         // (the opt-in `fuelOut` fail used to be the only one that lost — elsewhere the engine just cut).
         if (this.fuelSim.starved) this.loseOnFuel();
@@ -1458,7 +1458,7 @@ export class Game {
         const cas = this.crew.checkCasualties((x, z) => this.fireSystem.heatAt(x, z), dt);
         if (cas.danger >= 0) {
           const label = this.crew.views[cas.danger]?.label ?? 'the LZ';
-          this.hud.pushComms('warning', `Fire's on the family at ${label} — get them out, now!`, 'warn');
+          this.hud.pushComms('warning', `Fire's on the family at ${label}. Get them out, now!`, 'warn');
           this.audio.playSquelch('warn');
         }
         if (cas.lost >= 0) {
@@ -1629,18 +1629,18 @@ export class Game {
       if (s.burning && !this.structBurnPrev[i]) {
         // Just caught fire. The base always announces (it's the lifeline); cabins are pooled behind a
         // cooldown so a hamlet lighting up doesn't spam the radio.
-        if (s.kind === 'depot') this.hud.pushComms('warning', 'The base is alight — we lose it, we lose our fuel and water. Get on it!', 'alert');
+        if (s.kind === 'depot') this.hud.pushComms('warning', 'The base is alight. We lose it, we lose our fuel and water. Get on it!', 'alert');
         else newCabinIgnite = true;
       }
       if (s.destroyed && !this.structDeadPrev[i]) {
-        this.hud.pushComms('warning', s.kind === 'depot' ? 'We’ve lost the base!' : 'A cabin’s gone — we couldn’t hold it.', 'alert');
+        this.hud.pushComms('warning', s.kind === 'depot' ? 'We’ve lost the base!' : 'A cabin’s gone. We couldn’t hold it.', 'alert');
       }
       this.structBurnPrev[i] = s.burning;
       this.structDeadPrev[i] = s.destroyed;
     }
     if (newCabinIgnite && this.structIgniteTimer <= 0) {
       this.structIgniteTimer = STRUCT_FIRE.igniteCooldown;
-      this.hud.pushComms('crew', 'Fire’s into the cabins — structures alight down there.', 'warn');
+      this.hud.pushComms('crew', 'Fire’s into the cabins. Structures alight down there.', 'warn');
     }
     // B3: point the fixed pool of hero fire-lights at the nearest hottest fires. Pass HEAT
     // (intensity × size) so a big blaze throws more, reachier light than a small spot.
@@ -1994,8 +1994,8 @@ export class Game {
         ? this.crew.hint()
         : scraping
           ? this.water > 0
-            ? 'Bucket dragging — climb! (spilling water)'
-            : 'Bucket dragging — climb!'
+            ? 'Bucket dragging. Climb! (spilling water)'
+            : 'Bucket dragging. Climb!'
           : this.scoopHint(overWater, scooping));
 
     // Open Skies live presence: broadcast our pose + render ghost pilots. Outside the frozen guard so
@@ -2498,13 +2498,13 @@ export class Game {
       // loss, keyed off the constraint that actually latched. ('Water-1' → the pilot's callsign.)
       const line =
         this.runtime.failedKind === 'rescue'
-          ? "Water-1, the family's gone — the fire beat you to them. Break it off."
+          ? "Water-1, the family's gone. The fire beat you to them. Break it off."
           : this.runtime.failedKind === 'fuelOut'
-            ? "Water-1, you're out of fuel. That's the mission — should've watched the gauge."
+            ? "Water-1, you're out of fuel. That's the mission. Should've watched the gauge."
             : this.runtime.failedKind === 'timeout'
-              ? "Water-1, that's time — the fire got past us. Break it off."
+              ? "Water-1, that's time. The fire got past us. Break it off."
               : this.runtime.failedKind === 'protect'
-                ? "Water-1, break it off. The community's gone — we lost this one."
+                ? "Water-1, break it off. The community's gone. We lost this one."
                 : "Water-1, break it off. The fire beat us this time.";
       this.hud.pushComms('dispatch', line, 'alert');
       this.audio.playSquelch('alert');
@@ -2653,7 +2653,7 @@ export class Game {
     this.finalScore = this.runtime.score;
     this.lowFuelAlert = null;
     this.hud.setAlert(null);
-    this.hud.pushComms('dispatch', "Water-1, you're out of fuel. That's the mission — should've watched the gauge.", 'alert');
+    this.hud.pushComms('dispatch', "Water-1, you're out of fuel. That's the mission. Should've watched the gauge.", 'alert');
     this.audio.playSquelch('alert');
   }
 
@@ -2682,14 +2682,14 @@ export class Game {
     this.audio.playCrash();
     const message =
       cause === 'tree'
-        ? 'Airframe down in the trees — mayday, mayday.'
+        ? 'Airframe down in the trees. Mayday, mayday.'
         : cause === 'impact'
-          ? 'Heavy impact — she’s gone. Mayday.'
+          ? 'Heavy impact. She’s gone. Mayday.'
           : cause === 'bridge'
-            ? 'She’s in the river by the bridge — mayday.'
+            ? 'She’s in the river by the bridge. Mayday.'
             : cause === 'collision'
-              ? 'Mid-air! We tangled with another ship — going down!'
-              : 'Mayday — airframe down!';
+              ? 'Mid-air! We tangled with another ship, going down!'
+              : 'Mayday. Airframe down!';
     this.hud.pushComms('warning', message, 'alert');
     this.audio.playSquelch('alert');
   }
@@ -2706,7 +2706,7 @@ export class Game {
     this.chase.kick(CAMERA.kickStrike); // the rotor strike — the world hits back
     this.hud.flashDamage(1);
     this.hud.setAlert(null);
-    this.hud.pushComms('warning', 'Mayday — rotor strike! Going down!', 'alert');
+    this.hud.pushComms('warning', 'Mayday! Rotor strike! Going down!', 'alert');
     this.audio.playSquelch('alert');
   }
 
@@ -2723,7 +2723,7 @@ export class Game {
     this.chase.kick(CAMERA.kickStrike); // clipped the truss — same violent read as a tree strike
     this.hud.flashDamage(1);
     this.hud.setAlert(null);
-    this.hud.pushComms('warning', 'Clipped the bridge — mayday, going in!', 'alert');
+    this.hud.pushComms('warning', 'Clipped the bridge. Mayday, going in!', 'alert');
     this.audio.playSquelch('alert');
   }
 
@@ -2801,7 +2801,7 @@ export class Game {
     // TERRAIN — PULL UP; an approaching canopy → TERRAIN. (The lower-severity "SINK RATE" caution was
     // retired — only the imminent-slam PULL UP fires for a fast descent now.)
     if (sinkArmed && agl < CRASH.pullUpAlt && sink >= CRASH.sinkWarningRate) return 'PULL UP';
-    if (terrainClose && agl < CRASH.pullUpAlt) return 'TERRAIN — PULL UP';
+    if (terrainClose && agl < CRASH.pullUpAlt) return 'TERRAIN: PULL UP';
     if (terrainClose) return 'TERRAIN';
     return null;
   }
@@ -2820,10 +2820,10 @@ export class Game {
     this.lens.vignettePulse = Math.min(1, this.lens.vignettePulse + GRADE.damageVignette * sev);
     this.hud.flashDamage(critical ? Math.max(sev, 0.7) : sev);
     if (critical) {
-      this.hud.pushComms('warning', 'Hard impact — airframe critical! Set down at a base to repair.', 'alert');
+      this.hud.pushComms('warning', 'Hard impact! Airframe critical. Set down at a base to repair.', 'alert');
       this.audio.playSquelch('alert');
     } else {
-      const text = lost > 0.15 ? 'Heavy landing — airframe damage taken.' : 'Hard landing — ease the descent on touchdown.';
+      const text = lost > 0.15 ? 'Heavy landing. Airframe damage taken.' : 'Hard landing. Ease the descent on touchdown.';
       this.hud.pushComms('warning', text, 'warn');
       this.audio.playSquelch('warn');
     }
@@ -2942,7 +2942,7 @@ export class Game {
         coachBump('scoop');
         // The spoken "bucket full" cue is a teaching line, so it stops after a couple fills (no more
         // "bucket filled, go dump" every scoop); the squelch stays as a quiet, non-verbal confirmation.
-        if (teach) this.hud.pushComms('dispatch', 'Bucket full — go work the fire.', 'info');
+        if (teach) this.hud.pushComms('dispatch', 'Bucket full. Go work the fire.', 'info');
         this.audio.playSquelch('info');
       }
     }
@@ -3054,7 +3054,7 @@ export class Game {
     // readout + a stale score increment on the swap BACK to the bucket.
     this.dropActive = false;
     this.beginDropTally();
-    this.hud.pushComms('dispatch', water ? 'Bucket rigged — fill from the lake.' : 'Crew sling rigged — go bring them out.', 'info');
+    this.hud.pushComms('dispatch', water ? 'Bucket rigged. Fill from the lake.' : 'Crew sling rigged. Go bring them out.', 'info');
   }
 
   /**
@@ -3379,25 +3379,25 @@ export class Game {
     let color: number;
     let wasted = false; // a missed / too-high pour — sloppy water (score precision + penalty)
     if (t.peakHeatPresent < 1e-2) {
-      text = 'Missed — bucket swung wide';
+      text = 'Missed. Bucket swung wide';
       urgency = 'warn';
       color = DROP_FX.markerColorWide;
       wasted = true;
     } else if (effAvg < DROP_FX.resultTooHighEff) {
-      text = 'Too high — water dispersed';
+      text = 'Too high. Water dispersed';
       urgency = 'warn';
       color = DROP_FX.markerColorTooHigh;
       wasted = true;
     } else if (frac >= DROP_FX.resultDirectFrac) {
-      text = `Direct hit — ${Math.round(Math.min(1, frac) * 100)}% knocked down`;
+      text = `Direct hit: ${Math.round(Math.min(1, frac) * 100)}% knocked down`;
       urgency = 'info';
       color = DROP_FX.markerColorInBand;
     } else if (frac >= DROP_FX.resultEdgeFrac) {
-      text = 'Edge only — reposition';
+      text = 'Edge only. Reposition';
       urgency = 'info';
       color = DROP_FX.markerColorTooHigh;
     } else {
-      text = 'Grazing hit — light dampening';
+      text = 'Grazing hit. Light dampening';
       urgency = 'info';
       color = DROP_FX.markerColorInBand;
     }

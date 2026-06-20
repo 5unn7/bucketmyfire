@@ -129,12 +129,12 @@ export class EndScreen {
     if (s.won) {
       const stars = d?.breakdown?.stars ?? 0;
       if (d && d.structTotal > 0 && d.structSaved === d.structTotal && d.firesOut >= d.firesTotal) {
-        sub = `Textbook, ${who}. Every roof still standing — dispatch owes you a coffee.`;
+        sub = `Textbook, ${who}. Every roof still standing. Dispatch owes you a coffee.`;
       } else if (d && d.structTotal > 0 && d.structSaved < d.structTotal) {
         const lost = d.structTotal - d.structSaved;
-        sub = `We held the line, ${who}. The fire still took ${lost === 1 ? 'one' : lost} — but the town's standing.`;
+        sub = `We held the line, ${who}. The fire still took ${lost === 1 ? 'one' : lost}, but the town's standing.`;
       } else if (stars >= 3) {
-        sub = `Now THAT was flying, ${who}. Knocked down clean — not a wisp left.`;
+        sub = `Now THAT was flying, ${who}. Knocked down clean. Not a wisp left.`;
       } else {
         sub = `Fire's out, ${who}. That's how it's done.`;
       }
@@ -149,7 +149,7 @@ export class EndScreen {
           sub = 'Came in too hard. That was a rough landing, even for you.';
           break;
         case 'bridge':
-          sub = 'You clipped the bridge. Scenic, sure — but you have to fit under it.';
+          sub = 'You clipped the bridge. Scenic, sure, but you have to fit under it.';
           break;
         case 'airframe':
           sub = 'Too much damage to keep her airborne. Easy does it next time.';

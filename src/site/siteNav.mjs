@@ -82,7 +82,7 @@ export function brandNavHtml(active = '') {
     return `<a class="fhome-nav-a" href="${n.href}"${cur}>${n.label}</a>`;
   }).join('');
   return (
-    `<a class="fhome-brand" href="/" aria-label="Bucket My Fire — home"><span class="bmk">${FLAME}</span><b>Bucket My Fire</b></a>` +
+    `<a class="fhome-brand" href="/" aria-label="Bucket My Fire, home"><span class="bmk">${FLAME}</span><b>Bucket My Fire</b></a>` +
     `<nav class="fhome-nav" aria-label="Primary">${nav}</nav>`
   );
 }
@@ -131,7 +131,7 @@ export function tabbarHtml(active = '') {
  *  in navCss, so it reads identically in the front-door `.fd-foot` and the static `.fn-foot`. */
 export function footerBrandHtml() {
   return (
-    `<a class="site-foot-brand" href="/" aria-label="Bucket My Fire — home">` +
+    `<a class="site-foot-brand" href="/" aria-label="Bucket My Fire, home">` +
     `<span class="site-foot-mark">${FLAME}</span><b>Bucket My Fire</b></a>`
   );
 }
@@ -230,7 +230,10 @@ export const navCss = `
   70%      { transform: scale(1.04, 1.07) skewX(-1deg); opacity: 0.94; }
 }
 @media (prefers-reduced-motion: reduce) { .fd-tab .flame { animation: none; } }
-.fd-tab span { font-family: var(--mono); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }
+.fd-tab span { font-family: var(--mono); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
+/* On the narrowest phones the 5-col bar squeezes each cell hard — shrink the label a hair so the longest
+   word ("Campaign"/"Fireline") stays on ONE line instead of wrapping the icon out of alignment. */
+@media (max-width: 360px) { .fd-tab span { font-size: 8px; letter-spacing: .03em; } .fd-tab { padding-left: 2px; padding-right: 2px; } }
 .fd-tab[aria-current="page"] { color: var(--ember-hi); }
 /* Clear the fixed tab bar on static pages (blog/legal use body.fn). The front door pads its own column. */
 @media (max-width: 759px) { body.fn { padding-bottom: calc(72px + env(safe-area-inset-bottom)); } }

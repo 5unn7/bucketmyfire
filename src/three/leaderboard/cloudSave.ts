@@ -147,7 +147,7 @@ export async function saveToCloud(pilot: string, email: string): Promise<CloudRe
   });
 
   const ok = await postSave(name, email);
-  if (!ok) return { ok: false, reason: 'Could not reach the cloud — try again.' };
+  if (!ok) return { ok: false, reason: 'Could not reach the cloud. Try again.' };
   setCloudLink({ email: email.trim(), pilot: name });
   return { ok: true, detail: 'Progress saved to the cloud.' };
 }
@@ -180,7 +180,7 @@ export async function loadFromCloud(pilot: string, email: string): Promise<Cloud
     t.done();
   }
 
-  if (rows === null) return { ok: false, reason: 'Could not reach the cloud — try again.' };
+  if (rows === null) return { ok: false, reason: 'Could not reach the cloud. Try again.' };
   if (rows.length === 0) return { ok: false, reason: 'No save found for that callsign + email.' };
 
   const blob = rows[0].save;

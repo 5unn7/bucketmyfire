@@ -259,14 +259,14 @@ export function openContact(): void {
       if (ok) {
         // Static success panel (no user text echoed). The form is replaced wholesale.
         form.innerHTML =
-          `<p class="fd-cform-msg ok">Thanks — we'll be in touch.</p>` +
+          `<p class="fd-cform-msg ok">Thanks, we'll be in touch.</p>` +
           `<button class="btn ghost fd-cform-go" type="button">Close</button>`;
         form.querySelector('button')?.addEventListener('click', () => m.close());
       } else {
         go.disabled = false;
         go.textContent = 'Send enquiry';
         msg.className = 'fd-cform-msg err';
-        msg.textContent = "Couldn't send right now — please try again in a moment.";
+        msg.textContent = "Couldn't send right now. Please try again in a moment.";
       }
     });
   });
@@ -306,7 +306,7 @@ export function openShopNotify(): void {
     title: 'Coming soon',
     lead: "BMF gear is in final prep. Leave your email and you'll be first through the doors.",
     noteLabel: 'What would you wear?',
-    notePlaceholder: 'Tees, hoodies, caps, patches — the designs you want…',
+    notePlaceholder: 'Tees, hoodies, caps, patches: the designs you want…',
     tag: 'notify:shop',
   });
 }
@@ -346,14 +346,14 @@ function openLeadModal(copy: LeadModalCopy): void {
     void submitLead(email, copy.tag, callsign, feature || undefined).then((ok) => {
       if (ok) {
         form.innerHTML =
-          `<p class="fd-cform-msg ok">You're on the list — thanks, we'll keep you posted.</p>` +
+          `<p class="fd-cform-msg ok">You're on the list. We'll email you once, when it's ready.</p>` +
           `<button class="btn ghost fd-cform-go" type="button">Close</button>`;
         form.querySelector('button')?.addEventListener('click', () => m.close());
       } else {
         go.disabled = false;
         go.textContent = 'Notify me';
         msg.className = 'fd-cform-msg err';
-        msg.textContent = "Couldn't sign you up right now — please try again in a moment.";
+        msg.textContent = "Couldn't sign you up right now. Please try again in a moment.";
       }
     });
   });

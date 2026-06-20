@@ -93,7 +93,7 @@ class CloudSave {
     panel.appendChild(
       div(
         { fontSize: FS.sm, lineHeight: '1.5', color: UI.dim, margin: '6px 0 16px' },
-        'Pin your progress to an email — no password. Restore it on any device by entering the same callsign + email.',
+        'Pin your progress to an email, no password needed. Restore it on any device by entering the same callsign + email.',
       ),
     );
 
@@ -194,7 +194,7 @@ class CloudSave {
         e.stopPropagation();
         clearCloudLink();
         this.renderLinkNote();
-        this.showStatus('This device unlinked — auto-sync off.', UI.dim);
+        this.showStatus('This device unlinked. Auto-sync off.', UI.dim);
       });
       this.linkNote.appendChild(unlink);
     } else {

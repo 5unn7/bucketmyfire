@@ -119,6 +119,10 @@ export const UI = {
   shadowBtn: '0 6px 22px rgba(0,0,0,0.40)', // touch buttons
   shadowCard: '0 8px 30px rgba(0,0,0,0.45)', // overlay cards — stronger, lifts off a busy backdrop
   bevelTop: 'rgba(255,255,255,0.14)', // lit top-edge rim on panels and cards (rim-lighting top highlight)
+  bevelHi: 'rgba(255,255,255,0.5)', // strong lit top-edge on the raised primary CTA (the bright bevel highlight)
+  bevelLo: 'rgba(0,0,0,0.18)', // shaded bottom-edge inset on the raised primary CTA (the bevel shadow)
+  bevelEdge: 'rgba(255,255,255,0.06)', // faint inner top rim on warm/secondary buttons (a hair of lift)
+  warmGlassHi: 'rgba(60,24,18,0.6)', // secondary-button HOVER fill — warmer + denser than warmGlass
   cardGradient: 'linear-gradient(158deg, rgba(22,32,44,0.72) 0%, rgba(12,18,26,0.68) 52%, rgba(8,12,18,0.64) 100%)', // cockpit card fill: directional depth, lighter at top-left
   cardGradientFight: 'linear-gradient(158deg, rgba(32,22,14,0.74) 0%, rgba(16,10,6,0.70) 52%, rgba(10,6,4,0.66) 100%)', // fight-register card fill: same direction, warm-dark tint
   shadowCardRich: '0 10px 36px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.13), inset 1px 0 0 rgba(255,255,255,0.05), inset 0 -1px 0 rgba(0,0,0,0.22)', // stronger drop shadow + top/left/bottom inset rim

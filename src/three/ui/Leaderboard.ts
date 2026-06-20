@@ -639,7 +639,7 @@ class Leaderboard {
     if (this.active === 'today') wrap.appendChild(this.todayHeader());
     wrap.appendChild(
       this.note(
-        'The global leaderboard is offline. Your scores are still saved on this device — ' +
+        'The global leaderboard is offline. Your scores are still saved on this device. ' +
           'set up the (free) Supabase backend to compete worldwide.',
       ),
     );

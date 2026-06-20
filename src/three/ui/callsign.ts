@@ -142,9 +142,9 @@ export function validateCallsign(raw: string): CallsignResult {
     // All-emoji / all-symbol names have no letters to vet — allow, they're harmless and fun.
     return { ok: true, value };
   }
-  if (RESERVED.has(folded)) return { ok: false, value, reason: 'That name is reserved — pick another.' };
+  if (RESERVED.has(folded)) return { ok: false, value, reason: 'That name is reserved. Pick another.' };
   if (PROFANITY.some((w) => folded.includes(w))) {
-    return { ok: false, value, reason: 'Keep it clean — choose another name.' };
+    return { ok: false, value, reason: 'Keep it clean. Choose another name.' };
   }
   return { ok: true, value };
 }

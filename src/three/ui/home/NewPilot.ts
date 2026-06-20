@@ -57,7 +57,7 @@ export class NewPilotScreen {
   private markup(): string {
     const cloud = isConfigured()
       ? 'Save your progress and pick up your run on any device.'
-      : 'Cloud save is offline right now — your progress stays safe on this device.';
+      : 'Cloud save is offline right now. Your progress stays safe on this device.';
     // Returning pilots who cleared their browser can pull their run back from the cloud (callsign +
     // email). Only offered when cloud save is actually configured — otherwise there's nothing to load.
     const load = isConfigured()
@@ -84,7 +84,7 @@ export class NewPilotScreen {
     </label>
     <div id="np-msg" class="fmsg"></div>
 
-    <div class="fieldlabel" style="margin-top:18px;">Email <span class="opt">— optional</span></div>
+    <div class="fieldlabel" style="margin-top:18px;">Email <span class="opt">(optional)</span></div>
     <label class="field sm">
       <span class="pfx">${ic('cloud')}</span>
       <input id="np-email" type="email" maxlength="254" placeholder="you@example.com"

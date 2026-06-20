@@ -56,7 +56,7 @@ ${frontAppbar('campaign')}
     <div class="fd-hero-main">
       <p class="fd-hero-eyebrow">Campaign · Solo</p>
       <h1 class="fd-hero-head">Fly solo.</h1>
-      <p class="fd-hero-sub">Pick your ground and your aircraft, then fly a private round — just you, the fire, and the towns to hold.</p>
+      <p class="fd-hero-sub">Pick your ground and aircraft, then fly a private round: just you, the fire, and the towns to hold.</p>
     </div>
   </header>
 
@@ -116,7 +116,7 @@ function renderHelis(app: HTMLElement): void {
     `<span class="pts-bal">${ic('spark')}<b>${wallet.toLocaleString()}</b><span>pts</span></span></div>` +
     `<div class="fly-strip">${cards}</div>` +
     `<div class="fly-dots" aria-hidden="true"></div>` +
-    `<p class="fcamp-note">Locked aircraft unlock with career points earned in Open Skies and solo flights — earn enough and unlock them right here.</p>`;
+    `<p class="fcamp-note">Locked aircraft unlock with career points earned in Open Skies and solo flights. Earn enough and unlock them right here.</p>`;
   wizard.querySelector('#fd-back')?.addEventListener('click', () => {
     renderMaps(app);
     window.scrollTo({ top: 0, behavior: 'smooth' });

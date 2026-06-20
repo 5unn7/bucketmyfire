@@ -166,7 +166,7 @@ export function coopTeaserCard(number: number): HTMLDivElement {
   card.appendChild(div({ fontSize: FS.title, fontWeight: FW.bold, margin: '7px 0 6px' }, '🤝 Co-op'));
   const blurb = div(
     { fontSize: FS.sm, lineHeight: '1.45', color: UI.textCool },
-    '2–4 players against one fire too big to fly alone — more towns, crews and rescues than a single pilot can hold. Bring friends.',
+    '2-4 players against one fire too big to fly alone. More towns, crews and rescues than a single pilot can hold. Bring friends.',
   );
   clamp(blurb, 2);
   card.appendChild(blurb);
@@ -276,10 +276,10 @@ export function creditsFooter(): HTMLElement {
 
   const body = div({ marginTop: '12px' });
   const credits: Array<[string, string]> = [
-    ['Bell UH-1 Iroquois (Huey)', 'helijah — Sketchfab Standard'],
-    ['Bell 212', 'Vahid Heidari — CC-BY-4.0'],
-    ['UH-60M Black Hawk (low poly)', 'Yi Tsung Lee — CC-BY-4.0'],
-    ['Ultimate 3D Animal Pack', 'WildMesh 3D — CC-BY-4.0'],
+    ['Bell UH-1 Iroquois (Huey)', 'helijah, Sketchfab Standard'],
+    ['Bell 212', 'Vahid Heidari, CC-BY-4.0'],
+    ['UH-60M Black Hawk (low poly)', 'Yi Tsung Lee, CC-BY-4.0'],
+    ['Ultimate 3D Animal Pack', 'WildMesh 3D, CC-BY-4.0'],
     ['Rotor audio loop', 'Mixkit (no-attribution license)'],
   ];
   for (const [title, by] of credits) {
