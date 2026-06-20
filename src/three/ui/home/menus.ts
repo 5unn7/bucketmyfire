@@ -28,7 +28,7 @@ import { railNav } from './rail';
 import { DEFS, FLAME, ic } from './icons';
 import { openStore } from '../storeLink';
 import { validateCallsign, MAX_CALLSIGN } from '../callsign';
-import { fetchActiveFires, fetchSummary, fetchReportedFires, fetchBurnPerimeters, fetchFwiMeta, fetchFireHistory, fetchFireActivity, fwiForecastTime, getRegionPref, setRegionPref, isLiveFireEnabled } from '../../livefire/client';
+import { fetchActiveFires, fetchSummary, fetchReportedFires, fetchBurnPerimeters, fetchFwiMeta, fetchFireHistory, fetchFireActivity, fwiForecastTime, getRegionPref, setRegionPref, isLiveFireEnabled, FWI_BANDS } from '../../livefire/client';
 import {
   LIVEFIRE_COPY, severityClass, severityLabel, stageClass, stageLabel, relTime,
   freshnessLine, statusDotClass, publishedWhen, LIVEFIRE_SOURCES, NOT_FOR_EMERGENCY, SK_OFFICIAL,
@@ -850,6 +850,11 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
         <button class="fmbtn" data-lf-layers aria-label="${esc(C.layersBtn)}" title="${esc(C.layersBtn)}">${ic('layers')}<span class="fmn" data-lf-layern></span></button>
         <button class="fmbtn" data-lf-firewx aria-pressed="false" aria-label="${esc(C.fireWxBtn)}" title="${esc(C.fireWxBtn)}">${ic('fire')}</button>
       </div>
+      <div class="firebottom">
+        <div class="firelegend" data-lf-legend hidden aria-hidden="true">
+          <div class="fl-scale">${FWI_BANDS.map((b) => `<i class="fl-sw" style="background:${b.color}" title="${b.label}"></i>`).join('')}</div>
+          <div class="fl-labels">${FWI_BANDS.map((b) => `<span class="fl-lb">${b.label}</span>`).join('')}</div>
+        </div>
       <div class="firescrub" data-lf-scrub hidden>
         <button class="iconbtn" data-lf-play aria-label="Play forecast">${ic('play')}</button>
         <div class="scrubtrack" data-lf-scrubtrack>
@@ -857,6 +862,7 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
           <div class="scrubrail"><span data-lf-rail-a>Now</span><span data-lf-rail-b>+${LIVEFIRE.smokeForecastHours} h</span></div>
         </div>
         <div class="scrublabel"><span class="scrubwhen"><b data-lf-scrub-time>—</b><i data-lf-scrub-lead>Now</i></span><span class="scrubtag">Forecast</span></div>
+        </div>
       </div>
       <div class="firesheet" data-lf-sheet hidden></div>
     </div>
@@ -884,6 +890,7 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
   const layerCountEl = root.querySelector<HTMLElement>('[data-lf-layern]')!;
   const regionEl = root.querySelector<HTMLSelectElement>('[data-lf-region]')!;
   const scrubEl = root.querySelector<HTMLElement>('[data-lf-scrub]')!;
+  const legendEl = root.querySelector<HTMLElement>('[data-lf-legend]')!;
   const scrubTrackEl = root.querySelector<HTMLElement>('[data-lf-scrubtrack]')!;
   const playBtn = root.querySelector<HTMLButtonElement>('[data-lf-play]')!;
   const rangeEl = root.querySelector<HTMLInputElement>('[data-lf-range]')!;
@@ -902,12 +909,13 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
   let hottest: Hotspot | null = null;
   // The two FORECAST rasters share ONE bottom scrubber. `forecastMode` says which one it currently drives
   // (the layer you turned on last); the other holds its frame. Smoke = HOURLY (+48h); fire weather = DAILY
-  // model grids (today+1 … +N), labeled forecasts — never presented as observed.
+  // model grids (today … +N), labeled forecasts — today is the default instant, never presented as observed.
   const smokeMeta: FeedMeta = { status: isLiveFireEnabled() ? 'live' : 'disabled', fromCache: false, publishedAt: 0, fetchedAt: 0 };
   const smokeFrames = smokeForecastFrames(Date.now(), LIVEFIRE.smokeForecastHours);
   let smokeIdx = 0;
-  // A week of continuous model fire-weather forecast (today+1 … +N, UTC days); span + pace are config tokens.
-  const fwiFrames = Array.from({ length: LIVEFIRE.fwiForecastDays }, (_, i) => new Date(Date.now() + (i + 1) * 86_400_000).toISOString().slice(0, 10));
+  // Continuous model fire-weather, TODAY first (the default instant) then the outlook forward (today … +N-1,
+  // UTC days); span + pace are config tokens. Frame 0 = today so the layer always loads on a slice with data.
+  const fwiFrames = Array.from({ length: LIVEFIRE.fwiForecastDays }, (_, i) => new Date(Date.now() + i * 86_400_000).toISOString().slice(0, 10));
   let fwiIdx = 0;
   let fwiPreloaded = false; // warm all day-images once, the first time FWI takes the scrubber (Play = instant)
   let forecastMode: 'none' | 'smoke' | 'fwi' = 'none';
@@ -1044,7 +1052,7 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
       // Render in UTC so the day matches the UTC forecast date `f` + the "+N d" chip (a local-TZ render of
       // UTC-midnight skews a day in negative-offset zones).
       scrubTimeEl.textContent = new Date(`${f}T00:00:00Z`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
-      scrubLeadEl.textContent = `+${i + 1} d`; // fwiFrames start at today+1, so frame i is "+ (i+1) days"
+      scrubLeadEl.textContent = i === 0 ? 'Today' : `+${i} d`; // fwiFrames start at today, so frame 0 = today, frame i = "+i days"
     } else {
       map?.setSmokeTime(f);
       scrubTimeEl.textContent = frameTimeLabel(f); // absolute: "Mon 6 PM"
@@ -1060,6 +1068,10 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
   };
   const playForecast = (): void => {
     if (forecastMode === 'none' || fcFrames().length < 2 || closed) return;
+    // Warm the whole forecast week NOW — first Play only, and only for FWI (smoke is WMS tiles). Deferred off
+    // the toggle path so turning Fire Weather ON stays a fast single-frame "today" load; by the time the first
+    // day-step fires (after fwiFrameMs) the next frames are warming, so Play still morphs without a hard stall.
+    if (forecastMode === 'fwi' && !fwiPreloaded) { fwiPreloaded = true; map?.preloadFwi?.(fwiFrames); }
     if (smokeTimer !== null) clearInterval(smokeTimer); // idempotent: never stack intervals (double-tap guard)
     forecastPlaying = true;
     playBtn.innerHTML = ic('pause');
@@ -1076,12 +1088,13 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
     stopForecast();
     forecastMode = mode;
     if (mode === 'none') { scrubEl.hidden = true; return; }
-    // FWI just took the scrubber → warm all day-frames once so the morph + Play never stall on a per-day fetch.
-    if (mode === 'fwi' && !fwiPreloaded) { fwiPreloaded = true; map?.preloadFwi?.(fwiFrames); }
+    // NB: we do NOT warm the whole forecast week here. Toggling Fire Weather ON must load just TODAY's single
+    // instant (one frame, fast) — preloading 7 days × 2 sources up front raced ~MBs of week-ahead rasters
+    // against that one frame on mobile, which read as "the map doesn't load". The week is warmed on first Play.
     const fs = fcFrames();
     rangeEl.max = String(Math.max(0, fs.length - 1));
-    railAEl.textContent = mode === 'fwi' ? '+1 d' : 'Now';
-    railBEl.textContent = mode === 'fwi' ? `+${fs.length} d` : `+${LIVEFIRE.smokeForecastHours} h`;
+    railAEl.textContent = mode === 'fwi' ? 'Today' : 'Now';
+    railBEl.textContent = mode === 'fwi' ? `+${fs.length - 1} d` : `+${LIVEFIRE.smokeForecastHours} h`;
     scrubEl.hidden = false;
     applyForecastFrame();
   };
@@ -1099,6 +1112,8 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
   const syncFireWx = (): void => {
     fireWxBtn.classList.toggle('on', layerOn.fwi);
     fireWxBtn.setAttribute('aria-pressed', String(layerOn.fwi));
+    legendEl.hidden = !layerOn.fwi; // the danger-ramp key rides with the layer it explains
+    legendEl.setAttribute('aria-hidden', String(!layerOn.fwi));
   };
   // Fire weather is a CWFIS/GWIS forecast, gated to Canada coverage (mirrors the sheet's Weather tier) and
   // dropped entirely by the live-data kill-switch — grey the button out (un-tappable) where it has no data.

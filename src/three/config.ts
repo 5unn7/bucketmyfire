@@ -1840,10 +1840,12 @@ export const PROVINCE = {
 // --- Live wildfire tracker (the home-screen "honest window" — real CWFIS/CIFFC/ECCC data on the flat
 //     Leaflet map). Look/feel knobs only; the data sources + freshness live in src/three/livefire/. ----
 export const LIVEFIRE = {
-  // Fire-Weather-Index WMS raster opacity. The danger field is a full-bleed orange wash, so keep it LOW
-  // enough that the basemap (towns, lakes, the fire dots) stays legible underneath. Was 0.42 (washed the
-  // map out); 0.24 reads as a tint, not a paint. The layer is opt-in/default-off regardless.
-  fwiOpacity: 0.24,
+  // Fire-Weather-Index WMS raster opacity — a global multiplier ON TOP of the SLD's own per-stop alphas
+  // (client FWI_WMS_SLD). On the LIGHT basemap the danger field has to read against bright white, so this is
+  // 0.6, not the old 0.24 — at 0.24 the whole ramp (SLD max 0.84) topped out near 0.20 effective, a faint
+  // pink you "couldn't see". The fire dots + towns sit on panes ABOVE this, so a stronger wash never buries
+  // them; it only deepens over the basemap. Opt-in/default-off regardless. (Was 0.24 for the dark map.)
+  fwiOpacity: 6,
   // Surface-smoke FORECAST raster (ECCC GeoMet FireWork) opacity, for the smoke layer. A global dimmer ON
   // TOP of the SLD's own per-density opacity (which already ramps 0→0.95 grey→white), kept below 1 so even a
   // bright-white dense plume lets the map read through. 0.85 × the SLD = a visible white smoke that doesn't
@@ -1865,7 +1867,10 @@ export const LIVEFIRE = {
   fwiFadeMs: 1150, // crossfade/morph dissolve (ms) — ALMOST the full dwell so Play is a CONTINUOUS (video-like)
   // linear morph with no static hold between days, not a settle-then-dissolve step (a touch under fwiFrameMs so
   // each fade still completes before the next starts). The daily FWI field dissolves in place (no plume drift).
-  fwiProxyWidth: 2048, // GetMap PNG width handed to fwiFrameUrl (height follows the bbox aspect)
+  fwiProxyWidth: 1024, // GetMap PNG width handed to fwiFrameUrl (height follows the bbox aspect). 1024, not
+  // 2048 — a 2048-wide national raster is ~700 kB/frame (~4 s on mobile) and the soft FWI danger wash is
+  // already finer than the coarse source grid at 1024, so the halved payload loads reliably with no visible
+  // loss (today's instant must appear fast on a phone; 2048 made it feel like it "doesn't load").
 } as const;
 
 // --- Live tuning registry (dev tooling) -------------------------------------

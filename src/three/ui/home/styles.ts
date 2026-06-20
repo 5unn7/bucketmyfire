@@ -161,8 +161,10 @@ const CSS = `
 .bmf-app .fsheet-link .grow{ font-weight:var(--fw-semibold); color:var(--text); }
 .bmf-app .fsheet-link:hover .grow{ color:var(--ember-hi); }
 
-/* Leaflet, themed dark to match the cockpit (tokens only). */
+/* Leaflet — the LIGHT basemap; the chrome around it stays cockpit-dark. Tiles brightened for sun-readability
+   (matches the front-door map filter); the fire dots + FWI sit on separate panes so this never dilutes them. */
 .bmf-app .leaflet-container{ background:var(--card-bg); font-family:var(--font); }
+.bmf-app .leaflet-tile{ filter:contrast(1.1) brightness(1.08); }
 .bmf-app .leaflet-bar{ border:1px solid var(--stroke); box-shadow:var(--shadow-card); }
 .bmf-app .leaflet-bar a, .bmf-app .leaflet-bar a:hover{ background:var(--field); color:var(--text); border-bottom-color:var(--hair); }
 .bmf-app .leaflet-bar a:hover{ background:var(--recess); }
@@ -174,9 +176,10 @@ const CSS = `
    the right. z-index clears Leaflet's control layer (its zoom +/- container sits at 1000) so the map
    controls can't poke OVER an open drawer; the warm-stroke lip reads it as a panel lifted off the map. */
 .bmf-app .firesheet{ position:absolute; top:0; right:0; bottom:0; z-index:1200; width:min(380px, 86%); overflow-y:auto; -webkit-overflow-scrolling:touch;
-  /* Frosted glass to match the shared kit modal (card-glass + the --blur token setBlur uses) — the drawer
-     reads as one design language with the Contact / Privacy / Terms modals; the blur keeps rows legible. */
-  background:var(--card-glass); backdrop-filter:var(--blur); -webkit-backdrop-filter:var(--blur);
+  /* Frosted glass — the DEEP variant, because this sheet floats over the bright wildfire map: the standard
+     0.60 card-glass let the white basemap bleed through and turn the panel milky (washing the dark-cockpit
+     look + the faint hairline dividers). --card-glass-deep stays a crisp dark readout; the blur still frosts. */
+  background:var(--card-glass-deep); backdrop-filter:var(--blur); -webkit-backdrop-filter:var(--blur);
   border-left:1px solid var(--warm-stroke); border-radius:var(--r-xl) 0 0 var(--r-xl); box-shadow:var(--shadow-card); padding:0 16px 16px;
   animation:bmf-sheet-right .2s cubic-bezier(.2,.7,.3,1); }
 .bmf-app .firesheet[hidden]{ display:none; }
@@ -216,7 +219,7 @@ const CSS = `
    frosted drawer). The negative margins bleed it to the drawer's inner edges; its own card-glass + blur
    match the panel so it reads as one surface, with just the hairline separating it from the rows. */
 .bmf-app .fsheet-head{ position:sticky; top:0; z-index:2; display:flex; align-items:flex-start; gap:12px; margin:0 -16px 6px; padding:15px 16px 12px;
-  background:var(--card-glass); backdrop-filter:var(--blur); -webkit-backdrop-filter:var(--blur); border-bottom:1px solid var(--hair); }
+  background:var(--card-glass-deep); backdrop-filter:var(--blur); -webkit-backdrop-filter:var(--blur); border-bottom:1px solid var(--hair); }
 .bmf-app .fsheet-ttl{ font-family:var(--mono); font-size:var(--fs-lg); font-weight:var(--fw-heavy); letter-spacing:.01em; line-height:1.18; color:var(--text); }
 .bmf-app .fsheet-head .s{ font-size:var(--fs-meta); color:var(--dim); margin-top:3px; line-height:1.3; }
 .bmf-app .fsheet-head .iconbtn{ flex:0 0 auto; margin-top:-1px; }
@@ -252,7 +255,7 @@ const CSS = `
 .bmf-app .ledger .lnote{ font-size:var(--fs-micro); color:var(--faint); margin-top:11px; line-height:1.45; }
 /* Smoke FORECAST scrubber — a slim timeline pinned over the map's bottom edge (shown only when Smoke is on).
    The range sits over a "Now … +48 h" rail; the label pairs the absolute frame time with an ember lead chip. */
-.bmf-app .firescrub{ position:absolute; left:0; right:0; bottom:0; z-index:401; display:flex; align-items:center; gap:11px; padding:6px 12px calc(7px + env(safe-area-inset-bottom)); background:var(--card-bg); border-top:1px solid var(--stroke); }
+.bmf-app .firescrub{ pointer-events:auto; display:flex; align-items:center; gap:11px; padding:6px 12px calc(7px + env(safe-area-inset-bottom)); background:var(--card-bg); border-top:1px solid var(--stroke); }
 .bmf-app .firescrub[hidden]{ display:none; }
 .bmf-app .firescrub .iconbtn{ width:38px; height:38px; flex:0 0 auto; }
 .bmf-app .scrubtrack{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:1px; }
@@ -266,6 +269,21 @@ const CSS = `
 .bmf-app .scrubwhen b{ font-family:var(--mono); font-size:var(--fs-meta); font-weight:600; color:var(--text); white-space:nowrap; }
 .bmf-app .scrubwhen i{ font-family:var(--mono); font-style:normal; font-size:var(--fs-micro); color:var(--ember-hi); white-space:nowrap; }
 .bmf-app .scrubtag{ font-size:var(--fs-micro); letter-spacing:.1em; text-transform:uppercase; color:var(--faint); }
+/* Bottom map rail — a flex COLUMN pinned to the map's lower edge that stacks the FWI legend ABOVE the
+   forecast scrubber (each shows independently; hidden ones collapse). pointer-events:none lets map drags
+   through the gaps; the two solid bars re-enable it. */
+.bmf-app .firebottom{ position:absolute; left:0; right:0; bottom:0; z-index:401; display:flex; flex-direction:column; pointer-events:none; }
+/* FWI legend — the danger-ramp KEY as a full-width horizontal SCALE, shown only while Fire Weather is on
+   (toggled in syncFireWx). The swatches come from FWI_BANDS so they always match the raster; labels sit
+   centred under each band. Solid card-bg + a hairline so it reads as one panel with the scrubber below. */
+.bmf-app .firelegend{ pointer-events:auto; display:flex; flex-direction:column; gap:4px; padding:6px 12px 5px;
+  background:var(--card-bg); border-top:1px solid var(--stroke); }
+.bmf-app .firelegend[hidden]{ display:none; }
+.bmf-app .firelegend .fl-scale{ display:flex; height:7px; border-radius:var(--r-pill); overflow:hidden; }
+.bmf-app .firelegend .fl-scale .fl-sw{ flex:1 1 0; }
+.bmf-app .firelegend .fl-labels{ display:flex; }
+.bmf-app .firelegend .fl-labels .fl-lb{ flex:1 1 0; min-width:0; text-align:center; padding:0 2px; font-family:var(--mono);
+  font-size:var(--fs-micro); color:var(--text-subtle); letter-spacing:.02em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 /* Alert / fire-ban detail-sheet body (the issuer's words + the official-source button + the standing caveat). */
 .bmf-app .alertsum{ font-size:var(--fs-meta); color:var(--text-subtle); line-height:1.5; margin:12px 0; }
 .bmf-app .firesheet .btn.block{ margin-top:6px; }

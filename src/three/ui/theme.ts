@@ -95,7 +95,12 @@ export const UI = {
   // over BRIGHT sunlit terrain (verify:contrast). Still 50% translucent + blurred, so the world reads through.
   glass: 'rgba(12,18,25,0.52)', // touch-button fill — a touch more opaque than `panel`, holds up over bright terrain
   warmGlass: 'rgba(44,17,13,0.46)', // DROP hero fill
-  cardGlass: 'rgba(16,24,32,0.60)', // overlay card fill (menus / leaderboard / cloud-save)
+  cardGlass: 'rgba(16,24,32,0.60)', // overlay card fill (menus / leaderboard / cloud-save) — over the DARK game
+  // A near-opaque sibling of cardGlass for overlays that float over the LIGHT wildfire map (the fire-detail +
+  // Layers + Sources sheets). At cardGlass's 0.60 the bright white basemap bleeds ~40% through and the panel
+  // turns milky — washing the deep-cockpit look AND the 7%-white hairline dividers. 0.93 keeps a hint of frost
+  // (the blur still works) while reading as a crisp dark readout on any backdrop, bright or dark.
+  cardGlassDeep: 'rgba(16,24,32,0.93)',
   cardSoft: 'rgba(16,24,32,0.42)', // a quieter card — leaderboard list rows
   rowMine: 'rgba(103,232,255,0.14)', // accent-tinted row: "this one is you"
   field: 'rgba(8,13,18,0.60)', // recessed input / text-field fill

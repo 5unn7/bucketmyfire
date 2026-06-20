@@ -618,9 +618,10 @@ const SHELL_CSS = `
 .fd-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .fd-legend i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
 .leaflet-container { background: var(--card-bg) !important; font-family: var(--mono); }
-/* Sun-readability: lift the dark basemap (contrast > brightness → blacks stay black, grey labels/roads
-   sharpen) so the map still reads in direct glare instead of collapsing to uniform black. Tiles only. */
-.fd-map .leaflet-tile { filter: contrast(1.14) brightness(1.06); }
+/* Sun-readability: on the light basemap, push BRIGHTNESS up (a brighter screen competes with ambient sun)
+   while lifting contrast so the grey labels/roads/coastlines deepen instead of washing out. Tiles ONLY —
+   the fire dots + FWI field sit on separate panes, so a brighter basemap never dilutes the markers. */
+.fd-map .leaflet-tile { filter: contrast(1.1) brightness(1.08); }
 .fd-detail-back { position: fixed; inset: 0; z-index: 90; display: flex; align-items: flex-end; justify-content: center;
   background: rgba(4,8,6,0.64); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
 .fd-detail { width: 100%; max-width: 560px; max-height: 78dvh; display: flex; flex-direction: column; background: var(--metal-hi);

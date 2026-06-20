@@ -88,15 +88,16 @@ export const BURN_PERIM_SOURCE =
 // CWFIS Fire Weather Index raster (a Leaflet WMS tile overlay — the orange-shaded fire-danger field).
 export const FWI_WMS_URL = 'https://cwfis.cfs.nrcan.gc.ca/geoserver/public/wms';
 // The OBSERVED grid (`fwi_current`) is interpolated from sparse weather STATIONS → patchy, with big gaps
-// between stations (the "missing coverage"). The time-enabled `fwi` layer's near-term FORECAST is the
-// CONTINUOUS model grid (full coverage over all fuelled land), so we draw that — keyless + CORS-`*`, same
-// service. Honestly labeled a forecast in the chip + ledger.
+// between stations (the "missing coverage"). The time-enabled `fwi` layer is the CONTINUOUS model grid
+// (full coverage over all fuelled land), so we draw that — keyless + CORS-`*`, same service. Honestly
+// labeled in the chip + ledger; the scrubber can still step the outlook forward day-by-day.
 export const FWI_WMS_LAYER = 'public:fwi';
-/** WMS TIME (yyyy-mm-dd) for the FWI layer: today's value is still the patchy station ANALYSIS, so we ask
- *  for a near-term FORECAST day, which is the continuous model grid. Shared by the tile layer + the ledger
- *  label so they always name the same day. */
+/** WMS TIME (yyyy-mm-dd) for the FWI layer: TODAY (UTC) — the current fire-weather instant. Today is the
+ *  slice that reliably HAS data; a near-term forecast day often hasn't been issued yet and renders a blank
+ *  raster (the "fire-weather map doesn't load"). Was today+1. Shared by the tile layer + the ledger label
+ *  so they always name the same day; the scrubber steps forward from here for the forecast outlook. */
 export function fwiForecastTime(now: number = Date.now()): string {
-  return new Date(now + 86_400_000).toISOString().slice(0, 10); // today + 1 day (UTC)
+  return new Date(now).toISOString().slice(0, 10); // today (UTC) — the current instant, not a forecast day
 }
 // The FWI raster has no per-feature timestamp; its issue date lives in the WMS layer <Title> ("… - YYYY-MM-DD").
 const FWI_CAPS_SOURCE = `${FWI_WMS_URL}?service=WMS&version=1.3.0&request=GetCapabilities`;
@@ -107,21 +108,22 @@ const FWI_CAPS_SOURCE = `${FWI_WMS_URL}?service=WMS&version=1.3.0&request=GetCap
 // CORS-blocked, so this Canadian-government WMS is the honest, browser-fetchable equivalent.
 export const GEOMET_WMS_URL = 'https://geo.weather.gc.ca/geomet';
 export const SMOKE_WMS_LAYER = 'RAQDPS.Sfc_PM2.5-WildfireSmokePlume';
-// White→grey SHADED ramp rendered SERVER-SIDE via a custom SLD (GeoMet honors `SLD_BODY` — verified live).
-// The layer's BUILT-IN styles are an AQI rainbow whose low end is a dark BLUE that's near-invisible on the
-// dark basemap; this maps PM2.5 (µg/m³) to a smoke-true grey→white that deepens — lighter AND more opaque —
-// with DENSITY, so a thin trail reads as soft grey haze and a dense plume as bright white. Sent as the
-// `sld_body` GetMap param (with `styles=` empty); minified to keep the per-tile GET URL short. Retint by
-// editing the ColorMap — the layer/time wiring is unchanged.
+// Grey→charcoal SHADED ramp rendered SERVER-SIDE via a custom SLD (GeoMet honors `SLD_BODY` — verified live).
+// The layer's BUILT-IN styles are an AQI rainbow whose low end is a dark BLUE that's near-invisible; this
+// maps PM2.5 (µg/m³) to a smoke-true grey that DEEPENS — darker AND more opaque — with DENSITY, so a thin
+// trail reads as soft haze and a dense plume as dark charcoal (smoke seen against the bright/light basemap,
+// the way a plume looks against a white sky; the old grey→WHITE ramp vanished on it). Sent as the `sld_body`
+// GetMap param (with `styles=` empty); minified to keep the per-tile GET URL short. Retint by editing the
+// ColorMap — the layer/time wiring is unchanged.
 export const SMOKE_WMS_SLD =
   '<StyledLayerDescriptor version="1.0.0" xmlns="http://www.opengis.net/sld">' +
   '<NamedLayer><Name>RAQDPS.Sfc_PM2.5-WildfireSmokePlume</Name><UserStyle><FeatureTypeStyle><Rule>' +
   '<RasterSymbolizer><Opacity>1</Opacity><ColorMap type="ramp">' +
-  '<ColorMapEntry color="#b9c0c5" quantity="1" opacity="0"/>' + // below ~1 µg/m³ → fully clear (no fog everywhere)
-  '<ColorMapEntry color="#c4cbd0" quantity="6" opacity="0.38"/>' + // thin haze: soft mid-grey, just readable
-  '<ColorMapEntry color="#d9dee2" quantity="30" opacity="0.64"/>' + // moderate smoke: lighter grey
-  '<ColorMapEntry color="#eef1f3" quantity="90" opacity="0.83"/>' + // dense: near-white
-  '<ColorMapEntry color="#ffffff" quantity="250" opacity="0.95"/>' + // thickest core: bright white
+  '<ColorMapEntry color="#8a9298" quantity="1" opacity="0"/>' + // below ~1 µg/m³ → fully clear (no fog everywhere)
+  '<ColorMapEntry color="#7c848a" quantity="6" opacity="0.34"/>' + // thin haze: soft grey, just readable on white
+  '<ColorMapEntry color="#5b6369" quantity="30" opacity="0.56"/>' + // moderate smoke: mid grey
+  '<ColorMapEntry color="#3f464b" quantity="90" opacity="0.74"/>' + // dense: dark slate
+  '<ColorMapEntry color="#2b3034" quantity="250" opacity="0.86"/>' + // thickest core: charcoal
   '</ColorMap></RasterSymbolizer></Rule></FeatureTypeStyle></UserStyle></NamedLayer></StyledLayerDescriptor>';
 
 // FWI danger ramp rendered SERVER-SIDE via SLD (CWFIS GeoServer honors `SLD_BODY`). The DEFAULT
@@ -132,16 +134,23 @@ export const SMOKE_WMS_SLD =
 // colours: a warm DANGER heat-field on the "fight" register — calm green (low) → ember → red (extreme),
 // each stop's opacity rising with danger so low FWI is a faint wash and extreme reads hot. The globe
 // (per-stop alpha + a gentle global dimmer) and the flat map (a low-opacity tint) share this one SLD.
+/** The FWI danger BANDS — ONE source for BOTH the server-rendered raster (the SLD ColorMap below) and the
+ *  on-map legend chip, so the colours the map paints always match the key the user reads. `q` = the FWI value
+ *  at the band's floor; `op` = its SLD per-stop alpha (rising with danger → low is a faint wash, extreme paints
+ *  hot); `label` = the legend wording. Retune here and the raster + the legend move together. */
+export const FWI_BANDS = [
+  { label: 'Low', color: '#5bbf7a', q: 2, op: 0.28 },
+  { label: 'Moderate', color: '#f0a531', q: 9, op: 0.48 },
+  { label: 'High', color: '#ff7a45', q: 18, op: 0.64 },
+  { label: 'Very High', color: '#ff5d4d', q: 30, op: 0.78 },
+  { label: 'Extreme', color: '#e23a2a', q: 45, op: 0.9 },
+] as const;
 export const FWI_WMS_SLD =
   '<StyledLayerDescriptor version="1.0.0" xmlns="http://www.opengis.net/sld">' +
   '<NamedLayer><Name>public:fwi</Name><UserStyle><FeatureTypeStyle><Rule>' +
   '<RasterSymbolizer><Opacity>1</Opacity><ColorMap type="ramp">' +
-  '<ColorMapEntry color="#63d68a" quantity="0" opacity="0"/>' + // no/low danger → clear (lets the map read)
-  '<ColorMapEntry color="#7fcf86" quantity="2" opacity="0.16"/>' + // low: a faint calm-green wash
-  '<ColorMapEntry color="#ffc861" quantity="9" opacity="0.34"/>' + // moderate: caution amber
-  '<ColorMapEntry color="#ff7a45" quantity="18" opacity="0.52"/>' + // high: fire orange
-  '<ColorMapEntry color="#ff5d4d" quantity="30" opacity="0.68"/>' + // very high: warn red
-  '<ColorMapEntry color="#e23a2a" quantity="45" opacity="0.84"/>' + // extreme: deep red, hottest + most opaque
+  '<ColorMapEntry color="#63d68a" quantity="0" opacity="0"/>' + // below 'Low' → clear (lets the map read where there's no danger)
+  FWI_BANDS.map((b) => `<ColorMapEntry color="${b.color}" quantity="${b.q}" opacity="${b.op}"/>`).join('') +
   '</ColorMap></RasterSymbolizer></Rule></FeatureTypeStyle></UserStyle></NamedLayer></StyledLayerDescriptor>';
 
 // ── GWIS: the GLOBAL Fire Weather Index forecast (EC JRC — Global Wildfire Information System) ───────

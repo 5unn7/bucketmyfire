@@ -1,6 +1,7 @@
 /**
- * FireMap — the interactive Leaflet map for the live wildfire tracker. A dark slippy map (CARTO dark
- * tiles, pinch-zoom/pan) that layers FOUR data sources, each independently toggleable:
+ * FireMap — the interactive Leaflet map for the live wildfire tracker. A LIGHT slippy map (CARTO light
+ * tiles, pinch-zoom/pan — readable in direct daylight, not the dark map that washed out in glare) that
+ * layers FOUR data sources, each independently toggleable:
  *
  *   • reported  — the AUTHORITATIVE CIFFC active fires: each drawn as an AREA-ACCURATE disc (radius
  *                 derived from its real hectares) shaded + ringed by stage of control, plus a centre
@@ -11,7 +12,7 @@
  *
  * The ONLY Three-free map layer. Colours come from the `theme.ts` brand tokens (no hard-coded hex).
  * `preferCanvas` keeps a thousand-plus markers smooth on mobile. Tiles degrade gracefully — if CARTO
- * is unreachable the dark background + dots still read.
+ * is unreachable the cased dots still read on the fallback backdrop.
  *
  * THE tracker view: the tracker opens this flat map directly (the `LiveMapView` contract in `view.ts`).
  * The 3D `FireGlobe` it once shared the contract with was retired (more complex + cluttered than useful).
@@ -22,6 +23,7 @@ import { UI } from '../ui/theme';
 import { LIVEFIRE } from '../config';
 import { radiusMetersForHa } from './normalize';
 import { fwiFrameUrl, FWI_BOX, FWI_GLOBE_BOX, MERC_LAT_MAX, fwiForecastTime, GEOMET_WMS_URL, SMOKE_WMS_LAYER, SMOKE_WMS_SLD, isLiveFireEnabled } from './client';
+import { PLACES } from './places';
 import type { Hotspot, FireSeverity, ReportedFire, BurnPolygon } from './types';
 import { STAGE_COLOR, SEV_COLOR } from './view';
 import type { FireLayer, FireMapHandlers, LiveMapView } from './view';
@@ -37,14 +39,14 @@ const SEV_STYLE: Record<FireSeverity, { radius: number; fill: number }> = {
   extreme: { radius: 5.5, fill: 1 },
 };
 
-const CARTO_DARK = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+const CARTO_LIGHT = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
 
 /**
  * A non-interactive dark backing disc drawn UNDER a marker so it separates from ANY background — the
- * sun-readability fix. On the dark basemap a bright dot already reads; outdoors in glare the whole screen
- * washes toward grey and a thin light-stroked dot vanishes into it. A near-black casing (UI.ink) one ring
- * wider than the dot gives a hard dark edge that survives the washout, so the marker stays a marker in the
- * sun. Cheap (one extra canvas circle) so it's reserved for the FEW important markers (reported + alerts),
+ * sun-readability fix. On the light basemap the dark casing is what makes a marker pop: outdoors in glare
+ * the white land and a bright dot both wash toward the same pale grey, so a near-black casing (UI.ink) one
+ * ring wider than the dot gives the hard dark edge that survives the washout and keeps the marker a marker
+ * in the sun. Cheap (one extra canvas circle) so it's reserved for the FEW important markers (reported),
  * not the thousand+ hotspots (those get a dark STROKE instead — same effect, no extra draw).
  */
 function darkCasing(lat: number, lon: number, radius: number): L.CircleMarker {
@@ -295,6 +297,7 @@ export class FireMap implements LiveMapView {
   private reportedLayer: L.LayerGroup;
   private outLayer: L.LayerGroup;
   private perimLayer: L.LayerGroup;
+  private placeGroups: { tier: number; group: L.LayerGroup }[] = []; // curated place labels, grouped by zoom tier
   private fwi: FwiForecastLayer; // double-buffered FWI day-morph (Canada CWFIS + global GWIS), crossfaded
   private smoke: SmokeForecastLayer;
   private selected: L.CircleMarker | null = null;
@@ -305,10 +308,12 @@ export class FireMap implements LiveMapView {
   // handler consumes it. Self-clears next tick so a genuine empty-map tap still deselects.
   private justHitMarker = false;
   private handlers: FireMapHandlers;
-  // Which layers are currently shown (default: the authoritative fires — including the season's OUT
-  // fires, the honest "what already burned" context — + their footprints + hotspots; the FWI raster is
-  // opt-in so the map stays legible until the player asks for the danger field).
-  private visible: Record<FireLayer, boolean> = { reported: true, out: true, perimeters: true, hotspots: true, fwi: false, smoke: false };
+  // Which layers are currently shown (default: the active authoritative fires + their footprints + hotspots).
+  // OUT fires (the season's extinguished blazes) are OPT-IN/default-off — there are hundreds of them, and
+  // painting them all buried the live fires in dots; they're the honest "what already burned" context, one
+  // toggle away. FWI is opt-in too, so the map stays legible until the user asks for the danger field. This
+  // mirrors the menu's `layerOn` defaults (they must agree, or the map shows a layer the toggle reads as off).
+  private visible: Record<FireLayer, boolean> = { reported: true, out: false, perimeters: true, hotspots: true, fwi: false, smoke: false };
 
   constructor(container: HTMLElement, handlers: FireMapHandlers) {
     this.handlers = handlers;
@@ -321,7 +326,7 @@ export class FireMap implements LiveMapView {
       worldCopyJump: true,
     });
     this.map.setView([58, -100], 4); // rough Canada centre; fitTo() refits to the live data
-    L.tileLayer(CARTO_DARK, { subdomains: 'abcd', maxZoom: 19 }).addTo(this.map);
+    L.tileLayer(CARTO_LIGHT, { subdomains: 'abcd', maxZoom: 19 }).addTo(this.map);
 
     // The Fire Weather Index forecast — a double-buffered DAY-MORPH (Canada CWFIS grid over the global GWIS
     // wash), each day a single GetMap image that crossfades into the next instead of strobing per WMS-TIME
@@ -349,6 +354,7 @@ export class FireMap implements LiveMapView {
     this.reportedLayer = L.layerGroup();
     this.hotspotLayer = L.layerGroup();
     this.applyVisibility();
+    this.buildPlaces();
 
     // Tap EMPTY map → dismiss any active selection. With the CANVAS renderer a marker click also bubbles
     // here (it doesn't with SVG), so honour the marker-hit guard: if a dot was just tapped, swallow this
@@ -439,8 +445,8 @@ export class FireMap implements LiveMapView {
         color: UI.ink, // dark casing stroke so an extinguished dot still has an edge in sun…
         weight: 1,
         opacity: 0.7,
-        fillColor: UI.dim, // …while staying neutral + clearly subordinate to the active (coloured) fires
-        fillOpacity: 0.55,
+        fillColor: UI.ink, // …a neutral DARK dot (UI.ink reads on the light basemap; UI.dim was translucent white → vanished on it), clearly subordinate to the active (coloured) fires
+        fillOpacity: 0.5,
       });
       dot.on('click', () => {
         this.highlight(dot);
@@ -489,6 +495,51 @@ export class FireMap implements LiveMapView {
   /** Warm every FWI forecast-day image up front so pressing Play morphs without per-step stalls. */
   preloadFwi(days: string[]): void {
     this.fwi.preload(days);
+  }
+
+  /** Curated place labels — denser geographic orientation than the basemap's decluttered names (which only
+   *  surface a couple until you zoom way in). Built once, grouped by zoom tier; non-interactive and drawn on
+   *  a pane ABOVE the data, so a name always reads over the FWI wash + fire dots while taps pass straight
+   *  through to the fires beneath. A dark mono label with a white halo holds on the bright basemap. */
+  private buildPlaces(): void {
+    this.map.createPane('lfPlaces');
+    const pane = this.map.getPane('lfPlaces')!;
+    pane.style.zIndex = '620'; // above the canvas dots (overlayPane 400) so names stay legible; below popups (700)
+    pane.style.pointerEvents = 'none'; // never block a map drag or a fire tap underneath
+    const byTier = new Map<number, L.LayerGroup>();
+    for (const p of PLACES) {
+      const style =
+        `position:absolute;left:0;top:0;transform:translate(-50%,-50%);white-space:nowrap;` +
+        `font-family:var(--mono),monospace;font-weight:${p.tier === 0 ? 700 : 600};font-size:${p.tier === 0 ? 11 : 10}px;` +
+        `letter-spacing:.02em;color:${UI.ink};text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 3px #fff;`;
+      const m = L.marker([p.lat, p.lon], {
+        pane: 'lfPlaces',
+        interactive: false,
+        keyboard: false,
+        // Custom className (NOT the default 'leaflet-div-icon') drops Leaflet's white box; iconSize 0 anchors
+        // the 0×0 root on the latlng and the span centres on it via translate(-50%,-50%).
+        icon: L.divIcon({ className: 'lf-place', html: `<span style="${style}">${p.name}</span>`, iconSize: [0, 0] }),
+      });
+      let g = byTier.get(p.tier);
+      if (!g) { g = L.layerGroup(); byTier.set(p.tier, g); }
+      g.addLayer(m);
+    }
+    this.placeGroups = [...byTier.entries()].sort((a, b) => a[0] - b[0]).map(([tier, group]) => ({ tier, group }));
+    this.applyPlaceZoom();
+    this.map.on('zoomend', () => this.applyPlaceZoom());
+  }
+
+  /** Reveal each place tier only at/above its zoom band (tier 0 = always · 1 = z≥5 · 2 = z≥6) — more names as
+   *  you zoom in, a clean country view when zoomed out. */
+  private applyPlaceZoom(): void {
+    const z = this.map.getZoom();
+    const minZoomFor = (tier: number): number => (tier === 0 ? 0 : tier === 1 ? 5 : 6);
+    for (const { tier, group } of this.placeGroups) {
+      const on = z >= minZoomFor(tier);
+      const has = this.map.hasLayer(group);
+      if (on && !has) group.addTo(this.map);
+      else if (!on && has) this.map.removeLayer(group);
+    }
   }
 
   isVisible(layer: FireLayer): boolean {

@@ -76,8 +76,11 @@ const WORLD_DIM: RGB = { r: 8, g: 12, b: 16 };
 const WORLD_BRIGHT: RGB = { r: 168, g: 178, b: 162 };
 // Map chrome (front-door legend, detail sheet) sits on a near-opaque dark overlay, not glass.
 const MAP_OVERLAY: RGB = { r: 5, g: 8, b: 11 };
-// CARTO dark basemap tile — the backdrop for the map's own marker dots (graphical, 3:1).
-const MAP_TILE: RGB = { r: 22, g: 24, b: 28 };
+// CARTO LIGHT basemap tile — the pale land backdrop for the map's own marker dots. Every important
+// marker carries a near-black UI.ink casing/stroke one ring wider than the dot, so on the light map the
+// separation that must clear the graphical 3:1 floor is the CASING against the land (dark-on-light), not
+// the bright dot fill (a warm dot on pale land is intentionally low-contrast — the casing is the edge).
+const MAP_TILE: RGB = { r: 232, g: 232, b: 232 };
 
 const BODY = 7.0, STRONG = 4.5, LARGE = 3.0;
 
@@ -124,9 +127,10 @@ const checks: Check[] = [
   { what: 'faint skeleton on map overlay', text: UI.faint, surface: null, bg: MAP_OVERLAY, min: LARGE },
   { what: 'text detail-value on map overlay', text: UI.text, surface: null, bg: MAP_OVERLAY, min: BODY },
 
-  // ── Map marker dots over the dark basemap (graphical → 3:1) ──
-  { what: 'reported OC dot vs tile', text: UI.warn, surface: null, bg: MAP_TILE, min: LARGE },
-  { what: 'reported UC dot vs tile', text: UI.ok, surface: null, bg: MAP_TILE, min: LARGE },
+  // ── Marker separation over the LIGHT basemap (graphical → 3:1) ──
+  // The dark UI.ink casing/stroke is the edge that makes every important marker (and the extinguished
+  // "out" dot, which is filled UI.ink) read against the pale land in direct sun.
+  { what: 'marker ink casing vs tile', text: UI.ink, surface: null, bg: MAP_TILE, min: LARGE },
 ];
 
 let failed = 0;
