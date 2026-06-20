@@ -161,7 +161,11 @@ export function injectNavStyles() {
 export const navCss = `
 /* ── Sticky top appbar ───────────────────────────────────────────────────────── */
 .fhome-bar { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 10px; min-height: 56px;
-  max-width: 1080px; margin: 0 auto; padding: 10px max(14px, env(safe-area-inset-left));
+  max-width: 1080px; margin: 0 auto;
+  /* viewport-fit=cover lets content render INTO the notch — pad the top by the safe-area inset (the
+     bottom tab bar already does its own inset) so the sticky bar's frosted fill covers the status bar /
+     Dynamic Island instead of letting the page bleed through above it. Right inset for a landscape notch. */
+  padding: calc(10px + env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) 10px max(14px, env(safe-area-inset-left));
   background: linear-gradient(180deg, rgba(7,10,13,0.92), rgba(7,10,13,0.4)); backdrop-filter: blur(10px) saturate(120%);
   -webkit-backdrop-filter: blur(10px) saturate(120%); border-bottom: 1px solid var(--hair); }
 .fhome-brand { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); }

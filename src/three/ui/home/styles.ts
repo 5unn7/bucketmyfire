@@ -32,6 +32,10 @@ const CSS = `
   font-family:var(--font); color:var(--text); background:#05080b; overflow:hidden; -webkit-font-smoothing:antialiased;
   -webkit-tap-highlight-color:transparent; }
 .bmf-app *{ box-sizing:border-box; }
+/* Controls never select-highlight on a phone press (iOS turns a held button's label into a text
+   selection). Prose stays selectable — this is scoped to interactive elements only. */
+.bmf-app button, .bmf-app .btn, .bmf-app [role=button]{
+  -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
 .bmf-app .scene{ position:absolute; inset:0; z-index:0; overflow:hidden;
   background:radial-gradient(130% 60% at 50% -8%, var(--ember-20) 0%, var(--ember-05) 30%, transparent 56%),
     radial-gradient(150% 90% at 50% 118%, rgba(255,120,40,0.12) 0%, transparent 52%),

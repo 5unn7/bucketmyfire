@@ -42,7 +42,8 @@ const VARS = `.bmf-hud{
 
 const CSS = `
 /* Both overlay roots: a click-through layer carrying the cockpit type + tokens. */
-.bmf-hud{ font-family:var(--font); color:var(--text); -webkit-tap-highlight-color:transparent; }
+.bmf-hud{ font-family:var(--font); color:var(--text); -webkit-tap-highlight-color:transparent;
+  -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
 .bmf-hud *{ box-sizing:border-box; }
 
 /* ===== TOP BAND — a CSS grid frame. The comms column is structurally bounded between the strip and the
@@ -142,6 +143,26 @@ const CSS = `
 .bmf-hud .tape.spd{ left:calc(50% - var(--tape-gap) - 78px); transform-origin:right center; }
 .bmf-hud .tape.alt{ left:calc(50% + var(--tape-gap)); transform-origin:left center; }
 @media (min-width:740px){ .bmf-hud{ --tape-scale:1; } }
+
+/* SMALL PHONES — the cockpit eats too much of a little screen, so tighten the fluid sizing curve and
+   trim the HUD type a notch to hand more pixels back to the flight view. Keyed on a NARROW PORTRAIT
+   (max-width) OR a SHORT LANDSCAPE (max-height) — the short edge is small either way. Touch targets stay
+   ≥44px (DESIGN.md M2); only the instrument cells, tapes, gaps and text shrink. Placed AFTER the 740px
+   tape rule so a short-but-wide landscape phone (e.g. 740×360) still gets the smaller tapes. */
+@media (max-width:380px), (max-height:400px){
+  .bmf-hud{
+    --pod: clamp(21px, 5.6vw, 30px);            /* smaller gauge cells → smaller derived icon + number */
+    --tape-scale: 0.66;                          /* flight tapes pulled in */
+    --tape-gap: clamp(38px, 8vw, 70px);          /* tapes hug centre → more screen-edge room */
+    --stick: clamp(96px, 30vw, 132px);
+    --drop: clamp(70px, 22vw, 96px);
+    --coll: clamp(44px, 12vw, 56px);
+    --detach: clamp(42px, 11vw, 52px);
+    --help: clamp(20px, 4.6vw, 25px);
+    /* HUD text a step down (comms / caution / dispatch read off these tokens) */
+    --fs-sm: 11px; --fs-body: 12px; --fs-meta: 10px;
+  }
+}
 
 /* ===== Touch controls (Input.ts) — sized by vars; LOOK stays inline in Input (this is layout only). ===== */
 .bmf-hud .stick{ width:var(--stick); height:var(--stick); }
