@@ -1,4 +1,4 @@
-import{a as s,i,b as f,c as p,d as h,e as l,D as d,s as c,w as m,g as b,h as u,j as g,t as v}from"./frontShell-01YDfaHY.js";import{E as x}from"./events-DpJ2-MEK.js";s();i();f();p();h();l();T();function w(){const e=document.getElementById("game");if(!e)return;const t=document.createElement("div");t.className="bmf-app front",t.innerHTML=d+E(),e.innerHTML="",e.appendChild(t),document.getElementById("fd-boot")?.remove(),c(t,13),m(t),S(t)}const y='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>';function k(e){const t=e.tone?` ${e.tone}`:"",r=e.art?`<span class="hof-art" aria-hidden="true"><img src="${e.art}" alt="" loading="lazy" decoding="async" /></span>`:"";return`
+import{a as s,i,b as f,c as p,d as h,e as l,D as d,s as c,w as m,g as b,h as u,j as g,t as v}from"./frontShell-BFvx-PeU.js";import{E as x}from"./events-BrrP32P7.js";s();i();f();p();h();l();T();function w(){const e=document.getElementById("game");if(!e)return;const t=document.createElement("div");t.className="bmf-app front",t.innerHTML=d+E(),e.innerHTML="",e.appendChild(t),document.getElementById("fd-boot")?.remove(),c(t,13),m(t),S(t)}const y='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>';function k(e){const t=e.tone?` ${e.tone}`:"",r=e.art?`<span class="hof-art" aria-hidden="true"><img src="${e.art}" alt="" loading="lazy" decoding="async" /></span>`:"";return`
     <li class="hof-ev">
       <span class="hof-dot" aria-hidden="true"></span>
       <a class="hof-card${e.art?" has-art":""}" href="/fireline/story/?ev=${e.id}">${r}
@@ -17,7 +17,7 @@ ${u("halloffame")}
       <div class="fd-hero-main">
         <p class="fd-hero-eyebrow">The Fireline</p>
         <h1 class="fd-hero-head">The unsung warriors.</h1>
-        <p class="fd-hero-sub">Canada's wildfire story, told through the people who answered it — the crews on the
+        <p class="fd-hero-sub">Canada's wildfire story, told through the people who answered it: the crews on the
           ground, the pilots overhead, the lookouts and dispatchers behind every save.</p>
       </div>
     </div>
@@ -25,7 +25,7 @@ ${u("halloffame")}
 
   <section class="card warm cut hof-trib">
     <div class="sec"><span class="tag">To the crews</span><span class="line"></span></div>
-    <p class="hof-trib-h">Thank you to every wildland firefighter, pilot, lookout and dispatcher — past and present.</p>
+    <p class="hof-trib-h">Thank you to every wildland firefighter, pilot, lookout and dispatcher, past and present.</p>
     <p class="hof-trib-sub">The fires keep coming. The line holds because people hold it.</p>
   </section>
 

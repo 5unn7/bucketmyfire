@@ -7,7 +7,7 @@
     <meta name="robots" content="index,follow" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <title>Terms of Use — Bucket My Fire</title>
+    <title>Terms of Use · Bucket My Fire</title>
     <link rel="canonical" href="https://bucketmyfire.com/terms.html" />
     <style>/* GENERATED from src/three/ui/theme.ts via src/three/ui/tokens.ts — DO NOT EDIT BY HAND.
    Regenerate: npm run gen:tokens    Check (CI): npm run verify:tokens */
@@ -17,10 +17,10 @@
   --cta:linear-gradient(180deg, #ffd45e 0%, #efaa2b 100%);--cta-hi:linear-gradient(180deg, #ffdd76 0%, #f4b441 100%);--cta-ink:#3a2406;--cta-glow:rgba(239,170,43,0.42);
   --warn:#ff5d4d;--ok:#63d68a;--caution:#ffc861;--gold:#ffd66b;--silver:#cfe0ee;--bronze:#e6a268;
   --text:rgba(255,255,255,0.94);--text-subtle:rgba(255,255,255,0.76);--ink:#0c1410;--dim:rgba(255,255,255,0.60);--faint:rgba(255,255,255,0.48);
-  --bg:#0e1318;--card-glass:rgba(16,24,32,0.60);--card-soft:rgba(16,24,32,0.42);--warm-glass:rgba(44,17,13,0.46);
+  --bg:#0e1318;--card-glass:rgba(16,24,32,0.60);--card-glass-deep:rgba(16,24,32,0.93);--card-soft:rgba(16,24,32,0.42);--warm-glass:rgba(44,17,13,0.46);--warm-glass-hi:rgba(60,24,18,0.6);
   --track:rgba(255,255,255,0.10);--recess:rgba(5,9,13,0.55);--field:rgba(8,13,18,0.60);--rowmine:rgba(103,232,255,0.14);
   --stroke:rgba(255,255,255,0.12);--stroke-strong:rgba(255,255,255,0.18);--warm-stroke:rgba(255,138,110,0.85);--hair:rgba(255,255,255,0.07);
-  --shadow-card:0 8px 30px rgba(0,0,0,0.45);--shadow-card-rich:0 10px 36px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.13), inset 1px 0 0 rgba(255,255,255,0.05), inset 0 -1px 0 rgba(0,0,0,0.22);--bevel-top:rgba(255,255,255,0.14);--ember-glow:0 0 16px rgba(255,106,44,0.5);--blur:blur(12px) saturate(120%);
+  --shadow-card:0 8px 30px rgba(0,0,0,0.45);--shadow-card-rich:0 10px 36px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.13), inset 1px 0 0 rgba(255,255,255,0.05), inset 0 -1px 0 rgba(0,0,0,0.22);--bevel-top:rgba(255,255,255,0.14);--bevel-hi:rgba(255,255,255,0.5);--bevel-lo:rgba(0,0,0,0.18);--bevel-edge:rgba(255,255,255,0.06);--ember-glow:0 0 16px rgba(255,106,44,0.5);--blur:blur(12px) saturate(120%);
   --card-gradient:linear-gradient(158deg, rgba(22,32,44,0.72) 0%, rgba(12,18,26,0.68) 52%, rgba(8,12,18,0.64) 100%);--card-gradient-fight:linear-gradient(158deg, rgba(32,22,14,0.74) 0%, rgba(16,10,6,0.70) 52%, rgba(10,6,4,0.66) 100%);
   --accent:#67e8ff;--accent-hi:#9af1ff;--accent-soft:rgba(103,232,255,0.55);--accent-fill:rgba(103,232,255,0.10);--glow:0 0 10px rgba(103,232,255,0.45);
   --instrument:#eaf6ff;--comms-amber:#ffb24a;--panel:rgba(14,20,27,0.50);--glass:rgba(12,18,25,0.52);--bezel:rgba(0,0,0,0.18);
@@ -111,7 +111,10 @@
   70%      { transform: scale(1.04, 1.07) skewX(-1deg); opacity: 0.94; }
 }
 @media (prefers-reduced-motion: reduce) { .fd-tab .flame { animation: none; } }
-.fd-tab span { font-family: var(--mono); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }
+.fd-tab span { font-family: var(--mono); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
+/* On the narrowest phones the 5-col bar squeezes each cell hard — shrink the label a hair so the longest
+   word ("Campaign"/"Fireline") stays on ONE line instead of wrapping the icon out of alignment. */
+@media (max-width: 360px) { .fd-tab span { font-size: 8px; letter-spacing: .03em; } .fd-tab { padding-left: 2px; padding-right: 2px; } }
 .fd-tab[aria-current="page"] { color: var(--ember-hi); }
 /* Clear the fixed tab bar on static pages (blog/legal use body.fn). The front door pads its own column. */
 @media (max-width: 759px) { body.fn { padding-bottom: calc(72px + env(safe-area-inset-bottom)); } }
@@ -170,19 +173,19 @@ html::-webkit-scrollbar-thumb:hover{background:linear-gradient(180deg,var(--beve
   <body class="fn">
     <a class="fn-skip" href="#fn-main">Skip to content</a>
     <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><linearGradient id="flameGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffc24a"/><stop offset="1" stop-color="#ff6a2c"/></linearGradient></defs></svg>
-    <header class="fhome-bar"><a class="fhome-brand" href="/" aria-label="Bucket My Fire — home"><span class="bmk"><svg class="flame" viewBox="0 0 149.7 184.72"><polygon points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/><path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/><path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/></svg></span><b>Bucket My Fire</b></a><nav class="fhome-nav" aria-label="Primary"><a class="fhome-nav-a" href="/">Home</a><a class="fhome-nav-a" href="/campaign/">Campaign</a><a class="fhome-nav-a" href="/fireline/">Fireline</a><a class="fhome-nav-a" href="/?map">Map</a></nav><span class="fhome-grow"></span><a class="fhome-shop" href="/shop/">Shop</a></header>
+    <header class="fhome-bar"><a class="fhome-brand" href="/" aria-label="Bucket My Fire, home"><span class="bmk"><svg class="flame" viewBox="0 0 149.7 184.72"><polygon points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/><path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/><path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/></svg></span><b>Bucket My Fire</b></a><nav class="fhome-nav" aria-label="Primary"><a class="fhome-nav-a" href="/">Home</a><a class="fhome-nav-a" href="/campaign/">Campaign</a><a class="fhome-nav-a" href="/fireline/">Fireline</a><a class="fhome-nav-a" href="/?map">Map</a></nav><span class="fhome-grow"></span><a class="fhome-shop" href="/shop/">Shop</a></header>
     <main id="fn-main" class="fn-wrap">
       <nav class="site-crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span class="site-crumb-sep" aria-hidden="true">/</span><span aria-current="page">Terms</span></nav>
       <header class="fd-hero"><div class="fd-hero-main">
         <p class="fd-hero-eyebrow">Bucket My Fire</p>
         <h1 class="fd-hero-head">Terms of Use</h1>
       </div></header>
-      <p class="fn-dateline">Last updated 4 June 2026</p>
+      <p class="fn-dateline">Last updated 20 June 2026</p>
       <div class="fn-legal">
         <p>By playing Bucket My Fire ("the game") you agree to these Terms. If you don't agree, please don't use the game.</p>
 
         <h2>The game</h2>
-        <p>Bucket My Fire is provided free of charge, "as is," for personal entertainment. We may change, suspend, or discontinue any part of it — including the leaderboard and cloud save — at any time, and features may be reset or removed.</p>
+        <p>Bucket My Fire is provided free of charge, "as is," for personal entertainment. We may change, suspend, or discontinue any part of it (including the leaderboard and cloud save) at any time, and features may be reset or removed.</p>
 
         <h2>Your licence to play</h2>
         <p>We grant you a personal, non-commercial, revocable licence to play the game in your browser. You may not copy, resell, redistribute, reverse-engineer, scrape, or clone the game or its assets, or use it to build a competing product.</p>
@@ -194,7 +197,7 @@ html::-webkit-scrollbar-thumb:hover{background:linear-gradient(180deg,var(--beve
         </ul>
 
         <h2>Merchandise</h2>
-        <p>Merchandise is sold through our shop at <a href="https://shop.bucketmyfire.com/">shop.bucketmyfire.com</a>, which operates under its own policies. For anything related to a merchandise purchase — pricing, payment, shipping, returns, refunds, and exchanges — please refer to the shop's policies, which govern that order.</p>
+        <p>Merchandise is sold through our shop at <a href="https://shop.bucketmyfire.com/">shop.bucketmyfire.com</a>, which operates under its own policies. For anything related to a merchandise purchase (pricing, payment, shipping, returns, refunds, and exchanges), please refer to the shop's policies, which govern that order.</p>
 
         <h2>Intellectual property &amp; fictional setting</h2>
         <p>"Bucket My Fire," its name, art, and code are owned by the operator. All other product names, trademarks, place names, and brands belong to their respective owners and are used for descriptive or setting purposes only. The game is a work of fiction: it is not affiliated with, sponsored by, or endorsed by any government, agency, community, manufacturer, or company, and any resemblance to real operations is for atmosphere, not accuracy.</p>
@@ -211,7 +214,7 @@ html::-webkit-scrollbar-thumb:hover{background:linear-gradient(180deg,var(--beve
     </main>
     <nav class="fd-tabbar" aria-label="Primary"><a class="fd-tab" href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg><span>Home</span></a><a class="fd-tab" href="/campaign/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22V4"/></svg><span>Campaign</span></a><a class="fd-tab" href="/?map"><svg class="flame" viewBox="-0.3 -7.7 144 144" aria-hidden="true"><path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/><path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/></svg><span>Map</span></a><a class="fd-tab" href="/fireline/"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg><span>Fireline</span></a><a class="fd-tab" href="/shop/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg><span>Shop</span></a></nav>
     <footer class="fn-foot">
-      <a class="site-foot-brand" href="/" aria-label="Bucket My Fire — home"><span class="site-foot-mark"><svg class="flame" viewBox="0 0 149.7 184.72"><polygon points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/><path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/><path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/></svg></span><b>Bucket My Fire</b></a>
+      <a class="site-foot-brand" href="/" aria-label="Bucket My Fire, home"><span class="site-foot-mark"><svg class="flame" viewBox="0 0 149.7 184.72"><polygon points="149.7 134.09 74.92 184.72 0 134.31 .57 108.82 74.83 158.71 148.67 108.67 149.7 134.09"/><path d="M73.06,58.25c-18.59,21.04-34.35,33.63-22.6,64.65-21.97-11.26-29.05-37.71-17.05-59.08C46.45,40.59,68.12,28.39,69.08,0c16.8,18.38,20.62,39.42,3.98,58.25Z"/><path d="M78.83,107.06c-5.97,5.58-8.3,13.06-8.78,21.51-10.73-8.26-13.63-23.66-5.17-35.08,13.99-18.88,30.5-27.51,32.95-51.73,22.16,26.58,26.3,62.23-2.1,82.13,1.38-11.22,2.02-20.02-3.9-28.97l-12.99,12.14Z"/></svg></span><b>Bucket My Fire</b></a>
       <p class="fn-disclaimer">General information, not an emergency tool. In an emergency, follow official sources and local authorities.</p>
       <div class="fn-foot-links"><a href="/privacy.html">Privacy</a><a href="/terms.html">Terms</a></div>
     </footer>

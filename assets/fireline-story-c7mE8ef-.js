@@ -1,47 +1,57 @@
-import{a as h,i as m,b as d,c as v,d as b,e as g,D as u,s as y,w as x,g as w,h as $,q as k,m as r,j as z,t as F}from"./frontShell-01YDfaHY.js";import{e as S,E as o}from"./events-DpJ2-MEK.js";const l=S(new URLSearchParams(location.search).get("ev"));l?(h(),m(),d(),v(),b(),g(),T(),C(l)):location.replace("/fireline/");function C(a){const t=document.getElementById("game");if(!t)return;document.title=`${a.year} — ${a.title} · The Fireline · Bucket My Fire`;const e=document.createElement("div");e.className="bmf-app front",e.innerHTML=u+j(a),t.innerHTML="",t.appendChild(e),document.getElementById("fd-boot")?.remove(),y(e,13),x(e)}function E(a){const t=o.findIndex(e=>e.id===a.id);return{prev:o[t-1],next:o[t+1]}}function c(a,t){const e=t==="prev"?"←":"→",s=t==="prev"?"Earlier":"Next";return`
-    <a class="hst-nav ${t}" href="/fireline/story/?ev=${a.id}">
+import{a as h,i as m,b as d,c as v,d as b,e as g,D as u,s as y,w as x,g as w,h as $,q as k,m as r,j as z,t as F}from"./frontShell-BFvx-PeU.js";import{e as S,E as o}from"./events-BrrP32P7.js";const l=S(new URLSearchParams(location.search).get("ev"));l?(h(),m(),d(),v(),b(),g(),T(),C(l)):location.replace("/fireline/");function C(t){const a=document.getElementById("game");if(!a)return;document.title=`${t.year}: ${t.title} · The Fireline · Bucket My Fire`;const e=document.createElement("div");e.className="bmf-app front",e.innerHTML=u+E(t),a.innerHTML="",a.appendChild(e),document.getElementById("fd-boot")?.remove(),y(e,13),x(e)}function j(t){const a=o.findIndex(e=>e.id===t.id);return{prev:o[a-1],next:o[a+1]}}function f(t,a){const e=a==="prev"?"←":"→",s=a==="prev"?"Earlier":"Next";return`
+    <a class="hst-nav ${a}" href="/fireline/story/?ev=${t.id}">
       <span class="hst-nav-k">${s} ${e}</span>
-      <span class="hst-nav-y">${a.year}</span>
-      <span class="hst-nav-t">${r(a.title)}</span>
-    </a>`}function j(a){const t=a.tone?` ${a.tone}`:"",{prev:e,next:s}=E(a),i=Math.ceil(a.story.length/2),p=n=>n.map(f=>`<p class="hst-p">${r(f)}</p>`).join("");return`
+      <span class="hst-nav-y">${t.year}</span>
+      <span class="hst-nav-t">${r(t.title)}</span>
+    </a>`}function E(t){const a=t.tone?` ${t.tone}`:"",{prev:e,next:s}=j(t),i=Math.ceil(t.story.length/2),p=n=>n.map(c=>`<p class="hst-p">${r(c)}</p>`).join("");return`
 ${w()}
 ${$("halloffame")}
 <div class="pad fhome">
-  ${k([{label:"Home",href:"/"},{label:"Fireline",href:"/fireline/"},{label:a.year}])}
+  ${k([{label:"Home",href:"/"},{label:"Fireline",href:"/fireline/"},{label:t.year}])}
 
   <section class="card cut rise fd-glass hst-hero"><span class="fd-glasstex" aria-hidden="true"></span>
     <div class="fd-hero">
       <div class="fd-hero-main">
         <p class="fd-hero-eyebrow">The Fireline · The full story</p>
-        <p class="hst-year">${a.year}</p>
-        <h1 class="fd-hero-head hst-head">${r(a.title)}</h1>
-        <p class="hst-dateline">${r(a.dateline)}</p>
-        <p class="fd-hero-sub hst-lede">${r(a.lede)}</p>
-        <div class="hst-badges"><span class="badge${t}">${a.stat}</span></div>
+        <p class="hst-year">${t.year}</p>
+        <h1 class="fd-hero-head hst-head">${r(t.title)}</h1>
+        <p class="hst-dateline">${r(t.dateline)}</p>
+        <p class="fd-hero-sub hst-lede">${r(t.lede)}</p>
+        <div class="hst-badges"><span class="badge${a}">${t.stat}</span></div>
       </div>
     </div>
   </section>
 
-  ${a.art?`<figure class="card cut hst-art"><img src="${a.art}" alt="${r(a.title)}" loading="lazy" /></figure>`:""}
+  ${t.art?`<figure class="card cut hst-art"><img src="${t.art}" alt="${r(t.title)}" loading="lazy" /></figure>`:""}
 
   <section class="card cut hst-story">
     <div class="sec"><span class="tag">The story</span><span class="line"></span></div>
-    ${p(a.story.slice(0,i))}
-    <p class="hst-pull">${r(a.pull)}</p>
-    ${p(a.story.slice(i))}
+    ${p(t.story.slice(0,i))}
+    <p class="hst-pull">${r(t.pull)}</p>
+    ${p(t.story.slice(i))}
   </section>
 
   <section class="card warm cut hst-legacy">
     <div class="sec"><span class="tag">What it left behind</span><span class="line"></span></div>
-    <p class="hst-legacy-p">${r(a.legacy)}</p>
+    <p class="hst-legacy-p">${r(t.legacy)}</p>
     <div class="hst-facts">
-      ${a.facts.map(n=>`<div class="hst-fact"><b>${r(n.value)}</b><span>${r(n.label)}</span></div>`).join("")}
+      ${t.facts.map(n=>`<div class="hst-fact"><b>${r(n.value)}</b><span>${r(n.label)}</span></div>`).join("")}
     </div>
   </section>
 
+  <!-- The hand-off: the tribute closes on the fight itself. The reader steps from history into the cockpit. -->
+  <section class="card warm cut hst-flywith">
+    <div class="hst-flywith-tx">
+      <span class="hst-flywith-ey">Carry it forward</span>
+      <h2 class="hst-flywith-h">Now fly with them.</h2>
+      <p class="hst-flywith-sub">Take the controls over the same country they fought for.</p>
+    </div>
+    <a class="btn primary hst-flywith-go" href="/open-skies/">Fly Open Skies →</a>
+  </section>
+
   <nav class="hst-navrow" aria-label="More moments">
-    ${e?c(e,"prev"):'<span class="hst-nav ghost" aria-hidden="true"></span>'}
-    ${s?c(s,"next"):'<span class="hst-nav ghost" aria-hidden="true"></span>'}
+    ${e?f(e,"prev"):'<span class="hst-nav ghost" aria-hidden="true"></span>'}
+    ${s?f(s,"next"):'<span class="hst-nav ghost" aria-hidden="true"></span>'}
   </nav>
 
   <p class="hof-sources">Drawn from the public record:
@@ -55,7 +65,7 @@ ${$("halloffame")}
 
   ${z()}
 </div>
-${F("halloffame")}`}function T(){if(document.getElementById("fd-hofstory-css"))return;const a=document.createElement("style");a.id="fd-hofstory-css",a.textContent=`
+${F("halloffame")}`}function T(){if(document.getElementById("fd-hofstory-css"))return;const t=document.createElement("style");t.id="fd-hofstory-css",t.textContent=`
 /* Hero — year as a big cockpit numeral over the title; dateline in instrument mono. */
 .bmf-app.front .hst-hero { margin-top: 6px; }
 .bmf-app.front .hst-year { margin: 6px 0 0; font-family: var(--mono); font-weight: var(--fw-black);
@@ -87,6 +97,15 @@ ${F("halloffame")}`}function T(){if(document.getElementById("fd-hofstory-css"))r
   color: var(--ember-hi); line-height: 1.05; }
 .bmf-app.front .hst-fact span { font-size: var(--fs-micro); line-height: 1.35; color: var(--dim); }
 
+/* Fly-with-them hand-off — the warm close that steps the reader from history into the cockpit. */
+.bmf-app.front .hst-flywith { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; justify-content: space-between; }
+.bmf-app.front .hst-flywith-tx { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.bmf-app.front .hst-flywith-ey { font-family: var(--mono); font-size: var(--fs-label); letter-spacing: .26em;
+  text-transform: uppercase; color: var(--menu); font-weight: var(--fw-bold); }
+.bmf-app.front .hst-flywith-h { margin: 0; font-size: var(--fs-title); font-weight: var(--fw-black); color: #fff; line-height: 1.1; }
+.bmf-app.front .hst-flywith-sub { margin: 0; font-size: var(--fs-sm); color: var(--text-subtle); }
+.bmf-app.front .hst-flywith-go { flex: 0 0 auto; }
+
 /* Prev / next — two quiet instrument cards continuing the journey. */
 .bmf-app.front .hst-navrow { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .bmf-app.front .hst-nav { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; text-decoration: none;
@@ -116,4 +135,4 @@ ${F("halloffame")}`}function T(){if(document.getElementById("fd-hofstory-css"))r
 @media (max-width: 560px) {
   .bmf-app.front .hst-facts { grid-template-columns: 1fr; }
 }
-`,document.head.appendChild(a)}
+`,document.head.appendChild(t)}

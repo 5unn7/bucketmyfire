@@ -1,5 +1,5 @@
-const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./main-DXretIsi.js","./frontShell-01YDfaHY.js"])))=>i.map(i=>d[i]);
-import{_ as u,i as T,b as L,c as A,d as C,e as z,D as I,s as F,w as O,r as B,u as R,v as P,n as f,k as M,x as H,g as N,h as _,j,t as $,y as G,z as D,A as W,B as q,C as Y,E as U,F as K,L as V,G as X,I as h,J as Z,K as J,N as x}from"./frontShell-01YDfaHY.js";const Q=".artcard, .fhome-hero, .fhome-play, .shopbanner, .crt, .fhome-map";function ee(e){const t=Array.from(e.querySelectorAll(".card")).filter(a=>!a.matches(Q));if(!t.length)return()=>{};for(const a of t)a.classList.add("cardfx");const o=a=>{if(a.pointerType==="touch")return;const i=a.target?.closest?.(".cardfx");if(!i)return;const r=i.getBoundingClientRect();if(!r.width||!r.height)return;const s=(a.clientX-r.left)/r.width*100,n=(a.clientY-r.top)/r.height*100;i.style.setProperty("--mx",s.toFixed(1)+"%"),i.style.setProperty("--my",n.toFixed(1)+"%");const p=Math.round(Math.atan2(n-50,s-50)*180/Math.PI+90);i.style.setProperty("--rim-ang",p+"deg")};return e.addEventListener("pointermove",o,{passive:!0}),()=>e.removeEventListener("pointermove",o)}const te="radial-gradient(130% 100% at 50% 78%, #2a120b 0%, #150a07 46%, #090605 100%)",ae=["--dx:-4px;--by:-2px;left:38%;width:5px;height:5px;animation-delay:0s;animation-duration:1.9s","--dx:5px;--by:3px;left:44%;width:3px;height:3px;animation-delay:0.3s;animation-duration:2.3s","--dx:-7px;--by:5px;left:48%;width:6px;height:6px;animation-delay:0.6s;animation-duration:1.7s","--dx:4px;--by:1px;left:52%;width:4px;height:4px;animation-delay:0.9s;animation-duration:2.05s","--dx:-5px;--by:-3px;left:56%;width:5px;height:5px;animation-delay:1.15s;animation-duration:1.8s","--dx:8px;--by:4px;left:62%;width:3px;height:3px;animation-delay:0.45s;animation-duration:2.4s","--dx:-2px;--by:0px;left:41%;width:4px;height:4px;animation-delay:1.4s;animation-duration:2.15s","--dx:6px;--by:-4px;left:59%;width:6px;height:6px;animation-delay:0.75s;animation-duration:1.6s","--dx:1px;--by:2px;left:50%;width:7px;height:7px;animation-delay:1.55s;animation-duration:1.95s","--dx:-6px;--by:6px;left:46%;width:4px;height:4px;animation-delay:1.25s;animation-duration:2.1s"],oe=`<div class="bmf-spin" aria-hidden="true">
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./main-Bgts1caj.js","./frontShell-BFvx-PeU.js"])))=>i.map(i=>d[i]);
+import{_ as u,i as T,b as L,c as A,d as z,e as C,D as I,s as F,w as B,r as O,u as P,v as R,n as l,k as M,x as N,g as H,h as _,j,t as G,y as $,z as D,A as W,B as q,C as U,E as Y,F as K,L as V,G as X,I as h,J as Z,K as J,N as x}from"./frontShell-BFvx-PeU.js";const Q=".artcard, .fhome-hero, .fhome-play, .shopbanner, .crt, .fhome-map";function ee(e){const t=Array.from(e.querySelectorAll(".card")).filter(a=>!a.matches(Q));if(!t.length)return()=>{};for(const a of t)a.classList.add("cardfx");const o=a=>{if(a.pointerType==="touch")return;const i=a.target?.closest?.(".cardfx");if(!i)return;const n=i.getBoundingClientRect();if(!n.width||!n.height)return;const s=(a.clientX-n.left)/n.width*100,r=(a.clientY-n.top)/n.height*100;i.style.setProperty("--mx",s.toFixed(1)+"%"),i.style.setProperty("--my",r.toFixed(1)+"%");const p=Math.round(Math.atan2(r-50,s-50)*180/Math.PI+90);i.style.setProperty("--rim-ang",p+"deg")};return e.addEventListener("pointermove",o,{passive:!0}),()=>e.removeEventListener("pointermove",o)}const te="radial-gradient(130% 100% at 50% 78%, #2a120b 0%, #150a07 46%, #090605 100%)",ae=["--dx:-4px;--by:-2px;left:38%;width:5px;height:5px;animation-delay:0s;animation-duration:1.9s","--dx:5px;--by:3px;left:44%;width:3px;height:3px;animation-delay:0.3s;animation-duration:2.3s","--dx:-7px;--by:5px;left:48%;width:6px;height:6px;animation-delay:0.6s;animation-duration:1.7s","--dx:4px;--by:1px;left:52%;width:4px;height:4px;animation-delay:0.9s;animation-duration:2.05s","--dx:-5px;--by:-3px;left:56%;width:5px;height:5px;animation-delay:1.15s;animation-duration:1.8s","--dx:8px;--by:4px;left:62%;width:3px;height:3px;animation-delay:0.45s;animation-duration:2.4s","--dx:-2px;--by:0px;left:41%;width:4px;height:4px;animation-delay:1.4s;animation-duration:2.15s","--dx:6px;--by:-4px;left:59%;width:6px;height:6px;animation-delay:0.75s;animation-duration:1.6s","--dx:1px;--by:2px;left:50%;width:7px;height:7px;animation-delay:1.55s;animation-duration:1.95s","--dx:-6px;--by:6px;left:46%;width:4px;height:4px;animation-delay:1.25s;animation-duration:2.1s"],oe=`<div class="bmf-spin" aria-hidden="true">
   ${ae.map(e=>`<span class="spark" style="${e}"></span>`).join(`
   `)}
   <svg class="mark" viewBox="0 0 149.7 184.72">
@@ -48,8 +48,8 @@ import{_ as u,i as T,b as L,c as A,d as C,e as z,D as I,s as F,w as O,r as B,u a
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased;
 }
 #bmf-splash.bmf-hide { opacity: 0; pointer-events: none; }
-${ie}`,l=new URLSearchParams(location.search),se=["m","autostart","qa","ffa","province","daily","editor","dev","heliview","kit","tune"],pe=se.some(e=>l.has(e));pe?queueMicrotask(fe):he();let g=!1;function fe(){if(g)return;g=!0,document.body.classList.add("bmf-playing");const e=document.getElementById("game");e&&(e.innerHTML=""),document.getElementById("fd-boot")?.remove(),!l.has("qa")&&!l.has("autostart")&&le(),u(()=>import("./main-DXretIsi.js").then(t=>t.a7),__vite__mapDeps([0,1]),import.meta.url)}function le(){if(document.getElementById("bmf-splash"))return;if(!document.getElementById("bmf-splash-css")){const n=document.createElement("style");n.id="bmf-splash-css",n.textContent=re,document.head.appendChild(n)}const e=document.createElement("div");for(const[n,p]of Object.entries(ne))e.setAttribute(n,p);e.innerHTML=oe,document.body.appendChild(e);const t=1100,o=performance.now();let a=!1,i=0;const r=()=>{a||(a=!0,i&&clearTimeout(i),e.classList.add("bmf-hide"),setTimeout(()=>e.remove(),550))},s=()=>{if(a||i)return;const n=t-(performance.now()-o);n<=0?r():i=window.setTimeout(r,n)};window.addEventListener("bmf:ready",s),setTimeout(r,12e3)}function he(){T(),L(),A(),C(),z(),ke();const e=document.getElementById("game");if(!e)return;const t=document.createElement("div");t.className="bmf-app front",t.innerHTML=I+ge(),e.innerHTML="",e.appendChild(t),document.getElementById("fd-boot")?.remove(),F(t,13),O(t),me(t),v(-1),be(),ue(t),ee(t),xe(),l.has("map")&&y()}function me(e){const t=e.querySelector("#fhome-pilot");if(!t)return;const o=B();if(!o?.name){t.classList.add("is-new"),t.innerHTML='<span class="fpb-cs">New pilot</span><span class="fpb-meta"><span class="fpb-hint">Fly to earn your rank</span></span>';return}const a=R(P());t.innerHTML=`<span class="fpb-cs"></span><span class="fpb-meta"><span class="rank" style="--rk:${a.color}"><i></i>${a.name}</span><span class="fpb-pts pts-ic mono">${f("spark")}<b>${M().toLocaleString("en-US")}</b> pts</span></span>`;const i=t.querySelector(".fpb-cs");i&&(i.textContent=o.name.toUpperCase())}function v(e){const t=document.getElementById("fhome-pilots-live");if(!t)return;const o=t.querySelector("b"),a=t.querySelector("span");e>=1?(o&&(o.textContent=e.toLocaleString("en-US")),a&&(a.textContent=e===1?"Pilot live":"Pilots live")):(o&&(o.textContent=""),a&&(a.textContent="Open Skies live"))}const de=6e3,ce=4e3;async function be(){let e;try{e=await u(()=>import("./openSkies-BkVayIv8.js"),[],import.meta.url)}catch{return}if(!e.openSkiesConfigured())return;const t=e.connectOpenSkies(H(new Date),{id:"fd-listener",name:"",heli:""},de);if(!t)return;const o=()=>v(t.remotes().length),a=window.setTimeout(o,1400),i=window.setInterval(o,ce);window.addEventListener("pagehide",()=>{window.clearTimeout(a),window.clearInterval(i),t.close()},{once:!0})}function ge(){return`
-${N()}
+${ie}`,f=new URLSearchParams(location.search),se=["m","autostart","qa","ffa","province","daily","editor","dev","heliview","kit","tune"],pe=se.some(e=>f.has(e));pe?queueMicrotask(le):he();let g=!1;function le(){if(g)return;g=!0,document.body.classList.add("bmf-playing");const e=document.getElementById("game");e&&(e.innerHTML=""),document.getElementById("fd-boot")?.remove(),!f.has("qa")&&!f.has("autostart")&&fe(),u(()=>import("./main-Bgts1caj.js").then(t=>t.a7),__vite__mapDeps([0,1]),import.meta.url)}function fe(){if(document.getElementById("bmf-splash"))return;if(!document.getElementById("bmf-splash-css")){const r=document.createElement("style");r.id="bmf-splash-css",r.textContent=re,document.head.appendChild(r)}const e=document.createElement("div");for(const[r,p]of Object.entries(ne))e.setAttribute(r,p);e.innerHTML=oe,document.body.appendChild(e);const t=1100,o=performance.now();let a=!1,i=0;const n=()=>{a||(a=!0,i&&clearTimeout(i),e.classList.add("bmf-hide"),setTimeout(()=>e.remove(),550))},s=()=>{if(a||i)return;const r=t-(performance.now()-o);r<=0?n():i=window.setTimeout(n,r)};window.addEventListener("bmf:ready",s),setTimeout(n,12e3)}function he(){T(),L(),A(),z(),C(),ke();const e=document.getElementById("game");if(!e)return;const t=document.createElement("div");t.className="bmf-app front",t.innerHTML=I+ge(),e.innerHTML="",e.appendChild(t),document.getElementById("fd-boot")?.remove(),F(t,13),B(t),me(t),v(-1),be(),ue(t),ee(t),xe(),f.has("map")&&y()}function me(e){const t=e.querySelector("#fhome-pilot");if(!t)return;const o=O();if(!o?.name){t.classList.add("is-new"),t.innerHTML='<span class="fpb-cs">New pilot</span><span class="fpb-meta"><span class="fpb-hint">Fly to earn your rank</span></span>';return}const a=P(R());t.innerHTML=`<span class="fpb-cs"></span><span class="fpb-meta"><span class="rank" style="--rk:${a.color}"><i></i>${a.name}</span><span class="fpb-pts pts-ic mono">${l("spark")}<b>${M().toLocaleString("en-US")}</b> pts</span></span>`;const i=t.querySelector(".fpb-cs");i&&(i.textContent=o.name.toUpperCase())}function v(e){const t=document.getElementById("fhome-pilots-live");if(!t)return;const o=t.querySelector("b"),a=t.querySelector("span");e>=1?(o&&(o.textContent=e.toLocaleString("en-US")),a&&(a.textContent=e===1?"Pilot live":"Pilots live")):(o&&(o.textContent=""),a&&(a.textContent="Open Skies live"))}const de=6e3,ce=4e3;async function be(){let e;try{e=await u(()=>import("./openSkies-BkVayIv8.js"),[],import.meta.url)}catch{return}if(!e.openSkiesConfigured())return;const t=e.connectOpenSkies(N(new Date),{id:"fd-listener",name:"",heli:""},de);if(!t)return;const o=()=>v(t.remotes().length),a=window.setTimeout(o,1400),i=window.setInterval(o,ce);window.addEventListener("pagehide",()=>{window.clearTimeout(a),window.clearInterval(i),t.close()},{once:!0})}function ge(){return`
+${H()}
 <div class="fhome-bg" aria-hidden="true"><img src="/images/missions/saskatchewan/ThreeTown.webp" alt="" /></div>
 ${_("home")}
 
@@ -65,8 +65,9 @@ ${_("home")}
           <span class="fhome-fresh" id="fd-fresh">CIFFC + CWFIS</span>
         </div>
         <h1 class="fhome-eyebrow fhome-hero-kick">Wildfires across Canada<br>Right now</h1>
-        <!-- The live figure — hydrated by paintNational(). -->
-        <div id="fhome-live">
+        <!-- The live figure — hydrated by paintNational(). Boots in .is-loading so the placeholder
+             dashes read as "loading", not "zero"; paintNational drops the class once data resolves. -->
+        <div id="fhome-live" class="is-loading">
           <div class="fhome-fig"><b id="ro-active">—</b><span>active fires</span></div>
           <div class="fhome-stats">
             <span class="fhome-stat hot"><b id="ro-oc">—</b><span>out of control</span></span>
@@ -90,9 +91,9 @@ ${_("home")}
       <span class="fd-glasstex" aria-hidden="true"></span>
       <span class="fhome-map-art" aria-hidden="true"><img src="/images/cardsbg/map.webp" alt="" /></span>
       <span class="fhome-map-grid" aria-hidden="true"></span>
-      <span class="fhome-map-ic">${f("map")}</span>
+      <span class="fhome-map-ic">${l("map")}</span>
       <span class="fhome-map-tx"><b>Live fire map</b><span>Reported fires, hotspots, fire weather &amp; smoke</span></span>
-      <span class="fhome-map-go">${f("chevron-right")}</span>
+      <span class="fhome-map-go">${l("chevron-right")}</span>
     </button>
 
     <!-- OPEN SKIES — the play CTA over the live-fire key-art. A top OVERLAY banner carries the slimmed
@@ -110,21 +111,21 @@ ${_("home")}
       <div class="fhome-tx fhome-play-tx">
         <span class="h-big fhome-play-h">Open Skies</span>
         <span class="fhome-play-sub">Fly helicopters and fight the fire.</span>
-        <span class="btn primary fhome-play-go">${f("play")}Fly now</span>
+        <span class="btn primary fhome-play-go">${l("play")}Fly now</span>
       </div>
     </button>
 
     <!-- Wear the fight — the BIG shop feature card. The art is the dedicated card background
          (cardsbg/wearthefightbg.webp): the real hoodie product shot floating over a misty boreal
          ridge, framed so the print sits centre-right and our copy + Shop CTA own the left fade. -->
-    <button class="card warm cut fhome-merch" data-act="shop" aria-label="Open the BMF Gear store">
-      <div class="fhome-merch-art"><img src="/images/cardsbg/wearthefightbg.webp" alt="Wear the fight — the black BMF hoodie, its back print a helicopter bucket-drop over a burning ridge, floating in a misty boreal forest" /></div>
+    <button class="card warm cut fhome-merch" data-act="shop" aria-label="Get notified when BMF Gear drops">
+      <div class="fhome-merch-art"><img src="/images/cardsbg/wearthefightbg.webp" alt="Wear the fight: the black BMF hoodie, its back print a helicopter bucket-drop over a burning ridge, floating in a misty boreal forest" /></div>
       <div class="fhome-merch-fade"></div>
       <div class="fhome-tx fhome-merch-tx">
-        <span class="fhome-merch-ey">${f("shop")}BMF Gear</span>
+        <span class="fhome-merch-ey">${l("shop")}BMF Gear</span>
         <span class="h-big fhome-merch-h">Wear the fight.</span>
-        <span class="fhome-merch-sub">Gear built around the fight &mdash; the first collection is in final prep.</span>
-        <span class="btn primary fhome-merch-go">Shop the collection</span>
+        <span class="fhome-merch-sub">Gear built around the fight. The first collection is in final prep.</span>
+        <span class="btn primary fhome-merch-go">Get notified</span>
       </div>
     </button>
 
@@ -135,7 +136,7 @@ ${_("home")}
       <div class="fhome-hof-tx">
         <span class="fhome-hof-ey">The Fireline</span>
         <span class="fhome-hof-h">The unsung warriors.</span>
-        <span class="fhome-hof-sub">The moments that forged Canada's wildfire fight — and the crews who held the line.</span>
+        <span class="fhome-hof-sub">The moments that forged Canada's wildfire fight, and the crews who held the line.</span>
       </div>
       <span class="btn ghost fhome-hof-go">Walk the line →</span>
     </a>
@@ -143,7 +144,7 @@ ${_("home")}
 
   ${j()}
 </div>
-${$("home")}`}function ue(e){e.querySelectorAll("[data-act]").forEach(t=>{t.addEventListener("click",o=>{switch(o.preventDefault(),o.stopPropagation(),t.dataset.act){case"coop":location.assign("/open-skies/");return;case"fires":return y();case"shop":return G("shop")}})})}function y(){D(q("map"),W("map"))}async function xe(){const[e,t,o]=await Promise.all([Y().catch(()=>null),U().catch(()=>null),K().catch(()=>null)]);we(e,t,o)}function ve(e,t){return t&&t.meta.status==="live"?{n:x(t.fires,"CA").length,pub:t.meta.publishedAt}:e&&e.meta.status==="live"?{n:e.activeFires,pub:e.meta.publishedAt}:{n:-1,pub:0}}function ye(e){return!e||e.meta.status!=="live"?-1:x(e.fires,"CA").filter(t=>t.stage==="OC").length}function we(e,t,o){const a=(S,E)=>{const b=document.getElementById(S);b&&(b.textContent=E)},i=document.getElementById("fd-fresh"),r=document.getElementById("fhome-live"),s=document.getElementById("fhome-fallback"),n=document.getElementById("fd-live"),p=!!e&&e.meta.status==="live",w=!!t&&t.meta.status==="live";if(!p&&!w){r&&(r.hidden=!0),s&&(s.hidden=!1),n&&(n.hidden=!0),i&&(i.innerHTML=`Live data unavailable · <a href="${V.summary.url}" target="_blank" rel="noopener">official sources →</a>`);return}r&&(r.hidden=!1),s&&(s.hidden=!0),n&&(n.hidden=!1);const{n:m,pub:k}=ve(e,t),d=ye(t),c=o&&o.meta.status==="live"?X(o.hotspots,"CA").length:-1;a("ro-active",m>=0?h(m):"—"),a("ro-oc",d>=0?h(d):"—"),a("ro-hot",c>=0?h(c):"—"),a("ro-area",p&&e.areaBurnedHa>0?Z(e.areaBurnedHa):"—"),a("ro-prep",p&&e.prepLevel>0?`L${e.prepLevel}`:"—"),i&&(i.textContent=`${J(k)} · CIFFC + CWFIS`)}function ke(){if(document.getElementById("fd-bento-css"))return;const e=document.createElement("style");e.id="fd-bento-css",e.textContent=`
+${G("home")}`}function ue(e){e.querySelectorAll("[data-act]").forEach(t=>{t.addEventListener("click",o=>{switch(o.preventDefault(),o.stopPropagation(),t.dataset.act){case"coop":location.assign("/open-skies/");return;case"fires":return y();case"shop":return $("shop")}})})}function y(){D(q("map"),W("map"))}async function xe(){const[e,t,o]=await Promise.all([U().catch(()=>null),Y().catch(()=>null),K().catch(()=>null)]);we(e,t,o)}function ve(e,t){return t&&t.meta.status==="live"?{n:x(t.fires,"CA").length,pub:t.meta.publishedAt}:e&&e.meta.status==="live"?{n:e.activeFires,pub:e.meta.publishedAt}:{n:-1,pub:0}}function ye(e){return!e||e.meta.status!=="live"?-1:x(e.fires,"CA").filter(t=>t.stage==="OC").length}function we(e,t,o){const a=(S,E)=>{const b=document.getElementById(S);b&&(b.textContent=E)},i=document.getElementById("fd-fresh"),n=document.getElementById("fhome-live"),s=document.getElementById("fhome-fallback"),r=document.getElementById("fd-live"),p=!!e&&e.meta.status==="live",w=!!t&&t.meta.status==="live";if(n&&n.classList.remove("is-loading"),!p&&!w){n&&(n.hidden=!0),s&&(s.hidden=!1),r&&(r.hidden=!0),i&&(i.innerHTML=`Live data unavailable · <a href="${V.summary.url}" target="_blank" rel="noopener">official sources →</a>`);return}n&&(n.hidden=!1),s&&(s.hidden=!0),r&&(r.hidden=!1);const{n:m,pub:k}=ve(e,t),d=ye(t),c=o&&o.meta.status==="live"?X(o.hotspots,"CA").length:-1;a("ro-active",m>=0?h(m):"—"),a("ro-oc",d>=0?h(d):"—"),a("ro-hot",c>=0?h(c):"—"),a("ro-area",p&&e.areaBurnedHa>0?Z(e.areaBurnedHa):"—"),a("ro-prep",p&&e.prepLevel>0?`L${e.prepLevel}`:"—"),i&&(i.textContent=`${J(k)} · CIFFC + CWFIS`)}function ke(){if(document.getElementById("fd-bento-css"))return;const e=document.createElement("style");e.id="fd-bento-css",e.textContent=`
 /* Bento grid. Grid items default to min-width:auto, so a nowrap child (the ticker line) or a
    horizontal scroller (the notes rail) would force the single 1fr column wider than the phone
    viewport and overflow the page. min-width:0 lets every card shrink to the column, and the
@@ -204,6 +205,12 @@ ${$("home")}`}function ue(e){e.querySelectorAll("[data-act]").forEach(t=>{t.addE
 .bmf-app.front .fhome-fresh { font-family: var(--mono); font-size: var(--fs-micro); letter-spacing: .04em; color: var(--faint); }
 .bmf-app.front .fhome-fresh a { color: var(--ember-hi); text-decoration: none; }
 .bmf-app.front .fhome-hero-kick { margin: 18px 0 0; max-width: 22ch; }
+/* Boot skeleton — while the national feed is in flight the placeholder dashes PULSE so they read as
+   "loading", not "zero / unknown". paintNational() removes .is-loading the moment data resolves
+   (live or both-feeds-down). Reduced-motion gets a static dimmed state instead of the pulse. */
+@keyframes fdLivePulse { 0%, 100% { opacity: .9; } 50% { opacity: .32; } }
+.bmf-app.front #fhome-live.is-loading b { color: var(--faint); animation: fdLivePulse 1.1s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .bmf-app.front #fhome-live.is-loading b { animation: none; opacity: .5; } }
 /* The live figure — the hero number leads, its unit label sits beside it on the baseline. */
 .bmf-app.front .fhome-fig { display: flex; align-items: flex-end; gap: 12px; margin-top: 10px; }
 .bmf-app.front .fhome-fig b { font-family: var(--mono); font-weight: var(--fw-black); font-size: clamp(52px, 9vw, 104px); line-height: .88; color: #fff; letter-spacing: -0.02em; text-shadow: 0 2px 18px rgba(0,0,0,0.6); }
