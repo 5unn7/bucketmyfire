@@ -200,18 +200,32 @@ export class HeliAudio {
 
   /** Resume the context and start the rotor loop once a gesture has occurred. */
   ensureStarted(): void {
-    if (this.disabled || this.disposed) return;
-    if (this.ctx.state === 'suspended') void this.ctx.resume();
-    if (this.started) return;
-    this.started = true;
-    const t = this.ctx.currentTime;
-    this.master.gain.setValueAtTime(0, t);
-    // Ramp in to the user's level — straight to silent if they arrived already muted.
-    this.master.gain.linearRampToValueAtTime(this.muted ? 0 : AUDIO.masterVolume, t + AUDIO.fadeInSec);
-    if (this.rotorBuffer) this.startRotor();
-    else this.pendingStart = true;
-    for (const ev of ['pointerdown', 'keydown', 'touchstart'] as const) {
-      window.removeEventListener(ev, this.unlockHandler);
+    if (this.disabled || this.disposed || this.started) return;
+
+    // Commit to "started": ramp the master bus in, start the rotor, and drop the unlock listeners.
+    // Pulled out so it runs ONLY once the context is actually running (see the iOS note below).
+    const begin = (): void => {
+      if (this.started || this.disposed) return;
+      this.started = true;
+      const t = this.ctx.currentTime;
+      this.master.gain.setValueAtTime(0, t);
+      // Ramp in to the user's level — straight to silent if they arrived already muted.
+      this.master.gain.linearRampToValueAtTime(this.muted ? 0 : AUDIO.masterVolume, t + AUDIO.fadeInSec);
+      if (this.rotorBuffer) this.startRotor();
+      else this.pendingStart = true;
+      for (const ev of ['pointerdown', 'keydown', 'touchstart'] as const) {
+        window.removeEventListener(ev, this.unlockHandler);
+      }
+    };
+
+    // iOS Safari can REJECT resume() with InvalidStateError ("Failed to start the audio device") when
+    // WebKit can't acquire the audio session (silent mode, an active call, a gesture-timing race). Audio
+    // is non-essential, so swallow the rejection — it must never surface as an unhandled rejection — and
+    // crucially do NOT mark started or detach the unlock handler, so the NEXT user gesture retries cleanly.
+    if (this.ctx.state === 'suspended') {
+      this.ctx.resume().then(begin).catch(() => {});
+    } else {
+      begin();
     }
   }
 
@@ -263,9 +277,12 @@ export class HeliAudio {
     if (this.disabled) return;
     if (suspended === this.suspended) return;
     this.suspended = suspended;
+    // Best-effort: a synchronous throw is caught here, but suspend()/resume() also return promises that
+    // can REJECT on iOS Safari (InvalidStateError) — swallow those too so neither escapes as an unhandled
+    // rejection. Audio silence on a backgrounded tab is an acceptable degradation.
     try {
-      if (suspended) void this.ctx.suspend();
-      else if (this.started) void this.ctx.resume();
+      if (suspended) this.ctx.suspend().catch(() => {});
+      else if (this.started) this.ctx.resume().catch(() => {});
     } catch {
       /* suspend/resume is best-effort */
     }
