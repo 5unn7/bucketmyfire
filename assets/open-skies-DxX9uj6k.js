@@ -1,4 +1,4 @@
-import{a as d,i as f,b as h,c as k,d as m,e as u,D as b,s as v,w as y,g,h as S,j as E,B as H,k as L,H as r,l as j,n as w,p as x}from"./frontShell-DG9c_nM_.js";import{i as F,p as c,w as $}from"./flyPicker-L6htW4u-.js";d();f();h();k();m();u();F();I();const i=document.getElementById("game");if(i){const e=document.createElement("div");e.className="bmf-app front",e.innerHTML=b+C(),i.innerHTML="",i.appendChild(e),document.getElementById("fd-boot")?.remove(),v(e,13),y(e),l(e)}function C(){return`
+import{a as d,i as f,b as h,c as k,d as m,e as u,D as b,s as v,w as y,g,h as S,j as E,B as H,k as L,H as r,l as j,n as w,p as x}from"./frontShell-DdcQK6ol.js";import{i as F,p as c,w as $}from"./flyPicker-G2CucrMe.js";d();f();h();k();m();u();F();I();const i=document.getElementById("game");if(i){const e=document.createElement("div");e.className="bmf-app front",e.innerHTML=b+C(),i.innerHTML="",i.appendChild(e),document.getElementById("fd-boot")?.remove(),v(e,13),y(e),l(e)}function C(){return`
 ${g()}
 ${S("open-skies")}
 <div class="pad fhome">
