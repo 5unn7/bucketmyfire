@@ -254,13 +254,19 @@ export function deriveRegionStats(
     };
   }
 
-  // Canada-all (or 'all') — the authoritative national summary, with a reported-feed fallback for active.
+  // Canada-all (or 'all') — the active HEADLINE + stage split come from the REPORTED feed (the very fires
+  // the map plots as discs, and the same number the home banner shows), so the headline, the OC/BH/UC pips,
+  // the dots on the map, and the home page ALL agree. The CIFFC summary stays the source for the
+  // national-only metrics (area burned / prep / season totals / fires-today) and is the active FALLBACK
+  // when the reported feed is down. (The summary's own `active_fires` runs ~100 higher — fires CIFFC
+  // tallies nationally but doesn't publish as mappable point features — so using it for the headline made
+  // the map read e.g. "531 active" over ~428 visible discs, and diverged from the home page.)
   if (!sumLive && !repLive && !hsLive) return downStats(label);
   const caReported = repLive ? filterReportedCountry(reportedFeed.fires, region.country) : [];
   return {
     scope: sumLive || repLive ? 'ca-national' : 'down',
     label,
-    active: sumLive ? summary!.activeFires : repLive ? caReported.length : null,
+    active: repLive ? caReported.length : sumLive ? summary!.activeFires : null,
     byStage: repLive ? tallyStages(caReported) : null,
     reportedToday: sumLive ? summary!.firesToday : null,
     areaBurnedHa: sumLive ? summary!.areaBurnedHa : null,

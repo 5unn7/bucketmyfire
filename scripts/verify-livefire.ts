@@ -176,13 +176,25 @@ const stProv = deriveRegionStats({ country: 'CA', agency: 'SK' }, repFeed, feed,
 ok('province scope = ca-province; active = SK count; stage split sums to active', stProv.scope === 'ca-province' && stProv.active === skFires.length && !!stProv.byStage && stProv.byStage.OC + stProv.byStage.BH + stProv.byStage.UC === stProv.active);
 ok('HONESTY: province area/prep/season = Data not available (null)', stProv.areaBurnedHa === null && stProv.prepLevel === null && stProv.ytdTotal === null && stProv.ytdOut === null);
 const stCA = deriveRegionStats({ country: 'CA' }, repFeed, feed, sum, REGION_NOW);
-ok('Canada-all scope = ca-national; uses the AUTHORITATIVE summary', stCA.scope === 'ca-national' && stCA.active === sum.activeFires && stCA.areaBurnedHa === sum.areaBurnedHa && stCA.prepLevel === sum.prepLevel);
+// The Canada-all active HEADLINE must equal the reported-feed count (the same fires the map plots + the
+// home banner shows), NOT the summary's higher `active_fires` — else the map header diverges from its own
+// dots and from the home page. Area/prep stay national-only (summary). Stage pips must sum to active.
+ok('Canada-all scope = ca-national; active = reported-feed count (matches map dots + home); pips sum to active; area/prep from summary',
+  stCA.scope === 'ca-national'
+  && stCA.active === filterReportedCountry(repFeed.fires, 'CA').length
+  && stCA.active !== sum.activeFires // guard: the fixture summary differs, so this proves we are NOT using it
+  && !!stCA.byStage && stCA.byStage.OC + stCA.byStage.BH + stCA.byStage.UC === stCA.active
+  && stCA.areaBurnedHa === sum.areaBurnedHa && stCA.prepLevel === sum.prepLevel);
 const stUS = deriveRegionStats({ country: 'US' }, repFeed, feed, sum, REGION_NOW);
 ok('US scope = foreign: NO reported active (null); satellite hotspots are the metric', stUS.scope === 'foreign' && stUS.active === null && stUS.byStage === null && typeof stUS.hotspots === 'number' && (stUS.hotspots ?? -1) >= 0);
 const downRep = normalizeReported({ features: [] }, { fetchedAt: FETCHED, status: 'unavailable', fromCache: false });
 const downHs = normalizeFeed({ features: [] }, { fetchedAt: FETCHED, status: 'unavailable', fromCache: false });
 const stDown = deriveRegionStats({ country: 'CA' }, downRep, downHs, null, REGION_NOW);
 ok('all feeds unavailable → scope down; every headline number null', stDown.scope === 'down' && stDown.active === null && stDown.byStage === null && stDown.areaBurnedHa === null && stDown.hotspots === null);
+// Active FALLBACK: reported feed down but the CIFFC summary live → the headline falls back to the summary's
+// active_fires (an authoritative national number beats a blank), staying ca-national.
+const stCAfallback = deriveRegionStats({ country: 'CA' }, downRep, downHs, sum, REGION_NOW);
+ok('Canada-all: reported feed down → active falls back to the CIFFC summary', stCAfallback.scope === 'ca-national' && stCAfallback.active === sum.activeFires);
 
 // ── Burn perimeters (CWFIS M3 polygons) ──
 const polys = parseBurnPolygons(fx('livefire-m3-polygons.geojson'));

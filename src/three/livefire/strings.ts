@@ -20,8 +20,14 @@ export function fmtHa(ha: number): string {
 export const LIVEFIRE_COPY = {
   title: 'Live wildfires',
   // Home banner sub — authoritative CIFFC national numbers (active reported fires + season area burned).
+  // Used as the FALLBACK when the reported feed is down; the live path pairs the reported-feed active
+  // count with the summary's area via `bannerActiveAndArea` so the number matches the map + front door.
   bannerSummary: (s: NationalSummary) =>
     `${fmtInt(s.activeFires)} active ${s.activeFires === 1 ? 'fire' : 'fires'} · ${fmtHa(s.areaBurnedHa)} burned this year`,
+  // Live home banner: the REPORTED-feed active count (the same fires the map plots + the front-door home
+  // shows) paired with the CIFFC summary's season area — so every "active fires" number in the app agrees.
+  bannerActiveAndArea: (active: number, areaHa: number) =>
+    `${fmtInt(active)} active ${active === 1 ? 'fire' : 'fires'} · ${fmtHa(areaHa)} burned this year`,
   // Fallback when the summary is unreachable but the satellite feed gave a clustered count.
   bannerSub: (n: number, label: string) => `${n.toLocaleString()} active ${n === 1 ? 'fire' : 'fires'} in ${label}`,
   bannerQuiet: (label: string) => `No active fires in ${label}`,

@@ -18,8 +18,8 @@ import { railNav } from './rail';
 import { injectHomeStyles, spawnEmbers } from './styles';
 import { attachCardGlow } from '../fx/cardGlow';
 import { DEFS, FLAME_ONLY, HELMET, ic } from './icons';
-import { fetchActiveFires, fetchSummary, getCountryPref } from '../../livefire/client';
-import { filterCountry, countFires, countryLabel } from '../../livefire/normalize';
+import { fetchActiveFires, fetchReportedFires, fetchSummary, getCountryPref } from '../../livefire/client';
+import { filterCountry, filterReportedCountry, countFires, countryLabel } from '../../livefire/normalize';
 import { LIVEFIRE_COPY } from '../../livefire/strings';
 
 export class HomeScreen {
@@ -203,20 +203,34 @@ ${railNav('home')}`;
       .catch(() => settle(null));
   }
 
-  /** Settle the data strip's fire count from the live feed (best-effort). Prefers the AUTHORITATIVE CIFFC
-   *  national summary; falls back to the satellite clustered count. The strip stays tappable in every
-   *  state — a quiet/offline result just softens the line without hiding the fire-map entry point. */
+  /** Settle the data strip's fire count from the live feed (best-effort). The active count comes from the
+   *  REPORTED feed (the same fires the map plots + the front-door home shows), paired with the CIFFC
+   *  summary's season area — so every "active fires" number in the app agrees. The reported feed is
+   *  Canada-only, so for US/MX (or a down feed) we fall back to the summary, then to the satellite
+   *  clustered count. The strip stays tappable in every state — a quiet/offline result just softens the
+   *  line without hiding the fire-map entry point. */
   private loadLiveFires(): void {
     const el = this.root.querySelector<HTMLElement>('[data-ds-strip]');
     if (!el) return;
-    fetchSummary()
-      .then((s) => {
+    const country = getCountryPref(); // defaults to Canada
+    Promise.all([fetchReportedFires().catch(() => null), fetchSummary().catch(() => null)])
+      .then(([feed, summary]) => {
         if (this.disposed) return;
-        if (s.meta.status === 'live' && (s.activeFires > 0 || s.areaBurnedHa > 0)) {
-          el.textContent = LIVEFIRE_COPY.bannerSummary(s);
-        } else {
-          this.fallbackLiveFireCount(el); // summary down/empty → the satellite count
+        const sumLive = !!summary && summary.meta.status === 'live';
+        // Canada → the reported-feed active count is canonical (matches the map dots + the front door).
+        if (feed && feed.meta.status === 'live' && country === 'CA') {
+          const n = filterReportedCountry(feed.fires, country).length;
+          el.textContent = sumLive && summary!.areaBurnedHa > 0
+            ? LIVEFIRE_COPY.bannerActiveAndArea(n, summary!.areaBurnedHa)
+            : LIVEFIRE_COPY.bannerSub(n, countryLabel(country));
+          return;
         }
+        // Reported feed down (or US/MX, which it doesn't cover) → the authoritative national summary.
+        if (sumLive && (summary!.activeFires > 0 || summary!.areaBurnedHa > 0)) {
+          el.textContent = LIVEFIRE_COPY.bannerSummary(summary!);
+          return;
+        }
+        this.fallbackLiveFireCount(el); // both down/empty → the satellite count
       })
       .catch(() => {
         if (!this.disposed) this.fallbackLiveFireCount(el);
