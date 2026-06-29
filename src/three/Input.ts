@@ -329,6 +329,25 @@ export class Input {
     this.buildSwapUI(root);
     this.buildHelpUI(root);
 
+    // iOS Safari IGNORES `touch-action: none` (set on every control above) for DOUBLE-TAP-to-zoom, just
+    // as it does for pinch — so pumping ▲/▼ or quickly re-tapping any control magnifies the whole
+    // viewport mid-flight. Swallow it: cancel a touchend that lands within the system double-tap window
+    // of the previous one. Bubbled touchends from every child land here, so one listener covers the
+    // whole control surface. Scoped to this flight overlay (no click-driven menu buttons live under it)
+    // and harmless to the controls — they run on pointer events already dispatched by now; this only
+    // kills the browser's zoom + the dead synthetic click. Non-passive so preventDefault takes effect;
+    // it rides on `root`, so dispose() drops it with the overlay.
+    let lastTapEnd = 0;
+    root.addEventListener(
+      'touchend',
+      (e) => {
+        const t = e.timeStamp;
+        if (t - lastTapEnd <= 350 && e.cancelable) e.preventDefault();
+        lastTapEnd = t;
+      },
+      { passive: false },
+    );
+
     this.root = root; // stored so dispose() can pull the whole overlay (and its listeners) at once
     parent.appendChild(root);
   }
