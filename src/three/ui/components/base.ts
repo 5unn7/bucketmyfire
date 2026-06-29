@@ -48,6 +48,17 @@ export function injectKitStyles(): void {
   @keyframes bmf-kit-spin { to { transform: rotate(1turn); } }
   @keyframes bmf-kit-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 
+  /* ===== iOS Safari (and other touch browsers) AUTO-ZOOM the page when you focus a text field whose
+     font-size is below 16px. Hold a 16px floor on TOUCH devices only — desktop never auto-zooms, so
+     its compact field sizing (.field @ --fs-lg, .fd-field @ --fs-md, .firesel @ --fs-meta, …) is left
+     untouched. The 16px here is the fixed BROWSER threshold, not a design token — do not "tokenize" it.
+     !important is required to beat the per-screen field rules AND CloudSave's inline size. Non-text
+     inputs (range/checkbox/radio/color) have no text caret → never zoom → skip them. ===== */
+  @media (any-pointer: coarse) {
+    input:not([type=range]):not([type=checkbox]):not([type=radio]):not([type=color]),
+    textarea, select { font-size: 16px !important; }
+  }
+
   /* ===== Branded "liquid glass" scrollbar — a translucent ember thumb with a white sheen at the top
      (the --bevel-top gloss) so it reads as wet glass, floating on a clear track. Applied to the modal
      body (and any kit surface that opts in via .bmf-kit-scroll). All tokens — no raw literals. ===== */

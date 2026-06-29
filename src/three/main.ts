@@ -43,6 +43,13 @@ const container = document.getElementById('game') as HTMLDivElement;
 // title/hub/HUD render in the real face (font-display:swap keeps the first paint instant on a cold cache).
 injectFonts();
 
+// Hard-lock browser zoom for the game session. This is a fixed-viewport app (no scroll, no zoom),
+// and main.ts loads ONLY on a play deep-link — never the content front door, which keeps its
+// accessibility zoom. iOS Safari IGNORES the `touch-action: none` already on the play surface for
+// pinch-zoom (its page magnification rides the non-standard gesture* events), so two-thumb play
+// (stick + throttle) otherwise magnifies the whole viewport mid-flight. Swallow those gestures.
+lockViewportGestures();
+
 // Crash/error beacon FIRST, so a failure during storage reset / renderer / world construction is
 // reported too. Env-gated sink (VITE_ERROR_BEACON_URL); console-only when unset. PII-free.
 installErrorBeacon(() => ({
@@ -162,6 +169,21 @@ function webglAvailable(): boolean {
     return !!(window.WebGL2RenderingContext && canvas.getContext('webgl2'));
   } catch {
     return false;
+  }
+}
+
+/** Suppress the browser's pinch-zoom for the whole game session. iOS Safari does NOT honour
+ *  `touch-action: none` for pinch — its page magnification fires the non-standard WebKit `gesture*`
+ *  events, so the only reliable block is to preventDefault them (non-passive). Double-tap-zoom is
+ *  already killed by the `touch-action: none` on `body.bmf-playing` + the touch controls, and we
+ *  deliberately DON'T touch `touchend`/taps here so rapid DROP/throttle taps and menu clicks are
+ *  unaffected. No-ops on engines without gesture* events (Chrome/Firefox honour touch-action). */
+function lockViewportGestures(): void {
+  const swallow = (e: Event): void => {
+    if (e.cancelable) e.preventDefault();
+  };
+  for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
+    document.addEventListener(type, swallow, { passive: false });
   }
 }
 
