@@ -7,7 +7,8 @@
  *   - Turn the nose: push the LEFT stick LEFT/RIGHT, or A/D / ←/→.
  *   - Forward / back (variable speed): push the stick UP/DOWN, or W/S / ↑/↓.
  *     Push the stick further for more speed; ease off to creep in precisely.
- *   - Altitude (collective): the on-screen ▲/▼ buttons on the RIGHT, or I (climb) / J (descend).
+ *   - Altitude (collective): the vertical SLIDER on the RIGHT — drag up to climb / down to descend,
+ *     the further the faster; release and it springs to centre (altitude HOLD). Or I (climb) / J (descend).
  *   - Drop water: the DROP button, or Space. A 'bambi' bucket dumps fully on a
  *     single tap; a 'valve' bucket pours while held and pauses on release. The DROP
  *     button doubles as the BUCKET gauge — water rises inside it as you scoop.
@@ -36,7 +37,7 @@ export interface ControlState {
   turn: number; // -1 turn left .. +1 turn right (yaw — LEFT stick X)
   throttle: number; // -1 reverse .. +1 forward (variable along the nose — LEFT stick Y)
   lateral: number; // sideways strafe — retired from the controls; always 0 (the flight model still accepts it)
-  lift: number; // -1 descend .. +1 climb (collective — ▲/▼ buttons)
+  lift: number; // -1 descend .. +1 climb (collective — the vertical slider, analog)
   drop: boolean; // DROP held this frame (the 'valve' bucket pours while held)
   dropPressed: boolean; // DROP went down THIS frame (edge) — a one-tap 'bambi' dump trigger
   swapPressed: boolean; // SWAP went down THIS frame (edge) — re-rig bucket↔crew at base (mixed missions)
@@ -47,8 +48,22 @@ export interface ControlState {
 const STICK_DEADZONE = 0.15;
 /** Expo shaping applied after the deadzone (1 = linear; 2 = quadratic). Small pushes
  *  produce much less output; you need a deliberate full push to reach full deflection.
- *  Higher = calmer stick — softens small/mid pushes so mobile flying isn't twitchy. */
-const STICK_EXPO = 2.7;
+ *  Higher = calmer stick — softens small/mid pushes so mobile flying isn't twitchy.
+ *  EASED 2.7→2.0: the mid-range was too dead (push half, get almost nothing, then it
+ *  snaps on) — a gentler quadratic tracks the thumb more proportionally so flying reads
+ *  as connected/responsive; the new STICK_SMOOTH_TC low-pass below absorbs the jitter that
+ *  the higher expo used to mask. */
+const STICK_EXPO = 2.0;
+/** Time constant (seconds) of the one-pole low-pass on the stick axes. Denoises touch jitter
+ *  and gives the turn/throttle command a silky cinematic glide WITHOUT the sim-level lag — the
+ *  knob still tracks the finger 1:1, only the value feeding flight is eased. Short on purpose so
+ *  it stays responsive (≈one frame of perceptible lag); the sim's own controlResponse does the
+ *  heavier weighting on top. */
+const STICK_SMOOTH_TC = 0.05;
+/** Collective slider: travel below this fraction of full reads as a centred HOLD (no climb/descend),
+ *  so a resting thumb parks the altitude band instead of drifting. Smaller than the stick deadzone —
+ *  the lever wants fine proportional authority right off centre. */
+const COLL_DEADZONE = 0.1;
 
 // Keyboard keys are on/off, so without this they'd always command FULL deflection
 // (max speed / max turn) — twitchy next to the analog stick. These scale a held key
@@ -62,14 +77,19 @@ const PCT_SHADOW = '0 1px 2px rgba(0,0,0,0.55)';
 export class Input {
   private readonly held = new Set<string>();
 
-  // Touch state. ONE 2-axis stick (bottom-left) + ▲/▼ collective buttons (bottom-right):
+  // Touch state. ONE 2-axis stick (bottom-left) + a vertical collective SLIDER (bottom-right):
   //   LEFT stick: X = turn (yaw), Y = throttle (fwd / back). Self-centres → release holds heading.
-  //   RIGHT: ▲ climb / ▼ descend buttons hold the altitude change while pressed.
+  //   RIGHT: the collective slider — drag up/down for an ANALOG climb/descend rate; release → hold.
   private leftX = 0; // -1..1, right = turn right
   private leftY = 0; // -1..1, up = forward
   private leftActive = false;
-  private btnUp = false; // ▲ climb held
-  private btnDown = false; // ▼ descend held
+  private collTouch = 0; // -1 descend .. +1 climb — analog collective from the slider
+  private collActive = false; // collective slider engaged this frame (overrides keyboard I/J)
+  // One-pole low-pass on the stick command (see STICK_SMOOTH_TC) — the cinematic glide. `lastReadT`
+  // is performance.now() at the previous read() so the filter is frame-rate-independent.
+  private smoothTurn = 0;
+  private smoothThrottle = 0;
+  private lastReadT = 0;
   private btnDrop = false;
   private prevDrop = false; // last frame's drop level, for press-edge detection
   private dropEnabled = true; // false while a crew low-hover hold owns the controls — DROP greys out + ignores taps/Space
@@ -91,8 +111,7 @@ export class Input {
   // Element refs (the controls themselves are CSS-sized via the `.bmf-hud` clamp vars). Only the stick
   // BASES are kept — the coach spotlights them; the knobs + ticks live under each base and need no ref.
   private leftBase!: HTMLDivElement;
-  private climbBtn!: HTMLDivElement;
-  private descendBtn!: HTMLDivElement;
+  private collBase!: HTMLDivElement; // the collective slider track (the coach spotlights it for climb/descend)
   private dropBtn!: HTMLDivElement;
   // The DROP hero IS the bucket: a cool water layer rises inside it as you scoop and drains as you
   // drop (carry + spend fused into one element). These three refs drive that fill + its % readout.
@@ -152,8 +171,8 @@ export class Input {
     injectPulseStyles();
     const map: Record<HighlightId, HTMLElement | undefined> = {
       stick: this.leftBase, // movement lives on the left stick
-      climb: this.climbBtn,
-      descend: this.descendBtn,
+      climb: this.collBase, // climb + descend both live on the one collective slider now
+      descend: this.collBase,
       drop: this.dropBtn,
     };
     const next = id ? (map[id] ?? null) : null;
@@ -176,14 +195,31 @@ export class Input {
 
     // The touch stick overrides the keyboard for its axes when engaged (deadzoned + rescaled). It
     // self-centres, so releasing holds heading. Strafe is retired — lateral is always 0.
-    const turn = this.leftActive ? deadzone(this.leftX) : kTurn;
-    const throttle = this.leftActive ? deadzone(this.leftY) : kThrottle;
+    const rawTurn = this.leftActive ? deadzone(this.leftX) : kTurn;
+    const rawThrottle = this.leftActive ? deadzone(this.leftY) : kThrottle;
+    // Cinematic glide: a frame-rate-independent one-pole low-pass smooths the stick command so finger
+    // jitter never reaches the airframe and the input eases on/off like a weighted control. dt is real
+    // wall-clock (performance.now) so the time constant holds at any frame rate — and it's self-correcting
+    // if read() is ever called more than once a frame (the extra call advances by a near-zero dt).
+    const now = typeof performance !== 'undefined' ? performance.now() : 0;
+    const dt = this.lastReadT ? Math.min((now - this.lastReadT) / 1000, 0.1) : 1 / 60;
+    this.lastReadT = now;
+    const aSmooth = 1 - Math.exp(-dt / STICK_SMOOTH_TC);
+    this.smoothTurn += (rawTurn - this.smoothTurn) * aSmooth;
+    this.smoothThrottle += (rawThrottle - this.smoothThrottle) * aSmooth;
+    const turn = this.smoothTurn;
+    const throttle = this.smoothThrottle;
     const lateral = 0;
 
-    // Collective: the ▲/▼ buttons or I (climb) / J (descend).
-    let lift = 0;
-    if (k.has('KeyI') || this.btnUp) lift += 1;
-    if (k.has('KeyJ') || this.btnDown) lift -= 1;
+    // Collective: the analog slider (overrides the keyboard when engaged) or I (climb) / J (descend).
+    let lift: number;
+    if (this.collActive) {
+      lift = collDeadzone(this.collTouch);
+    } else {
+      lift = 0;
+      if (k.has('KeyI')) lift += 1;
+      if (k.has('KeyJ')) lift -= 1;
+    }
 
     // Drop: Space (or the on-screen DROP button). Gated off while disabled (a crew low-hover hold) so a
     // held button or Space can't leak a phantom drop through.
@@ -501,22 +537,10 @@ export class Input {
   }
 
   /** RIGHT controls (bottom-right): the DROP / RELEASE-BUCKET cluster sits INBOARD (left) with the
-   *  collective ▲/▼ climb-descend pair toward the corner, all sharing one baseline so they read as one
-   *  right-thumb group. DROP is inboard so the corner-resting thumb on ▲/▼ never hides its rising-water
-   *  fill animation. Hold ▲ to climb / ▼ to descend; release holds the altitude band. */
+   *  collective SLIDER toward the corner, sharing one baseline so they read as one right-thumb group.
+   *  DROP is inboard so the corner-resting thumb on the slider never hides its rising-water fill. */
   private buildRightControls(root: HTMLElement): void {
-    const climb = button('▲', { position: 'relative', fontSize: 'calc(var(--coll) * 0.42)' });
-    const descend = button('▼', { position: 'relative', fontSize: 'calc(var(--coll) * 0.42)' });
-    climb.className = 'coll-btn'; // diameter from CSS (--coll)
-    descend.className = 'coll-btn';
-    this.climbBtn = climb;
-    this.descendBtn = descend;
-    holdButton(climb, (on) => (this.btnUp = on));
-    holdButton(descend, (on) => (this.btnDown = on));
-
-    const collective = div({ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--bmf-gap)' });
-    collective.append(climb, descend);
-
+    const collective = this.buildCollective();
     const cluster = this.buildDropCluster();
 
     const row = div({
@@ -525,11 +549,88 @@ export class Input {
       alignItems: 'flex-end',
       gap: 'calc(var(--bmf-gap) * 1.9)',
     });
-    row.append(cluster, collective); // [DROP + RELEASE] [▲/▼] — DROP inboard (fill stays in view), collective toward the corner
+    row.append(cluster, collective); // [DROP + RELEASE] [collective] — DROP inboard (fill stays in view), lever toward the corner
 
     const a = anchor('bottom-right');
     a.appendChild(row);
     root.appendChild(a);
+  }
+
+  /** The collective SLIDER — a vertical lever that replaces the old ▲/▼ on/off buttons. Drag the knob UP
+   *  to climb / DOWN to descend, the further from centre the faster (analog rate); release and it springs
+   *  back to centre (altitude HOLD). A real proportional collective: smoother + more cinematic than the
+   *  binary buttons, and what makes "ease over a ridge" or "settle onto a lake" a feel-able motion. */
+  private buildCollective(): HTMLDivElement {
+    const base = div({
+      position: 'relative',
+      borderRadius: R.pill,
+      background: 'linear-gradient(180deg, rgba(24,34,44,0.40), rgba(8,12,18,0.55))',
+      border: `1px solid ${UI.strokeStrong}`,
+      boxShadow: `inset 0 1px 22px rgba(0,0,0,0.42), ${UI.shadowBtn}`,
+      pointerEvents: 'auto',
+      touchAction: 'none',
+      overflow: 'hidden',
+    });
+    base.className = 'coll-slider'; // width/height from CSS (--coll / --coll-h)
+    setBlur(base);
+    // Centre detent (the HOLD notch) + faint ▲ climb / ▼ descend markers so "up = climb" reads at a glance.
+    base.appendChild(div({ position: 'absolute', left: '20%', right: '20%', top: '50%', height: '1px', marginTop: '-0.5px', background: accentAlpha(0.3) }));
+    base.appendChild(div({ position: 'absolute', top: '6%', left: '0', right: '0', textAlign: 'center', fontSize: 'calc(var(--coll) * 0.32)', lineHeight: '1', color: accentAlpha(0.5), pointerEvents: 'none' }, '▲'));
+    base.appendChild(div({ position: 'absolute', bottom: '6%', left: '0', right: '0', textAlign: 'center', fontSize: 'calc(var(--coll) * 0.32)', lineHeight: '1', color: accentAlpha(0.5), pointerEvents: 'none' }, '▼'));
+
+    const knob = div({
+      position: 'absolute',
+      left: '50%',
+      top: '50%',
+      borderRadius: R.round,
+      background: `radial-gradient(circle at 40% 34%, rgba(255,255,255,0.55), ${UI.knobHi})`,
+      border: `1.5px solid ${UI.accentSoft}`,
+      boxShadow: '0 3px 10px rgba(0,0,0,0.45)',
+      transform: 'translate(-50%, -50%)',
+      pointerEvents: 'none',
+    });
+    knob.className = 'coll-knob'; // size from CSS (--coll)
+    base.appendChild(knob);
+    this.collBase = base;
+
+    const setActive = (on: boolean): void => {
+      knob.style.boxShadow = on ? `0 0 16px ${UI.accentSoft}, 0 3px 10px rgba(0,0,0,0.45)` : '0 3px 10px rgba(0,0,0,0.45)';
+      knob.style.borderColor = on ? UI.accent : UI.accentSoft;
+    };
+
+    let pid = -1;
+    const onMove = (e: PointerEvent): void => {
+      const rect = base.getBoundingClientRect();
+      const half = rect.height / 2;
+      const travel = Math.max(1, half - knob.offsetHeight / 2 - 4); // keep the knob fully inside the track
+      const dy = e.clientY - (rect.top + half); // + = below centre
+      const off = Math.max(-travel, Math.min(travel, dy));
+      knob.style.transition = 'none'; // 1:1 with the finger while dragging
+      knob.style.transform = `translate(-50%, calc(-50% + ${off}px))`;
+      this.collTouch = -off / travel; // screen-up (−y) → climb (+1)
+      this.collActive = true;
+      setActive(true);
+    };
+    const release = (): void => {
+      pid = -1;
+      knob.style.transition = 'transform 0.2s ease'; // spring back to centre smoothly (cinematic)
+      knob.style.transform = 'translate(-50%, -50%)';
+      this.collTouch = 0;
+      this.collActive = false;
+      setActive(false);
+    };
+    base.addEventListener('pointerdown', (e) => {
+      pid = e.pointerId;
+      base.setPointerCapture(e.pointerId);
+      onMove(e);
+    });
+    base.addEventListener('pointermove', (e) => {
+      if (e.pointerId === pid) onMove(e);
+    });
+    base.addEventListener('pointerup', release);
+    base.addEventListener('pointercancel', release);
+
+    return base;
   }
 
   /** The DROP + RELEASE-BUCKET cluster, in the bottom-right corner beside the collective ▲/▼. DROP is a round WATER-GAUGE button
@@ -746,6 +847,16 @@ function deadzone(v: number): number {
   if (a < STICK_DEADZONE) return 0;
   const n = (a - STICK_DEADZONE) / (1 - STICK_DEADZONE);
   return Math.sign(v) * Math.pow(n, STICK_EXPO);
+}
+
+/** Collective slider shaping: a small centred HOLD deadzone, then a gentle expo so a light nudge is a
+ *  gentle climb/descend and full travel is full rate. Lighter curve than the stick — the lever wants
+ *  proportional authority for holding a precise altitude. */
+function collDeadzone(v: number): number {
+  const a = Math.abs(v);
+  if (a < COLL_DEADZONE) return 0;
+  const n = (a - COLL_DEADZONE) / (1 - COLL_DEADZONE);
+  return Math.sign(v) * Math.pow(n, 1.4);
 }
 
 /** Wire a div to call `set(true)` while pressed and `set(false)` on release, with

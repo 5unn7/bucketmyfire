@@ -34,7 +34,8 @@ const VARS = `.bmf-hud{
   --stick: clamp(116px, 33vw, 140px);          /* joystick DISH diameter (pointer math reads it live) */
   --drop: clamp(86px, 25vw, 104px);            /* DROP hero diameter */
   --detach: clamp(46px, 13vw, 56px);           /* RELEASE-bucket button */
-  --coll: clamp(50px, 14vw, 60px);             /* collective ▲/▼ climb-descend buttons */
+  --coll: clamp(50px, 14vw, 60px);             /* collective slider WIDTH (knob derives from it) */
+  --coll-h: clamp(122px, 32vw, 156px);         /* collective slider HEIGHT — the lever's vertical travel */
   --help: clamp(22px, 5vw, 27px);               /* "?" help — the smallest detail in the cockpit (under the radar) */
   --comms-max: min(520px, 92vw);               /* advisory / comms bar max width */
   --dispatch-w: min(190px, 60vw);              /* DISPATCH / objective panel width cap in the left column */
@@ -157,6 +158,7 @@ const CSS = `
     --stick: clamp(96px, 30vw, 132px);
     --drop: clamp(70px, 22vw, 96px);
     --coll: clamp(44px, 12vw, 56px);
+    --coll-h: clamp(104px, 27vw, 132px);         /* shorter lever on small/short screens (still ≥ comfy travel) */
     --detach: clamp(42px, 11vw, 52px);
     --help: clamp(20px, 4.6vw, 25px);
     /* HUD text a step down (comms / caution / dispatch read off these tokens) */
@@ -172,7 +174,8 @@ const CSS = `
 .bmf-hud .drop{ width:var(--drop); height:var(--drop); }
 .bmf-hud .drop .drop-label{ font-size:calc(var(--drop) * 0.18); }
 .bmf-hud .drop .drop-pct{ font-size:calc(var(--drop) * 0.15); }
-.bmf-hud .coll-btn{ width:var(--coll); height:var(--coll); } /* font-size set inline (theme.button() pins one a class can't beat) */
+.bmf-hud .coll-slider{ width:var(--coll); height:var(--coll-h); } /* vertical collective lever */
+.bmf-hud .coll-knob{ width:calc(var(--coll) * 0.74); height:calc(var(--coll) * 0.74); } /* the draggable knob (centred via inline transform) */
 .bmf-hud .detach-btn{ width:var(--detach); height:var(--detach); }
 .bmf-hud .help-btn{ width:var(--help); height:var(--help); } /* font-size set inline (theme.button() pins one a class can't beat) */
 
