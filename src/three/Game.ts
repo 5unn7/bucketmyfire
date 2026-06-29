@@ -2283,7 +2283,10 @@ export class Game {
     });
     for (let i = 0; i < r.actions.length; i++) this.runMissionAction(r.actions[i]);
     // Reputation IS the score: feed the same field the shared-board push + presence broadcast read.
-    this.ffaScore = this.province.reputation;
+    // Plus the bridge-thread stunt bonus (mirrors stepEndless) — without this the "+2000" radio nod
+    // for a clean fly-under fired but the points were never credited in the Living Province / Solo
+    // (this branch overwrote ffaScore each frame with reputation only).
+    this.ffaScore = this.province.reputation + this.bridgePasses * FFA.pointsPerBridge;
     // Teaching arc handed off ⇒ the pilot has been through the loop: mark onboarded NOW so it never
     // replays, even if they leave before the 45s board push below (the early-leave re-onboard gap).
     if (r.justOnboarded && !this.provFlownMarked) {
