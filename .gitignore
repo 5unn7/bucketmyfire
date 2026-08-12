@@ -46,3 +46,6 @@ icons-preview.html
 # regenerate shots locally (e.g. .qa-shot.cjs responsive QA, .og-shot.cjs the OG card). Local-only.
 .*-shot.cjs
 .qa/
+
+# October desktop — local canvas state
+.october/

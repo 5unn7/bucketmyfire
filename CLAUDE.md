@@ -484,3 +484,42 @@ Project skills (bucketmyfire-specific — see "Project-specific skills" above):
 
 Deploy caveat: every push to `main` auto-deploys to prod (GitHub Pages). Treat /ship and any
 `git push` as outward-facing — confirm before pushing, since it goes live immediately.
+
+## ⚠️ The "Working in this app (built with October)" block below DOES NOT APPLY to this repo
+
+It is injected and rewritten automatically by the October tool host (note the
+`october:canvas-guide` HTML markers), so it is generic boilerplate, **not** guidance about
+bucketmyfire. It is factually wrong here and following it would damage the codebase:
+
+- **There is no router and there are no route files.** `index.html` boots `src/hub.ts`; the site is
+  a multi-page **Vite static build** whose pages are declared in `vite.config.ts`
+  (`rollupOptions.input`). Screens are **imperative DOM builders** — dozens live in the single file
+  `src/three/ui/home/menus.ts` by design. Do **not** split them into "one screen per route file".
+- **This is not Expo / React Native.** Ignore the `npx expo install` guidance; use plain `npm`.
+- The October bus / `add_terminal` / `message_peer` tools are not part of this project's workflow.
+
+Everything ABOVE this heading is the real, authoritative guidance for this repo. If the block below
+ever conflicts with it, the block below loses. (Safe to delete the block entirely — the tool host
+will simply re-add it; this notice sits outside the markers so it survives that.)
+
+<!-- october:canvas-guide:start -->
+# Working in this app (built with October)
+
+This project is built inside **October**, a spatial canvas where each app **screen/route shows up as its own node**. October discovers screens by scanning the route files on disk, so how you structure routes is exactly what the user sees on the canvas.
+
+## One screen = one route file
+
+Give every screen its own route and its own component file, and register each route in the app's router. Use flat, lowercase, hyphenated route paths (e.g. `/sign-up`).
+
+## When the user asks for a flow or multiple screens
+
+Onboarding, a wizard, "a few screens", steps, a set of screens — **create one separate route file per screen.** Never put multiple screens inside a single component: no internal step/pager/carousel state standing in for separate screens, and no extra screen components exported from one file. One screen = one file = one route, so each shows up as its own node on the canvas.
+
+## Dependencies
+
+When you import a new package, add it to `package.json` in the same change (for Expo / React Native, run `npx expo install <pkg>` so it picks a compatible version and writes `package.json` for you). Anything missing from `package.json` disappears on a clean install and crashes the app.
+
+## Working with other agents
+
+If you're connected to October's bus (the october-bus MCP tools), you can bring on helper agents instead of doing everything yourself. When a task splits into independent parts, `add_terminal` (or `add_chat`) with an `agent` for each part — use `isolate:true` when several will touch the same repo — then drive each with `send_to_node` and coordinate via `message_peer`. A spawned agent is auto-connected to you, so you can message it right away; `wait_for_nodes` fans work back in when they finish.
+<!-- october:canvas-guide:end -->
