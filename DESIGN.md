@@ -128,6 +128,31 @@ logo). Inside the cockpit, that job stays with `accent` (cyan).
 > `#46d17a` (the `HULL_OK` const in `HUD.ts`), tuned to read against bright terrain. That is a
 > deliberate in-world variant, not drift. Everything in menus/overlays uses `ok`.
 
+### Live-fire map (the `MAP` ramp) — hue means fire
+
+The wildfire console is a **fight-register surface**, and it carries its own token block
+(`theme.ts → MAP`) because a map needs roles the general palette doesn't have. One rule governs it:
+
+> **Hue always means fire. Stage of control is carried by TREATMENT, not by a second hue.**
+
+| Stage | Mark | Token |
+|---|---|---|
+| Out of control | bright ember fill + pale ring; a pulsing halo on the top-ranked few | `ocFill` / `ocRing` |
+| Being held | same hue, dropped in luminance, solid ring, no pulse | `bhFill` / `bhRing` |
+| Under control | **hollow** — dim ember outline, no fill | `ucRing` |
+| Out | cold ash, clearly subordinate | `outFill` / `outRing` |
+
+The map previously painted stage as a traffic light (`warn` / `caution` / **`ok` green**). Roughly
+half of all reported fires are "under control", so the country filled with green and the eye went to
+the calmest thing on a map about wildfire — the exact inverse of the keystone. Two further rules:
+**size means size** (a mark's radius scales with its reported hectares — logarithmically, with a
+modest ceiling so a merged orange mass doesn't destroy the magnitude read it exists to give), and the
+**basemap is dark by default** with a `Daylight` toggle preserving the sun-readable light tiles.
+
+Every surface that draws a fire reads these through `livefire/view.ts` (`STAGE_STYLE` / `STAGE_COLOR`)
+or the `--map-*` CSS vars — the map marks, the Layers-sheet legend swatches, the triage-rail rows, the
+detail chips. **Never re-declare a stage colour per surface**, or the legend starts lying about the map.
+
 ### Podium medals (leaderboard top three)
 
 `gold #ffd66b` · `silver #cfe0ee` · `bronze #e6a268`
@@ -324,4 +349,5 @@ only adaptive runtime lever.
 | 2026-06-07 | One button of record: global `.btn`, emitted by `makeButton`; round pills removed | The button had re-forked into `.bmf-app .btn` (8px + a round-pill `.ember`) vs `makeButton` (10px, inline styles). Unified into one global `.btn` in the kit; `makeButton` emits the classes; rugged `R.lg` radius, no pills, `cockpit`/`fight` registers, `locked` folded in. HUD touch controls + the title hero PLAY are documented carve-outs. (f340607, 3198f4a) |
 | 2026-06-07 | Callsign sanitized on load, not just on save | `loadProfile()` runs `cleanCallsign`, closing a tampered-storage / cloud-restore self-XSS at the one chokepoint every screen reads through. (107a7f3) |
 | 2026-06-09 | Poster/art cards lock to a portrait aspect (`AR.poster` `3 / 4` → `--ar-poster`) | A key-art card flattens to a landscape letterbox on a wide phone — the Field Notes rail card sits at 78% width, and the in-game Maps/Hangar carousel fills the viewport height (so a short/landscape phone went wide). Added an `AR` aspect-ratio scale to `theme.ts` (one value of record, the analog of `R`), applied it to `.fd-mcard` (rail + showcase) and the `.artcard` carousel (a short-viewport guard derives the card width from the available height so it shrinks instead of flattening), and pointed the mockup `.poster` at the same token so the documented pattern can't drift. |
+| 2026-08-12 | Live-fire map redesigned as a **console**; stage traffic light retired for the `MAP` ember ramp | The tracker read as a generic Leaflet demo: a near-white basemap, red/amber/**green** stage dots (so ~half the fires said "all clear" on a wildfire map), every fire the same 11px mark regardless of hectares, place labels overprinting into an unreadable smear, and "890 active fires" — the site's most arresting fact — set as 14px of grey ticker text. Now: a dark instrument basemap (CARTO `_nolabels`, so the console owns every label) with a **Daylight** toggle that keeps the documented sun-readability fallback; one ember ramp where stage is fill/luminance/pulse (`theme.ts → MAP`, consumed everywhere via `view.ts → STAGE_STYLE`); magnitude-scaled marks; collision-aware label placement; percentile-trimmed framing (the old fit put South America on a phone); a headline status readout with a proportional threat bar; and a **triage rail** (`livefire/triage.ts`) ranking the fires worth watching by size × stage × distance to the nearest town, tied to numbered halos on the map. The ranking is explicitly OUR reading of public data, never presented as an agency assessment. New `verify:livefire` assertions cover the ordering. |
 | 2026-06-09 | Brand corner-cut is the DEFAULT on every `.card`; home chips squared | The notch had drifted: the hub's cards cut, but the Settings `.card`s, the Open Skies `.helicard` grid, and the Hangar wallet chip (`.pts-bal`) were plain rounded / a round pill. Made `clip-path` the default on `.card` (so Settings auto-cuts), centralized the geometry into `--cut-tl`/`--cut-br`, added the notch to `.helicard`, and squared `.pts-bal` (`R.pill` → `R.sm`). Rule: cards chamfer, chips stay square. Also corrected the stale Radii note that listed chips/badges as `R.pill`. |

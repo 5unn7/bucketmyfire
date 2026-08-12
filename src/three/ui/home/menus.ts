@@ -974,7 +974,20 @@ function threatRailHtml(rows: ThreatRow[]): string {
       </button>`;
     })
     .join('');
-  return `${head}<div class="frail-list">${list}</div><div class="frail-note">${esc(C.railNote)}</div>`;
+  // The mark key, pinned under the list. The map encodes size AND stage in one mark and neither rule is
+  // guessable; without this the reader is left inferring why some dots are hollow. It sits in the rail
+  // (not floating on the map) because it belongs beside the list it explains — and it fills the tail of
+  // a tall rail, which otherwise ran to dead space below the tenth row.
+  const key = `<div class="frail-key">
+      <div class="fkey-ttl">${esc(C.keyTitle)}</div>
+      <div class="fkey-size"><i class="s1"></i><i class="s2"></i><i class="s3"></i><span>${esc(C.keySize)}</span></div>
+      <div class="fkey-stages">
+        <span class="fkey-st"><i class="oc"></i>${esc(C.keyOc)}</span>
+        <span class="fkey-st"><i class="bh"></i>${esc(C.keyBh)}</span>
+        <span class="fkey-st"><i class="uc"></i>${esc(C.keyUc)}</span>
+      </div>
+    </div>`;
+  return `${head}<div class="frail-list">${list}</div>${key}<div class="frail-note">${esc(C.railNote)}</div>`;
 }
 
 /**
@@ -1036,6 +1049,16 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
     </div>
     <div class="firestats" data-lf-stats>${statStrip}</div>
     <div class="firemapwrap">
+      <!-- The triage rail. On a wide screen it DOCKS beside the map as a real flex sibling — it TAKES
+           width rather than covering it, so the map measures what it can actually show and nothing
+           under the rail gets clipped. On a phone there's no room for a permanent dock, so it goes
+           absolute and is summoned by the ⚠ float button as a bottom sheet. One builder, two
+           placements, driven entirely by CSS. -->
+      <aside class="firerail" data-lf-rail></aside>
+      <!-- Everything that floats over the MAP lives in this column, not in .firemapwrap — otherwise
+           the legend, the scrubber and the detail sheet all anchor to the wrap's left edge and slide
+           under the docked rail. -->
+      <div class="firemapcol">
       <div class="firemap" data-lf-map></div>
       <!-- Honest "feeds down" banner: shown ONLY when BOTH authoritative sources (CIFFC reported + national
            summary) are unreachable, so a blank basemap never reads as "no fires". Toggled after each load. -->
@@ -1044,13 +1067,8 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
         <span>${esc(C.offlineBody)}</span>
         <a href="${LIVEFIRE_SOURCES.summary.url}" target="_blank" rel="noopener">Official sources ↗</a>
       </div>
-      <!-- The triage rail. On a wide screen it DOCKS to the left of the map (it's the reason to be on
-           this page, not an afterthought behind a button); on a phone there's no room for a permanent
-           dock, so it collapses and is summoned by the ⚑ float button as a bottom sheet. Same markup
-           either way — one builder, two placements, driven entirely by CSS. -->
-      <aside class="firerail" data-lf-rail></aside>
       <div class="firefloat">
-        <button class="fmbtn rail" data-lf-threats aria-label="${esc(C.console.railBtn)}" title="${esc(C.console.railBtn)}">${ic('alert')}</button>
+        <button class="fmbtn threats" data-lf-threats aria-label="${esc(C.console.railBtn)}" title="${esc(C.console.railBtn)}">${ic('alert')}</button>
         <button class="fmbtn" data-lf-layers aria-label="${esc(C.layersBtn)}" title="${esc(C.layersBtn)}">${ic('layers')}<span class="fmn" data-lf-layern></span></button>
         <button class="fmbtn" data-lf-firewx aria-pressed="false" aria-label="${esc(C.fireWxBtn)}" title="${esc(C.fireWxBtn)}">${ic('fire')}</button>
         <!-- Daylight: the dark console is the default, but a dark map genuinely loses its marks
@@ -1072,6 +1090,7 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
         </div>
       </div>
       <div class="firesheet" data-lf-sheet hidden></div>
+      </div>
     </div>
   </div>`;
   // The map view lives in a lazy chunk, so it's built asynchronously below. `closed` guards every

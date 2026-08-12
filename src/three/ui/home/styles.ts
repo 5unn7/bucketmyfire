@@ -76,12 +76,20 @@ const CSS = `
    moved to a FLOATING cluster over the map, so the bar can never overflow off a phone). The status block
    below carries the live count; the map keeps the rest. */
 .bmf-app .firebar{ flex:0 0 auto; z-index:2; display:flex; align-items:center; gap:8px; padding:calc(env(safe-area-inset-top) + 9px) 12px 9px; background:var(--card-bg); border-bottom:1px solid var(--stroke); }
-.bmf-app .firesel{ flex:0 0 auto; max-width:46%; min-height:38px; background:var(--field); color:var(--text); border:1px solid var(--stroke); border-radius:var(--r-md); padding:7px 9px; font-family:var(--font); font-size:var(--fs-meta); cursor:pointer; }
+/* SHRINKABLE (flex:0 1 auto + min-width:0), not fixed. While this was 0 0 auto the brand block, the
+   region select and the refresh button summed past a 390px phone and pushed refresh clean off the right
+   edge — the select is the one item here that can give up width without losing meaning, so it does. */
+.bmf-app .firesel{ flex:0 1 auto; min-width:0; max-width:46%; min-height:38px; background:var(--field); color:var(--text); border:1px solid var(--stroke); border-radius:var(--r-md); padding:7px 9px; font-family:var(--font); font-size:var(--fs-meta); cursor:pointer; }
 .bmf-app .firesel:focus{ outline:none; border-color:var(--ember); }
+.bmf-app .firebar > .iconbtn{ flex:0 0 auto; } /* refresh never shrinks — it's a tap target */
 /* The map region is the positioning context for everything that floats over it (the Layers/Sources
    cluster, the forecast scrubber, the slide-in detail/Layers drawer) — so they anchor to the MAP, not
    the header rows above it. */
 .bmf-app .firemapwrap{ position:relative; flex:1 1 auto; min-height:0; display:flex; }
+/* The map COLUMN: the map plus everything that floats over it. This — not .firemapwrap — is the
+   positioning context for the float cluster, legend, scrubber and detail sheet, so a docked triage
+   rail beside it can't have them anchoring to its left edge and sliding underneath. */
+.bmf-app .firemapcol{ position:relative; flex:1 1 auto; min-width:0; min-height:0; display:flex; }
 .bmf-app .firemap{ flex:1 1 auto; min-height:0; width:100%; }
 /* Honest "feeds down" banner — a centred frosted readout shown ONLY when every source is unreachable, so a
    blank light basemap can't read as "no fires". Deep glass (it floats over the bright map) + a warm lip. */
@@ -208,20 +216,43 @@ const CSS = `
    Two placements, one markup: DOCKED beside the map on a wide screen (it's the reason to be on this
    page, not something hidden behind a button), and a summoned bottom sheet on a phone, where there is
    no room for a permanent dock. */
-.bmf-app .firerail{ position:absolute; z-index:620; left:0; top:0; bottom:0; width:302px; display:flex; flex-direction:column;
-  background:var(--card-glass-deep); backdrop-filter:var(--blur); -webkit-backdrop-filter:var(--blur);
-  border-right:1px solid var(--stroke); box-shadow:var(--shadow-card); }
+/* On a wide screen the rail is a real FLEX SIBLING of the map, not an overlay on top of it. As an
+   overlay it covered the westernmost 302px of the live map: place labels under it were clipped
+   mid-word ("Prince George" → "George", "Vancouver" → "ver"), fitTo framed to a viewport wider than
+   the visible map, and Leaflet's zoom control and the legend both needed hand-fed offsets to escape
+   it. Taking the width out of the map instead fixes all four at once — the map measures what it can
+   actually show, and nothing needs to know the rail's width. */
+.bmf-app .firerail{ position:relative; z-index:620; flex:0 0 302px; min-width:0; display:flex; flex-direction:column;
+  background:var(--card-bg); border-right:1px solid var(--stroke); }
 .bmf-app .frail-head{ flex:0 0 auto; display:flex; align-items:flex-start; gap:8px; padding:11px 12px 9px; border-bottom:1px solid var(--stroke); }
 .bmf-app .frail-ttl{ font-family:var(--mono); font-size:var(--fs-meta); font-weight:var(--fw-bold);
   letter-spacing:.14em; text-transform:uppercase; color:var(--ember-hi); }
 .bmf-app .frail-sub{ margin-top:3px; font-size:var(--fs-micro); color:var(--dim); line-height:1.35; }
-.bmf-app .frail-x{ display:none; flex:0 0 auto; } /* the docked rail has nothing to close */
+/* The docked rail has nothing to close. Scoped through .firerail so it outranks the .iconbtn base
+   rule, which is defined later in this sheet and would otherwise win on source order. */
+.bmf-app .firerail .frail-x{ display:none; flex:0 0 auto; }
 .bmf-app .frail-empty{ padding:16px 12px; font-size:var(--fs-sm); color:var(--dim); }
 /* A bounded inner scroll is allowed here — this IS the "genuinely long list" carve-out, and the page
    itself still never scrolls (the no-scroll law). */
 .bmf-app .frail-list{ flex:1 1 auto; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; }
 .bmf-app .frail-note{ flex:0 0 auto; padding:8px 12px calc(9px + env(safe-area-inset-bottom));
   border-top:1px solid var(--hair); font-size:var(--fs-micro); color:var(--faint); line-height:1.4; }
+/* The mark key — the same swatch treatments the Leaflet marks draw with (filled / darker / hollow),
+   so the key can't drift from the map. Three dots at real relative sizes carry the size rule without
+   a sentence of explanation. */
+.bmf-app .frail-key{ flex:0 0 auto; padding:9px 12px 10px; border-top:1px solid var(--hair); }
+.bmf-app .fkey-ttl{ font-family:var(--mono); font-size:var(--fs-micro); font-weight:var(--fw-bold);
+  letter-spacing:.12em; text-transform:uppercase; color:var(--dim); margin-bottom:7px; }
+.bmf-app .fkey-size{ display:flex; align-items:center; gap:5px; margin-bottom:7px; font-size:var(--fs-micro); color:var(--text-subtle); }
+.bmf-app .fkey-size i{ flex:0 0 auto; border-radius:var(--r-round); background:var(--map-oc); border:1px solid var(--map-oc-ring); }
+.bmf-app .fkey-size i.s1{ width:6px; height:6px; } .bmf-app .fkey-size i.s2{ width:11px; height:11px; } .bmf-app .fkey-size i.s3{ width:17px; height:17px; }
+.bmf-app .fkey-size span{ margin-left:4px; }
+.bmf-app .fkey-stages{ display:flex; flex-wrap:wrap; gap:4px 12px; }
+.bmf-app .fkey-st{ display:inline-flex; align-items:center; gap:5px; font-size:var(--fs-micro); color:var(--text-subtle); }
+.bmf-app .fkey-st i{ width:11px; height:11px; flex:0 0 auto; border-radius:var(--r-round); }
+.bmf-app .fkey-st i.oc{ background:var(--map-oc); border:1.5px solid var(--map-oc-ring); }
+.bmf-app .fkey-st i.bh{ background:var(--map-bh); border:1.5px solid var(--map-bh-ring); }
+.bmf-app .fkey-st i.uc{ background:none; border:1.5px solid var(--map-uc-ring); }
 /* A row is a button: tap → fly the map there + open the record. Hairline separated, never boxed. */
 .bmf-app .frow{ width:100%; display:flex; align-items:center; gap:10px; padding:9px 12px; background:none;
   border:0; border-bottom:1px solid var(--hair); text-align:left; cursor:pointer; color:var(--text);
@@ -250,22 +281,24 @@ const CSS = `
 /* Phone: the rail becomes a summoned bottom sheet (the ⚑ float button toggles .open). Capped so the
    map stays visible behind it — you should see the fire you're picking. */
 @media (max-width:900px){
-  .bmf-app .firerail{ left:0; right:0; top:auto; bottom:0; width:auto; max-height:min(64%, 420px);
+  .bmf-app .firerail{ position:absolute; left:0; right:0; top:auto; bottom:0; flex:0 0 auto; max-height:min(72%, 470px);
+    background:var(--card-glass-deep); backdrop-filter:var(--blur); -webkit-backdrop-filter:var(--blur);
     border-right:0; border-top:1px solid var(--stroke); border-radius:var(--r-xl) var(--r-xl) 0 0;
-    transform:translateY(101%); transition:transform .22s cubic-bezier(.22,1,.36,1); }
+    box-shadow:var(--shadow-card); transform:translateY(101%); transition:transform .22s cubic-bezier(.22,1,.36,1); }
   .bmf-app .firerail.open{ transform:translateY(0); }
   .bmf-app .frail-x{ display:grid; }
+  /* On a phone sheet the ranked list is the scarce resource, so the key compresses: the stage
+     treatments stay (the hollow "under control" ring is the one genuinely unguessable mark) and the
+     size scale drops — a bigger dot meaning a bigger fire is the part people read without being told. */
+  .bmf-app .frail-key{ padding:7px 12px 8px; }
+  .bmf-app .fkey-size{ display:none; }
 }
 @media (prefers-reduced-motion:reduce){ .bmf-app .firerail{ transition:none; } }
 /* The ⚑ rail button is phone-only — on a wide screen the rail is always there to be read. */
-@media (min-width:901px){
-  .bmf-app .fmbtn.rail{ display:none; }
-  /* Make room for the docked rail: Leaflet's zoom sits top-left and the legend/scrubber span the map's
-     full width, so both would slide underneath it. Offset by the rail's width instead of moving the
-     rail — the fires belong on the right of the reading order, next to the list that names them. */
-  .bmf-app .firemapwrap .leaflet-top.leaflet-left{ margin-left:302px; }
-  .bmf-app .firebottom{ left:302px; }
-}
+/* .threats, NOT .rail — the app's bottom MODE RAIL already owns the .rail class (position:absolute,
+   bottom:0, its own height), so a float button wearing it inherited the wrong box entirely and
+   stacked on top of its neighbours. Modifier classes on shared components need scoped names. */
+@media (min-width:901px){ .bmf-app .fmbtn.threats{ display:none; } }
 
 /* Layers sheet — tiered toggles (reuse .srow/.toggle) + the full legend. A layer row's icon slot carries a
    legend swatch; a country-gated tier shows a reason badge instead of a toggle. */
@@ -273,8 +306,13 @@ const CSS = `
 .bmf-app .lgcap .sc{ font-size:var(--fs-micro); color:var(--dim); letter-spacing:.04em; text-transform:none; }
 .bmf-app .firesheet .srow.off{ opacity:.5; }
 .bmf-app .lgsw{ width:13px; height:13px; flex:0 0 auto; border-radius:var(--r-round); background:var(--faint); }
-.bmf-app .lgsw.oc{ background:var(--warn); } .bmf-app .lgsw.bh{ background:var(--caution); } .bmf-app .lgsw.uc{ background:var(--ok); }
-.bmf-app .lgsw.neutral{ background:var(--faint); }
+/* The Layers-sheet legend swatches read the SAME ember ramp the map marks draw with (theme.ts → MAP).
+   They were still on the retired warn/caution/ok traffic light, which would have made the legend
+   describe a map that no longer exists — the exact failure the shared semantics in view.ts prevent. */
+.bmf-app .lgsw.oc{ background:var(--map-oc); border:1px solid var(--map-oc-ring); }
+.bmf-app .lgsw.bh{ background:var(--map-bh); border:1px solid var(--map-bh-ring); }
+.bmf-app .lgsw.uc{ background:none; border:1.5px solid var(--map-uc-ring); }
+.bmf-app .lgsw.neutral{ background:var(--map-out); }
 .bmf-app .lgsw.alert{ background:var(--warn); border:2px solid var(--text); width:15px; height:15px; }
 .bmf-app .lgsw.ramp{ width:32px; border-radius:var(--r-sm); background:linear-gradient(90deg, var(--ember-hi), var(--ember), var(--warn)); }
 .bmf-app .lgsw.fwiramp{ width:32px; border-radius:var(--r-sm); background:linear-gradient(90deg, var(--ok), var(--caution), var(--warn)); }

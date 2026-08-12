@@ -18,6 +18,8 @@ import {
   parseRegion, regionValue, regionLabel, filterReportedRegion, filterRegionHotspots, regionOptions, deriveRegionStats,
   deriveFireActivity,
 } from '../src/three/livefire/normalize';
+import { rankThreats, nearestPlace, haversineKm } from '../src/three/livefire/triage';
+import type { ReportedFire } from '../src/three/livefire/types';
 
 let pass = 0;
 let fail = 0;
@@ -255,6 +257,52 @@ const actFrp = deriveFireActivity({ type: 'FeatureCollection', features: [
 ] }, SEASON, 3000);
 ok('deriveFireActivity: FRP is the daily PEAK (48 beats 12 same day)', actFrp?.days.find((d) => d.day === '2026-06-10')?.frp === 48);
 ok('deriveFireActivity: negative + missing FRP → 0', actFrp?.days.find((d) => d.day === '2026-06-09')?.frp === 0 && actFrp?.days.find((d) => d.day === '2026-06-08')?.frp === 0);
+
+// ── Threat triage (livefire/triage.ts) ────────────────────────────────────────────────────────────
+// The console's "What to watch" rail and the map's priority halos both read this ranking, so its
+// ORDERING is user-facing behaviour, not an implementation detail. Pure functions over POJOs, so the
+// properties that matter can be asserted directly rather than eyeballed on a map.
+const mkFire = (over: Partial<ReportedFire>): ReportedFire => ({
+  lat: 55, lon: -105, sizeHa: 100, stage: 'OC', agency: 'sk', country: 'CA', at: 0, fireId: 'X', props: {}, ...over,
+});
+// La Ronge sits at 55.10,-105.28 in the curated place list — the anchor for the proximity assertions.
+ok('nearestPlace finds the closest curated town', nearestPlace(55.1, -105.28)?.name === 'La Ronge');
+ok('nearestPlace distance is ~0 at the town itself', (nearestPlace(55.1, -105.28)?.km ?? 99) < 1);
+ok('haversineKm is symmetric + ~0 for a point against itself', Math.abs(haversineKm(55, -105, 55, -105)) < 1e-9);
+
+// Bigger wins, all else equal.
+const bySize = rankThreats([mkFire({ fireId: 'small', sizeHa: 10 }), mkFire({ fireId: 'big', sizeHa: 50_000 })]);
+ok('triage: bigger fire outranks smaller at equal stage + location', bySize[0]?.fire.fireId === 'big');
+
+// Stage outranks size when the size gap is modest: a contained fire is not the thing to watch.
+const byStage = rankThreats([
+  mkFire({ fireId: 'contained', sizeHa: 5_000, stage: 'UC' }),
+  mkFire({ fireId: 'running', sizeHa: 4_000, stage: 'OC' }),
+]);
+ok('triage: out-of-control outranks a slightly larger contained fire', byStage[0]?.fire.fireId === 'running');
+
+// Proximity to a community lifts a fire — the whole reason the rail is useful to the public.
+const byNear = rankThreats([
+  mkFire({ fireId: 'remote', sizeHa: 9_000, lat: 60.5, lon: -101 }), // far from any curated town
+  mkFire({ fireId: 'nearTown', sizeHa: 9_000, lat: 55.1, lon: -105.28 }), // on top of La Ronge
+]);
+ok('triage: at equal size + stage, the fire near a town ranks first', byNear[0]?.fire.fireId === 'nearTown');
+
+// Extinguished fires are never a "threat", whatever their size — they'd otherwise dominate the list.
+const withOut = rankThreats([mkFire({ fireId: 'out', sizeHa: 500_000, stage: 'OUT' }), mkFire({ fireId: 'live', sizeHa: 1 })]);
+ok('triage: OUT fires are excluded entirely, even a huge one', withOut.length === 1 && withOut[0]?.fire.fireId === 'live');
+
+// "Size not reported" must not read as "no fire" — it still ranks, just at the bottom of magnitude.
+const unknownSize = rankThreats([mkFire({ fireId: 'unknown', sizeHa: -1 })]);
+ok('triage: an unknown-size fire still ranks (never silently dropped)', unknownSize.length === 1);
+
+ok('triage: honours the row limit', rankThreats(Array.from({ length: 40 }, (_, i) => mkFire({ fireId: `f${i}`, sizeHa: i + 1 })), 10).length === 10);
+ok('triage: empty input → empty list, no throw', rankThreats([]).length === 0);
+// Deterministic order — the rail and the numbered map halos are painted from separate passes over
+// this list, so an unstable sort would let a row and its halo disagree about which fire is #1.
+const dupA = rankThreats([mkFire({ fireId: 'a' }), mkFire({ fireId: 'b' }), mkFire({ fireId: 'c' })]).map((r) => r.fire.fireId);
+const dupB = rankThreats([mkFire({ fireId: 'a' }), mkFire({ fireId: 'b' }), mkFire({ fireId: 'c' })]).map((r) => r.fire.fireId);
+ok('triage: ranking is deterministic across calls (rail ↔ halo numbers agree)', dupA.join() === dupB.join());
 
 // ── Report ──
 console.log(`\nverify:livefire — ${pass} passed, ${fail} failed`);

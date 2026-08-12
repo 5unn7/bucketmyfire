@@ -112,6 +112,15 @@ export const LIVEFIRE_COPY = {
     unnamed: 'Unnamed fire',
     daylightBtn: 'Daylight map',
     consoleBtn: 'Console map',
+    // The mark key. The map encodes two things at once (size = area, treatment = stage of control) and
+    // neither is guessable — without this a reader sees ember dots of assorted sizes and hollow rings
+    // and has to infer the rules. Lives in the rail rather than floating on the map: it belongs with
+    // the list that explains what it's ranking.
+    keyTitle: 'Reading the map',
+    keySize: 'Mark size = area burned',
+    keyOc: 'Out of control',
+    keyBh: 'Being held',
+    keyUc: 'Under control',
   },
   layersBtn: 'Layers',
   fireWxBtn: 'Fire weather',

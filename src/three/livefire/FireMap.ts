@@ -72,10 +72,18 @@ const CARTO_LIGHT = 'https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y
  * smallest fire a comfortable tap target; the ceiling stops a megafire eating its neighbours.
  * An unknown size (`sizeHa < 0`, which the feed does report) sits just above the floor — visible and
  * tappable, never dropped, because "size not reported" must not read as "no fire".
+ *
+ * The ceiling is deliberately modest (11 px, not the 15 this first shipped with). With 300-plus fires
+ * out of control at once the top of the range is not rare, and a generous ceiling merged the whole
+ * boreal northwest into one orange mass — losing exactly the magnitude read the scaling exists to
+ * give. Differentiation across the range beats absolute size at the top of it.
  */
 function markRadiusFor(sizeHa: number): number {
-  if (!(sizeHa > 0)) return 4.5;
-  return Math.max(4, Math.min(15, 3.6 + 3.1 * Math.log10(1 + sizeHa)));
+  if (!(sizeHa > 0)) return 3.4;
+  // ~3.2 px at 1 ha · 6 px at 100 ha · 8 px at 1,000 ha · 10 px at 10,000 ha and up. The shallow slope
+  // is what buys the differentiation: a steeper one pins most of the feed (which lives in the hundreds
+  // to low thousands of hectares) against the ceiling, and then nothing stands out from anything.
+  return Math.max(3.2, Math.min(10.5, 2.6 + 1.8 * Math.log10(1 + sizeHa)));
 }
 
 /**
@@ -488,9 +496,9 @@ export class FireMap implements LiveMapView {
           radius: radiusMetersForHa(f.sizeHa),
           color: MAP.areaStroke,
           weight: 1,
-          opacity: st.dim ? 0.3 : 0.75,
+          opacity: st.dim ? 0.22 : 0.6,
           fillColor: MAP.areaFill,
-          fillOpacity: st.dim ? 0.06 : 1,
+          fillOpacity: st.dim ? 0.25 : 1,
           interactive: false, // taps go to the centre mark below (a huge disc shouldn't swallow the map)
         }).addTo(this.reportedLayer);
       }
@@ -728,9 +736,10 @@ export class FireMap implements LiveMapView {
         const halfW = (place.name.length * fs * 0.62) / 2 + 4;
         const halfH = fs * 0.72;
         const box = { l: pt.x - halfW, r: pt.x + halfW, t: pt.y - halfH, b: pt.y + halfH };
-        // Off-screen labels are skipped entirely — they can't be read, and reserving space for them
-        // would suppress on-screen names for no reason.
-        if (box.r < 0 || box.l > size.x || box.b < 0 || box.t > size.y) show = false;
+        // Skip anything that isn't FULLY on screen. Rejecting only wholly-off-screen labels left the
+        // ones straddling an edge rendering as fragments ("St. John's" → "St"), which reads as a bug;
+        // and reserving space for labels nobody can read would suppress on-screen names for no reason.
+        if (box.l < 0 || box.r > size.x || box.t < 0 || box.b > size.y) show = false;
         else if (placed.some((p) => box.l < p.r && box.r > p.l && box.t < p.b && box.b > p.t)) show = false;
         else placed.push(box);
       }
@@ -787,8 +796,15 @@ export class FireMap implements LiveMapView {
       this.map.fitBounds(L.latLngBounds(points), { maxZoom: 7, padding: [40, 40] });
       return;
     }
-    const [latMin, latMax] = span(points.map((p) => p[0]), 0.04, 0.96);
-    const [lonMin, lonMax] = span(points.map((p) => p[1]), 0.04, 0.96);
+    // Trim harder on a narrow viewport. A phone showing the same national box resolves to a zoom where
+    // the whole burning band is a smear along one edge and most of the screen is Arctic ocean; biting
+    // further into the tails frames the band the fires actually occupy. A laptop has the width to show
+    // the country honestly, so it keeps the wider span.
+    const narrow = this.map.getSize().x < 620;
+    const lo = narrow ? 0.1 : 0.04;
+    const hi = narrow ? 0.9 : 0.96;
+    const [latMin, latMax] = span(points.map((p) => p[0]), lo, hi);
+    const [lonMin, lonMax] = span(points.map((p) => p[1]), lo, hi);
     const b = L.latLngBounds([latMin, lonMin], [latMax, lonMax]);
     // Clamped by hand rather than via fitBounds: Leaflet's FitBoundsOptions has a maxZoom but no floor,
     // and a near-empty set (one province, two fires) would otherwise fall out to the whole globe.

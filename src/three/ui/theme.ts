@@ -277,9 +277,12 @@ export const MAP = {
   // fires the console is telling you to look at, and ties a rail row to its mark on the map.
   halo: 'rgba(255,122,47,0.55)',
   haloCore: 'rgba(255,220,174,0.95)',
-  // True-footprint disc (a fire's real hectares drawn to scale) — a soft ember wash on the dark map.
-  areaFill: 'rgba(255,122,47,0.13)',
-  areaStroke: 'rgba(255,150,80,0.42)',
+  // True-footprint disc (a fire's real hectares drawn to scale). Deliberately a faint OUTLINE with
+  // barely any fill: individually a 13%-alpha wash looks right, but hundreds of them overlap across
+  // the boreal northwest and the alphas accumulate into one solid orange mass that buries the marks.
+  // As a ring it still says "this is the real extent" without competing with the fire it belongs to.
+  areaFill: 'rgba(255,122,47,0.05)',
+  areaStroke: 'rgba(255,150,80,0.30)',
   // Satellite-mapped burn scar (M3 perimeters) — burnt ground, not active flame: desaturated + cold.
   scarFill: 'rgba(120,72,44,0.20)',
   scarStroke: 'rgba(168,104,64,0.45)',
