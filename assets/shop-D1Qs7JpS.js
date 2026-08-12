@@ -1,4 +1,4 @@
-import{a,i as s,b as n,c as i,d as r,e as p,D as f,s as h,w as l,O as d,g as c,h as m,n as g,j as b,t as u}from"./frontShell-BpWMAISK.js";a();s();n();i();r();p();v();const t=document.getElementById("game");if(t){const e=document.createElement("div");e.className="bmf-app front",e.innerHTML=f+y(),t.innerHTML="",t.appendChild(e),document.getElementById("fd-boot")?.remove(),h(e,13),l(e),e.querySelectorAll("[data-notify-shop]").forEach(o=>o.addEventListener("click",()=>d()))}function y(){return`
+import{a,i as s,b as n,c as i,d as r,e as p,D as f,s as h,w as l,O as d,g as c,h as m,n as g,j as b,t as u}from"./frontShell-Bwc1VHpt.js";a();s();n();i();r();p();v();const t=document.getElementById("game");if(t){const e=document.createElement("div");e.className="bmf-app front",e.innerHTML=f+y(),t.innerHTML="",t.appendChild(e),document.getElementById("fd-boot")?.remove(),h(e,13),l(e),e.querySelectorAll("[data-notify-shop]").forEach(o=>o.addEventListener("click",()=>d()))}function y(){return`
 ${c()}
 ${m("shop")}
 <div class="pad fhome">
