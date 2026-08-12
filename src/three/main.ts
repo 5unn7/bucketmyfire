@@ -324,7 +324,29 @@ function bootMission(mission: MissionDef): void {
  *  (World gen + terrain mesh + minimap) runs. The returned Game is the FIRST one built — RETRY/NEXT
  *  rebuild a new Game in place via `switchMission` below, which the render loop picks up live. */
 function buildAndRunMission(mission: MissionDef): Game {
-  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+  // Tier FIRST: it decides whether the post-fx composer runs, which decides whether the renderer's own
+  // MSAA backbuffer is worth paying for. With the composer on (med/high) the scene is drawn into the
+  // composer's targets and `antialias` buys nothing while still allocating a full multisampled
+  // backbuffer — pure bandwidth and GPU memory, and on a phone that memory is the difference between
+  // running and losing the context. The low tier renders straight to the canvas, so THERE it is the
+  // only anti-aliasing available and stays on.
+  const tier = new QualityTier();
+  const composerOn = tier.current.bloom > 0;
+
+  // A WebGL context is not guaranteed. On Android it can fail outright (GPU blocklisted, driver OOM,
+  // too many live contexts), and Three throws. Uncaught, that left the player staring at a black
+  // container with no explanation — say what happened instead.
+  let renderer: THREE.WebGLRenderer;
+  try {
+    renderer = new THREE.WebGLRenderer({ antialias: !composerOn, powerPreference: 'high-performance' });
+  } catch (e) {
+    showFatalMessage(
+      container,
+      'Graphics unavailable',
+      "This browser could not start 3D graphics (WebGL). Try closing other tabs, or open the site in Chrome or Safari.",
+    );
+    throw e instanceof Error ? e : new Error(String(e));
+  }
   renderer.setSize(container.clientWidth, container.clientHeight);
   renderer.shadowMap.type = THREE.PCFShadowMap;
   // Cinematic lens: ACES filmic tone mapping rolls the HDR fire core off into film-like
@@ -357,10 +379,11 @@ function buildAndRunMission(mission: MissionDef): Game {
     false,
   );
 
-  // Quality tier: scene complexity (shadows / tessellation / post-fx) is fixed at load;
-  // render resolution (DPR) is the one runtime-adaptive lever. Set the renderer's DPR
-  // before the composer is built below (it reads getPixelRatio() at construction).
-  const tier = new QualityTier();
+  // Quality tier (constructed above, before the renderer, so `antialias` could be decided from it):
+  // scene complexity (shadows / tessellation / post-fx) is fixed at load; render resolution (DPR) is
+  // the one runtime-adaptive lever. Apply the starting DPR before the composer is built below (it
+  // reads getPixelRatio() at construction). On mobile that start value is the FLOOR and the watchdog
+  // climbs from there — see QualityTier's constructor.
   renderer.setPixelRatio(tier.dpr);
   renderer.shadowMap.enabled = tier.current.shadows;
 
