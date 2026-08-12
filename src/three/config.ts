@@ -1840,6 +1840,12 @@ export const PROVINCE = {
 // --- Live wildfire tracker (the home-screen "honest window" — real CWFIS/CIFFC/ECCC data on the flat
 //     Leaflet map). Look/feel knobs only; the data sources + freshness live in src/three/livefire/. ----
 export const LIVEFIRE = {
+  // How many fires the console's "What to watch" triage rail lists (and the map halos, which read the
+  // same ranked slice — see livefire/triage.ts). Deliberately small: the rail exists to answer "what
+  // should I look at" for someone who can't read a map of 900 dots, and a list long enough to need
+  // scrolling to its end has stopped answering that. ~10 fits the docked rail on a laptop without an
+  // inner scroll, and fills roughly one phone sheet.
+  threatRailCount: 10,
   // Fire-Weather-Index WMS raster opacity — a global multiplier ON TOP of the SLD's own per-stop alphas
   // (client FWI_WMS_SLD). On the LIGHT basemap the danger field has to read against bright white, so this is
   // 0.6, not the old 0.24 — at 0.24 the whole ramp (SLD max 0.84) topped out near 0.20 effective, a faint

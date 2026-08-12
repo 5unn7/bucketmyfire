@@ -9,22 +9,52 @@
  * imports are the theme tokens, which every page already carries). The tracker page only ever talks
  * to `LiveMapView`; everything else (data fetch, honesty model, layer state) lives outside the view.
  */
-import { UI } from '../ui/theme';
+import { UI, MAP } from '../ui/theme';
 import type { Hotspot, ReportedFire, BurnPolygon, FireSeverity, FireStage } from './types';
 
-// ── Shared marker colour SEMANTICS ──────────────────────────────────────────────────────────────
-// Both views must paint the same MEANING with the same token, or the Layers-sheet legend lies on
-// one of them. One map per classification, here at the contract — never re-declared per view.
+// ── Shared marker SEMANTICS ─────────────────────────────────────────────────────────────────────
+// Every surface that draws a fire — the map marks, the Layers-sheet legend, the triage rail rows,
+// the threat bar — reads these. One map per classification, here at the contract, never re-declared
+// per view, or the legend starts lying about what a dot means.
 
-/** Stage of control → token (danger→safe): Out of control = warn, Being held = caution, Under
- *  control = ok; Out/unknown stay caution-neutral. */
-export const STAGE_COLOR: Record<FireStage, string> = {
-  OC: UI.warn,
-  BH: UI.caution,
-  UC: UI.ok,
-  OUT: UI.caution,
-  UNK: UI.caution,
+/**
+ * Stage of control → mark STYLE. Hue always means fire; stage is carried by fill + luminance +
+ * whether it pulses (see `theme.ts → MAP` for the full rationale). The old traffic light
+ * (warn/caution/**ok green**) is gone: green read as "all clear" on a wildfire map and pulled the
+ * eye to the calmest ~half of the data.
+ *
+ *   fill    — the mark's interior (`null` = hollow: a contained fire is an outline, not a threat)
+ *   ring    — the stroke around it, always present so every mark has a hard edge on any backdrop
+ *   weight  — stroke width; heavier for the stages that are still running
+ *   dim     — draw subordinate (lower opacity, no priority halo, sorts last in triage)
+ */
+export interface StageStyle {
+  fill: string | null;
+  ring: string;
+  weight: number;
+  dim: boolean;
+}
+
+export const STAGE_STYLE: Record<FireStage, StageStyle> = {
+  OC: { fill: MAP.ocFill, ring: MAP.ocRing, weight: 1.8, dim: false },
+  BH: { fill: MAP.bhFill, ring: MAP.bhRing, weight: 1.5, dim: false },
+  UC: { fill: null, ring: MAP.ucRing, weight: 1.6, dim: false },
+  OUT: { fill: MAP.outFill, ring: MAP.outRing, weight: 1, dim: true },
+  UNK: { fill: MAP.bhFill, ring: MAP.bhRing, weight: 1.2, dim: true },
 };
+
+/** The single colour that best REPRESENTS a stage (a legend swatch, a rail row's dot, a chip).
+ *  A hollow stage answers with its ring — the swatch still has to be visible. */
+export const STAGE_COLOR: Record<FireStage, string> = {
+  OC: MAP.ocFill,
+  BH: MAP.bhFill,
+  UC: MAP.ucRing,
+  OUT: MAP.outFill,
+  UNK: MAP.bhFill,
+};
+
+/** How much a stage counts toward "still burning" when ranking threats (see `triage.ts`). */
+export const STAGE_URGENCY: Record<FireStage, number> = { OC: 1, BH: 0.55, UC: 0.22, OUT: 0, UNK: 0.35 };
 
 /** Hotspot head-fire-intensity band → token (cool gold → amber-red hot). */
 export const SEV_COLOR: Record<FireSeverity, string> = {
@@ -64,6 +94,13 @@ export interface LiveMapView {
   isVisible(layer: FireLayer): boolean;
   /** Frame the view to the given [lat, lon] points (the union of what the country filter shows). */
   fitTo(points: [number, number][]): void;
+  /** Fly to one fire and select it — the triage rail's row → map hand-off. */
+  focusFire(f: ReportedFire): void;
+  /** Mark the highest-ranked threats so they carry the animated priority halo (rail ↔ map tie-in).
+   *  Pass the fires in rank order; an empty array clears every halo. */
+  setPriority(fires: ReportedFire[]): void;
+  /** Swap the basemap between the dark instrument console and the sun-readable daylight tiles. */
+  setDaylight(on: boolean): void;
   /** Re-measure the container (it's mounted hidden-then-shown). */
   invalidate(): void;
   dispose(): void;

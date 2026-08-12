@@ -64,6 +64,11 @@ const STROKE: Record<string, string> = {
   spark: '<path d="M12 3l1.7 5.8L19 10l-5.3 1.2L12 17l-1.7-5.8L5 10l5.3-1.2z"/>',
   // Bell (Lucide) — the "notify me when this map ships" CTA glyph.
   bell: '<path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/>',
+  // Triangle-alert (Lucide) — the live-fire console's "what to watch" triage rail.
+  alert: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  // Sun / Moon (Lucide) — the fire map's daylight ⇄ dark-console basemap toggle.
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
+  moon: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
 };
 
 /** Inline a stroke icon as an HTML string (24px viewBox, currentColor). */

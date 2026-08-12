@@ -977,53 +977,6 @@ function threatRailHtml(rows: ThreatRow[]): string {
   return `${head}<div class="frail-list">${list}</div><div class="frail-note">${esc(C.railNote)}</div>`;
 }
 
-/** The region firestats ticker — ONE compact line rendered from the honest `RegionStats` POJO. Lead =
- *  region + live active count (or, for US/MX where no official reported feed exists, satellite detections);
- *  supporting chips = the OC/BH/UC stage split, reported-today, area-burned, prep level — each rendering
- *  "Data not available" (faint) where the region has no source. No honesty logic here (that's all in
- *  `deriveRegionStats`); this only paints. Tokens only → AA-safe; icons are Lucide via `ic()`. */
-function regionTickerHtml(s: RegionStats): string {
-  const C = LIVEFIRE_COPY.strip;
-  if (s.scope === 'down') return `<span class="fstat-load">${esc(C.down)}</span>`;
-  const num = (n: number): string => n.toLocaleString();
-  const na = `<span class="fstat-na">${esc(C.na)}</span>`;
-  const fresh = s.asOfMs ? `<span class="fstat-fresh">${esc(publishedWhen(s.asOfMs))}</span>` : '';
-  const loc = `${ic('fire', 'fstat-ic')}<b class="fstat-loc">${esc(s.label)}</b><span class="fstat-sep">·</span>`;
-
-  // US / MX — no official reported feed; satellite detections are the only honest number. Make the
-  // satellite provenance explicit AND mark the official "active fires" count itself as unavailable.
-  if (s.scope === 'foreign') {
-    const det = s.hotspots != null
-      ? `<b class="fstat-big">${num(s.hotspots)}</b><span class="fstat-lbl">${esc(C.detectionsLabel)} · sat</span>`
-      : na;
-    return `<div class="fstat-row"><span class="fstat-lead">${loc}${det}</span>`
-      + `<span class="fstat-rest"><span class="fstat-chip na">${ic('pin', 'fstat-ic')}<span class="fstat-lbl">${esc(C.activeLabel)}</span> ${na}</span>${fresh}</span></div>`;
-  }
-
-  // Canada — national (authoritative summary) or one province (derived from the agency-filtered feed).
-  const lead = s.active != null
-    ? `${loc}<b class="fstat-big">${num(s.active)}</b><span class="fstat-lbl">${esc(C.activeLabel)}</span>`
-    : `${loc}${na}`;
-
-  let pips = '';
-  if (s.byStage) {
-    const b = s.byStage;
-    const pip = (k: 'OC' | 'BH' | 'UC', cls: string): string =>
-      `<span class="fstat-pip ${cls}" title="${esc(stageLabel(k))}"><i></i>${num(b[k])}</span>`;
-    pips = `<span class="fstat-pips">${pip('OC', 'oc')}${pip('BH', 'bh')}${pip('UC', 'uc')}</span>`;
-  }
-
-  const chip = (icon: string, label: string, value: number | null, fmt: (n: number) => string): string =>
-    `<span class="fstat-chip${value == null ? ' na' : ''}">${ic(icon, 'fstat-ic')}` +
-    `${value == null ? `<span class="fstat-lbl">${esc(label)}</span> ${na}` : `<b>${esc(fmt(value))}</b><span class="fstat-lbl">${esc(label)}</span>`}</span>`;
-
-  const today = chip('clock', C.todayLabel, s.reportedToday, num);
-  const area = chip('droplet', C.areaLabel, s.areaBurnedHa, (n) => LIVEFIRE_COPY.fireSize(n));
-  const prep = chip('shield', C.prepLabel, s.prepLevel, (n) => `L${n}`);
-
-  return `<div class="fstat-row"><span class="fstat-lead">${lead}</span>${pips}<span class="fstat-rest">${today}${area}${prep}${fresh}</span></div>`;
-}
-
 /**
  * Live fire map — the tracker. A full-bleed Leaflet map (dark tiles, pinch-zoom) plots EVERY live CWFIS
  * satellite hotspot across the continent (last 24h); tapping a dot slides up the full CWFIS record for
