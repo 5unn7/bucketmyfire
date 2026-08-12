@@ -108,23 +108,32 @@ const FWI_CAPS_SOURCE = `${FWI_WMS_URL}?service=WMS&version=1.3.0&request=GetCap
 // CORS-blocked, so this Canadian-government WMS is the honest, browser-fetchable equivalent.
 export const GEOMET_WMS_URL = 'https://geo.weather.gc.ca/geomet';
 export const SMOKE_WMS_LAYER = 'RAQDPS.Sfc_PM2.5-WildfireSmokePlume';
-// Grey→charcoal SHADED ramp rendered SERVER-SIDE via a custom SLD (GeoMet honors `SLD_BODY` — verified live).
-// The layer's BUILT-IN styles are an AQI rainbow whose low end is a dark BLUE that's near-invisible; this
-// maps PM2.5 (µg/m³) to a smoke-true grey that DEEPENS — darker AND more opaque — with DENSITY, so a thin
-// trail reads as soft haze and a dense plume as dark charcoal (smoke seen against the bright/light basemap,
-// the way a plume looks against a white sky; the old grey→WHITE ramp vanished on it). Sent as the `sld_body`
-// GetMap param (with `styles=` empty); minified to keep the per-tile GET URL short. Retint by editing the
-// ColorMap — the layer/time wiring is unchanged.
-export const SMOKE_WMS_SLD =
-  '<StyledLayerDescriptor version="1.0.0" xmlns="http://www.opengis.net/sld">' +
-  '<NamedLayer><Name>RAQDPS.Sfc_PM2.5-WildfireSmokePlume</Name><UserStyle><FeatureTypeStyle><Rule>' +
-  '<RasterSymbolizer><Opacity>1</Opacity><ColorMap type="ramp">' +
-  '<ColorMapEntry color="#8a9298" quantity="1" opacity="0"/>' + // below ~1 µg/m³ → fully clear (no fog everywhere)
-  '<ColorMapEntry color="#7c848a" quantity="6" opacity="0.34"/>' + // thin haze: soft grey, just readable on white
-  '<ColorMapEntry color="#5b6369" quantity="30" opacity="0.56"/>' + // moderate smoke: mid grey
-  '<ColorMapEntry color="#3f464b" quantity="90" opacity="0.74"/>' + // dense: dark slate
-  '<ColorMapEntry color="#2b3034" quantity="250" opacity="0.86"/>' + // thickest core: charcoal
-  '</ColorMap></RasterSymbolizer></Rule></FeatureTypeStyle></UserStyle></NamedLayer></StyledLayerDescriptor>';
+/**
+ * The smoke raster's SERVER-SIDE style — a GeoMet NAMED style, not a custom SLD.
+ *
+ * We used to post a custom grey→charcoal `<ColorMap>` as `sld_body`. **That silently stopped working**:
+ * GeoMet still answers 200 with a valid PNG, but the raster comes back FULLY TRANSPARENT, so the smoke
+ * layer rendered nothing at all while looking healthy (no error, no console warning — the worst failure
+ * shape for an "honest window"). Re-verified 2026-08-12 against the live service over a Canada-wide bbox:
+ *   no sld_body, default style ............................  7,443 B (real plume)
+ *   styles=PM2.5_1e-9to2.5e-7kgm3 .........................  30,207 B (real plume)
+ *   styles=PM2.5_1e-9to2.5e-7kgm3_RedGrey .................  27,525 B (real plume)
+ *   ANY sld_body — µg/m³, kg/m³ decimal, kg/m³ scientific,
+ *   even a 0–1 ramp that should paint every pixel .........     663 B (blank, 512×294 RGBA all-zero)
+ * So the units were never the problem (the layer is in kg/m³, per the style names) — GeoMet simply no
+ * longer honours `sld_body` for this layer. Named styles are also fewer bytes per tile URL and can't
+ * silently drift again.
+ *
+ * `_RedGrey` is the least-rainbow built-in (the plain ramp is the blue→green→red AQI rainbow this project
+ * deliberately avoids). It is still not the brand's smoke-grey, so the DENSITY→DARKNESS look is recovered
+ * client-side by `SMOKE_CSS_FILTER` on the smoke panes — greyscale maps its pale-blue thin haze to light
+ * grey and its dark-red dense core to charcoal, which is exactly the intended reading.
+ */
+export const SMOKE_WMS_STYLE = 'PM2.5_1e-9to2.5e-7kgm3_RedGrey';
+/** Turns the server's RedGrey ramp into the brand's smoke-true grey: fully desaturated, contrast lifted a
+ *  touch so thin haze stays visible on the bright basemap without the dense core going pure black. Applied
+ *  to the smoke PANES (not per-tile) so it costs one composite, and the crossfade opacity rides on top. */
+export const SMOKE_CSS_FILTER = 'grayscale(1) contrast(1.15) brightness(0.92)';
 
 // FWI danger ramp rendered SERVER-SIDE via SLD (CWFIS GeoServer honors `SLD_BODY`). The DEFAULT
 // `public:fwi` style is a 16-COLOUR (4-bit-palette) classified PNG with SEMI-TRANSPARENT fills — the
@@ -465,18 +474,55 @@ function provRowToReported(r: ProvFireRow): ReportedFire {
  *  Remove 'nl-ffa' here to show NL's (currently 2) real active fires once that feed shape is handled. */
 const UNTRUSTED_PROVINCIAL = new Set(['nl-ffa']);
 
+// PostgREST HARD-caps a response at 1000 rows (Supabase `db-max-rows`). A `limit=` in the query string
+// does NOT raise it and neither does a wider `Range` header — the server just answers
+// `Content-Range: 0-999/<total>` and drops the rest. We were asking for 5000/8000 rows and silently
+// receiving 1000, and since the reads are ordered by size the rows that vanished were the SMALLEST
+// fires: ~640 active fires missing from the map with no error, no warning, no "unavailable" state.
+// That is the worst failure shape for an honest window, so read in PAGES until the server says we have
+// them all. `Content-Range`'s total is authoritative; we stop on a short page as a belt-and-braces
+// fallback for a server that omits it.
+const PAGE = 1000; // must match db-max-rows; a larger page is silently clipped back to this
+const MAX_PAGES = 24; // hard stop (~24k rows) so a pathological total can't spin the phone forever
+
+/** Parse the row TOTAL out of `Content-Range: 0-999/2818`. Returns null for `*` (unknown) or junk. */
+function rangeTotal(h: string | null): number | null {
+  const total = h?.split('/')[1]?.trim();
+  if (!total || total === '*') return null;
+  const n = Number(total);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Read every row of a backend table, paging past the 1000-row cap. Returns null on the FIRST page
+ * failing (caller then falls back to the direct CIFFC roll); a later page failing returns what we have
+ * rather than throwing the whole map away. Each page carries its own timeout so one stalled request
+ * can't hang the home screen.
+ */
 async function fetchBackendRows<T>(table: string, query: string): Promise<T[] | null> {
-  const t = withTimeout(8000);
-  try {
-    const res = await fetch(`${restBase()}/rest/v1/${table}?${query}`, { headers: restHeaders(), signal: t.signal });
-    if (!res.ok) return null;
-    const rows = (await res.json()) as T[];
-    return Array.isArray(rows) ? rows : null;
-  } catch {
-    return null;
-  } finally {
-    t.done();
+  const out: T[] = [];
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const from = page * PAGE;
+    const t = withTimeout(8000);
+    try {
+      const res = await fetch(`${restBase()}/rest/v1/${table}?${query}`, {
+        headers: { ...restHeaders(), Range: `${from}-${from + PAGE - 1}` },
+        signal: t.signal,
+      });
+      if (!res.ok) return page === 0 ? null : out; // 200 or 206 are both fine; anything else stops us
+      const rows = (await res.json()) as T[];
+      if (!Array.isArray(rows)) return page === 0 ? null : out;
+      out.push(...rows);
+      const total = rangeTotal(res.headers.get('Content-Range'));
+      if (total != null ? out.length >= total : rows.length < PAGE) return out;
+      if (rows.length === 0) return out; // no progress — never loop on an empty page
+    } catch {
+      return page === 0 ? null : out;
+    } finally {
+      t.done();
+    }
   }
+  return out;
 }
 
 /**
@@ -486,9 +532,13 @@ async function fetchBackendRows<T>(table: string, query: string): Promise<T[] | 
  * nothing (→ the caller then falls back to the direct CIFFC fetch, so the map is never blank).
  */
 async function fetchReportedFromBackend(): Promise<ReportedFeed | null> {
+  // No `limit=` — it was a lie (the server capped every read at 1000 regardless). fetchBackendRows
+  // pages to completion instead. The order is kept because it's also the PAGING order, and a stable
+  // total ordering is what makes the pages disjoint; `fire_id` / `(source, source_fire_id)` break ties
+  // so two fires of equal size can't swap places between pages and be duplicated or skipped.
   const [ciffcRows, provRows] = await Promise.all([
-    fetchBackendRows<FireRow>('fires', 'select=fire_id,lat,lon,agency,country,stage,size_ha,props,reported_at&stage=in.(OC,BH,UC,OUT)&order=size_ha.desc.nullslast&limit=5000'),
-    fetchBackendRows<ProvFireRow>('provincial_fires', 'select=source,source_fire_id,agency,name,lat,lon,stage,size_ha,props,discovered_at,updated_at_src&order=size_ha.desc.nullslast&limit=8000'),
+    fetchBackendRows<FireRow>('fires', 'select=fire_id,lat,lon,agency,country,stage,size_ha,props,reported_at&stage=in.(OC,BH,UC,OUT)&order=size_ha.desc.nullslast,fire_id.asc'),
+    fetchBackendRows<ProvFireRow>('provincial_fires', 'select=source,source_fire_id,agency,name,lat,lon,stage,size_ha,props,discovered_at,updated_at_src&order=size_ha.desc.nullslast,source.asc,source_fire_id.asc'),
   ]);
 
   const prov = (provRows ?? []).filter((r) => !UNTRUSTED_PROVINCIAL.has(r.source)).map(provRowToReported);
@@ -545,14 +595,15 @@ export async function fetchFireHistory(fireId: string, source?: string): Promise
 }
 
 // The WHOLE-SEASON hotspot archive (`public:hotspots`, multi-year, 17M+ rows) — same GeoServer as the
-// last-24h layer, keyless + CORS-`*`. Queried per-fire with a tight bbox; `propertyName=rep_date` slims
-// each row to just the detection time (~130 B/row) and `sortBy=rep_date D` makes the row cap clip the
-// OLDEST data first (so what survives is always the most recent activity). NOTE the bbox axis order:
-// with the URN CRS form GeoServer wants lat,lon — a lon,lat box silently matches nothing.
+// last-24h layer, keyless + CORS-`*`. Queried per-fire with a tight bbox; `propertyName=rep_date,frp` slims
+// each row to the detection time + fire radiative power (the daily-activity intensity read; both confirmed
+// present on the archive schema), and `sortBy=rep_date D` makes the row cap clip the OLDEST data first (so
+// what survives is always the most recent activity). NOTE the bbox axis order: with the URN CRS form
+// GeoServer wants lat,lon — a lon,lat box silently matches nothing.
 const HOTSPOT_ARCHIVE_SOURCE =
   'https://cwfis.cfs.nrcan.gc.ca/geoserver/public/ows?service=WFS&version=2.0.0&request=GetFeature' +
   '&typeNames=public:hotspots&outputFormat=application/json&srsName=EPSG:4326' +
-  '&propertyName=rep_date&sortBy=rep_date+D';
+  '&propertyName=rep_date,frp&sortBy=rep_date+D';
 const ACTIVITY_ROW_CAP = 3000; // ≈ 400 KB worst case; `clipped` keeps the UI honest when a mega-fire hits it
 const ACTIVITY_BOX_KM = 10; // half-width of the search box around the reported location
 

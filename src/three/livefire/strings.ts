@@ -84,6 +84,35 @@ export const LIVEFIRE_COPY = {
   tierScope: { fires: '', weather: 'Canada' } as Record<string, string>,
   // Why a tier is greyed out when the country filter leaves its coverage area.
   disabledReason: { weather: 'Canada only' } as Record<string, string>,
+  // ── The console: the status readout + the triage rail ──
+  // Plain language over a dispatcher's data. The readout answers "how bad is it right now"; the rail
+  // answers "what should I look at" — the two questions a member of the public actually arrives with.
+  // Voice stays dry and declarative (DESIGN.md → Brand Platform): state the number, name the thing.
+  console: {
+    liveTag: 'Live',
+    // The headline. Singular/plural handled because "1 fires burning" is the tell of a machine.
+    burningLabel: (n: number) => (n === 1 ? 'fire burning now' : 'fires burning now'),
+    burningIn: (label: string) => `in ${label}`,
+    // Stage split under the headline — the bar segments and their keys.
+    stage: { OC: 'out of control', BH: 'being held', UC: 'under control' },
+    areaLabel: 'burned this year',
+    prepLabel: 'national prep level',
+    todayLabel: 'reported today',
+    // The triage rail.
+    railTitle: 'What to watch',
+    railSub: 'Ranked by size, stage and distance to the nearest town',
+    // The honesty line. The ranking is OURS, derived from public data — it must never be mistaken for
+    // an agency assessment or an evacuation notice. See livefire/triage.ts → honesty boundary.
+    railNote: 'Our reading of public CIFFC data. Not an official assessment, and not an evacuation notice.',
+    railEmpty: 'No active fires in view.',
+    railBtn: 'What to watch',
+    // A rail row: "64 km from La Ronge" / an unnamed fire / an unreported size.
+    near: (km: number, place: string) => `${km < 1 ? '<1' : Math.round(km)} km from ${place}`,
+    sizeUnknown: 'Size not reported',
+    unnamed: 'Unnamed fire',
+    daylightBtn: 'Daylight map',
+    consoleBtn: 'Console map',
+  },
   layersBtn: 'Layers',
   fireWxBtn: 'Fire weather',
   sourcesBtn: 'Data sources',
@@ -121,11 +150,42 @@ const STAGE_SHORT: Record<FireStage, string> = { OC: 'Out of control', BH: 'Bein
 export function stageShort(s: FireStage): string {
   return STAGE_SHORT[s] ?? 'Unknown';
 }
-/** Stage → a kit badge tone, matching the SAME warn/caution/ok ramp the map dots + legend use, so one
- *  fire reads one colour everywhere: OC danger-red, BH amber, UC cleared-green, OUT/UNK neutral. */
-const STAGE_CLASS: Record<FireStage, string> = { OC: 'badge warn', BH: 'badge caution', UC: 'badge ok', OUT: 'badge neutral', UNK: 'badge neutral' };
+/** Stage → the `.fstage` chip class, matching the SAME ember ramp the map marks draw with (theme.ts →
+ *  MAP), so one fire reads one colour everywhere it appears: the mark, the rail row, the detail chip.
+ *  Was the kit's warn/caution/**ok green** badge tones — retired with the traffic light, because a green
+ *  "under control" chip beside a hollow ember mark meant two surfaces describing one fire differently. */
+const STAGE_CLASS: Record<FireStage, string> = { OC: 'fstage oc', BH: 'fstage bh', UC: 'fstage uc', OUT: 'fstage out', UNK: 'fstage out' };
 export function stageClass(s: FireStage): string {
   return STAGE_CLASS[s] ?? 'badge';
+}
+
+/** The stage-of-control scale worst→resolved — the order the detail panel's control-progress ribbon walks.
+ *  A fire ADVANCES along this as crews win it: Out of control → Being held → Under control → Out. */
+export const STAGE_STEPS: { stage: FireStage; label: string }[] = [
+  { stage: 'OC', label: 'Out of control' },
+  { stage: 'BH', label: 'Being held' },
+  { stage: 'UC', label: 'Under control' },
+  { stage: 'OUT', label: 'Out' },
+];
+/** A stage's position (0..3) on that scale; -1 for UNK (no place on the ribbon). */
+export function stageStep(s: FireStage): number {
+  return STAGE_STEPS.findIndex((x) => x.stage === s);
+}
+/** What a stage MEANS, in one terse line — the honest answer to "when is a fire held / under control?".
+ *  Worded as a state, never a guaranteed forward step (control can move backward). Honest-window-conservative. */
+export function stageNarrative(s: FireStage): string {
+  switch (s) {
+    case 'OC':
+      return 'Spreading — not yet contained.';
+    case 'BH':
+      return 'Holding at its current size.';
+    case 'UC':
+      return 'Contained — crews mopping up.';
+    case 'OUT':
+      return 'Extinguished.';
+    default:
+      return 'Stage not reported.';
+  }
 }
 
 /** Source attribution (re-exported from the client so the UI imports copy from one place). */

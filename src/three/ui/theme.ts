@@ -118,6 +118,12 @@ export const UI = {
   shadow: '0 6px 28px rgba(0,0,0,0.32)', // HUD panels (subtle, in-world)
   shadowBtn: '0 6px 22px rgba(0,0,0,0.40)', // touch buttons
   shadowCard: '0 8px 30px rgba(0,0,0,0.45)', // overlay cards — stronger, lifts off a busy backdrop
+  // The `shadowCard` lift expressed as a FILTER, for surfaces that carry a `clip-path` (the corner-cut
+  // panel notch). `clip-path` clips an element's box-shadow away entirely, so a notched card would lose
+  // its lift and float shadowless on the bright wildfire basemap; `filter:drop-shadow` follows the clipped
+  // silhouette instead. Blur is ~half the box-shadow radius — drop-shadow's blur reads roughly twice as
+  // wide for the same value, so this matches `shadowCard` visually rather than numerically.
+  dropShadowCard: 'drop-shadow(0 8px 15px rgba(0,0,0,0.45))',
   bevelTop: 'rgba(255,255,255,0.14)', // lit top-edge rim on panels and cards (rim-lighting top highlight)
   bevelHi: 'rgba(255,255,255,0.5)', // strong lit top-edge on the raised primary CTA (the bright bevel highlight)
   bevelLo: 'rgba(0,0,0,0.18)', // shaded bottom-edge inset on the raised primary CTA (the bevel shadow)
@@ -231,6 +237,57 @@ export const BOARD = {
   mine: 'rgba(255,128,52,0.15)', // warm "this one is you" row wash (the ember analogue of UI.rowMine)
   avatarInk: '#1a0f08', // dark initials drawn ON a bright team-colour avatar
   team: ['#ff6a2c', '#ffc24a', '#ff8f5c', '#ffd66b', '#63d68a', '#56c4ee', '#74d0bf', '#9a8cff', '#ff7aa8', '#f4a13b'],
+};
+
+/**
+ * Live-fire MAP surfaces — the wildfire console's own palette. The map is a distinct SURFACE (a
+ * dark instrument backdrop the whole country is drawn on), so its marks need roles the general
+ * `UI` palette doesn't carry. Kept here, with HOME/BOARD, so the map reads on tokens, never literals.
+ *
+ * THE RULE THIS ENCODES — hue always means FIRE; stage of control is carried by TREATMENT, not hue.
+ * The map used to paint stage as a traffic light (warn red / caution amber / ok GREEN). On a map about
+ * wildfire that inverted the brand: "under control" is ~half of all fires, so a sea of green dots read
+ * as *all clear* and the eye went to the calmest thing on screen. Now one ember family runs the whole
+ * ramp and rank is luminance + fill:
+ *   Out of control → bright hot fill + pale ring (and, for the top threats, a live pulsing halo)
+ *   Being held     → same hue, darker fill, warm ring, no pulse
+ *   Under control  → NO fill, dim ember outline only (contained reads as an outline, not a threat)
+ *   Out            → cold ash, clearly subordinate
+ * So the eye lands on what is still winning. See DESIGN.md → Two registers (the map is `fight`).
+ */
+export const MAP = {
+  // Basemap — a dark instrument backdrop. `tint` is composited over the tile pane so CARTO's neutral
+  // grey picks up the cockpit's blue-black cast; `daylight` is the sun-readable light tile fallback.
+  landInk: '#0a0f14', // the deep base the tiles sit on (also what shows through while they load)
+  tileTint: 'saturate(72%) brightness(88%) contrast(112%) hue-rotate(178deg)',
+  tileTintDay: 'saturate(96%) brightness(101%) contrast(96%)',
+  // Stage-of-control ramp — ONE ember hue, ranked by luminance + fill (see the rule above).
+  ocFill: '#ff7a2f', // out of control — the hottest thing on the map
+  ocRing: '#ffdcae', // near-white ember halo, so an OC dot survives any backdrop
+  bhFill: '#c2551b', // being held — same hue, dropped in luminance
+  bhRing: '#ff9a52',
+  ucFill: 'rgba(0,0,0,0)', // under control — hollow by design (contained ≠ a filled threat)
+  ucRing: '#a06334', // dim ember outline
+  outFill: '#46525f', // reported out — cold ash, clearly subordinate to anything still burning
+  outRing: '#6d7c8b',
+  // The dark casing drawn UNDER a mark so it separates from tiles, smoke wash and FWI raster alike.
+  casing: 'rgba(3,6,9,0.72)',
+  // Priority halo — the animated ring on the handful of fires the triage rail ranks highest. Only a
+  // dozen DOM markers carry it (canvas dots can't animate), which is exactly the point: it marks the
+  // fires the console is telling you to look at, and ties a rail row to its mark on the map.
+  halo: 'rgba(255,122,47,0.55)',
+  haloCore: 'rgba(255,220,174,0.95)',
+  // True-footprint disc (a fire's real hectares drawn to scale) — a soft ember wash on the dark map.
+  areaFill: 'rgba(255,122,47,0.13)',
+  areaStroke: 'rgba(255,150,80,0.42)',
+  // Satellite-mapped burn scar (M3 perimeters) — burnt ground, not active flame: desaturated + cold.
+  scarFill: 'rgba(120,72,44,0.20)',
+  scarStroke: 'rgba(168,104,64,0.45)',
+  // Curated place labels on the dark map: a light label with a dark halo (inverted from the light map).
+  labelInk: 'rgba(226,238,247,0.88)',
+  labelHalo: 'rgba(4,8,12,0.95)',
+  labelInkDay: 'rgba(12,20,16,0.94)',
+  labelHaloDay: 'rgba(255,255,255,0.95)',
 };
 
 // Score-grade → colour, keyed by `ScoreGrade` ('S' | 'A' | 'B' | 'C' | 'D'). One map so the debrief

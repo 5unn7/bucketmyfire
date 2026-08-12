@@ -274,7 +274,9 @@ export function deriveRegionStats(
     ytdTotal: sumLive ? summary!.ytdTotal : null,
     ytdOut: sumLive ? summary!.ytdOut : null,
     hotspots,
-    asOfMs: sumLive ? summary!.meta.publishedAt : repLive ? caReported.reduce((m, f) => (f.at > m ? f.at : m), 0) : 0,
+    // Freshness follows the headline's source: the reported feed's latest sitrep when it drives `active`,
+    // else the summary's publish date.
+    asOfMs: repLive ? caReported.reduce((m, f) => (f.at > m ? f.at : m), 0) || reportedFeed.meta.publishedAt : sumLive ? summary!.meta.publishedAt : 0,
   };
 }
 
@@ -537,7 +539,7 @@ export function parseBurnPolygons(geojson: unknown): BurnPolygon[] {
 export function deriveFireActivity(geojson: unknown, seasonStart: number, cap: number): FireActivity | null {
   const fc = geojson as { features?: unknown };
   const feats = Array.isArray(fc?.features) ? fc.features : [];
-  const byDay = new Map<string, number>();
+  const byDay = new Map<string, { count: number; frp: number }>();
   let firstAt = 0, lastAt = 0, total = 0, preSeason = false;
   for (const f of feats) {
     const p = (f as { properties?: Record<string, unknown> })?.properties ?? {};
@@ -545,13 +547,19 @@ export function deriveFireActivity(geojson: unknown, seasonStart: number, cap: n
     if (!at) continue;
     if (at < seasonStart) { preSeason = true; continue; }
     const day = new Date(at).toISOString().slice(0, 10);
-    byDay.set(day, (byDay.get(day) ?? 0) + 1);
+    // PEAK FRP per day (not mean) — one hot pass is the honest "how intense did it get", and a quiet
+    // satellite that missed the front shouldn't dilute it. Missing/negative FRP contributes 0.
+    const frp = Math.max(0, asNum(p.frp) ?? 0);
+    const e = byDay.get(day) ?? { count: 0, frp: 0 };
+    e.count += 1;
+    if (frp > e.frp) e.frp = frp;
+    byDay.set(day, e);
     if (!firstAt || at < firstAt) firstAt = at;
     if (at > lastAt) lastAt = at;
     total++;
   }
   if (!total) return null;
-  const days = [...byDay.entries()].map(([day, count]) => ({ day, count })).sort((a, b) => (a.day < b.day ? -1 : 1));
+  const days = [...byDay.entries()].map(([day, e]) => ({ day, count: e.count, frp: e.frp })).sort((a, b) => (a.day < b.day ? -1 : 1));
   // Hit the row cap without ever reaching a pre-season row → the season's record continues past what we
   // fetched (newest-first), so the oldest row we hold is a FLOOR on the fire's age, not its start.
   const clipped = feats.length >= cap && !preSeason;

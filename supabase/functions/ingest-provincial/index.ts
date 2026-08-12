@@ -19,6 +19,11 @@
 
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+// The status→stage mapping lives in its own module so the Node verifier can import the SAME code and
+// regression-test it against real agency strings offline (scripts/verify-livecount.ts). It used to be
+// inlined here, which is why two mapping bugs sat in production unnoticed for weeks. Kept as a SIBLING
+// rather than in functions/_shared/ so the deployed bundle needs no cross-directory import.
+import { type Stage, stageFromText, nlStage } from './stage.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -64,30 +69,6 @@ async function fetchJson(url: string): Promise<unknown> {
   }
 }
 
-type Stage = 'OC' | 'BH' | 'UC' | 'OUT' | 'UNK';
-
-/** Generic status → CIFFC stage. Handles English phrases, CIFFC letter codes, ON/enum codes, French
- *  (SOPFEU), and YT "CODE - Label" strings. Order matters: "not under control"/"out of control" before
- *  the bare "under control"/"control" checks (substring traps). Unknown/monitored → UNK. */
-function stageFromText(v: unknown): Stage {
-  const s = String(v ?? '').trim().toLowerCase().replace(/_/g, ' ');
-  if (!s) return 'UNK';
-  if (s.includes('out of control') || s.includes('not under control') || s === 'oc' || s === 'nuc' || s.includes('hors contrôle') || s.includes('hors controle') || s.includes('en activité') || s.includes('en activite')) return 'OC';
-  if (s.includes('being held') || s.includes('contained') || s === 'bh' || s === 'bhe' || s.includes('contenu')) return 'BH';
-  if (s.includes('under control') || s === 'uc' || s === 'uco' || s.includes('maîtrisé') || s.includes('maitrise')) return 'UC';
-  if (s.includes('declared out') || s.includes('extinguish') || s.includes('- out') || s === 'out' || s === 'ex' || s === 'éteint' || s === 'eteint') return 'OUT';
-  return 'UNK'; // "being observed" / "being actioned" / "new" / unmapped
-}
-
-/** Newfoundland STATUS codes, verified against the FFA_Wildfire layer's coded-value DOMAIN (2026-06):
- *  O = Out, OC = Out-of-Control, BH = Being Held, UC = Under Control. The earlier guesses (O→OC, plus
- *  invented C/U/X/E) were WRONG — they flagged every Out fire as active (886 of 888 NL fires are 'O').
- *  OC/BH/UC share the CIFFC codes so stageFromText maps them; only 'O' needs the override (stageFromText
- *  would leave a bare 'O' as UNK). */
-function nlStage(v: unknown): Stage {
-  if (String(v ?? '').trim().toUpperCase() === 'O') return 'OUT';
-  return stageFromText(v);
-}
 
 // ── The normalized spine every adapter emits. `props` keeps the source record whole. ─────────────────
 interface ProvRow {
@@ -201,7 +182,12 @@ const ARCGIS_CFGS: ArcgisCfg[] = [
   {
     source: 'on-mnrf', agency: 'ON',
     url: `https://ws.lioservices.lrc.gov.on.ca/arcgis1061a/rest/services/MNRF/Ontario_Fires_Map/MapServer/32/query${Q}`,
-    idFields: ['FIRE_NUMBER', 'FIREID'], nameFields: ['FIRE_NAME'],
+    // ID MUST be FIRE_NAME, not FIRE_NUMBER. Ontario's FIRE_NUMBER is a small per-DISTRICT integer
+    // (1, 9, 12, …) that repeats across districts, so keying on it silently MERGED distinct fires in the
+    // upsert: 147 features collapsed to 85 rows and ~62 real Ontario fires vanished from the map and the
+    // national count. FIRE_NAME is the agency's public label ("SLK001" = Sioux Lookout 001) and was
+    // unique across all 147 features; FIREID (an internal surrogate, also unique) is the fallback.
+    idFields: ['FIRE_NAME', 'FIREID'], nameFields: ['FIRE_NAME'],
     sizeField: 'CURRENT_SIZE', statusField: 'CONDITION_DESCRIPTION', discoveredField: 'CONFIRMED_DATE',
   },
   {
@@ -287,8 +273,7 @@ function changed(prev: PrevState | undefined, next: ProvRow): boolean {
  *  new) vs `prevByKey` — the provincial mirror of ingest-fires' fire_snapshots logic, so a BC/AB/ON detail
  *  card can finally draw a tracked-history chart. The upsert runs first so each snapshot's (source,
  *  source_fire_id) FK target already exists. Returns the snapshot count written. */
-async function ingestRows(rows: ProvRow[], prevByKey: Map<string, PrevState>): Promise<number> {
-  const now = new Date().toISOString();
+async function ingestRows(rows: ProvRow[], prevByKey: Map<string, PrevState>, now: string): Promise<number> {
   // Dedupe within the batch: a source can repeat a fire id across features, and a Postgres upsert rejects
   // the same ON CONFLICT target appearing twice in one statement. Keep the last occurrence per (source,id).
   const byId = new Map<string, ProvRow>();
@@ -312,6 +297,59 @@ async function ingestRows(rows: ProvRow[], prevByKey: Map<string, PrevState>): P
     if (error) throw new Error(error.message || JSON.stringify(error));
   }
   return snaps.length;
+}
+
+/**
+ * Retire fires that have VANISHED from a source's feed.
+ *
+ * The upsert alone never removes anything, so a province publishing an ACTIVE-ONLY view (its rows
+ * disappear once a fire is out) accumulated phantoms forever at their last-known active stage. On
+ * 2026-08-12 Alberta's feed carried 3 fires while we still showed 256 "active", and Quebec's carried
+ * 25 against our 136 — together ~364 fires that were out, still drawn on the map as burning, some
+ * 45 days stale.
+ *
+ * `ingestRows` stamps `last_updated = runAt` on EVERY row it upserts, so after a successful pull any
+ * row for that source still carrying an older `last_updated` was absent from the feed. Those get
+ * stage OUT plus a history snapshot, so the transition shows up on the fire's timeline instead of
+ * silently changing.
+ *
+ * Guard: the caller only invokes this when the adapter returned rows. A feed that answers 200 with an
+ * empty array is ambiguous (genuinely no fires, or broken), and mass-retiring a province on an
+ * ambiguous signal is far worse than carrying a few stale rows one more cycle. Sources that publish
+ * their whole season including Out fires (BC/ON/NB/NT/YT) are unaffected either way: their rows keep
+ * being refreshed, so nothing here ever matches them.
+ */
+async function retireVanished(source: string, runAt: string): Promise<number> {
+  // Page the read: a source can hold >1000 rows (PostgREST caps a response at 1000 regardless of limit).
+  type StaleRow = { source_fire_id: string; stage: string | null; size_ha: number | null };
+  const stale: StaleRow[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await admin.from('provincial_fires')
+      .select('source_fire_id, stage, size_ha')
+      .eq('source', source).lt('last_updated', runAt).neq('stage', 'OUT')
+      .order('source_fire_id').range(from, from + 999);
+    if (error) throw new Error(error.message || JSON.stringify(error));
+    const batch = (data ?? []) as StaleRow[];
+    stale.push(...batch);
+    if (batch.length < 1000) break;
+  }
+  if (!stale.length) return 0;
+
+  // Snapshot the transition BEFORE the update, so the fire's history records it moving to OUT.
+  const snaps = stale.map((r) => ({
+    source, source_fire_id: r.source_fire_id, stage: 'OUT', size_ha: r.size_ha, reported_at: runAt,
+  }));
+  for (let i = 0; i < snaps.length; i += 500) {
+    const { error } = await admin.from('provincial_fire_snapshots').insert(snaps.slice(i, i + 500));
+    if (error) throw new Error(error.message || JSON.stringify(error));
+  }
+
+  // One filtered PATCH — same predicate as the read, so no giant id list in the URL.
+  const { error } = await admin.from('provincial_fires')
+    .update({ stage: 'OUT', status: 'Out (no longer listed by agency)', last_updated: runAt })
+    .eq('source', source).lt('last_updated', runAt).neq('stage', 'OUT');
+  if (error) throw new Error(error.message || JSON.stringify(error));
+  return stale.length;
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -341,29 +379,39 @@ Deno.serve(async (req: Request): Promise<Response> => {
     prior.map((r) => [keyOf(r.source, r.source_fire_id), { stage: r.stage, size_ha: r.size_ha }]),
   );
 
+  // ONE timestamp for the whole run: every row an adapter upserts is stamped with it, so "still
+  // carrying an older last_updated" is exactly "absent from this run's feed" — the predicate
+  // retireVanished uses. Computed before the adapters start so a slow feed can't stamp rows into the
+  // future relative to the retire filter.
+  const runAt = new Date().toISOString();
+
   // Run adapters concurrently; one failing only nulls its own entry.
   const results = await Promise.all(
     ADAPTERS.map(async (adapter) => {
       try {
         const rows = await adapter.fetchRows();
-        const snapshots = rows.length ? await ingestRows(rows, prevByKey) : 0;
-        return { source: adapter.source, count: rows.length, snapshots, error: null as string | null };
+        const snapshots = rows.length ? await ingestRows(rows, prevByKey, runAt) : 0;
+        // Retire only after a pull that actually returned fires (see retireVanished's guard note).
+        const retired = rows.length ? await retireVanished(adapter.source, runAt) : 0;
+        return { source: adapter.source, count: rows.length, snapshots, retired, error: null as string | null };
       } catch (e) {
-        return { source: adapter.source, count: 0, snapshots: 0, error: e instanceof Error ? e.message : String(e) };
+        return { source: adapter.source, count: 0, snapshots: 0, retired: 0, error: e instanceof Error ? e.message : String(e) };
       }
     }),
   );
 
   const perSource: Record<string, number> = {};
   const snapshots: Record<string, number> = {};
+  const retired: Record<string, number> = {}; // fires marked OUT because they left the agency's feed
   const errors: string[] = [];
   for (const r of results) {
     perSource[r.source] = r.count;
     snapshots[r.source] = r.snapshots;
+    retired[r.source] = r.retired;
     if (r.error) errors.push(`${r.source}: ${r.error}`);
   }
   const any = Object.values(perSource).some((n) => n > 0);
-  return new Response(JSON.stringify({ perSource, snapshots, errors }), {
+  return new Response(JSON.stringify({ perSource, snapshots, retired, errors }), {
     status: errors.length && !any ? 502 : 200,
     headers: { 'Content-Type': 'application/json' },
   });

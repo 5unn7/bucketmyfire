@@ -1,37 +1,53 @@
 /**
- * FireMap — the interactive Leaflet map for the live wildfire tracker. A LIGHT slippy map (CARTO light
- * tiles, pinch-zoom/pan — readable in direct daylight, not the dark map that washed out in glare) that
- * layers FOUR data sources, each independently toggleable:
+ * FireMap — the interactive Leaflet map behind the live wildfire CONSOLE. A dark instrument basemap
+ * (CARTO dark tiles, tinted toward the cockpit's blue-black) that the country's fire is drawn onto as
+ * the only light on screen, layering data sources that are each independently toggleable:
  *
- *   • reported  — the AUTHORITATIVE CIFFC active fires: each drawn as an AREA-ACCURATE disc (radius
- *                 derived from its real hectares) shaded + ringed by stage of control, plus a centre
- *                 dot for visibility/hit-testing. Tapping fires `onSelectReported`.
- *   • perimeters — CWFIS M3 satellite-mapped burn footprints, faint scorch polygons (non-interactive).
+ *   • reported  — the AUTHORITATIVE CIFFC active fires: an AREA-ACCURATE disc (radius from its real
+ *                 hectares) plus a centre mark whose RADIUS SCALES WITH SIZE and whose treatment
+ *                 carries stage of control (see `view.ts → STAGE_STYLE`). Tapping fires `onSelectReported`.
+ *   • perimeters — CWFIS M3 satellite-mapped burn footprints, cold scorch polygons (non-interactive).
  *   • hotspots  — raw CWFIS satellite heat detections, small dots coloured by head-fire intensity.
- *   • fwi       — the CWFIS Fire Weather Index raster, a WMS tile underlay (drawn beneath the dots).
+ *   • fwi / smoke — the CWFIS/GWIS danger raster + the ECCC surface-smoke forecast, drawn beneath.
  *
- * The ONLY Three-free map layer. Colours come from the `theme.ts` brand tokens (no hard-coded hex).
+ * Three design rules this file exists to hold:
+ *
+ *   1. HUE MEANS FIRE. Stage of control is fill + luminance + pulse, never a separate hue. The map
+ *      used to paint stage as a traffic light and the ~half of fires that are "under control" turned
+ *      the country green — the calmest possible read of a wildfire map. See `theme.ts → MAP`.
+ *   2. SIZE MEANS SIZE. A 50,000 ha fire and a 0.1 ha spot must not be the same dot. The centre mark
+ *      scales logarithmically with hectares, on top of the true-area disc (which is sub-pixel at
+ *      country zoom, so it can't do this job alone).
+ *   3. THE MAP TELLS YOU WHERE TO LOOK. The handful of fires `triage.ts` ranks highest carry an
+ *      animated priority halo, tying each triage-rail row to its mark.
+ *
+ * Daylight: the dark console is the default, but the previously-documented sun-readability problem is
+ * real (outdoors in glare a dark map loses its marks), so `setDaylight(true)` swaps back to the light
+ * CARTO tiles and re-tunes the label ink. Both looks share one mark palette.
+ *
+ * The ONLY Three-free map layer. Colours come from `theme.ts` brand tokens (no hard-coded hex).
  * `preferCanvas` keeps a thousand-plus markers smooth on mobile. Tiles degrade gracefully — if CARTO
- * is unreachable the cased dots still read on the fallback backdrop.
+ * is unreachable the cased marks still read on the `MAP.landInk` backdrop.
  *
  * THE tracker view: the tracker opens this flat map directly (the `LiveMapView` contract in `view.ts`).
  * The 3D `FireGlobe` it once shared the contract with was retired (more complex + cluttered than useful).
  */
 import * as L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { UI } from '../ui/theme';
+import { UI, MAP } from '../ui/theme';
 import { LIVEFIRE } from '../config';
 import { radiusMetersForHa } from './normalize';
-import { fwiFrameUrl, FWI_BOX, FWI_GLOBE_BOX, MERC_LAT_MAX, fwiForecastTime, GEOMET_WMS_URL, SMOKE_WMS_LAYER, SMOKE_WMS_SLD, isLiveFireEnabled } from './client';
+import { fwiFrameUrl, FWI_BOX, FWI_GLOBE_BOX, MERC_LAT_MAX, fwiForecastTime, GEOMET_WMS_URL, SMOKE_WMS_LAYER, SMOKE_WMS_STYLE, SMOKE_CSS_FILTER, isLiveFireEnabled } from './client';
 import { PLACES } from './places';
+import type { Place } from './places';
 import type { Hotspot, FireSeverity, ReportedFire, BurnPolygon } from './types';
-import { STAGE_COLOR, SEV_COLOR } from './view';
+import { STAGE_STYLE, SEV_COLOR } from './view';
 import type { FireLayer, FireMapHandlers, LiveMapView } from './view';
 
 export type { FireLayer, FireMapHandlers } from './view';
 
 // Hotspot dot geometry per intensity band; the COLOURS come from the SHARED semantic maps in
-// `view.ts` (STAGE_COLOR / SEV_COLOR) so both views paint identical meanings.
+// `view.ts` (STAGE_STYLE / SEV_COLOR) so every surface paints identical meanings.
 const SEV_STYLE: Record<FireSeverity, { radius: number; fill: number }> = {
   low: { radius: 2.5, fill: 0.7 },
   moderate: { radius: 3, fill: 0.82 },
@@ -39,24 +55,48 @@ const SEV_STYLE: Record<FireSeverity, { radius: number; fill: number }> = {
   extreme: { radius: 5.5, fill: 1 },
 };
 
+const CARTO_DARK = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
 const CARTO_LIGHT = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
 
 /**
- * A non-interactive dark backing disc drawn UNDER a marker so it separates from ANY background — the
- * sun-readability fix. On the light basemap the dark casing is what makes a marker pop: outdoors in glare
- * the white land and a bright dot both wash toward the same pale grey, so a near-black casing (UI.ink) one
- * ring wider than the dot gives the hard dark edge that survives the washout and keeps the marker a marker
- * in the sun. Cheap (one extra canvas circle) so it's reserved for the FEW important markers (reported),
- * not the thousand+ hotspots (those get a dark STROKE instead — same effect, no extra draw).
+ * A reported fire's centre-mark radius, in screen px, from its reported hectares.
+ *
+ * Design rule 2 in one function. Logarithmic because hectares span six orders of magnitude
+ * (0.01 → 500,000): linear scaling makes every fire but the season's monster a dot, and sqrt still
+ * flattens the middle of the range where most of the interesting fires live. The floor keeps the
+ * smallest fire a comfortable tap target; the ceiling stops a megafire eating its neighbours.
+ * An unknown size (`sizeHa < 0`, which the feed does report) sits just above the floor — visible and
+ * tappable, never dropped, because "size not reported" must not read as "no fire".
+ */
+function markRadiusFor(sizeHa: number): number {
+  if (!(sizeHa > 0)) return 4.5;
+  return Math.max(4, Math.min(15, 3.6 + 3.1 * Math.log10(1 + sizeHa)));
+}
+
+/**
+ * A non-interactive dark backing disc drawn UNDER a mark so it separates from ANY background.
+ * On the daylight basemap this is the sun-readability fix (in glare the white land and a bright dot
+ * both wash toward the same pale grey, so a near-black casing one ring wider gives the hard edge that
+ * survives it); on the dark console it does the same job against the FWI wash and the smoke raster,
+ * which are exactly the backdrops a bare ember dot would disappear into. Cheap (one extra canvas
+ * circle), so it stays reserved for the FEW important marks (reported fires), never the thousand-plus
+ * hotspots — those get a dark STROKE instead, same effect, no extra draw.
  */
 function darkCasing(lat: number, lon: number, radius: number): L.CircleMarker {
   return L.circleMarker([lat, lon], {
     radius,
     stroke: false,
-    fillColor: UI.ink,
-    fillOpacity: 0.62,
+    fillColor: MAP.casing,
+    fillOpacity: 0.85,
     interactive: false,
   });
+}
+
+/** Trim outliers off a point set: the [lo, hi] percentile span of one axis. Used by `fitTo` — see there. */
+function span(values: number[], lo: number, hi: number): [number, number] {
+  const s = [...values].sort((a, b) => a - b);
+  const at = (q: number): number => s[Math.min(s.length - 1, Math.max(0, Math.round(q * (s.length - 1))))]!;
+  return [at(lo), at(hi)];
 }
 
 /**
@@ -84,7 +124,7 @@ class SmokeForecastLayer {
     private map: L.Map,
     url: string,
     layer: string,
-    sld: string,
+    style: string, // a GeoMet NAMED style — sld_body is dead for this layer, see SMOKE_WMS_STYLE
     opacity: number, // the layer's own (constant) opacity; the crossfade rides the pane opacity 0↔1
     fadeMs: number,
   ) {
@@ -95,10 +135,12 @@ class SmokeForecastLayer {
       pane.style.opacity = '0'; // start dark; the crossfade drives this 0↔1
       pane.style.transition = `opacity ${fadeMs}ms ease`;
       pane.style.pointerEvents = 'none'; // never swallow a tap meant for a fire dot underneath
+      // Desaturate the server's RedGrey ramp into brand smoke-grey. On the PANE so it's one composite for
+      // the whole frame (and so the crossfade's pane opacity multiplies cleanly on top of it).
+      pane.style.filter = SMOKE_CSS_FILTER;
       return L.tileLayer.wms(url, {
         layers: layer,
-        styles: '', // empty — the custom SLD below supplies the (white→grey) styling
-        sld_body: sld, // GeoMet honors SLD_BODY → server renders our smoke-true ramp (not the blue AQI default)
+        styles: style, // named GeoMet style; `sld_body` returns a blank raster (see SMOKE_WMS_STYLE)
         format: 'image/png',
         transparent: true,
         version: '1.3.0',
@@ -297,7 +339,12 @@ export class FireMap implements LiveMapView {
   private reportedLayer: L.LayerGroup;
   private outLayer: L.LayerGroup;
   private perimLayer: L.LayerGroup;
-  private placeGroups: { tier: number; group: L.LayerGroup }[] = []; // curated place labels, grouped by zoom tier
+  private haloLayer: L.LayerGroup; // the animated priority halos on the top-ranked threats
+  private tiles: L.TileLayer; // the live basemap (swapped wholesale by setDaylight)
+  private daylight = false;
+  private placeMarks: { place: Place; marker: L.Marker }[] = []; // curated labels, decluttered per view
+  private declutterQueued = false;
+  private markByFire = new Map<string, L.CircleMarker>(); // fireId → its centre mark, for focusFire()
   private fwi: FwiForecastLayer; // double-buffered FWI day-morph (Canada CWFIS + global GWIS), crossfaded
   private smoke: SmokeForecastLayer;
   private selected: L.CircleMarker | null = null;
@@ -326,7 +373,13 @@ export class FireMap implements LiveMapView {
       worldCopyJump: true,
     });
     this.map.setView([58, -100], 4); // rough Canada centre; fitTo() refits to the live data
-    L.tileLayer(CARTO_LIGHT, { subdomains: 'abcd', maxZoom: 19 }).addTo(this.map);
+    // The instrument backdrop. `MAP.landInk` fills the container so the console never flashes white
+    // while tiles stream (and stays dark if CARTO is unreachable entirely); the tint filter on the
+    // tile pane pulls CARTO's neutral grey toward the cockpit's blue-black so the ember marks are the
+    // only warm light on the map. Filtering the PANE (not each tile) is one composite for the frame.
+    container.style.background = MAP.landInk;
+    this.tiles = L.tileLayer(CARTO_DARK, { subdomains: 'abcd', maxZoom: 19 }).addTo(this.map);
+    this.map.getPane('tilePane')!.style.filter = MAP.tileTint;
 
     // The Fire Weather Index forecast — a double-buffered DAY-MORPH (Canada CWFIS grid over the global GWIS
     // wash), each day a single GetMap image that crossfades into the next instead of strobing per WMS-TIME
@@ -341,7 +394,7 @@ export class FireMap implements LiveMapView {
       this.map,
       GEOMET_WMS_URL,
       SMOKE_WMS_LAYER,
-      SMOKE_WMS_SLD,
+      SMOKE_WMS_STYLE,
       LIVEFIRE.smokeOpacity,
       LIVEFIRE.smokeFadeMs,
     );
@@ -354,6 +407,15 @@ export class FireMap implements LiveMapView {
     this.reportedLayer = L.layerGroup();
     this.hotspotLayer = L.layerGroup();
     this.applyVisibility();
+    // Priority halos ride their own DOM pane ABOVE the canvas marks: a canvas circle can't animate
+    // without redrawing it every frame (a non-starter for a mobile map), but a dozen CSS-animated
+    // divIcons cost nothing. Deliberately a HANDFUL of elements — the whole point is that only the
+    // fires the console is pointing at move. Non-interactive so taps fall through to the mark beneath.
+    this.map.createPane('lfHalo');
+    const haloPane = this.map.getPane('lfHalo')!;
+    haloPane.style.zIndex = '610'; // over the canvas marks (overlayPane 400), under the labels (620)
+    haloPane.style.pointerEvents = 'none';
+    this.haloLayer = L.layerGroup().addTo(this.map);
     this.buildPlaces();
 
     // Tap EMPTY map → dismiss any active selection. With the CANVAS renderer a marker click also bubbles
@@ -381,7 +443,7 @@ export class FireMap implements LiveMapView {
       const st = SEV_STYLE[h.severity];
       const m = L.circleMarker([h.lat, h.lon], {
         radius: st.radius + 0.5, // a touch larger so the smallest cool dots survive sun-glare washout
-        color: UI.ink, // a DARK casing stroke (was the fill colour → no separation): one marker, hard edge on any backdrop
+        color: MAP.casing, // a DARK casing stroke (was the fill colour → no separation): one marker, hard edge on any backdrop
         weight: 1.4,
         opacity: 1,
         fillColor: SEV_COLOR[h.severity],
@@ -395,42 +457,57 @@ export class FireMap implements LiveMapView {
     }
   }
 
-  /** Plot the AUTHORITATIVE reported fires: an area-accurate footprint disc (true hectares) + a centre
-   *  dot, both coloured by stage of control. Biggest fires drawn first so small ones land on top. */
+  /**
+   * Plot the AUTHORITATIVE reported fires: an area-accurate footprint disc (true hectares) plus a
+   * centre mark that SCALES WITH SIZE and carries stage of control as fill + luminance.
+   *
+   * Draw order is the hierarchy. Biggest first so a megafire's mark can't bury the small fires
+   * landing on top of it; and within that, contained fires paint before the running ones, so where
+   * marks overlap the thing still out of control is what you see and what a tap hits.
+   */
   setReportedFires(fires: ReportedFire[]): void {
     this.reportedLayer.clearLayers();
     this.clearSelection();
-    const ordered = [...fires].sort((a, b) => b.sizeHa - a.sizeHa);
+    this.markByFire.clear();
+    // Sort: least urgent first (they end up underneath), then biggest first within a stage.
+    const ordered = [...fires].sort(
+      (a, b) => Number(STAGE_STYLE[a.stage].dim) - Number(STAGE_STYLE[b.stage].dim) || b.sizeHa - a.sizeHa,
+    );
     for (const f of ordered) {
-      const color = STAGE_COLOR[f.stage];
+      const st = STAGE_STYLE[f.stage];
       // The true footprint: a circle whose ground area equals the reported hectares (metres radius).
+      // On the dark console this finally reads — a soft ember wash showing a big fire's real extent.
       if (f.sizeHa > 0) {
         L.circle([f.lat, f.lon], {
           radius: radiusMetersForHa(f.sizeHa),
-          color,
-          weight: 1.5,
-          opacity: 0.8,
-          fillColor: color,
-          fillOpacity: 0.16,
-          interactive: false, // taps go to the centre dot below (a huge disc shouldn't swallow the map)
+          color: MAP.areaStroke,
+          weight: 1,
+          opacity: st.dim ? 0.3 : 0.75,
+          fillColor: MAP.areaFill,
+          fillOpacity: st.dim ? 0.06 : 1,
+          interactive: false, // taps go to the centre mark below (a huge disc shouldn't swallow the map)
         }).addTo(this.reportedLayer);
       }
-      // The centre dot: always visible + the hit target (a 0.1 ha fire's disc is sub-pixel zoomed out).
-      // A dark casing under it + a bold light pin-stroke over it = a marker that reads in direct sun.
-      darkCasing(f.lat, f.lon, 7.5).addTo(this.reportedLayer);
+      // The centre mark: always visible + the hit target (a 0.1 ha fire's true disc is sub-pixel at
+      // country zoom). Radius carries MAGNITUDE; fill + ring carry STAGE; the casing keeps it readable
+      // over the FWI wash, the smoke raster and the basemap alike.
+      const r = markRadiusFor(f.sizeHa);
+      darkCasing(f.lat, f.lon, r + 2.2).addTo(this.reportedLayer);
       const dot = L.circleMarker([f.lat, f.lon], {
-        radius: 5.5,
-        color: UI.text,
-        weight: 2,
-        opacity: 1,
-        fillColor: color,
-        fillOpacity: 1,
+        radius: r,
+        color: st.ring,
+        weight: st.weight,
+        opacity: st.dim ? 0.65 : 1,
+        fillColor: st.fill ?? '#000',
+        // A hollow stage (under control) draws ring-only: contained is an outline, not a filled threat.
+        fillOpacity: st.fill ? (st.dim ? 0.5 : 0.92) : 0,
       });
       dot.on('click', () => {
         this.highlight(dot);
         this.handlers.onSelectReported(f);
       });
       dot.addTo(this.reportedLayer);
+      if (f.fireId) this.markByFire.set(f.fireId, dot);
     }
   }
 
@@ -442,11 +519,14 @@ export class FireMap implements LiveMapView {
     for (const f of fires) {
       const dot = L.circleMarker([f.lat, f.lon], {
         radius: 3,
-        color: UI.ink, // dark casing stroke so an extinguished dot still has an edge in sun…
+        // COLD ash, not ember: an extinguished fire must never share the burning hue. The ring gives
+        // it an edge on either basemap; both come from the shared MAP ramp, so "out" reads the same
+        // everywhere (the map mark, the legend swatch, the detail chip).
+        color: MAP.outRing,
         weight: 1,
-        opacity: 0.7,
-        fillColor: UI.ink, // …a neutral DARK dot (UI.ink reads on the light basemap; UI.dim was translucent white → vanished on it), clearly subordinate to the active (coloured) fires
-        fillOpacity: 0.5,
+        opacity: 0.55,
+        fillColor: MAP.outFill,
+        fillOpacity: 0.55,
       });
       dot.on('click', () => {
         this.highlight(dot);
@@ -456,18 +536,77 @@ export class FireMap implements LiveMapView {
     }
   }
 
-  /** Draw the satellite-mapped burn footprints as faint scorch polygons (non-interactive underlay). */
+  /** Draw the satellite-mapped burn footprints as scorch polygons (non-interactive underlay). Burnt
+   *  ground is DESATURATED, not ember: it already burned, so it must sit visibly behind live flame
+   *  rather than competing with it for the same warm hue. */
   setBurnPolygons(polys: BurnPolygon[]): void {
     this.perimLayer.clearLayers();
     for (const p of polys) {
       L.polygon(p.ring, {
-        color: UI.ember,
+        color: MAP.scarStroke,
         weight: 1,
-        opacity: 0.5,
-        fillColor: UI.ember,
-        fillOpacity: 0.12,
+        opacity: 0.7,
+        fillColor: MAP.scarFill,
+        fillOpacity: 1,
         interactive: false,
       }).addTo(this.perimLayer);
+    }
+  }
+
+  // ── The console's "look here" layer ──
+
+  /**
+   * Ring the top-ranked threats with an animated halo. This is the map half of the triage rail: the
+   * same fires, in the same order, so a row and a mark are obviously the same thing.
+   *
+   * DOM markers on a dedicated pane, not canvas — a dozen CSS-animated elements are free, whereas
+   * animating canvas circles means redrawing the marker layer every frame. `.lf-halo` owns the
+   * animation (and drops it under `prefers-reduced-motion`, where the ring stays static but present:
+   * the ranking is information, so it must survive with motion off).
+   */
+  setPriority(fires: ReportedFire[]): void {
+    this.haloLayer.clearLayers();
+    fires.forEach((f, i) => {
+      const size = Math.round(markRadiusFor(f.sizeHa) * 2 + 26);
+      L.marker([f.lat, f.lon], {
+        pane: 'lfHalo',
+        interactive: false,
+        keyboard: false,
+        icon: L.divIcon({
+          className: 'lf-halo',
+          // The rank number rides the halo so the map can be read against the rail without counting.
+          html: `<i style="width:${size}px;height:${size}px;animation-delay:${(i * 0.16).toFixed(2)}s"></i><b>${i + 1}</b>`,
+          iconSize: [0, 0],
+        }),
+      }).addTo(this.haloLayer);
+    });
+  }
+
+  /** Fly to one fire and select it — the triage rail's row → map hand-off. Zooms in far enough to see
+   *  the fire's true footprint against the ground, and rings its mark if that mark is currently drawn
+   *  (it won't be if the user has toggled the reported layer off — the flight still happens). */
+  focusFire(f: ReportedFire): void {
+    this.map.flyTo([f.lat, f.lon], Math.max(this.map.getZoom(), 7), { duration: 0.85 });
+    const mark = f.fireId ? this.markByFire.get(f.fireId) : undefined;
+    if (mark) this.highlight(mark);
+  }
+
+  /** Swap the basemap between the dark instrument console and the sun-readable daylight tiles. The
+   *  MARKS never change — one palette reads on both — but the place labels invert (light ink + dark
+   *  halo on the console, dark ink + white halo in daylight) or they'd vanish. */
+  setDaylight(on: boolean): void {
+    if (on === this.daylight) return;
+    this.daylight = on;
+    this.map.removeLayer(this.tiles);
+    this.tiles = L.tileLayer(on ? CARTO_LIGHT : CARTO_DARK, { subdomains: 'abcd', maxZoom: 19 }).addTo(this.map);
+    this.tiles.bringToBack();
+    this.map.getPane('tilePane')!.style.filter = on ? MAP.tileTintDay : MAP.tileTint;
+    for (const { marker } of this.placeMarks) {
+      const span = marker.getElement()?.firstElementChild as HTMLElement | null;
+      if (span) {
+        span.style.color = on ? MAP.labelInkDay : MAP.labelInk;
+        span.style.textShadow = this.labelHalo();
+      }
     }
   }
 
@@ -497,48 +636,99 @@ export class FireMap implements LiveMapView {
     this.fwi.preload(days);
   }
 
+  /** The label halo for the current basemap: a dark glow on the console, a white one in daylight. Four
+   *  stacked shadows, because one soft shadow doesn't survive a label crossing a bright hotspot cluster. */
+  private labelHalo(): string {
+    const c = this.daylight ? MAP.labelHaloDay : MAP.labelHalo;
+    return `0 0 2px ${c},0 0 3px ${c},0 0 4px ${c},0 1px 5px ${c}`;
+  }
+
   /** Curated place labels — denser geographic orientation than the basemap's decluttered names (which only
-   *  surface a couple until you zoom way in). Built once, grouped by zoom tier; non-interactive and drawn on
-   *  a pane ABOVE the data, so a name always reads over the FWI wash + fire dots while taps pass straight
-   *  through to the fires beneath. A dark mono label with a white halo holds on the bright basemap. */
+   *  surface a couple until you zoom way in). Built ONCE and kept on the map; which ones actually show is
+   *  decided per view by `declutter()`. Non-interactive and drawn on a pane ABOVE the data, so a name always
+   *  reads over the FWI wash + fire marks while taps pass straight through to the fires beneath. */
   private buildPlaces(): void {
     this.map.createPane('lfPlaces');
     const pane = this.map.getPane('lfPlaces')!;
-    pane.style.zIndex = '620'; // above the canvas dots (overlayPane 400) so names stay legible; below popups (700)
+    pane.style.zIndex = '620'; // above the canvas marks (overlayPane 400) so names stay legible; below popups (700)
     pane.style.pointerEvents = 'none'; // never block a map drag or a fire tap underneath
-    const byTier = new Map<number, L.LayerGroup>();
-    for (const p of PLACES) {
+    const group = L.layerGroup();
+    for (const place of PLACES) {
       const style =
         `position:absolute;left:0;top:0;transform:translate(-50%,-50%);white-space:nowrap;` +
-        `font-family:var(--mono),monospace;font-weight:${p.tier === 0 ? 700 : 600};font-size:${p.tier === 0 ? 11 : 10}px;` +
-        `letter-spacing:.02em;color:${UI.ink};text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 3px #fff;`;
-      const m = L.marker([p.lat, p.lon], {
+        `font-family:var(--mono),monospace;font-weight:${place.tier === 0 ? 700 : 600};font-size:${place.tier === 0 ? 11 : 10}px;` +
+        `letter-spacing:.02em;color:${MAP.labelInk};text-shadow:${this.labelHalo()};`;
+      const marker = L.marker([place.lat, place.lon], {
         pane: 'lfPlaces',
         interactive: false,
         keyboard: false,
         // Custom className (NOT the default 'leaflet-div-icon') drops Leaflet's white box; iconSize 0 anchors
         // the 0×0 root on the latlng and the span centres on it via translate(-50%,-50%).
-        icon: L.divIcon({ className: 'lf-place', html: `<span style="${style}">${p.name}</span>`, iconSize: [0, 0] }),
+        icon: L.divIcon({ className: 'lf-place', html: `<span style="${style}">${place.name}</span>`, iconSize: [0, 0] }),
       });
-      let g = byTier.get(p.tier);
-      if (!g) { g = L.layerGroup(); byTier.set(p.tier, g); }
-      g.addLayer(m);
+      group.addLayer(marker);
+      this.placeMarks.push({ place, marker });
     }
-    this.placeGroups = [...byTier.entries()].sort((a, b) => a[0] - b[0]).map(([tier, group]) => ({ tier, group }));
-    this.applyPlaceZoom();
-    this.map.on('zoomend', () => this.applyPlaceZoom());
+    group.addTo(this.map);
+    this.queueDeclutter();
+    // Both events, not just zoom: a PAN changes which labels collide just as much as a zoom does.
+    this.map.on('zoomend', () => this.queueDeclutter());
+    this.map.on('moveend', () => this.queueDeclutter());
   }
 
-  /** Reveal each place tier only at/above its zoom band (tier 0 = always · 1 = z≥5 · 2 = z≥6) — more names as
-   *  you zoom in, a clean country view when zoomed out. */
-  private applyPlaceZoom(): void {
+  /** Coalesce declutter passes into the next frame — a pinch-zoom fires these events in bursts. */
+  private queueDeclutter(): void {
+    if (this.declutterQueued) return;
+    this.declutterQueued = true;
+    requestAnimationFrame(() => {
+      this.declutterQueued = false;
+      this.declutter();
+    });
+  }
+
+  /**
+   * Decide which place labels are drawn for the CURRENT view — the fix for the name pile-up.
+   *
+   * Tier alone (0 always · 1 from z≥5 · 2 from z≥6) was never enough: at country zoom the whole
+   * populated south is a few hundred pixels wide, so Toronto / Ottawa / Montréal / Québec City
+   * overprinted into an unreadable smear, and on a phone the entire southern corridor collapsed into
+   * one blur. Zoom bands can't fix that, because the collisions happen WITHIN a tier.
+   *
+   * So: project every candidate to screen space and place them greedily, most important first
+   * (tier, then west-to-east for a stable, non-flickering order), rejecting any label whose box
+   * overlaps one already placed. Importance wins ties, so the big names survive and the small ones
+   * yield — which is exactly what a cartographer does by hand. ~90 labels, an O(n²) box test on a
+   * short list, once per settled view: cheap enough to be invisible.
+   */
+  private declutter(): void {
     const z = this.map.getZoom();
     const minZoomFor = (tier: number): number => (tier === 0 ? 0 : tier === 1 ? 5 : 6);
-    for (const { tier, group } of this.placeGroups) {
-      const on = z >= minZoomFor(tier);
-      const has = this.map.hasLayer(group);
-      if (on && !has) group.addTo(this.map);
-      else if (!on && has) this.map.removeLayer(group);
+    const size = this.map.getSize();
+    const placed: { l: number; r: number; t: number; b: number }[] = [];
+    // Most important first. Within a tier, sort by longitude so the order is stable across pans —
+    // ordering by anything view-dependent makes labels flicker in and out as you drag.
+    const ordered = [...this.placeMarks].sort(
+      (a, b) => a.place.tier - b.place.tier || a.place.lon - b.place.lon,
+    );
+    for (const { place, marker } of ordered) {
+      const el = marker.getElement();
+      if (!el) continue;
+      let show = z >= minZoomFor(place.tier);
+      if (show) {
+        const pt = this.map.latLngToContainerPoint([place.lat, place.lon]);
+        // Approximate the rendered box from the mono glyph width — measuring each element would force
+        // ~90 layout reflows per pan. Mono means character count is an honest proxy for width.
+        const fs = place.tier === 0 ? 11 : 10;
+        const halfW = (place.name.length * fs * 0.62) / 2 + 4;
+        const halfH = fs * 0.72;
+        const box = { l: pt.x - halfW, r: pt.x + halfW, t: pt.y - halfH, b: pt.y + halfH };
+        // Off-screen labels are skipped entirely — they can't be read, and reserving space for them
+        // would suppress on-screen names for no reason.
+        if (box.r < 0 || box.l > size.x || box.b < 0 || box.t > size.y) show = false;
+        else if (placed.some((p) => box.l < p.r && box.r > p.l && box.t < p.b && box.b > p.t)) show = false;
+        else placed.push(box);
+      }
+      el.style.display = show ? '' : 'none';
     }
   }
 
@@ -565,14 +755,39 @@ export class FireMap implements LiveMapView {
     // rule in view.ts, and what the globe's picker does.
     sync(this.hotspotLayer, this.visible.hotspots);
     sync(this.reportedLayer, this.visible.reported);
+    // Halos annotate the reported marks, so they travel with that layer — a ranked ring hovering over
+    // a fire you've hidden would point at nothing.
+    sync(this.haloLayer, this.visible.reported);
   }
 
   // ── Framing + selection ──
 
-  /** Frame the map to the given points (the union of whatever the country filter is showing). */
+  /**
+   * Frame the map on the FIRE, not on the country.
+   *
+   * Fitting the raw bounds of every fire was framing the phone on the western hemisphere — a couple of
+   * Arctic and Newfoundland outliers stretch the box from ~49°N to ~68°N and ~-140° to ~-52°, which on a
+   * 390 px-wide screen resolves to roughly zoom 2: Canada a smudge in the top third, South America on
+   * screen, the actual fires unreadable. The outliers were dictating the frame for everyone.
+   *
+   * So trim to the 4th–96th percentile of latitude and longitude — the band the fires actually sit in —
+   * and let the handful outside it fall off the initial view (they're still plotted, still one pan away).
+   * Padding is in PIXELS rather than a fraction of the bounds, so a wide box can't also inflate its own
+   * margin. `minZoom: 3` is a floor against a near-empty set zooming out to the whole globe.
+   */
   fitTo(points: [number, number][]): void {
     if (!points.length) return;
-    this.map.fitBounds(L.latLngBounds(points).pad(0.12), { maxZoom: 7 });
+    if (points.length < 4) {
+      this.map.fitBounds(L.latLngBounds(points), { maxZoom: 7, padding: [40, 40] });
+      return;
+    }
+    const [latMin, latMax] = span(points.map((p) => p[0]), 0.04, 0.96);
+    const [lonMin, lonMax] = span(points.map((p) => p[1]), 0.04, 0.96);
+    const b = L.latLngBounds([latMin, lonMin], [latMax, lonMax]);
+    // Clamped by hand rather than via fitBounds: Leaflet's FitBoundsOptions has a maxZoom but no floor,
+    // and a near-empty set (one province, two fires) would otherwise fall out to the whole globe.
+    const fit = this.map.getBoundsZoom(b, false, L.point(26, 26));
+    this.map.setView(b.getCenter(), Math.max(3, Math.min(7, fit)));
   }
 
   /** Forget any current selection (its marker is about to be removed by a layer repaint). */

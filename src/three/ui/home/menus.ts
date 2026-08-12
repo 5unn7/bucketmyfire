@@ -31,14 +31,16 @@ import { validateCallsign, MAX_CALLSIGN } from '../callsign';
 import { fetchActiveFires, fetchSummary, fetchReportedFires, fetchBurnPerimeters, fetchFwiMeta, fetchFireHistory, fetchFireActivity, fwiForecastTime, getRegionPref, setRegionPref, isLiveFireEnabled, FWI_BANDS } from '../../livefire/client';
 import {
   LIVEFIRE_COPY, severityClass, severityLabel, stageClass, stageLabel, relTime,
+  STAGE_STEPS, stageStep, stageNarrative,
   freshnessLine, statusDotClass, publishedWhen, LIVEFIRE_SOURCES, NOT_FOR_EMERGENCY, SK_OFFICIAL,
   frameTimeLabel, smokeFreshness, fwiFreshness,
 } from '../../livefire/strings';
-import { FIELD_GROUPS, REPORTED_FIELD_GROUPS, type FieldGroup } from '../../livefire/fields';
+import { FIELD_GROUPS, REPORTED_FIELD_GROUPS, responseType, type FieldGroup } from '../../livefire/fields';
 import { filterReportedRegion, filterRegionHotspots, regionValue, parseRegion, regionOptions, deriveRegionStats, countryLabel, COUNTRIES, smokeForecastFrames, forecastLeadLabel } from '../../livefire/normalize';
 import { LIVEFIRE } from '../../config';
-import type { Hotspot, ReportedFire, ReportedFeed, FireHistoryPoint, FireActivity, NationalSummary, BurnFeed, FeedMeta, LiveFireFeed, CountryFilter, RegionFilter, RegionStats } from '../../livefire/types';
+import type { Hotspot, ReportedFire, ReportedFeed, FireHistoryPoint, FireActivity, FireStage, NationalSummary, BurnFeed, FeedMeta, LiveFireFeed, CountryFilter, RegionFilter, RegionStats } from '../../livefire/types';
 import type { LiveMapView, FireLayer } from '../../livefire/view';
+import { rankThreats, type ThreatRow } from '../../livefire/triage';
 import { esc } from '../../../site/siteNav.mjs';
 
 const MUTE_KEY = 'bmf.audio.muted.v1';
@@ -530,6 +532,64 @@ function jurisLabel(agency: string, country: CountryFilter): string {
   return a ? `${a} · ${c}` : c;
 }
 
+/** A small column tile for the summary panel — a big mono value over a quiet label. */
+function fstat(value: string, label: string): string {
+  return `<div class="fstat"><span class="fsv">${esc(value)}</span><span class="fsl">${esc(label)}</span></div>`;
+}
+
+/** A tapped satellite hotspot opens with its INTENSITY read — head-fire intensity + radiative power, the
+ *  numbers a person actually cares about, promoted above the 24-row analyst record. Every value is the real
+ *  CWFIS field, just lifted to a headline; the precise coordinates stay as the title reference. '' when the
+ *  detection carries no behaviour numbers (the field list still renders below). */
+function hotspotSummaryHtml(h: Hotspot): string {
+  const facts: string[] = [];
+  if (h.hfi > 0) facts.push(fstat(Math.round(h.hfi).toLocaleString(), 'Head-fire intensity · kW/m'));
+  const frp = Number(h.props.frp);
+  if (Number.isFinite(frp) && frp > 0) facts.push(fstat(frp.toLocaleString(undefined, { maximumFractionDigits: 1 }), 'Radiative power · MW'));
+  if (!facts.length) return '';
+  return `<div class="fsum">
+      <div class="fsum-def">${esc(severityLabel(h.severity))}-intensity satellite heat detection.</div>
+      <div class="fsum-facts">${facts.join('')}</div>
+    </div>`;
+}
+
+/** The control SCALE — where a fire sits on the Out-of-control↔Out spectrum RIGHT NOW. Deliberately NOT a
+ *  progress bar: stage of control is a revisable agency call that can move either way (a held fire can
+ *  return to out-of-control), so only the CURRENT stage lights, in its own danger-ramp colour — the others
+ *  are equal, unfilled positions, not "done" steps. '' for an unmapped/unknown stage. */
+function controlScaleHtml(stage: FireStage): string {
+  if (stageStep(stage) < 0) return '';
+  // Ticks only — no per-segment labels (they truncated on a phone): the lit colour + the header badge name
+  // the stage; this just places it on the worst→out spectrum.
+  return `<div class="fscale" role="img" aria-label="Stage of control: ${esc(stageLabel(stage))}">` +
+    STAGE_STEPS.map((s) => `<i class="fseg${s.stage === stage ? ` cur ${s.stage.toLowerCase()}` : ''}"></i>`).join('') +
+    '</div>';
+}
+
+/** The on-brand STATUS panel a tapped reported fire opens with (a corner-cut cockpit panel, not a rounded
+ *  web card). It REPLACES the old "Status" field group rather than duplicating it: the control scale + what
+ *  the current stage means (the honest answer to "when is it held / under control"), then the headline
+ *  numbers — size · contained · response. Synchronous from the fire; the timeline below adds change-over-time. */
+function fireSummaryHtml(f: ReportedFire): string {
+  const containedN = parseFloat(pickProp(f.props, CONTAINED_KEYS));
+  const response = f.source
+    ? pickProp(f.props, PROV_RESPONSE_KEYS)
+    : responseType(f.props['field_response_type']);
+  const facts: string[] = [];
+  if (f.sizeHa >= 0) facts.push(fstat(LIVEFIRE_COPY.fireSize(f.sizeHa), 'Size'));
+  // Bounded 0 < n ≤ 100. Excluding 0 is deliberate: several ArcGIS feeds ship the column present-but-never-
+  // populated, which defaults to 0 — promoting that to a bold headline "0% Contained" would state a
+  // containment fact the agency never reported. The upper bound rejects a 0–1 FRACTION (0.5 → "0%") and any
+  // out-of-range junk, so a real percentage is the only thing that reaches the panel.
+  if (Number.isFinite(containedN) && containedN > 0 && containedN <= 100) facts.push(fstat(`${Math.round(containedN)}%`, 'Contained'));
+  if (response && response !== '—') facts.push(fstat(response, 'Response'));
+  return `<div class="fsum">
+      ${controlScaleHtml(f.stage)}
+      <div class="fsum-def">${esc(stageNarrative(f.stage))}</div>
+      ${facts.length ? `<div class="fsum-facts">${facts.join('')}</div>` : ''}
+    </div>`;
+}
+
 /** The full CWFIS record for one tapped satellite HOTSPOT — every meaningful field, grouped +
  *  unit-formatted (detection · behaviour · the FWI System codes · weather · site). */
 function fireDetailHtml(h: Hotspot): string {
@@ -547,18 +607,28 @@ function fireDetailHtml(h: Hotspot): string {
       <button class="iconbtn" data-lf-close aria-label="Close detail">${ic('close')}</button>
     </div>
     ${chips}
+    ${hotspotSummaryHtml(h)}
     <div>${fieldGroupsHtml(FIELD_GROUPS, h.props)}</div>`;
 }
 
 // Provincial feeds carry richer fields than CIFFC but under per-source names — a multi-key lookup pulls
 // the universally-useful ones (cause, response, type, district) across all 9 sources for the detail panel.
+// The two key lists the SUMMARY panel also reads are named consts, not `PROV_FIELDS[i]`: addressing them
+// positionally meant reordering this array silently relabelled the summary's headline stat (a wrong-value
+// bug with no type error, since the row-suppression below matches on `label`). One name, both call sites.
+const PROV_RESPONSE_KEYS = ['RESPONSE_TYPE_DESC', 'ResponseType', 'RESPONSE_OBJECTIVE', 'responsecategory'];
+const PROV_CONTAINED_KEYS = ['PercentContained', 'percent_contained'];
+/** Every key the "Contained" headline stat may arrive under — CIFFC's plus the provincial spellings. */
+const CONTAINED_KEYS = ['field_percent_contained', ...PROV_CONTAINED_KEYS];
 const PROV_FIELDS: { label: string; keys: string[] }[] = [
   { label: 'Cause', keys: ['FIRE_CAUSE', 'GENERAL_CAUSE', 'Cause', 'cause', 'CAUSE'] },
-  { label: 'Response', keys: ['RESPONSE_TYPE_DESC', 'ResponseType', 'RESPONSE_OBJECTIVE', 'responsecategory'] },
+  { label: 'Response', keys: PROV_RESPONSE_KEYS },
   { label: 'Type', keys: ['FIRE_TYPE', 'FireType', 'fire_type'] },
-  { label: 'Contained', keys: ['PercentContained', 'percent_contained'] },
+  { label: 'Contained', keys: PROV_CONTAINED_KEYS },
   { label: 'District', keys: ['DISTRICT_NAME', 'FIRE_DISTRICT_NAME', 'REGION', 'region', 'FIRE_CENTRE'] },
 ];
+/** Labels the summary panel already shows as headline facts — skipped in the detail rows below. */
+const PROV_FIELDS_IN_SUMMARY = new Set(['Response', 'Contained']);
 /** First present, non-blank value among `keys`, as a trimmed string. */
 function pickProp(props: Record<string, unknown>, keys: string[]): string {
   for (const k of keys) {
@@ -571,8 +641,9 @@ function pickProp(props: Record<string, unknown>, keys: string[]): string {
 function provDetailHtml(f: ReportedFire): string {
   const rows = [`<div class="frow"><span class="fk">Source</span><span class="fv">${esc((f.agency || '').toUpperCase())} provincial agency</span></div>`];
   if (f.fireId) rows.push(`<div class="frow"><span class="fk">Fire ID</span><span class="fv">${esc(f.fireId)}</span></div>`);
-  if (f.sizeHa >= 0) rows.push(`<div class="frow"><span class="fk">Size</span><span class="fv">${esc(LIVEFIRE_COPY.fireSize(f.sizeHa))}</span></div>`);
+  // Size / Contained / Response are now the summary panel's headline facts — don't repeat them here.
   for (const d of PROV_FIELDS) {
+    if (PROV_FIELDS_IN_SUMMARY.has(d.label)) continue;
     const v = pickProp(f.props, d.keys);
     if (v) rows.push(`<div class="frow"><span class="fk">${d.label}</span><span class="fv">${esc(v)}</span></div>`);
   }
@@ -584,7 +655,9 @@ function provDetailHtml(f: ReportedFire): string {
  *  window onto real agency data, not an emergency tool. */
 function reportedDetailHtml(f: ReportedFire): string {
   const title = f.name ? esc(f.name) : f.fireId ? esc(f.fireId) : LIVEFIRE_COPY.coords(f.lat, f.lon);
-  const body = f.source ? provDetailHtml(f) : `<div>${fieldGroupsHtml(REPORTED_FIELD_GROUPS, f.props)}</div>`;
+  // Skip the "Status" group (REPORTED_FIELD_GROUPS[0]) — its stage/size/contained/response now lead in the
+  // summary panel above; rendering it again was the triple-repeat that read as rookie UX.
+  const body = f.source ? provDetailHtml(f) : `<div>${fieldGroupsHtml(REPORTED_FIELD_GROUPS.slice(1), f.props)}</div>`;
   // Provincial feeds may name the fire type explicitly; CIFFC fires are wildfires by definition.
   const ftype = f.source ? pickProp(f.props, ['FIRE_TYPE', 'FireType', 'fire_type']) : '';
   const chips = metaChipsHtml([
@@ -600,6 +673,7 @@ function reportedDetailHtml(f: ReportedFire): string {
       <button class="iconbtn" data-lf-close aria-label="Close detail">${ic('close')}</button>
     </div>
     ${chips}
+    ${fireSummaryHtml(f)}
     <div data-lf-hist></div>
     ${body}
     <p class="alertnote">${esc(NOT_FOR_EMERGENCY)}</p>`;
@@ -620,9 +694,10 @@ function fmtDay(ms: number): string {
  *   • line  — the agency's reported size over the window OUR snapshot backend has tracked it
  *             (fetchFireHistory), drawn STEP-AFTER: an estimate HOLDS until the next sitrep revises it
  *             (a slope would fabricate continuous growth — the BORDER-fire "grew 1,810 ha over 26 h" lesson).
- * The change row is anchored "since <first sitrep date>" (never an implied growth RATE), the satellite row
- * is "since at least" by construction, and the already-burned baseline is stated outright. Either source
- * may be null (unavailable) — the block renders what it has and returns '' only when both are empty.
+ * The change row is anchored "since <first sitrep date>" (never an implied growth RATE) and the satellite
+ * row is "since at least" by construction — a capped fetch is surfaced as a hatched leading column, a
+ * "before <day>" axis label, and a clause in the footnote. Either source may be null (unavailable) — the
+ * block renders what it has and returns '' only when both are empty.
  */
 function fireHistoryHtml(points: FireHistoryPoint[] | null, activity: FireActivity | null, f: ReportedFire): string {
   // Time axis = the SOURCE's report time (sitrep date), NOT our poll time. `observedAt` is just when
@@ -634,9 +709,9 @@ function fireHistoryHtml(points: FireHistoryPoint[] | null, activity: FireActivi
   const sized = (points ?? []).filter((p) => p.sizeHa >= 0).sort((a, b) => tOf(a) - tOf(b));
   const stages: string[] = [];
   for (const p of points ?? []) if (!stages.length || stages[stages.length - 1] !== p.stage) stages.push(p.stage);
-  // ONE sized snapshot still draws (a flat step at the current reported size, from its sitrep date) —
-  // against the activity bars that places WHEN the size was last reported on the fire's timeline. The
-  // change row needs two points to compare, so it stays gated on sized.length ≥ 2 below.
+  // ONE sized snapshot is enough to anchor the reported-change row (it compares that first tracked size
+  // against the fire's CURRENT reported size). Whether the size LANE itself draws is a separate call —
+  // see `showSize` below, which also forces it whenever the activity curve is clipped or missing.
   const haveSpark = sized.length >= 1 && sized.some((p) => p.sizeHa > 0);
   const haveStagePath = stages.length >= 2;
   if (!points?.length && !activity) return ''; // nothing from either source → stay silent
@@ -651,32 +726,73 @@ function fireHistoryHtml(points: FireHistoryPoint[] | null, activity: FireActivi
     t1 = Math.max(t1, dayStart(activity.days[activity.days.length - 1].day) + DAY);
   }
   const haveChart = Number.isFinite(t0) && t1 > t0;
+  const hasFrp = !!activity && activity.days.some((d) => d.frp > 0);
 
+  // The fire's LIFE story is the satellite-activity curve (it spans the whole burn, May→now), NOT the
+  // reported size (our snapshot backend only catches the last stretch, often at one flat figure). So the
+  // PRIMARY chart is "Fire activity" — daily satellite columns whose height shows the fire ramp up, peak,
+  // and die down. Reported size is a SECONDARY lane, normally shown only when it actually changed (≥2
+  // distinct figures) since a flat block adds nothing (the current size already leads in the summary above).
+  // EXCEPTION: when the activity lane is missing or CLIPPED by the fetch cap, that flat block is the only
+  // AGENCY-reported series on the panel — draw it, so a truncated satellite curve is never the sole chart.
+  const sizedDistinct = new Set(sized.map((p) => p.sizeHa)).size;
+  const activityIsWhole = !!activity && !activity.clipped;
+  const showSize = haveSpark && (sizedDistinct >= 2 || !activityIsWhole);
   let spark = '';
   let changeRow = '';
   if (haveChart) {
-    const W = 252, H = 46, padX = 2, padY = 4;
+    const W = 252, padX = 2;
     const span = Math.max(1, t1 - t0);
     const xOf = (t: number): number => padX + ((t - t0) / span) * (W - 2 * padX);
-    // Satellite-activity bars (drawn first → behind the size line): one per UTC day, height ∝ detections.
-    let bars = '';
+
+    // ── Lane 1 (PRIMARY): FIRE ACTIVITY — one column per UTC day. Two DIFFERENT signals on two channels,
+    // each mapped to the thing it actually measures:
+    //   HEIGHT  = detection COUNT that day — how MUCH was burning hot enough to see (the extent signal,
+    //             and the one the ramp-up/peak/die-down envelope below is a story about).
+    //   WARMTH  = that day's PEAK FRP — how INTENSE it got at its hottest pixel.
+    // Do NOT drive height from FRP: peak FRP is one pixel's radiative power and carries no extent
+    // information, so it inverts the envelope — on ON_THU_FIRE_036 (301,240 ha) Jul 15 had 1,693
+    // detections vs Jul 16's 1,299, yet peak-FRP height drew Jul 15 at 48% of Jul 16. Height stays
+    // count-based; FRP only tints. ──
+    let actLane = '';
     if (activity) {
+      const AH = 42, aPad = 4;
+      const maxFrp = Math.max(...activity.days.map((d) => d.frp), 0);
       const maxCount = Math.max(...activity.days.map((d) => d.count), 1);
-      bars = activity.days.map((d) => {
+      const cols = activity.days.map((d, i) => {
         const x = xOf(dayStart(d.day));
         const w = Math.max(0.8, xOf(dayStart(d.day) + DAY) - x);
-        const h = Math.max(1.4, (d.count / maxCount) * (H - 2 * padY) * 0.9);
-        return `<rect x="${x.toFixed(1)}" y="${(H - padY - h).toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="var(--hair)"/>`;
+        const extent = d.count / maxCount;                       // height: how much burned
+        const heat = maxFrp > 0 ? d.frp / maxFrp : extent;       // warmth: how hot it got
+        const h = Math.max(1.4, extent * (AH - 2 * aPad));
+        // The OLDEST column is a partial day when the fetch hit its row cap mid-stream (see `clipped`):
+        // it is a fetch boundary, not the fire waking up. Hatch it so it never reads as a real ramp-up.
+        const partial = activity.clipped && i === 0;
+        const fill = partial ? 'url(#fclip)' : 'var(--ember)';
+        return `<rect x="${x.toFixed(1)}" y="${(AH - aPad - h).toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="${fill}" fill-opacity="${(0.42 + 0.58 * heat).toFixed(2)}"/>`;
       }).join('');
+      // Hatch pattern for the clipped leading column — declared only when it's actually used.
+      const clipDef = activity.clipped
+        ? `<defs><pattern id="fclip" width="3" height="3" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">` +
+          `<rect width="3" height="3" fill="var(--ember)" fill-opacity="0.35"/>` +
+          `<line x1="0" y1="0" x2="0" y2="3" stroke="var(--ember)" stroke-width="1.4"/></pattern></defs>`
+        : '';
+      const baseY = (AH - aPad).toFixed(1);
+      actLane =
+        `<div class="flane-h">Fire activity${hasFrp ? ' · satellite heat' : ''}</div>` +
+        `<svg class="flane-svg" viewBox="0 0 ${W} ${AH}" preserveAspectRatio="none" role="img" aria-label="Satellite-detected fire activity per day over the fire's life: column height is detections that day, warmth is peak intensity">` +
+        clipDef +
+        `<line x1="${padX}" y1="${baseY}" x2="${W - padX}" y2="${baseY}" stroke="var(--hair)" stroke-width="1" vector-effect="non-scaling-stroke"/>` +
+        cols + `</svg>`;
     }
-    // STEP-AFTER line: each reported size holds flat until the next sitrep revises it. We only KNOW
-    // the size at the report moments — a straight slope between them would claim continuous measured
-    // growth (a 429→2,000 revision one sitrep-hour apart is a re-estimate, not 1,571 ha/h of spread).
-    // The final step runs to the domain edge: that size IS the current reported size.
-    let stepLine = '';
-    if (haveSpark) {
+
+    // ── Lane 2 (only when size actually changed): REPORTED SIZE, step-after (a size HOLDS until the next
+    // sitrep revises it — a sloped line would fabricate continuous measured growth). ──
+    let sizeLane = '';
+    if (showSize) {
+      const SH = 38, sPad = 5;
       const maxHa = Math.max(...sized.map((p) => p.sizeHa), 1);
-      const yOf = (ha: number): string => (H - padY - (ha / maxHa) * (H - 2 * padY)).toFixed(1);
+      const yOf = (ha: number): string => (SH - sPad - (ha / maxHa) * (SH - 2 * sPad)).toFixed(1);
       const pts: string[] = [];
       let prevY = '';
       for (const p of sized) {
@@ -687,22 +803,28 @@ function fireHistoryHtml(points: FireHistoryPoint[] | null, activity: FireActivi
       }
       pts.push(`${(W - padX).toFixed(1)},${prevY}`);
       const line = pts.join(' ');
-      const baseY = (H - padY).toFixed(1);
+      const baseY = (SH - sPad).toFixed(1);
       const area = `${xOf(tOf(sized[0])).toFixed(1)},${baseY} ${line} ${(W - padX).toFixed(1)},${baseY}`;
-      stepLine =
+      sizeLane =
+        `<div class="flane-h">Reported size</div>` +
+        `<svg class="flane-svg" viewBox="0 0 ${W} ${SH}" preserveAspectRatio="none" role="img" aria-label="Reported fire size over time">` +
+        `<line x1="${padX}" y1="${baseY}" x2="${W - padX}" y2="${baseY}" stroke="var(--hair)" stroke-width="1" vector-effect="non-scaling-stroke"/>` +
         `<polygon points="${area}" fill="var(--ember-12)" stroke="none"/>` +
-        `<polyline points="${line}" fill="none" stroke="var(--ember)" stroke-width="1.6" ` +
-        `stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`;
+        `<polyline points="${line}" fill="none" stroke="var(--ember-hi)" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>` +
+        `</svg>`;
     }
-    const d0 = fmtDay(t0), d1 = fmtDay(t1 - 1);
-    spark =
-      `<svg viewBox="0 0 ${W} ${H}" width="100%" height="46" preserveAspectRatio="none" role="img" ` +
-      `aria-label="Satellite detections per day and reported fire size over the fire's timeline" ` +
-      `style="display:block;margin-top:8px;overflow:visible;">${bars}${stepLine}</svg>` +
-      `<div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:var(--fs-micro);color:var(--faint);margin-bottom:2px;">` +
-      `<span>${esc(d0 === d1 ? '' : d0)}</span><span>${esc(d1)}</span></div>`;
+
+    // Left-edge label: when the activity fetch hit its row cap, t0 is where OUR RECORD starts, not where
+    // the fire did — say "before <day>" so the axis can't be read as the fire's beginning.
+    const leftClipped = !!activity && activity.clipped && dayStart(activity.days[0].day) <= t0;
+    const d0 = `${leftClipped ? 'before ' : ''}${fmtDay(t0)}`, d1 = fmtDay(t1 - 1);
+    spark = (actLane || sizeLane)
+      ? `<div class="fchart">${actLane}${sizeLane}<div class="fcap"><span>${esc(d0 === d1 ? '' : d0)}</span><span>${esc(d1)}</span></div></div>`
+      : '';
   }
-  if (sized.length >= 2) {
+  // Gated on having ANY sized snapshot, not on the size LANE being drawn: the comparison is
+  // first-tracked-size → the fire's CURRENT reported size (f.sizeHa), which needs only one stored point.
+  if (haveSpark) {
     const last = f.sizeHa >= 0 ? f.sizeHa : sized[sized.length - 1].sizeHa;
     const delta = last - sized[0].sizeHa;
     const arrow = delta > 1 ? '▲' : delta < -1 ? '▼' : '•';
@@ -713,30 +835,146 @@ function fireHistoryHtml(points: FireHistoryPoint[] | null, activity: FireActivi
     changeRow = `<div class="frow"><span class="fk">Reported change</span><span class="fv">${arrow} ${verb}${mag} since ${esc(fmtDay(tOf(sized[0])))}</span></div>`;
   }
 
-  // The fire's age FLOOR from the season's satellite record — "since at least" by construction (an early
-  // smoulder can predate the first satellite pass, and a capped fetch means we never reached season start).
-  const sinceRow = activity
-    ? `<div class="frow"><span class="fk">Satellite heat</span><span class="fv">since ${activity.clipped ? 'before ' : ''}${esc(fmtDay(activity.firstAt))} · ${activity.total.toLocaleString()} detections</span></div>`
+  // The honest AGE anchor: the first satellite detection — NOT "First tracked" (our snapshot backend's
+  // ingest start, which made a months-old fire look days young). "since at least" by construction (a smoulder
+  // can predate the first pass; a capped fetch can miss the true start), so it's "~"/"before", never exact.
+  const detectedRow = activity
+    ? `<div class="frow"><span class="fk">First detected</span><span class="fv">${esc(`${activity.clipped ? 'before ' : '~'}${fmtDay(activity.firstAt)} · ${activity.total.toLocaleString()} detections`)}</span></div>`
     : '';
-  // The already-burned baseline: what the agency said the fire was when tracking began — anything
-  // before that is unknown to our snapshots, and the row + note say so instead of implying zero.
-  const first = sized[0];
-  const seenRow = first
-    ? `<div class="frow"><span class="fk">First tracked</span><span class="fv">${esc(first.sizeHa > 0 ? `${fmtDay(tOf(first))} · already ${LIVEFIRE_COPY.fireSize(first.sizeHa)}` : fmtDay(tOf(first)))}</span></div>`
-    : points?.length && points[0].observedAt
-      ? `<div class="frow"><span class="fk">First tracked</span><span class="fv">${esc(relTime(points[0].observedAt))}</span></div>`
-      : '';
   const stageRow = haveStagePath
     ? `<div class="frow"><span class="fk">Stage path</span><span class="fv">${esc(stages.map((s) => stageLabel(s as ReportedFire['stage'])).join(' → '))}</span></div>`
     : '';
-  // Nothing charted and nothing moved: say so plainly instead of dropping the whole block — the fire IS
-  // being tracked, it just hasn't moved. Reads "young", not "broken".
-  const quietRow = !haveChart && !haveStagePath
-    ? `<div class="frow"><span class="fk">Reported change</span><span class="fv" style="color:var(--faint)">No changes recorded yet</span></div>`
+  // Nothing charted, no stage history: say so plainly rather than dropping the block — the fire IS tracked,
+  // it just hasn't moved. A fire crews have already won (held / under control / out) says THAT, not "quiet".
+  const quietRow = !spark && !haveStagePath
+    ? `<div class="frow"><span class="fk">Reported change</span><span class="fv" style="color:var(--faint)">${esc(
+        // "Holding" is the specific label for BH (Being held) — stageStep(…) >= 1 also matched UC and
+        // told an under-control fire it was "Holding". Each stage says its own thing now.
+        f.stage === 'OUT' ? 'Reported out — no further change'
+          : f.stage === 'UC' ? 'Under control — no size change recorded yet'
+            : f.stage === 'BH' ? 'Holding — no size change recorded yet'
+              : 'No changes recorded yet',
+      )}</span></div>`
     : '';
-  const note = `<p class="alertnote" style="margin-top:6px;">${activity ? 'Bars: satellite heat detections within ~10 km, per day; nearby fires can overlap. ' : ''}Sizes are agency estimates, revised at each report${activity ? '' : '; the fire may have been burning before tracking began'}.</p>`;
+  const note = `<p class="alertnote" style="margin-top:6px;">${
+    activity
+      ? `Fire activity = satellite thermal detections within ~10 km, per day (taller = more detections${hasFrp ? ', warmer = more intense' : ''}); nearby fires can overlap. ${
+          activity.clipped ? 'The hatched first column is where our record begins, not the fire — the archive fetch hit its row limit. ' : ''
+        }`
+      : ''
+  }Sizes are agency estimates, revised at each report${activity ? '' : '; the fire may have been burning before tracking began'}.</p>`;
 
-  return `<div class="fgroup"><div class="fgh">Fire timeline</div>${spark}${changeRow}${sinceRow}${stageRow}${quietRow}${seenRow}${note}</div>`;
+  return `<div class="fgroup"><div class="fgh">Fire timeline</div>${spark}${detectedRow}${changeRow}${stageRow}${quietRow}${note}</div>`;
+}
+
+/**
+ * The console STATUS READOUT — the tracker's headline, and the thing the old design got most wrong.
+ *
+ * "890 active fires" is the most arresting fact on the site and it used to render as 14px of grey
+ * ticker text wedged beside a refresh icon. Here it's an instrument: one huge live number, the plain
+ * sentence that says what it counts, and a segmented threat bar carrying the OC/BH/UC split at a
+ * glance — so the proportion still burning out of control is legible without reading a single digit.
+ *
+ * Still rendered from the honest `RegionStats` POJO (all the "is this number real for this region"
+ * logic lives in `deriveRegionStats`), so a region with no source reads as unavailable rather than
+ * quietly borrowing Canada's number.
+ */
+function consoleReadoutHtml(s: RegionStats): string {
+  const C = LIVEFIRE_COPY.console;
+  const S = LIVEFIRE_COPY.strip;
+  if (s.scope === 'down') return `<div class="fread down">${ic('shield', 'fread-ic')}<span>${esc(S.down)}</span></div>`;
+  const num = (n: number): string => n.toLocaleString();
+
+  // The headline number. US/MX have no official reported roll, so satellite detections are the only
+  // honest headline there — and it gets its own label rather than being passed off as "active fires".
+  const foreign = s.scope === 'foreign';
+  const headline = foreign ? s.hotspots : s.active;
+  const headCap = foreign ? esc(S.detectionsLabel) : esc(C.burningLabel(headline ?? 0));
+
+  const main = headline == null
+    ? `<div class="fread-main"><span class="fread-na">${esc(S.na)}</span><span class="fread-cap">${headCap} ${esc(C.burningIn(s.label))}</span></div>`
+    : `<div class="fread-main">
+        <b class="fread-num">${esc(num(headline))}</b>
+        <span class="fread-cap"><span class="fread-what">${headCap}</span><span class="fread-where">${esc(C.burningIn(s.label))}</span></span>
+      </div>`;
+
+  // The threat bar: proportion out of control / being held / under control. Segments are flex-weighted
+  // by count, so the bar IS the ratio — no legend arithmetic. A zero-count stage collapses out of it.
+  let threat = '';
+  if (s.byStage) {
+    const b = s.byStage;
+    const total = b.OC + b.BH + b.UC;
+    if (total > 0) {
+      const seg = (k: 'OC' | 'BH' | 'UC'): string =>
+        b[k] > 0 ? `<i class="${k.toLowerCase()}" style="flex:${b[k]}" title="${esc(C.stage[k])}"></i>` : '';
+      const key = (k: 'OC' | 'BH' | 'UC'): string =>
+        `<span class="tkey ${k.toLowerCase()}"><i></i><b>${esc(num(b[k]))}</b>${esc(C.stage[k])}</span>`;
+      threat = `<div class="fread-threat">
+        <div class="tbar">${seg('OC')}${seg('BH')}${seg('UC')}</div>
+        <div class="tkeys">${key('OC')}${key('BH')}${key('UC')}</div>
+      </div>`;
+    }
+  }
+
+  // Supporting instruments — each collapses to nothing rather than printing a borrowed number.
+  const stat = (value: string | null, label: string): string =>
+    value == null ? '' : `<span class="fread-stat"><b>${esc(value)}</b><i>${esc(label)}</i></span>`;
+  const side = [
+    stat(s.reportedToday != null ? num(s.reportedToday) : null, C.todayLabel),
+    stat(s.areaBurnedHa != null ? LIVEFIRE_COPY.fireSize(s.areaBurnedHa) : null, C.areaLabel),
+    stat(s.prepLevel != null ? `L${s.prepLevel}` : null, C.prepLabel),
+  ].join('');
+  const stamp = s.asOfMs ? `<span class="fread-stamp">${esc(publishedWhen(s.asOfMs))}</span>` : '';
+
+  return `<div class="fread">
+    <div class="fread-lead"><span class="fread-live"><i></i>${esc(C.liveTag)}</span>${main}</div>
+    ${threat}
+    <div class="fread-side">${side}${stamp}</div>
+  </div>`;
+}
+
+/**
+ * The TRIAGE RAIL — "what should I actually look at?"
+ *
+ * A live map of ~900 fires is honest and useless to a member of the public: every mark looks equally
+ * important. This is the civilian version of the judgement a dispatcher applies — the handful of fires
+ * worth a look, each showing the INPUTS that put it there (size, stage, nearest town + distance) so
+ * the ordering is inspectable rather than an oracle. Rank numbers match the animated halos on the map,
+ * so a row and a mark are visibly the same fire. Tapping a row flies the map to it and opens its record.
+ *
+ * The rail never shows a score, and closes with the honesty note: this is our reading of public data,
+ * not an agency assessment (see `livefire/triage.ts`).
+ */
+function threatRailHtml(rows: ThreatRow[]): string {
+  const C = LIVEFIRE_COPY.console;
+  const head = `<div class="frail-head">
+      <div class="grow" style="min-width:0;">
+        <div class="frail-ttl">${esc(C.railTitle)}</div>
+        <div class="frail-sub">${esc(C.railSub)}</div>
+      </div>
+      <button class="iconbtn frail-x" data-lf-railclose aria-label="Close">${ic('close')}</button>
+    </div>`;
+  if (!rows.length) return `${head}<div class="frail-empty">${esc(C.railEmpty)}</div>`;
+
+  const list = rows
+    .map((r, i) => {
+      const f = r.fire;
+      const size = f.sizeHa > 0 ? LIVEFIRE_COPY.fireSize(f.sizeHa) : C.sizeUnknown;
+      const near = r.near ? esc(C.near(r.near.km, r.near.name)) : '';
+      // `name` is REMOTE feed text — escaped, like every other user/remote string in this file.
+      const label = f.name ? esc(f.name) : esc(f.fireId || C.unnamed);
+      return `<button class="frow" type="button" data-lf-focus="${i}">
+        <span class="frow-rank">${i + 1}</span>
+        <span class="frow-body">
+          <span class="frow-top"><b class="frow-size${f.sizeHa > 0 ? '' : ' unk'}">${esc(size)}</b><span class="${stageClass(f.stage)}">${esc(stageLabel(f.stage))}</span></span>
+          <span class="frow-near">${near}</span>
+          <span class="frow-id">${label}</span>
+        </span>
+        ${ic('chevron-right', 'frow-go')}
+      </button>`;
+    })
+    .join('');
+  return `${head}<div class="frail-list">${list}</div><div class="frail-note">${esc(C.railNote)}</div>`;
 }
 
 /** The region firestats ticker — ONE compact line rendered from the honest `RegionStats` POJO. Lead =
@@ -807,11 +1045,11 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
   // ledger names it for ("Forecast · Jun 10"). Computed once so the tile layer + the label always agree.
   const fwiDayLabel = new Date(`${fwiForecastTime()}T00:00:00Z`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
 
-  // Region firestats — ONE compact icon ticker (data-lf-ticker), repainted by `paintStats` from a pure
+  // The console STATUS READOUT (data-lf-ticker), repainted by `paintStats` from a pure
   // `deriveRegionStats(region,…)` so it is HONEST to the chosen region (country OR Canadian province):
-  // it shows "Data not available" for any metric with no per-region source, never a Canada number under
-  // another label. The lead carries the region + live active count; supporting chips (stage split / today
-  // / area / prep / satellite detections) + a freshness stamp ride the same line. See `regionTickerHtml`.
+  // any metric with no per-region source collapses rather than showing a Canada number under another
+  // label. One huge live number + the stage-split threat bar + supporting instruments. See
+  // `consoleReadoutHtml`.
   const statStrip = `<div class="fstat-ticker" data-lf-ticker><span class="fstat-load">${esc(C.bannerLoading)}</span></div>`;
 
   // The six map layers, grouped into two tiers (Fires / Weather) and surfaced inside the summoned LAYERS
@@ -853,9 +1091,18 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
         <span>${esc(C.offlineBody)}</span>
         <a href="${LIVEFIRE_SOURCES.summary.url}" target="_blank" rel="noopener">Official sources ↗</a>
       </div>
+      <!-- The triage rail. On a wide screen it DOCKS to the left of the map (it's the reason to be on
+           this page, not an afterthought behind a button); on a phone there's no room for a permanent
+           dock, so it collapses and is summoned by the ⚑ float button as a bottom sheet. Same markup
+           either way — one builder, two placements, driven entirely by CSS. -->
+      <aside class="firerail" data-lf-rail></aside>
       <div class="firefloat">
+        <button class="fmbtn rail" data-lf-threats aria-label="${esc(C.console.railBtn)}" title="${esc(C.console.railBtn)}">${ic('alert')}</button>
         <button class="fmbtn" data-lf-layers aria-label="${esc(C.layersBtn)}" title="${esc(C.layersBtn)}">${ic('layers')}<span class="fmn" data-lf-layern></span></button>
         <button class="fmbtn" data-lf-firewx aria-pressed="false" aria-label="${esc(C.fireWxBtn)}" title="${esc(C.fireWxBtn)}">${ic('fire')}</button>
+        <!-- Daylight: the dark console is the default, but a dark map genuinely loses its marks
+             outdoors in glare — the sun-readable light basemap stays one tap away. -->
+        <button class="fmbtn" data-lf-day aria-pressed="false" aria-label="${esc(C.console.daylightBtn)}" title="${esc(C.console.daylightBtn)}">${ic('sun')}</button>
       </div>
       <div class="firebottom">
         <div class="firelegend" data-lf-legend hidden aria-hidden="true">
@@ -895,6 +1142,9 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
   const refreshBtn = root.querySelector<HTMLButtonElement>('[data-lf-refresh]')!;
   const layersBtn = root.querySelector<HTMLButtonElement>('[data-lf-layers]')!;
   const fireWxBtn = root.querySelector<HTMLButtonElement>('[data-lf-firewx]')!;
+  const railEl = root.querySelector<HTMLElement>('[data-lf-rail]')!;
+  const threatsBtn = root.querySelector<HTMLButtonElement>('[data-lf-threats]')!;
+  const dayBtn = root.querySelector<HTMLButtonElement>('[data-lf-day]')!;
   const layerCountEl = root.querySelector<HTMLElement>('[data-lf-layern]')!;
   const regionEl = root.querySelector<HTMLSelectElement>('[data-lf-region]')!;
   const scrubEl = root.querySelector<HTMLElement>('[data-lf-scrub]')!;
@@ -1202,12 +1452,39 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
     });
   };
 
-  // Repaint the region firestats ticker. ALL honesty lives in the pure `deriveRegionStats` — this just
-  // renders the POJO it returns, so the strip is always accurate to the chosen region (country/province)
-  // and shows "Data not available" wherever no per-region source exists.
+  // Repaint the console status readout. ALL honesty lives in the pure `deriveRegionStats` — this just
+  // renders the POJO it returns, so the readout is always accurate to the chosen region (country/province)
+  // and collapses (never borrows a Canada number) wherever no per-region source exists.
   const paintStats = (): void => {
-    tickerEl.innerHTML = regionTickerHtml(deriveRegionStats(region, reportedFeed, hsFeed, summary, Date.now()));
+    tickerEl.innerHTML = consoleReadoutHtml(deriveRegionStats(region, reportedFeed, hsFeed, summary, Date.now()));
   };
+
+  // ── The triage rail ──────────────────────────────────────────────────────────────────────────────
+  // `threats` is the ranked slice the rail lists AND the map halos; both read this one array, so a rail
+  // row and a numbered halo are always the same fire. Repainted with the map on every region change or
+  // load, so the ranking is scoped to what's actually in view.
+  let threats: ThreatRow[] = [];
+  let railOpen = false; // phone only — on a wide screen the rail is docked and this is ignored
+  const syncRail = (): void => {
+    railEl.classList.toggle('open', railOpen);
+    threatsBtn.classList.toggle('on', railOpen);
+    threatsBtn.setAttribute('aria-pressed', String(railOpen));
+  };
+  const paintRail = (): void => {
+    railEl.innerHTML = threatRailHtml(threats);
+    railEl.querySelector('[data-lf-railclose]')?.addEventListener('click', () => { railOpen = false; syncRail(); });
+    railEl.querySelectorAll<HTMLElement>('[data-lf-focus]').forEach((row) => {
+      row.addEventListener('click', () => {
+        const t = threats[Number(row.dataset.lfFocus)];
+        if (!t) return;
+        map?.focusFire(t.fire); // fly + ring the mark…
+        showReported(t.fire); //  …and open its full record
+        railOpen = false; // on a phone the rail is a sheet over the map — get out of the way of the flight
+        syncRail();
+      });
+    });
+  };
+  syncRail();
 
   // Paint the map for the SELECTED region (country OR Canadian province): filter each layer → re-plot →
   // refit, so the map and the ticker always agree on what's in view. The ticker (paintStats) owns the
@@ -1230,6 +1507,14 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
     // The M3 burn perimeters are Canada-only (CWFIS), so drop them when the map is scoped to US/Mexico —
     // mirrors the ticker. Shown for Canada + All North America (where Canada is part of the frame).
     map?.setBurnPolygons(canada ? burnFeed.polys : []);
+
+    // Rank what's in view, then hand the SAME slice to both surfaces: the rail lists it, the map halos
+    // it with matching numbers. Scoped to the region filter, so switching to one province re-ranks
+    // within that province rather than pointing at a fire two time zones away.
+    threats = rankThreats(reported, LIVEFIRE.threatRailCount);
+    paintRail();
+    map?.setPriority(threats.map((t) => t.fire));
+
     // Reframe ONLY on first load + a real country change (refit). NEVER on a silent refresh — that would
     // yank the user out of a zoom/pan they set by hand (the fitTo-on-every-paint regression).
     if (refit) {
@@ -1288,6 +1573,22 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
     setLayerState('fwi', !layerOn.fwi);
   });
   layersBtn.addEventListener('click', () => showLayers());
+  // Phone only (the rail is permanently docked on a wide screen — see .firerail in styles.ts).
+  threatsBtn.addEventListener('click', () => { railOpen = !railOpen; syncRail(); });
+  // Daylight ⇄ console basemap. The dark console is the default look, but a dark map genuinely loses
+  // its marks outdoors in glare, so the sun-readable light tiles stay one tap away (the button's glyph
+  // shows what you'd SWITCH TO, which is why it starts as a sun).
+  let daylight = false;
+  dayBtn.addEventListener('click', () => {
+    daylight = !daylight;
+    map?.setDaylight(daylight);
+    dayBtn.classList.toggle('on', daylight);
+    dayBtn.setAttribute('aria-pressed', String(daylight));
+    dayBtn.innerHTML = ic(daylight ? 'moon' : 'sun');
+    const lbl = daylight ? C.console.consoleBtn : C.console.daylightBtn;
+    dayBtn.setAttribute('aria-label', lbl);
+    dayBtn.title = lbl;
+  });
   syncFireWxAvail(); // initial enabled/greyed state for the default region (Canada)
   regionEl.addEventListener('change', () => {
     region = parseRegion(regionEl.value);

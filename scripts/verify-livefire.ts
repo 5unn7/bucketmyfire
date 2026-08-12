@@ -245,6 +245,16 @@ const actCapped = deriveFireActivity(actFc(['2026-06-10T04:00:00', '2026-06-09T1
 ok('deriveFireActivity: row cap hit with everything in-season → clipped (true start may be older)', actCapped?.clipped === true);
 ok('deriveFireActivity: nothing in-season → null (no activity ≠ a zero record)', deriveFireActivity(actFc(['2022-08-24T12:00:00']), SEASON, 3000) === null);
 ok('deriveFireActivity defensive (junk/empty → null, no throw)', deriveFireActivity(null, SEASON, 3000) === null && deriveFireActivity({}, SEASON, 3000) === null && deriveFireActivity(actFc([]), SEASON, 3000) === null);
+ok('deriveFireActivity: rep_date-only rows (no FRP) → frp 0 (the bars stay neutral, pre-FRP look)', act?.days.every((d) => d.frp === 0) === true);
+// FRP per day = the PEAK pass (one hot detection is "how intense it got"); missing/negative FRP → 0.
+const actFrp = deriveFireActivity({ type: 'FeatureCollection', features: [
+  { type: 'Feature', properties: { rep_date: '2026-06-10T04:00:00', frp: 12 } },
+  { type: 'Feature', properties: { rep_date: '2026-06-10T05:00:00', frp: 48 } }, // same UTC day, hotter pass
+  { type: 'Feature', properties: { rep_date: '2026-06-09T18:30:00', frp: -1 } }, // negative sentinel → 0
+  { type: 'Feature', properties: { rep_date: '2026-06-08T12:00:00' } },          // no FRP field → 0
+] }, SEASON, 3000);
+ok('deriveFireActivity: FRP is the daily PEAK (48 beats 12 same day)', actFrp?.days.find((d) => d.day === '2026-06-10')?.frp === 48);
+ok('deriveFireActivity: negative + missing FRP → 0', actFrp?.days.find((d) => d.day === '2026-06-09')?.frp === 0 && actFrp?.days.find((d) => d.day === '2026-06-08')?.frp === 0);
 
 // ── Report ──
 console.log(`\nverify:livefire — ${pass} passed, ${fail} failed`);

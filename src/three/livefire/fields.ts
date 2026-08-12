@@ -54,7 +54,7 @@ function pctOrUnknown(v: unknown): string {
 }
 /** CIFFC response-type code → readable phrase (unmapped codes pass through verbatim). */
 const RESPONSE_LABEL: Record<string, string> = { FUL: 'Full response', MOD: 'Modified response', MON: 'Monitored', NDR: 'No defined response' };
-function responseType(v: unknown): string {
+export function responseType(v: unknown): string {
   if (v == null || v === '') return '—';
   const k = String(v).toUpperCase();
   return RESPONSE_LABEL[k] ?? String(v);

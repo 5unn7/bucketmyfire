@@ -8,7 +8,7 @@
  * propagates to the live UI and the mockups with no hand copy. Pure brand tokens only — screen-local
  * cosmetic extras (the `--metal` instrument gradients, `--rail-h`) stay with their screen, not here.
  */
-import { UI, HOME, FS, FW, R, AR } from './theme';
+import { UI, HOME, MAP, FS, FW, R, AR } from './theme';
 
 /** The `--token:value;` declarations (no selector wrapper). Callers wrap in `.bmf-app{…}` or `:root{…}`. */
 export function tokenDecls(): string {
@@ -21,7 +21,7 @@ export function tokenDecls(): string {
     `--bg:${UI.bg};--card-glass:${UI.cardGlass};--card-glass-deep:${UI.cardGlassDeep};--card-soft:${UI.cardSoft};--warm-glass:${UI.warmGlass};--warm-glass-hi:${UI.warmGlassHi};`,
     `--track:${UI.track};--recess:${UI.recess};--field:${UI.field};--rowmine:${UI.rowMine};`,
     `--stroke:${UI.stroke};--stroke-strong:${UI.strokeStrong};--warm-stroke:${UI.warmStroke};--hair:${UI.hair};`,
-    `--shadow-card:${UI.shadowCard};--shadow-card-rich:${UI.shadowCardRich};--bevel-top:${UI.bevelTop};--bevel-hi:${UI.bevelHi};--bevel-lo:${UI.bevelLo};--bevel-edge:${UI.bevelEdge};--ember-glow:${UI.emberGlow};--blur:${UI.blur};`,
+    `--shadow-card:${UI.shadowCard};--drop-shadow-card:${UI.dropShadowCard};--shadow-card-rich:${UI.shadowCardRich};--bevel-top:${UI.bevelTop};--bevel-hi:${UI.bevelHi};--bevel-lo:${UI.bevelLo};--bevel-edge:${UI.bevelEdge};--ember-glow:${UI.emberGlow};--blur:${UI.blur};`,
     `--card-gradient:${UI.cardGradient};--card-gradient-fight:${UI.cardGradientFight};`,
     `--accent:${UI.accent};--accent-hi:${UI.accentHi};--accent-soft:${UI.accentSoft};--accent-fill:${UI.accentFill};--glow:${UI.glow};`,
     // In-flight HUD instrument tokens — the cockpit-only values HUD.ts / Input.ts used to hard-type inline
@@ -36,6 +36,9 @@ export function tokenDecls(): string {
     `--caution-12:${HOME.caution12};--caution-50:${HOME.caution50};`,
     `--warn-10:${HOME.warn10};--warn-16:${HOME.warn16};--warn-18:${HOME.warn18};--warn-22:${HOME.warn22};--warn-50:${HOME.warn50};`,
     `--rank:${HOME.rank};--card-bg:${HOME.cardBg};`,
+    // Live-fire map console — the stage ramp the legend swatches, triage rows and threat bar paint with,
+    // so the DOM chrome and the Leaflet marks can never disagree about what a stage looks like.
+    `--map-ink:${MAP.landInk};--map-oc:${MAP.ocFill};--map-oc-ring:${MAP.ocRing};--map-bh:${MAP.bhFill};--map-bh-ring:${MAP.bhRing};--map-uc-ring:${MAP.ucRing};--map-out:${MAP.outFill};--map-halo:${MAP.halo};--map-casing:${MAP.casing};`,
     `--font:${UI.font};--mono:${UI.fontMono};--font-read:${UI.fontRead};`,
     `--fs-micro:${FS.micro};--fs-tag:${FS.tag};--fs-label:${FS.label};--fs-meta:${FS.meta};--fs-sm:${FS.sm};--fs-body:${FS.body};--fs-md:${FS.md};--fs-lg:${FS.lg};--fs-xl:${FS.xl};--fs-title:${FS.title};--fs-hero:${FS.hero};--fs-display:${FS.display};--fs-banner:${FS.banner};--fs-mega:${FS.mega};`,
     `--fw-medium:${FW.medium};--fw-semibold:${FW.semibold};--fw-bold:${FW.bold};--fw-heavy:${FW.heavy};--fw-black:${FW.black};`,

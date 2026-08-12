@@ -95,6 +95,26 @@ const CSS = `
 .bmf-app .firedown a{ margin-top:4px; font-family:var(--mono); font-size:var(--fs-micro); letter-spacing:.06em;
   text-transform:uppercase; color:var(--ember-hi); text-decoration:none; }
 
+/* ── Map marks that live in Leaflet panes ─────────────────────────────────────────────────────────
+   Priority halo: the animated ring on the fires the triage rail ranks highest — the map half of "look
+   here". DOM markers on their own pane rather than canvas circles, because a canvas ring can only be
+   animated by redrawing the whole marker layer every frame; a dozen CSS-animated elements are free.
+   Deliberately only a HANDFUL move: that IS the signal. Non-interactive throughout, so a tap falls
+   through to the fire mark beneath. */
+.bmf-app .lf-halo{ position:relative; }
+.bmf-app .lf-halo i{ position:absolute; left:0; top:0; transform:translate(-50%,-50%); display:block;
+  border-radius:var(--r-round); border:1.5px solid var(--map-halo); animation:bmf-halo 2.8s ease-out infinite; }
+.bmf-app .lf-halo b{ position:absolute; left:0; top:0; transform:translate(-50%,-50%) translate(13px,-13px);
+  min-width:15px; height:15px; padding:0 3px; display:grid; place-items:center; border-radius:var(--r-xs);
+  background:var(--map-oc); color:var(--ink); font-family:var(--mono); font-size:var(--fs-micro);
+  font-weight:var(--fw-bold); line-height:1; box-shadow:0 1px 4px var(--map-casing); }
+@keyframes bmf-halo{ 0%{ transform:translate(-50%,-50%) scale(.62); opacity:0; }
+  22%{ opacity:.95; } 100%{ transform:translate(-50%,-50%) scale(1); opacity:0; } }
+/* Motion off: the ranking is INFORMATION, so the ring stays — it just stops breathing. */
+@media (prefers-reduced-motion:reduce){
+  .bmf-app .lf-halo i{ animation:none; opacity:.9; transform:translate(-50%,-50%) scale(1); }
+}
+
 /* Floating map controls — Layers + Sources as icon buttons pinned to the map's top-right corner
    (Leaflet's zoom owns top-left). A stronger fill + card shadow lifts them off the dark tiles; the
    Layers button carries a live count badge of how many layers are drawn. Never pills. */
@@ -117,38 +137,135 @@ const CSS = `
 .bmf-app .fmn{ position:absolute; top:-6px; right:-6px; min-width:17px; height:17px; padding:0 4px; display:grid; place-items:center; border-radius:var(--r-pill); background:var(--ember); color:var(--ink); font-family:var(--mono); font-size:var(--fs-micro); font-weight:var(--fw-bold); line-height:1; }
 .bmf-app .fmn:empty{ display:none; }
 
-/* Region firestats — ONE compact icon TICKER (data-lf-ticker), repainted from a pure RegionStats POJO so
-   it's HONEST to the chosen region: a lead (region + live active count, or satellite detections for US/MX)
-   + supporting chips (OC/BH/UC stage split · today · area · prep), each showing "Data not available" (faint)
-   where the region has no source. Single line (clips on a narrow phone, lead + pips stay anchored left);
-   tokens only → AA-safe (text/dim/faint all clear AA over the glass); icons are Lucide via ic(). */
-.bmf-app .firestats{ flex:0 0 auto; z-index:2; display:flex; flex-direction:column; padding:7px 12px 8px; background:var(--card-bg); border-bottom:1px solid var(--stroke); }
+/* ── The console STATUS READOUT ────────────────────────────────────────────────────────────────────
+   The tracker's headline instrument, repainted from a pure RegionStats POJO so it stays HONEST to the
+   chosen region (a metric with no per-region source collapses; it never borrows a Canada number).
+
+   This replaced a 14px grey ticker in which "890 active fires" — the most arresting fact on the site —
+   sat as a footnote beside a refresh icon. Now the number is the instrument: oversized mono digits, the
+   plain sentence that says what they count, and a stage-split threat bar whose SEGMENTS ARE THE RATIO,
+   so the share still out of control reads without parsing a single figure. Tokens only → AA-safe. */
+.bmf-app .firestats{ flex:0 0 auto; z-index:2; display:flex; flex-direction:column; padding:9px 14px 10px;
+  background:linear-gradient(180deg, var(--card-bg), var(--map-ink)); border-bottom:1px solid var(--stroke); }
 .bmf-app .firestats[hidden]{ display:none; }
 .bmf-app .fstat-ticker{ min-width:0; }
 .bmf-app .fstat-load{ font-size:var(--fs-meta); color:var(--dim); }
-/* The row WRAPS (was a single clipped nowrap line that hid the right-hand chips on a phone): the lead +
-   stage pips hold line 1, the supporting chips (today · burned · prep · freshness) flow to line 2 when
-   they don't fit — so "reported today" and "burned this year" stay visible on mobile. On a wide window it
-   all still sits on one line (wrap only triggers when it must). */
-.bmf-app .fstat-row{ display:flex; flex-wrap:wrap; align-items:center; gap:5px 13px; min-width:0; }
-.bmf-app .fstat-ic{ width:15px; height:15px; flex:0 0 auto; vertical-align:-3px; }
-.bmf-app .fstat-lead{ display:inline-flex; align-items:center; gap:5px; flex:0 1 auto; min-width:0; }
-.bmf-app .fstat-lead .fstat-ic{ color:var(--ember); }
-.bmf-app .fstat-loc{ font-size:var(--fs-md); font-weight:var(--fw-bold); color:var(--text); max-width:34vw; overflow:hidden; text-overflow:ellipsis; }
-.bmf-app .fstat-sep{ color:var(--faint); }
-.bmf-app .fstat-big{ font-family:var(--mono); font-size:var(--fs-md); font-weight:var(--fw-bold); color:var(--text); }
-.bmf-app .fstat-lbl{ font-size:var(--fs-micro); color:var(--dim); }
-.bmf-app .fstat-pips{ display:inline-flex; align-items:center; gap:8px; flex:0 0 auto; }
-.bmf-app .fstat-pip{ display:inline-flex; align-items:center; gap:4px; font-family:var(--mono); font-size:var(--fs-tag); color:var(--text); }
-.bmf-app .fstat-pip i{ width:8px; height:8px; flex:0 0 auto; border-radius:var(--r-round); background:var(--faint); }
-.bmf-app .fstat-pip.oc i{ background:var(--warn); } .bmf-app .fstat-pip.bh i{ background:var(--caution); } .bmf-app .fstat-pip.uc i{ background:var(--ok); }
-.bmf-app .fstat-rest{ display:flex; flex-wrap:wrap; align-items:center; gap:5px 13px; min-width:0; flex:1 1 auto; }
-.bmf-app .fstat-chip{ display:inline-flex; align-items:center; gap:5px; flex:0 0 auto; font-size:var(--fs-tag); color:var(--dim); }
-.bmf-app .fstat-chip .fstat-ic{ color:var(--dim); }
-.bmf-app .fstat-chip b{ font-family:var(--mono); font-weight:var(--fw-bold); color:var(--text); }
-.bmf-app .fstat-chip.na, .bmf-app .fstat-chip.na .fstat-ic{ color:var(--faint); }
+.bmf-app .fread{ display:flex; align-items:center; gap:8px 22px; flex-wrap:wrap; min-width:0; }
+.bmf-app .fread.down{ display:flex; align-items:center; gap:8px; color:var(--dim); font-size:var(--fs-sm); }
+.bmf-app .fread-ic{ width:16px; height:16px; color:var(--caution); flex:0 0 auto; }
+.bmf-app .fread-lead{ display:flex; align-items:center; gap:11px; min-width:0; flex:0 1 auto; }
+/* LIVE tag — the one thing on the readout that MOVES, because "is this actually live?" is the first
+   question a live tracker has to answer. Ember, not cyan: the map is the fight register. */
+.bmf-app .fread-live{ display:inline-flex; align-items:center; gap:5px; flex:0 0 auto; font-family:var(--mono);
+  font-size:var(--fs-micro); font-weight:var(--fw-bold); letter-spacing:.14em; text-transform:uppercase; color:var(--ember-hi); }
+.bmf-app .fread-live i{ width:7px; height:7px; border-radius:var(--r-round); background:var(--ember);
+  box-shadow:0 0 0 0 var(--ember-50); animation:bmf-livepulse 2.4s ease-out infinite; }
+@keyframes bmf-livepulse{ 0%{ box-shadow:0 0 0 0 var(--ember-50); } 70%{ box-shadow:0 0 0 7px transparent; } 100%{ box-shadow:0 0 0 0 transparent; } }
+.bmf-app .fread-main{ display:flex; align-items:baseline; gap:9px; min-width:0; }
+/* The headline. Mono + tabular so the digits don't jitter between refreshes. */
+.bmf-app .fread-num{ font-family:var(--mono); font-size:var(--fs-banner); font-weight:var(--fw-heavy);
+  line-height:1; letter-spacing:-.02em; color:var(--text); font-variant-numeric:tabular-nums; }
+.bmf-app .fread-na{ font-family:var(--mono); font-size:var(--fs-hero); color:var(--faint); font-style:italic; }
+.bmf-app .fread-cap{ display:flex; flex-direction:column; line-height:1.18; min-width:0; }
+.bmf-app .fread-what{ font-size:var(--fs-sm); font-weight:var(--fw-bold); color:var(--text); }
+.bmf-app .fread-where{ font-size:var(--fs-meta); color:var(--dim); }
+/* The threat bar: flex-weighted segments, so the bar IS the OC/BH/UC ratio — no legend arithmetic. */
+.bmf-app .fread-threat{ display:flex; flex-direction:column; gap:5px; flex:1 1 240px; min-width:180px; }
+.bmf-app .tbar{ display:flex; height:8px; border-radius:var(--r-pill); overflow:hidden; background:var(--track); }
+.bmf-app .tbar i{ display:block; min-width:2px; }
+.bmf-app .tbar i.oc{ background:var(--map-oc); box-shadow:inset 0 0 6px var(--ember-50); }
+.bmf-app .tbar i.bh{ background:var(--map-bh); }
+.bmf-app .tbar i.uc{ background:var(--map-uc-ring); opacity:.6; }
+.bmf-app .tkeys{ display:flex; flex-wrap:wrap; gap:3px 14px; }
+.bmf-app .tkey{ display:inline-flex; align-items:center; gap:5px; font-size:var(--fs-tag); color:var(--dim); }
+.bmf-app .tkey b{ font-family:var(--mono); font-weight:var(--fw-bold); color:var(--text); font-variant-numeric:tabular-nums; }
+.bmf-app .tkey i{ width:7px; height:7px; flex:0 0 auto; border-radius:var(--r-xs); background:var(--faint); }
+.bmf-app .tkey.oc i{ background:var(--map-oc); } .bmf-app .tkey.bh i{ background:var(--map-bh); } .bmf-app .tkey.uc i{ background:var(--map-uc-ring); }
+/* Supporting instruments — value over label, the cockpit's "state before chrome" rule. */
+.bmf-app .fread-side{ display:flex; align-items:center; flex-wrap:wrap; gap:6px 18px; margin-left:auto; min-width:0; }
+.bmf-app .fread-stat{ display:flex; flex-direction:column; line-height:1.14; }
+.bmf-app .fread-stat b{ font-family:var(--mono); font-size:var(--fs-body); font-weight:var(--fw-bold); color:var(--text); font-variant-numeric:tabular-nums; }
+.bmf-app .fread-stat i{ font-style:normal; font-size:var(--fs-micro); color:var(--dim); }
+.bmf-app .fread-stamp{ font-size:var(--fs-micro); color:var(--faint); }
 .bmf-app .fstat-na{ color:var(--faint); font-style:italic; }
-.bmf-app .fstat-fresh{ font-size:var(--fs-micro); color:var(--faint); flex:0 0 auto; }
+/* Phone: the headline + threat bar are the whole job. Supporting instruments drop to a quiet second
+   line rather than being hidden — they're honest context, just not the point. */
+@media (max-width:620px){
+  .bmf-app .firestats{ padding:8px 12px 9px; }
+  .bmf-app .fread{ gap:7px 14px; }
+  .bmf-app .fread-num{ font-size:var(--fs-display); }
+  .bmf-app .fread-threat{ flex-basis:100%; min-width:0; }
+  .bmf-app .fread-side{ margin-left:0; flex-basis:100%; gap:5px 14px; }
+  .bmf-app .fread-stat{ flex-direction:row; align-items:baseline; gap:4px; }
+}
+
+/* ── The TRIAGE RAIL ("What to watch") ────────────────────────────────────────────────────────────
+   The answer layer. A map of ~900 marks is honest and unreadable to a member of the public: every dot
+   looks equally important. This lists the handful worth a look and shows the INPUTS behind the order
+   (size, stage, nearest town), so the ranking is inspectable rather than an oracle. Its rank numbers
+   match the animated halos on the map, so a row and a mark are visibly the same fire.
+
+   Two placements, one markup: DOCKED beside the map on a wide screen (it's the reason to be on this
+   page, not something hidden behind a button), and a summoned bottom sheet on a phone, where there is
+   no room for a permanent dock. */
+.bmf-app .firerail{ position:absolute; z-index:620; left:0; top:0; bottom:0; width:302px; display:flex; flex-direction:column;
+  background:var(--card-glass-deep); backdrop-filter:var(--blur); -webkit-backdrop-filter:var(--blur);
+  border-right:1px solid var(--stroke); box-shadow:var(--shadow-card); }
+.bmf-app .frail-head{ flex:0 0 auto; display:flex; align-items:flex-start; gap:8px; padding:11px 12px 9px; border-bottom:1px solid var(--stroke); }
+.bmf-app .frail-ttl{ font-family:var(--mono); font-size:var(--fs-meta); font-weight:var(--fw-bold);
+  letter-spacing:.14em; text-transform:uppercase; color:var(--ember-hi); }
+.bmf-app .frail-sub{ margin-top:3px; font-size:var(--fs-micro); color:var(--dim); line-height:1.35; }
+.bmf-app .frail-x{ display:none; flex:0 0 auto; } /* the docked rail has nothing to close */
+.bmf-app .frail-empty{ padding:16px 12px; font-size:var(--fs-sm); color:var(--dim); }
+/* A bounded inner scroll is allowed here — this IS the "genuinely long list" carve-out, and the page
+   itself still never scrolls (the no-scroll law). */
+.bmf-app .frail-list{ flex:1 1 auto; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; }
+.bmf-app .frail-note{ flex:0 0 auto; padding:8px 12px calc(9px + env(safe-area-inset-bottom));
+  border-top:1px solid var(--hair); font-size:var(--fs-micro); color:var(--faint); line-height:1.4; }
+/* A row is a button: tap → fly the map there + open the record. Hairline separated, never boxed. */
+.bmf-app .frow{ width:100%; display:flex; align-items:center; gap:10px; padding:9px 12px; background:none;
+  border:0; border-bottom:1px solid var(--hair); text-align:left; cursor:pointer; color:var(--text);
+  transition:background .13s ease; }
+.bmf-app .frow:hover{ background:var(--ember-10); }
+.bmf-app .frow:focus-visible{ outline:2px solid var(--ember-hi); outline-offset:-2px; }
+.bmf-app .frow-rank{ flex:0 0 auto; width:21px; height:21px; display:grid; place-items:center; border-radius:var(--r-xs);
+  background:var(--ember-20); border:1px solid var(--ember-40); color:var(--ember-hi);
+  font-family:var(--mono); font-size:var(--fs-micro); font-weight:var(--fw-bold); }
+.bmf-app .frow-body{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:2px; }
+.bmf-app .frow-top{ display:flex; align-items:center; gap:7px; min-width:0; }
+.bmf-app .frow-size{ font-family:var(--mono); font-size:var(--fs-body); font-weight:var(--fw-bold); color:var(--text); font-variant-numeric:tabular-nums; }
+.bmf-app .frow-size.unk{ font-size:var(--fs-tag); font-weight:var(--fw-medium); color:var(--faint); font-style:italic; }
+.bmf-app .frow-near{ font-size:var(--fs-tag); color:var(--text-subtle); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.bmf-app .frow-id{ font-family:var(--mono); font-size:var(--fs-micro); color:var(--faint); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.bmf-app .frow-go{ flex:0 0 auto; width:15px; height:15px; color:var(--faint); }
+.bmf-app .frow:hover .frow-go{ color:var(--ember-hi); }
+/* The stage chip on a rail row — the SAME ember ramp the map marks use (theme.ts → MAP), so a chip and
+   a dot can never disagree. Contained reads as an outline, exactly like its mark. */
+.bmf-app .fstage{ flex:0 0 auto; padding:1px 6px; border-radius:var(--r-sm); font-size:var(--fs-micro);
+  font-weight:var(--fw-bold); letter-spacing:.03em; white-space:nowrap; }
+.bmf-app .fstage.oc{ background:var(--map-oc); color:var(--ink); }
+.bmf-app .fstage.bh{ background:var(--map-bh); color:var(--text); }
+.bmf-app .fstage.uc{ background:none; border:1px solid var(--map-uc-ring); color:var(--map-uc-ring); }
+.bmf-app .fstage.out{ background:none; border:1px solid var(--map-out); color:var(--dim); }
+/* Phone: the rail becomes a summoned bottom sheet (the ⚑ float button toggles .open). Capped so the
+   map stays visible behind it — you should see the fire you're picking. */
+@media (max-width:900px){
+  .bmf-app .firerail{ left:0; right:0; top:auto; bottom:0; width:auto; max-height:min(64%, 420px);
+    border-right:0; border-top:1px solid var(--stroke); border-radius:var(--r-xl) var(--r-xl) 0 0;
+    transform:translateY(101%); transition:transform .22s cubic-bezier(.22,1,.36,1); }
+  .bmf-app .firerail.open{ transform:translateY(0); }
+  .bmf-app .frail-x{ display:grid; }
+}
+@media (prefers-reduced-motion:reduce){ .bmf-app .firerail{ transition:none; } }
+/* The ⚑ rail button is phone-only — on a wide screen the rail is always there to be read. */
+@media (min-width:901px){
+  .bmf-app .fmbtn.rail{ display:none; }
+  /* Make room for the docked rail: Leaflet's zoom sits top-left and the legend/scrubber span the map's
+     full width, so both would slide underneath it. Offset by the rail's width instead of moving the
+     rail — the fires belong on the right of the reading order, next to the list that names them. */
+  .bmf-app .firemapwrap .leaflet-top.leaflet-left{ margin-left:302px; }
+  .bmf-app .firebottom{ left:302px; }
+}
 
 /* Layers sheet — tiered toggles (reuse .srow/.toggle) + the full legend. A layer row's icon slot carries a
    legend swatch; a country-gated tier shows a reason badge instead of a toggle. */
@@ -200,8 +317,13 @@ const CSS = `
    opens from the RIGHT as a 45%-wide full-height drawer — wider than the 380px Layers drawer because the
    fire record (chips + history chart + field groups) needs the room. Toggled by the .bottom class in
    menus.ts (showReported/showHotspot add it; the layers + ledger views remove it). */
+/* NOTE the shadow swap: clip-path clips box-shadow away with the rest of the box, so the base
+   .firesheet box-shadow:var(--shadow-card) is dead on every notched variant — leaving a 1px hairline
+   as the only separation from the bright basemap. filter:var(--drop-shadow-card) follows the clipped
+   silhouette and restores the lift. Keep them paired: clip-path here means drop-shadow here. */
 .bmf-app .firesheet.bottom{ top:auto; left:0; right:0; bottom:0; width:auto; max-height:75%; max-height:75dvh;
-  border-left:0; border-top:1px solid var(--warm-stroke); border-radius:var(--r-xl) var(--r-xl) 0 0;
+  border-left:0; border-top:1px solid var(--warm-stroke); border-radius:0; clip-path:var(--cut-tl);
+  box-shadow:none; filter:var(--drop-shadow-card);
   padding:0 16px calc(16px + env(safe-area-inset-bottom)); animation:bmf-sheet-up .22s cubic-bezier(.2,.7,.3,1); }
 /* Standard "drag from bottom" grab pill (the right drawer has none — its close button is the dismiss). Purely
    an affordance; dismiss is still the close button / tap-empty-map, matching the drawer. Scrolls under the
@@ -211,7 +333,8 @@ const CSS = `
 @keyframes bmf-sheet-up{ from{ transform:translateY(101%); } to{ transform:translateY(0); } }
 @media (min-width:760px){
   .bmf-app .firesheet.bottom{ top:0; left:auto; right:0; bottom:0; width:45%; max-height:none;
-    border-top:0; border-left:1px solid var(--warm-stroke); border-radius:var(--r-xl) 0 0 var(--r-xl);
+    border-top:0; border-left:1px solid var(--warm-stroke); border-radius:0; clip-path:var(--cut-tl);
+    box-shadow:none; filter:var(--drop-shadow-card); /* clipped ⇒ drop-shadow, see the bottom-sheet note */
     padding:0 16px 16px; animation:bmf-sheet-right .2s cubic-bezier(.2,.7,.3,1); }
   .bmf-app .firesheet.bottom::before{ display:none; } /* grab pill is a bottom-sheet affordance only */
 }
@@ -246,6 +369,33 @@ const CSS = `
 .bmf-app .frow{ display:flex; justify-content:space-between; gap:14px; padding:5px 0; border-bottom:1px solid var(--hair); }
 .bmf-app .frow .fk{ font-size:var(--fs-meta); color:var(--text-subtle); }
 .bmf-app .frow .fv{ font-family:var(--mono); font-size:var(--fs-meta); color:var(--text); text-align:right; white-space:nowrap; }
+/* Fire-detail STATUS panel — the brand corner-cut "panel notch" (--cut-tl), NOT a rounded web card. It
+   REPLACES the old Status field rows above the timeline. Cool instrument register, existing tokens (AA). */
+.bmf-app .fsum{ margin-top:12px; padding:13px 14px; clip-path:var(--cut-tl); border:1px solid var(--hair); background:var(--card-glass); }
+/* Control scale — WHERE the fire sits on the Out-of-control↔Out spectrum NOW. NOT a progress bar: stage of
+   control is a revisable agency call (it can move either way), so only the CURRENT segment lights, in its
+   own danger-ramp colour; the rest are equal, unfilled positions — never "done" steps. */
+.bmf-app .fscale{ display:flex; gap:5px; }
+.bmf-app .fseg{ flex:1 1 0; min-width:0; height:5px; border-radius:var(--r-xs); background:var(--hair); }
+.bmf-app .fseg.cur.oc{ background:var(--warn); }
+.bmf-app .fseg.cur.bh{ background:var(--caution); }
+.bmf-app .fseg.cur.uc{ background:var(--ok); }
+.bmf-app .fseg.cur.out{ background:var(--dim); }
+/* What the current stage means — one terse line (the answer to "when is it held / under control"). */
+.bmf-app .fsum-def{ margin-top:9px; font-size:var(--fs-meta); color:var(--text-subtle); line-height:1.4; }
+/* Fire-timeline chart — TWO labelled lanes sharing the time axis (was one confusing overlay of two units).
+   Render order is "Fire activity" (per-day satellite columns) FIRST, then the "Reported size" step area
+   below it when it's drawn. Lane labels in mono micro caps; shared date caption below. */
+.bmf-app .fchart{ margin-top:10px; }
+.bmf-app .flane-h{ margin:9px 0 3px; font-family:var(--mono); font-size:var(--fs-micro); letter-spacing:.07em; text-transform:uppercase; color:var(--text-subtle); }
+.bmf-app .flane-h:first-child{ margin-top:0; }
+.bmf-app .flane-svg{ display:block; width:100%; height:40px; overflow:visible; }
+.bmf-app .fcap{ display:flex; justify-content:space-between; margin-top:6px; font-family:var(--mono); font-size:var(--fs-micro); letter-spacing:.02em; color:var(--faint); }
+/* Headline facts — size / contained / response (or HFI / FRP for a hotspot) at a glance. */
+.bmf-app .fsum-facts{ display:flex; flex-wrap:wrap; gap:9px 22px; margin-top:12px; }
+.bmf-app .fstat{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+.bmf-app .fstat .fsv{ font-family:var(--mono); font-size:var(--fs-md); font-weight:var(--fw-heavy); color:var(--text); line-height:1.1; }
+.bmf-app .fstat .fsl{ font-size:var(--fs-micro); color:var(--text-subtle); letter-spacing:.02em; }
 /* Layer-chip status dot — live / cached / down / off / none-in-view. "empty ≠ down ≠ off": a doused-quiet
    layer reads 'none' (calm grey), a broken feed reads 'down' (red), an off toggle is already de-emphasised. */
 .bmf-app .ldotc{ display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:7px; flex:0 0 auto; background:var(--dim); vertical-align:middle; }

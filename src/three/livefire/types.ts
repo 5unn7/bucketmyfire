@@ -131,6 +131,7 @@ export interface FireHistoryPoint {
 export interface FireActivityDay {
   day: string;
   count: number;
+  frp: number; // peak fire radiative power that day (MW); 0 when the archive carried no FRP for the day
 }
 
 /** A fire's satellite ACTIVITY record — the pre-tracking history the agency feeds can't give us (CIFFC
