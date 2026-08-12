@@ -110,8 +110,8 @@ export const LIVEFIRE_COPY = {
     near: (km: number, place: string) => `${km < 1 ? '<1' : Math.round(km)} km from ${place}`,
     sizeUnknown: 'Size not reported',
     unnamed: 'Unnamed fire',
-    daylightBtn: 'Daylight map',
-    consoleBtn: 'Console map',
+    // The basemap cycle button. Its label/glyph always name what you'd switch TO, not where you are.
+    basemap: { satellite: 'Satellite map', console: 'Dark map', daylight: 'Daylight map' } as Record<string, string>,
     // The mark key. The map encodes two things at once (size = area, treatment = stage of control) and
     // neither is guessable — without this a reader sees ember dots of assorted sizes and hollow rings
     // and has to infer the rules. Lives in the rail rather than floating on the map: it belongs with

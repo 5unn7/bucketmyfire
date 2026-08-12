@@ -42,7 +42,7 @@ import { PLACES } from './places';
 import type { Place } from './places';
 import type { Hotspot, FireSeverity, ReportedFire, BurnPolygon } from './types';
 import { STAGE_STYLE, SEV_COLOR } from './view';
-import type { FireLayer, FireMapHandlers, LiveMapView } from './view';
+import type { BasemapMode, FireLayer, FireMapHandlers, LiveMapView } from './view';
 
 export type { FireLayer, FireMapHandlers } from './view';
 
@@ -59,9 +59,24 @@ const SEV_STYLE: Record<FireSeverity, { radius: number; fill: number }> = {
 // which meant two label systems fighting on one map: the tiles' names printed straight through the
 // curated ones and no amount of decluttering could touch them (the captures showed "Yello|Yellowknife"
 // and "Edmo|Edmonton" doubled on top of each other). With `_nolabels` the console owns every label it
-// draws, so `declutter()` is authoritative and the map stays legible at any zoom.
+// draws, so `declutter()` is authoritative and the map stays legible at any zoom. Esri's imagery
+// carries no labels either, for the same reason.
 const CARTO_DARK = 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png';
 const CARTO_LIGHT = 'https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png';
+// Esri World Imagery — keyless, CORS-open, global, and the DEFAULT basemap. An abstract map tells you
+// a fire is at 55.1N 105.3W; imagery tells you it's in the trees on the north shore of a lake, next
+// to last year's burn scar. That's the difference between plotting a fire and understanding it.
+// Attribution is required and lives on the Credits page (Settings → Credits & data), where the CARTO
+// and OSM credits already are — the map itself carries no on-map attribution control.
+// NB the {z}/{y}/{x} axis order: ArcGIS REST tiles are row-then-column, NOT the XYZ {z}/{x}/{y}.
+const ESRI_IMAGERY = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+
+/** Tile URL + tint + max native zoom per basemap mode. One table so a mode can't half-apply. */
+const BASEMAPS: Record<BasemapMode, { url: string; tint: string; maxZoom: number; subdomains?: string }> = {
+  satellite: { url: ESRI_IMAGERY, tint: MAP.tileTintSat, maxZoom: 19 },
+  console: { url: CARTO_DARK, tint: MAP.tileTint, maxZoom: 19, subdomains: 'abcd' },
+  daylight: { url: CARTO_LIGHT, tint: MAP.tileTintDay, maxZoom: 19, subdomains: 'abcd' },
+};
 
 /**
  * A reported fire's centre-mark radius, in screen px, from its reported hectares.
@@ -79,11 +94,16 @@ const CARTO_LIGHT = 'https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y
  * give. Differentiation across the range beats absolute size at the top of it.
  */
 function markRadiusFor(sizeHa: number): number {
-  if (!(sizeHa > 0)) return 3.4;
-  // ~3.2 px at 1 ha · 6 px at 100 ha · 8 px at 1,000 ha · 10 px at 10,000 ha and up. The shallow slope
-  // is what buys the differentiation: a steeper one pins most of the feed (which lives in the hundreds
-  // to low thousands of hectares) against the ceiling, and then nothing stands out from anything.
-  return Math.max(3.2, Math.min(10.5, 2.6 + 1.8 * Math.log10(1 + sizeHa)));
+  if (!(sizeHa > 0)) return 2.6;
+  // ~2.4 px at 1 ha · 4 px at 100 ha · 5 px at 1,000 ha · 6.5 px at 10,000 ha · 8 px at the top. The
+  // shallow slope is what buys the differentiation: a steeper one pins most of the feed (which lives
+  // in the hundreds to low thousands of hectares) against the ceiling, and then nothing stands out.
+  //
+  // Sized DOWN twice now, and the reason is the density of a real bad season: with ~600 fires on a
+  // national view, marks that look right in isolation merge into a solid mass that hides the ground
+  // and each other. The map has to stay a map — you should be able to see the lake a fire is sitting
+  // on. Zooming in is what earns you a bigger mark, not the mark being big to begin with.
+  return Math.max(2.4, Math.min(8, 1.9 + 1.4 * Math.log10(1 + sizeHa)));
 }
 
 /**
@@ -353,8 +373,8 @@ export class FireMap implements LiveMapView {
   private outLayer: L.LayerGroup;
   private perimLayer: L.LayerGroup;
   private haloLayer: L.LayerGroup; // the animated priority halos on the top-ranked threats
-  private tiles: L.TileLayer; // the live basemap (swapped wholesale by setDaylight)
-  private daylight = false;
+  private tiles: L.TileLayer; // the live basemap (swapped wholesale by setBasemap)
+  private basemap: BasemapMode = 'satellite';
   private placeMarks: { place: Place; marker: L.Marker }[] = []; // curated labels, decluttered per view
   private declutterQueued = false;
   private markByFire = new Map<string, L.CircleMarker>(); // fireId → its centre mark, for focusFire()
@@ -391,8 +411,9 @@ export class FireMap implements LiveMapView {
     // tile pane pulls CARTO's neutral grey toward the cockpit's blue-black so the ember marks are the
     // only warm light on the map. Filtering the PANE (not each tile) is one composite for the frame.
     container.style.background = MAP.landInk;
-    this.tiles = L.tileLayer(CARTO_DARK, { subdomains: 'abcd', maxZoom: 19 }).addTo(this.map);
-    this.map.getPane('tilePane')!.style.filter = MAP.tileTint;
+    const base = BASEMAPS[this.basemap];
+    this.tiles = L.tileLayer(base.url, { subdomains: base.subdomains ?? 'abc', maxZoom: base.maxZoom }).addTo(this.map);
+    this.map.getPane('tilePane')!.style.filter = base.tint;
 
     // The Fire Weather Index forecast — a double-buffered DAY-MORPH (Canada CWFIS grid over the global GWIS
     // wash), each day a single GetMap image that crossfades into the next instead of strobing per WMS-TIME
@@ -490,8 +511,11 @@ export class FireMap implements LiveMapView {
     for (const f of ordered) {
       const st = STAGE_STYLE[f.stage];
       // The true footprint: a circle whose ground area equals the reported hectares (metres radius).
-      // On the dark console this finally reads — a soft ember wash showing a big fire's real extent.
-      if (f.sizeHa > 0) {
+      // Only for genuinely large fires. A small fire's true disc is sub-pixel at national zoom, so it
+      // contributed nothing but a ring of noise around its own mark — hundreds of them were a big part
+      // of what turned the map into a solid mass. Above ~1,000 ha the disc starts carrying real
+      // information as you zoom in: how far the thing actually reaches across the ground.
+      if (f.sizeHa >= 1000) {
         L.circle([f.lat, f.lon], {
           radius: radiusMetersForHa(f.sizeHa),
           color: MAP.areaStroke,
@@ -506,7 +530,7 @@ export class FireMap implements LiveMapView {
       // country zoom). Radius carries MAGNITUDE; fill + ring carry STAGE; the casing keeps it readable
       // over the FWI wash, the smoke raster and the basemap alike.
       const r = markRadiusFor(f.sizeHa);
-      darkCasing(f.lat, f.lon, r + 2.2).addTo(this.reportedLayer);
+      darkCasing(f.lat, f.lon, r + 1.7).addTo(this.reportedLayer);
       const dot = L.circleMarker([f.lat, f.lon], {
         radius: r,
         color: st.ring,
@@ -605,20 +629,22 @@ export class FireMap implements LiveMapView {
     if (mark) this.highlight(mark);
   }
 
-  /** Swap the basemap between the dark instrument console and the sun-readable daylight tiles. The
-   *  MARKS never change — one palette reads on both — but the place labels invert (light ink + dark
-   *  halo on the console, dark ink + white halo in daylight) or they'd vanish. */
-  setDaylight(on: boolean): void {
-    if (on === this.daylight) return;
-    this.daylight = on;
+  /** Swap the basemap (satellite imagery / abstract dark console / sun-readable daylight). The MARKS
+   *  never change — one ember palette reads on all three — but the place labels invert (light ink +
+   *  dark halo over imagery and the dark console, dark ink + white halo in daylight) or they'd vanish
+   *  into the ground they're drawn on. */
+  setBasemap(mode: BasemapMode): void {
+    if (mode === this.basemap) return;
+    this.basemap = mode;
+    const base = BASEMAPS[mode];
     this.map.removeLayer(this.tiles);
-    this.tiles = L.tileLayer(on ? CARTO_LIGHT : CARTO_DARK, { subdomains: 'abcd', maxZoom: 19 }).addTo(this.map);
+    this.tiles = L.tileLayer(base.url, { subdomains: base.subdomains ?? 'abc', maxZoom: base.maxZoom }).addTo(this.map);
     this.tiles.bringToBack();
-    this.map.getPane('tilePane')!.style.filter = on ? MAP.tileTintDay : MAP.tileTint;
+    this.map.getPane('tilePane')!.style.filter = base.tint;
     for (const { marker } of this.placeMarks) {
       const span = marker.getElement()?.firstElementChild as HTMLElement | null;
       if (span) {
-        span.style.color = on ? MAP.labelInkDay : MAP.labelInk;
+        span.style.color = mode === 'daylight' ? MAP.labelInkDay : MAP.labelInk;
         span.style.textShadow = this.labelHalo();
       }
     }
@@ -653,7 +679,7 @@ export class FireMap implements LiveMapView {
   /** The label halo for the current basemap: a dark glow on the console, a white one in daylight. Four
    *  stacked shadows, because one soft shadow doesn't survive a label crossing a bright hotspot cluster. */
   private labelHalo(): string {
-    const c = this.daylight ? MAP.labelHaloDay : MAP.labelHalo;
+    const c = this.basemap === 'daylight' ? MAP.labelHaloDay : MAP.labelHalo;
     return `0 0 2px ${c},0 0 3px ${c},0 0 4px ${c},0 1px 5px ${c}`;
   }
 

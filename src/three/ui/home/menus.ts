@@ -39,7 +39,8 @@ import { FIELD_GROUPS, REPORTED_FIELD_GROUPS, responseType, type FieldGroup } fr
 import { filterReportedRegion, filterRegionHotspots, regionValue, parseRegion, regionOptions, deriveRegionStats, countryLabel, COUNTRIES, smokeForecastFrames, forecastLeadLabel } from '../../livefire/normalize';
 import { LIVEFIRE } from '../../config';
 import type { Hotspot, ReportedFire, ReportedFeed, FireHistoryPoint, FireActivity, FireStage, NationalSummary, BurnFeed, FeedMeta, LiveFireFeed, CountryFilter, RegionFilter, RegionStats } from '../../livefire/types';
-import type { LiveMapView, FireLayer } from '../../livefire/view';
+import type { LiveMapView, FireLayer, BasemapMode } from '../../livefire/view';
+import { BASEMAP_ORDER } from '../../livefire/view';
 import { rankThreats, type ThreatRow } from '../../livefire/triage';
 import { esc } from '../../../site/siteNav.mjs';
 
@@ -1071,9 +1072,10 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
         <button class="fmbtn threats" data-lf-threats aria-label="${esc(C.console.railBtn)}" title="${esc(C.console.railBtn)}">${ic('alert')}</button>
         <button class="fmbtn" data-lf-layers aria-label="${esc(C.layersBtn)}" title="${esc(C.layersBtn)}">${ic('layers')}<span class="fmn" data-lf-layern></span></button>
         <button class="fmbtn" data-lf-firewx aria-pressed="false" aria-label="${esc(C.fireWxBtn)}" title="${esc(C.fireWxBtn)}">${ic('fire')}</button>
-        <!-- Daylight: the dark console is the default, but a dark map genuinely loses its marks
-             outdoors in glare — the sun-readable light basemap stays one tap away. -->
-        <button class="fmbtn" data-lf-day aria-pressed="false" aria-label="${esc(C.console.daylightBtn)}" title="${esc(C.console.daylightBtn)}">${ic('sun')}</button>
+        <!-- Basemap cycle: satellite imagery (default — the one that answers "where is this?") →
+             the abstract dark console (least noise, marks read hardest) → daylight (a dark map
+             genuinely loses its marks outdoors in glare). The glyph names what you'd switch TO. -->
+        <button class="fmbtn" data-lf-day aria-label="${esc(C.console.basemap.console)}" title="${esc(C.console.basemap.console)}">${ic('moon')}</button>
       </div>
       <div class="firebottom">
         <div class="firelegend" data-lf-legend hidden aria-hidden="true">
@@ -1547,17 +1549,21 @@ export function openLiveFires(navMarkup?: string, topNav?: string): void {
   layersBtn.addEventListener('click', () => showLayers());
   // Phone only (the rail is permanently docked on a wide screen — see .firerail in styles.ts).
   threatsBtn.addEventListener('click', () => { railOpen = !railOpen; syncRail(); });
-  // Daylight ⇄ console basemap. The dark console is the default look, but a dark map genuinely loses
-  // its marks outdoors in glare, so the sun-readable light tiles stay one tap away (the button's glyph
-  // shows what you'd SWITCH TO, which is why it starts as a sun).
-  let daylight = false;
+  // Basemap cycle: satellite → dark console → daylight → satellite. Three modes rather than a toggle
+  // because they answer three different questions (see view.ts → BasemapMode); satellite leads because
+  // "where is this fire, and what's around it" is the first thing a member of the public asks, and only
+  // real imagery answers it. The button's glyph + label always name the NEXT mode, never the current
+  // one — a control that shows its own state reads as "you are here" and gets pressed by mistake.
+  const BASEMAP_GLYPH: Record<BasemapMode, string> = { satellite: 'satellite', console: 'moon', daylight: 'sun' };
+  let basemapIdx = 0; // index into BASEMAP_ORDER; 0 = satellite, the default the map boots on
   dayBtn.addEventListener('click', () => {
-    daylight = !daylight;
-    map?.setDaylight(daylight);
-    dayBtn.classList.toggle('on', daylight);
-    dayBtn.setAttribute('aria-pressed', String(daylight));
-    dayBtn.innerHTML = ic(daylight ? 'moon' : 'sun');
-    const lbl = daylight ? C.console.consoleBtn : C.console.daylightBtn;
+    basemapIdx = (basemapIdx + 1) % BASEMAP_ORDER.length;
+    const mode = BASEMAP_ORDER[basemapIdx]!;
+    map?.setBasemap(mode);
+    // Label the mode AFTER this one — that's what the next press does.
+    const next = BASEMAP_ORDER[(basemapIdx + 1) % BASEMAP_ORDER.length]!;
+    dayBtn.innerHTML = ic(BASEMAP_GLYPH[next]);
+    const lbl = C.console.basemap[next] ?? '';
     dayBtn.setAttribute('aria-label', lbl);
     dayBtn.title = lbl;
   });
@@ -1631,7 +1637,8 @@ function openCredits(host: HTMLElement): void {
       `<p class="mtext"><b>Active fire data</b><br><a href="https://ciffc.net" target="_blank" rel="noopener">CIFFC</a>: Canadian Interagency Forest Fire Centre · CWFIS: <a href="https://cwfis.cfs.nrcan.gc.ca" target="_blank" rel="noopener">Canadian Wildland Fire Information System</a>, Natural Resources Canada</p>` +
       `<p class="mtext"><b>Globe outlines</b><br><a href="https://www.naturalearthdata.com" target="_blank" rel="noopener">Natural Earth</a> (public domain), drawn procedurally, no basemap imagery</p>` +
       `<p class="mtext"><b>Map engines</b><br><a href="https://threejs.org" target="_blank" rel="noopener">Three.js</a> (globe) · <a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a> (flat view)</p>` +
-      `<p class="mtext"><b>Basemap tiles</b> (globe close-up &amp; flat view)<br>© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors · © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a></p>` +
+      `<p class="mtext"><b>Satellite imagery</b><br>Esri World Imagery: © <a href="https://www.esri.com" target="_blank" rel="noopener">Esri</a>, Maxar, Earthstar Geographics, and the GIS User Community</p>` +
+      `<p class="mtext"><b>Basemap tiles</b> (dark &amp; daylight maps)<br>© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors · © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a></p>` +
       `<p class="mtext"><b>Icons</b><br>Lucide (MIT)</p>` +
       `</div>` +
       `<div class="modal-actions"><button class="btn primary" data-credits-ok>${ic('check')}Got it</button></div>`,

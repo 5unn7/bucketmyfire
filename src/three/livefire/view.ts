@@ -70,6 +70,19 @@ export const SEV_COLOR: Record<FireSeverity, string> = {
 /** The toggleable data layers (the Layers sheet + the per-layer setters below). */
 export type FireLayer = 'reported' | 'out' | 'perimeters' | 'hotspots' | 'fwi' | 'smoke';
 
+/**
+ * Which basemap the console draws on. Three, because they answer three different questions:
+ *   • satellite — the DEFAULT. Real imagery: lakes, rivers, the treeline, old burn scars. The only
+ *     one that answers "where is this, and what's around it" for someone who doesn't read maps.
+ *   • console   — the abstract dark map. Least visual noise, so the marks read hardest; the right
+ *     choice when you're reading the fire pattern rather than the ground.
+ *   • daylight  — the sun-readable light map. A dark map genuinely loses its marks outdoors in
+ *     glare, so this fallback stays reachable (see DESIGN.md → map sun-readability).
+ */
+export type BasemapMode = 'satellite' | 'console' | 'daylight';
+/** The cycle order the basemap button walks (each press → the next one). */
+export const BASEMAP_ORDER: BasemapMode[] = ['satellite', 'console', 'daylight'];
+
 export interface FireMapHandlers {
   onSelectHotspot: (h: Hotspot) => void;
   onSelectReported: (f: ReportedFire) => void;
@@ -99,8 +112,8 @@ export interface LiveMapView {
   /** Mark the highest-ranked threats so they carry the animated priority halo (rail ↔ map tie-in).
    *  Pass the fires in rank order; an empty array clears every halo. */
   setPriority(fires: ReportedFire[]): void;
-  /** Swap the basemap between the dark instrument console and the sun-readable daylight tiles. */
-  setDaylight(on: boolean): void;
+  /** Swap the basemap (satellite imagery / abstract dark console / sun-readable daylight). */
+  setBasemap(mode: BasemapMode): void;
   /** Re-measure the container (it's mounted hidden-then-shown). */
   invalidate(): void;
   dispose(): void;

@@ -256,9 +256,17 @@ export const BOARD = {
  * So the eye lands on what is still winning. See DESIGN.md → Two registers (the map is `fight`).
  */
 export const MAP = {
-  // Basemap — a dark instrument backdrop. `tint` is composited over the tile pane so CARTO's neutral
-  // grey picks up the cockpit's blue-black cast; `daylight` is the sun-readable light tile fallback.
+  // Basemap tints, one per mode. Composited on the tile PANE (one filter for the whole frame, not one
+  // per tile). SATELLITE is the default: real imagery is what actually answers "where is this?" —
+  // lakes, rivers, the treeline, old burn scars and the shape of the land are all legible in a way an
+  // abstract basemap simply cannot be. It's darkened hard so the ember marks stay the brightest thing
+  // on the map; at full brightness daylight imagery out-shouts the fire and the console stops reading
+  // as a console. `tileTint` is the abstract dark mode, `tileTintDay` the sun-readable light fallback.
   landInk: '#0a0f14', // the deep base the tiles sit on (also what shows through while they load)
+  // Brightness buys mark dominance; contrast buys back the land detail that darkening costs. Tuned
+  // against a national view where Arctic ice and cloud are the brightest things in frame — left
+  // untouched they out-glare the fire, which is the one thing on this map that must never happen.
+  tileTintSat: 'brightness(52%) saturate(78%) contrast(118%)',
   tileTint: 'saturate(72%) brightness(88%) contrast(112%) hue-rotate(178deg)',
   tileTintDay: 'saturate(96%) brightness(101%) contrast(96%)',
   // Stage-of-control ramp — ONE ember hue, ranked by luminance + fill (see the rule above).
