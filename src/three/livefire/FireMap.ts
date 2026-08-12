@@ -55,8 +55,13 @@ const SEV_STYLE: Record<FireSeverity, { radius: number; fill: number }> = {
   extreme: { radius: 5.5, fill: 1 },
 };
 
-const CARTO_DARK = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
-const CARTO_LIGHT = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+// NO-LABEL basemaps, deliberately. The `_all` tiles bake CARTO's own place names into the imagery,
+// which meant two label systems fighting on one map: the tiles' names printed straight through the
+// curated ones and no amount of decluttering could touch them (the captures showed "Yello|Yellowknife"
+// and "Edmo|Edmonton" doubled on top of each other). With `_nolabels` the console owns every label it
+// draws, so `declutter()` is authoritative and the map stays legible at any zoom.
+const CARTO_DARK = 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png';
+const CARTO_LIGHT = 'https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png';
 
 /**
  * A reported fire's centre-mark radius, in screen px, from its reported hectares.
@@ -406,16 +411,17 @@ export class FireMap implements LiveMapView {
     this.outLayer = L.layerGroup();
     this.reportedLayer = L.layerGroup();
     this.hotspotLayer = L.layerGroup();
-    this.applyVisibility();
     // Priority halos ride their own DOM pane ABOVE the canvas marks: a canvas circle can't animate
     // without redrawing it every frame (a non-starter for a mobile map), but a dozen CSS-animated
     // divIcons cost nothing. Deliberately a HANDFUL of elements — the whole point is that only the
     // fires the console is pointing at move. Non-interactive so taps fall through to the mark beneath.
+    // Built BEFORE applyVisibility(), which syncs this layer along with the reported marks.
     this.map.createPane('lfHalo');
     const haloPane = this.map.getPane('lfHalo')!;
     haloPane.style.zIndex = '610'; // over the canvas marks (overlayPane 400), under the labels (620)
     haloPane.style.pointerEvents = 'none';
-    this.haloLayer = L.layerGroup().addTo(this.map);
+    this.haloLayer = L.layerGroup();
+    this.applyVisibility();
     this.buildPlaces();
 
     // Tap EMPTY map → dismiss any active selection. With the CANVAS renderer a marker click also bubbles
